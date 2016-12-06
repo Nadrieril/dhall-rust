@@ -55,7 +55,7 @@ pub enum Tok {
 
 #[derive(Debug)]
 pub enum LexicalError {
-    Error(nom::simple_errors::Err<u32>),
+    Error(usize, nom::simple_errors::Err<u32>),
     Incomplete(nom::Needed),
 }
 
@@ -210,8 +210,9 @@ impl<'input> Iterator for Lexer<'input> {
                 Some(Ok((start, t, self.offset)))
             }
             Error(e) => {
+                let offset = self.offset;
                 self.offset = self.input.len();
-                Some(Err(LexicalError::Error(e)))
+                Some(Err(LexicalError::Error(offset, e)))
             }
             Incomplete(needed) => {
                 Some(Err(LexicalError::Incomplete(needed)))
