@@ -4,6 +4,15 @@ use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
+    Let,
+    In,
+    If,
+    Then,
+    Else,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Builtin {
     Natural,
     NaturalFold,
     NaturalBuild,
@@ -24,17 +33,13 @@ pub enum Keyword {
     Optional,
     OptionalFold,
     Bool,
-    Let,
-    In,
-    If,
-    Then,
-    Else,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Tok {
     Identifier(String),
-    Reserved(Keyword),
+    Keyword(Keyword),
+    Builtin(Builtin),
     Bool(bool),
     Integer(isize),
     Natural(usize),
@@ -124,31 +129,34 @@ named!(boolean<&str, bool>, alt!(
 ));
 
 named!(keyword<&str, Keyword>, alt!(
-    value!(Keyword::NaturalFold, tag!("Natural/fold")) |
-    value!(Keyword::NaturalBuild, tag!("Natural/build")) |
-    value!(Keyword::NaturalIsZero, tag!("Natural/isZero")) |
-    value!(Keyword::NaturalEven, tag!("Natural/even")) |
-    value!(Keyword::NaturalOdd, tag!("Natural/odd")) |
-    value!(Keyword::Natural, tag!("Natural")) |
-    value!(Keyword::Integer, tag!("Integer")) |
-    value!(Keyword::Double, tag!("Double")) |
-    value!(Keyword::Text, tag!("Text")) |
-    value!(Keyword::ListBuild, tag!("List/build")) |
-    value!(Keyword::ListFold, tag!("List/fold")) |
-    value!(Keyword::ListLength, tag!("List/length")) |
-    value!(Keyword::ListHead, tag!("List/head")) |
-    value!(Keyword::ListLast, tag!("List/last")) |
-    value!(Keyword::ListIndexed, tag!("List/indexed")) |
-    value!(Keyword::ListReverse, tag!("List/reverse")) |
-    value!(Keyword::List, tag!("List")) |
-    value!(Keyword::OptionalFold, tag!("Optional/fold")) |
-    value!(Keyword::Optional, tag!("Optional")) |
-    value!(Keyword::Bool, tag!("Bool")) |
     value!(Keyword::Let, tag!("let")) |
     value!(Keyword::In, tag!("in")) |
     value!(Keyword::If, tag!("if")) |
     value!(Keyword::Then, tag!("then")) |
     value!(Keyword::Else, tag!("else"))
+));
+
+named!(builtin<&str, Builtin>, alt!(
+    value!(Builtin::NaturalFold, tag!("Natural/fold")) |
+    value!(Builtin::NaturalBuild, tag!("Natural/build")) |
+    value!(Builtin::NaturalIsZero, tag!("Natural/isZero")) |
+    value!(Builtin::NaturalEven, tag!("Natural/even")) |
+    value!(Builtin::NaturalOdd, tag!("Natural/odd")) |
+    value!(Builtin::Natural, tag!("Natural")) |
+    value!(Builtin::Integer, tag!("Integer")) |
+    value!(Builtin::Double, tag!("Double")) |
+    value!(Builtin::Text, tag!("Text")) |
+    value!(Builtin::ListBuild, tag!("List/build")) |
+    value!(Builtin::ListFold, tag!("List/fold")) |
+    value!(Builtin::ListLength, tag!("List/length")) |
+    value!(Builtin::ListHead, tag!("List/head")) |
+    value!(Builtin::ListLast, tag!("List/last")) |
+    value!(Builtin::ListIndexed, tag!("List/indexed")) |
+    value!(Builtin::ListReverse, tag!("List/reverse")) |
+    value!(Builtin::List, tag!("List")) |
+    value!(Builtin::OptionalFold, tag!("Optional/fold")) |
+    value!(Builtin::Optional, tag!("Optional")) |
+    value!(Builtin::Bool, tag!("Bool"))
 ));
 
 named!(token<&str, Tok>, alt!(
@@ -162,7 +170,8 @@ named!(token<&str, Tok>, alt!(
     value!(Tok::Arrow, tag!("→")) |
 
     map!(boolean, Tok::Bool) |
-    map!(keyword, Tok::Reserved) |
+    map!(keyword, Tok::Keyword) |
+    map!(builtin, Tok::Builtin) |
     map_opt!(natural, |s| usize::from_str(s).ok().map(|n| Tok::Natural(n))) |
     map!(integer, Tok::Integer) |
     map!(identifier, |s: &str| Tok::Identifier(s.to_owned())) |

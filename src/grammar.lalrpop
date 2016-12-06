@@ -1,7 +1,7 @@
 use core;
 use core::Expr::*;
 use grammar_util::*;
-use lexer::{Keyword, LexicalError, Tok};
+use lexer::{Builtin, Keyword, LexicalError, Tok};
 
 grammar;
 
@@ -19,12 +19,12 @@ extern {
         Nat => Tok::Natural(<usize>),
         Bool => Tok::Bool(<bool>),
         Label => Tok::Identifier(<String>),
-        Let => Tok::Reserved(Keyword::Let),
-        In => Tok::Reserved(Keyword::In),
-        If => Tok::Reserved(Keyword::If),
-        Then => Tok::Reserved(Keyword::Then),
-        Else => Tok::Reserved(Keyword::Else),
-        Reserved => Tok::Reserved(<Keyword>),
+        Let => Tok::Keyword(Keyword::Let),
+        In => Tok::Keyword(Keyword::In),
+        If => Tok::Keyword(Keyword::If),
+        Then => Tok::Keyword(Keyword::Then),
+        Else => Tok::Keyword(Keyword::Else),
+        Builtin => Tok::Builtin(<Builtin>),
 
         "(" => Tok::ParenL,
         ")" => Tok::ParenR,
@@ -97,7 +97,7 @@ ExprF: BoxExpr = {
     Nat => bx(NaturalLit(<>)),
     Int => bx(IntegerLit(<>)),
     Label => bx(Var(core::Var(<>, 0))), // FIXME support var@n syntax
-    Reserved => bx(Bool), // FIXME
+    Builtin => bx(Bool), // FIXME
     Bool => bx(BoolLit(<>)),
     "(" <Expr> ")",
 };
