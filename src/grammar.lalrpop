@@ -19,6 +19,11 @@ extern {
         Nat => Tok::Natural(<usize>),
         Bool => Tok::Bool(<bool>),
         Label => Tok::Identifier(<String>),
+        Let => Tok::Reserved(Keyword::Let),
+        In => Tok::Reserved(Keyword::In),
+        If => Tok::Reserved(Keyword::If),
+        Then => Tok::Reserved(Keyword::Then),
+        Else => Tok::Reserved(Keyword::Else),
         Reserved => Tok::Reserved(<Keyword>),
 
         "(" => Tok::ParenL,
@@ -43,7 +48,11 @@ pub Expr: BoxExpr = { // exprA
 
 ExprB: BoxExpr = {
     Lambda "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Lam(<>)),
-    ExprC0,
+    Pi "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Pi(<>)),
+    If <Expr> Then <ExprB> Else <ExprC> => bx(BoolIf(<>)),
+    <ExprC> "->" <ExprB> => bx(Pi("_".to_owned(), <>)),
+    Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
+    ExprC,
 };
 
 BoolOr: ExprOpFn = { "||" => BoolOr };
@@ -61,7 +70,7 @@ Tier<NextTier, Op>: BoxExpr = {
     NextTier,
 };
 
-ExprC0 = Tier<ExprC1, BoolOr>;
+ExprC = Tier<ExprC1, BoolOr>;
 ExprC1 = Tier<ExprC2, NaturalPlus>;
 ExprC2 = Tier<ExprC3, TextAppend>;
 ExprC3 = Tier<ExprC4, BoolAnd>;

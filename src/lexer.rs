@@ -24,6 +24,11 @@ pub enum Keyword {
     Optional,
     OptionalFold,
     Bool,
+    Let,
+    In,
+    If,
+    Then,
+    Else,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -93,11 +98,20 @@ fn is_symbol(c: char) -> bool {
 named!(symbol<&str, &str>, take_while1_s!(is_symbol));
 */
 
+#[allow(dead_code)]
+fn is_identifier_first_char(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+fn is_identifier_rest_char(c: char) -> bool {
+    c.is_alphabetic() || is_decimal(c) || c == '_' || c == '/'
+}
+
 fn is_decimal(c: char) -> bool {
     c.is_digit(10)
 }
 
-named!(identifier<&str, &str>, take_while1_s!(char::is_alphabetic)); // FIXME [A-Za-z_][A-Za-z0-9_/]*
+named!(identifier<&str, &str>, take_while1_s!(is_identifier_rest_char)); // FIXME use is_identifier_first_char
 named!(natural<&str, &str>, preceded!(tag!("+"), take_while1_s!(is_decimal)));
 named!(integral<&str, isize>, map_res!(take_while1_s!(is_decimal), |s| isize::from_str(s)));
 named!(integer<&str, isize>, alt!(
@@ -110,16 +124,15 @@ named!(boolean<&str, bool>, alt!(
 ));
 
 named!(keyword<&str, Keyword>, alt!(
-    value!(Keyword::Natural, tag!("Natural")) |
     value!(Keyword::NaturalFold, tag!("Natural/fold")) |
     value!(Keyword::NaturalBuild, tag!("Natural/build")) |
     value!(Keyword::NaturalIsZero, tag!("Natural/isZero")) |
     value!(Keyword::NaturalEven, tag!("Natural/even")) |
     value!(Keyword::NaturalOdd, tag!("Natural/odd")) |
+    value!(Keyword::Natural, tag!("Natural")) |
     value!(Keyword::Integer, tag!("Integer")) |
     value!(Keyword::Double, tag!("Double")) |
     value!(Keyword::Text, tag!("Text")) |
-    value!(Keyword::List, tag!("List")) |
     value!(Keyword::ListBuild, tag!("List/build")) |
     value!(Keyword::ListFold, tag!("List/fold")) |
     value!(Keyword::ListLength, tag!("List/length")) |
@@ -127,9 +140,15 @@ named!(keyword<&str, Keyword>, alt!(
     value!(Keyword::ListLast, tag!("List/last")) |
     value!(Keyword::ListIndexed, tag!("List/indexed")) |
     value!(Keyword::ListReverse, tag!("List/reverse")) |
-    value!(Keyword::Optional, tag!("Optional")) |
+    value!(Keyword::List, tag!("List")) |
     value!(Keyword::OptionalFold, tag!("Optional/fold")) |
-    value!(Keyword::Bool, tag!("Bool"))
+    value!(Keyword::Optional, tag!("Optional")) |
+    value!(Keyword::Bool, tag!("Bool")) |
+    value!(Keyword::Let, tag!("let")) |
+    value!(Keyword::In, tag!("in")) |
+    value!(Keyword::If, tag!("if")) |
+    value!(Keyword::Then, tag!("then")) |
+    value!(Keyword::Else, tag!("else"))
 ));
 
 named!(token<&str, Tok>, alt!(
