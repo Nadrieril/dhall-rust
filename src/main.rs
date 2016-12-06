@@ -9,12 +9,15 @@ mod grammar_util;
 pub mod lexer;
 pub mod parser;
 
+use std::io::{self, Read};
+
 fn main() {
-    println!("Hello, world!");
+    let mut buffer = String::new();
+    io::stdin().read_to_string(&mut buffer).unwrap();
+    let r = parser::parse_expr(&buffer);
+    println!("{:?}", r);
 
     /*
-    inText <- Data.Text.Lazy.IO.getContents
-
     expr <- case exprFromText (Directed "(stdin)" 0 0 0 0) inText of
         Left  err  -> Control.Exception.throwIO err
         Right expr -> return expr
