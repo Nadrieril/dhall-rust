@@ -290,7 +290,7 @@ fn test_lex() {
                     ParenL,
                     Identifier("b".to_owned()),
                     Ascription,
-                    Reserved(Keyword::Bool),
+                    Builtin(self::Builtin::Bool),
                     ParenR,
                     Arrow,
                     Identifier("b".to_owned()),
