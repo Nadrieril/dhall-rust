@@ -179,14 +179,48 @@ impl<'input> Lexer<'input> {
         &self.input[self.offset..]
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) -> bool {
         let input = self.current_input();
         let trimmed = input.trim_left();
         let whitespace_len = input.len() - trimmed.len();
-        if whitespace_len > 0 {
-            //println!("skipped {} whitespace bytes", whitespace_len);
+        let skipped = whitespace_len > 0;
+        if skipped {
+            // println!("skipped {} whitespace bytes in {}..{}", whitespace_len, self.offset, self.offset + whitespace_len);
             self.offset += whitespace_len;
         }
+        skipped
+    }
+
+    fn skip_comments(&mut self) -> bool {
+        let input = self.current_input();
+        if !input.is_char_boundary(0) || !input.is_char_boundary(2) {
+            return false;
+        }
+        let skip = match &input[0..2] {
+            "{-" => {
+                if let Some(i) = input.find("-}") {
+                    // println!("skipped {} bytes of block comment", i + 2);
+                    i + 2
+                } else {
+                    0
+                }
+            }
+            "--" => {
+                if let Some(i) = input.find("\n") { // FIXME Find CRLF too
+                    // println!("skipped {} bytes of line comment", i + 1);
+                    i + 1
+                } else {
+                    0
+                }
+            }
+            _ => 0,
+        };
+        self.offset += skip;
+        skip != 0
+    }
+
+    fn skip_comments_and_whitespace(&mut self) {
+        while self.skip_whitespace() || self.skip_comments() {}
     }
 }
 
@@ -194,13 +228,12 @@ impl<'input> Iterator for Lexer<'input> {
     type Item = Spanned<Tok, usize, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.offset >= self.input.len() {
+        use nom::IResult::*;
+        self.skip_comments_and_whitespace();
+        let input = self.current_input();
+        if input.len() == 0 {
             return None;
         }
-
-        use nom::IResult::*;
-        self.skip_whitespace();
-        let input = self.current_input();
         match token(input) {
             Done(rest, t) => {
                 let parsed_len = input.len() - rest.len();
