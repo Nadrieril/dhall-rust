@@ -1,0 +1,12 @@
+[package]
+name = "dhall"
+version = "0.1.0"
+authors = ["NanoTech <nanotech@nanotechcorp.net>"]
+build = "build.rs"
+
+[build-dependencies]
+lalrpop = "0.12.4"
+
+[dependencies]
+lalrpop-util = "0.12.4"
+nom = "2.0.0"

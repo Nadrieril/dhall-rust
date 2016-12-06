@@ -1,0 +1,94 @@
+use core;
+use core::Expr::*;
+use grammar_util::*;
+use lexer::{Keyword, LexicalError, Tok};
+
+grammar;
+
+extern {
+    type Location = usize;
+    type Error = LexicalError;
+
+    enum Tok {
+        Pi => Tok::Pi,
+        Lambda => Tok::Lambda,
+        Combine => Tok::Combine,
+        "->" => Tok::Arrow,
+
+        Int => Tok::Integer(<isize>),
+        Nat => Tok::Natural(<usize>),
+        Bool => Tok::Bool(<bool>),
+        Label => Tok::Identifier(<String>),
+        Reserved => Tok::Reserved(<Keyword>),
+
+        "(" => Tok::ParenL,
+        ")" => Tok::ParenR,
+        "&&" => Tok::BoolAnd,
+        "||" => Tok::BoolOr,
+        "==" => Tok::CompareEQ,
+        "!=" => Tok::CompareNE,
+        "++" => Tok::Append,
+        "*" => Tok::Times,
+        "+" => Tok::Plus,
+        "." => Tok::Dot,
+        ":" => Tok::Ascription,
+        "=" => Tok::Equals,
+    }
+}
+
+pub Expr: BoxExpr = { // exprA
+    <ExprB> ":" <Expr> => bx(Annot(<>)),
+    ExprB,
+};
+
+ExprB: BoxExpr = {
+    Lambda "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Lam(<>)),
+    ExprC0,
+};
+
+BoolOr: ExprOpFn = { "||" => BoolOr };
+NaturalPlus: ExprOpFn = { "+" => NaturalPlus };
+TextAppend: ExprOpFn = { "++" => TextAppend };
+BoolAnd: ExprOpFn = { "&&" => BoolAnd };
+CombineOp: ExprOpFn = { Combine => Combine };
+NaturalTimes: ExprOpFn = { "*" => NaturalTimes };
+BoolEQ: ExprOpFn = { "==" => BoolEQ };
+BoolNE: ExprOpFn = { "!=" => BoolNE };
+
+Tier<NextTier, Op>: BoxExpr = {
+    <a:NextTier> <f:Op> <b:Tier<NextTier, Op>> => bx(f(a, b)),
+    // <b:Tier<NextTier, Op>> <f:Op> <a:NextTier> => bx(f(a, b)),
+    NextTier,
+};
+
+ExprC0 = Tier<ExprC1, BoolOr>;
+ExprC1 = Tier<ExprC2, NaturalPlus>;
+ExprC2 = Tier<ExprC3, TextAppend>;
+ExprC3 = Tier<ExprC4, BoolAnd>;
+ExprC4 = Tier<ExprC5, CombineOp>;
+ExprC5 = Tier<ExprC6, NaturalTimes>;
+ExprC6 = Tier<ExprC7, BoolEQ>;
+ExprC7 = Tier<ExprD, BoolNE>;
+
+ExprD: BoxExpr = {
+    <v:(ExprE)+> => {
+        let mut it = v.into_iter();
+        let f = it.next().unwrap();
+        it.fold(f, |f, x| bx(App(f, x)))
+    }
+};
+
+ExprE: BoxExpr = {
+    <a:ExprF> <fields:("." <Label>)*> => {
+        fields.into_iter().fold(a, |x, f| bx(Field(x, f)))
+    },
+};
+
+ExprF: BoxExpr = {
+    Nat => bx(NaturalLit(<>)),
+    Int => bx(IntegerLit(<>)),
+    Label => bx(Var(core::Var(<>, 0))), // FIXME support var@n syntax
+    Reserved => bx(Bool), // FIXME
+    Bool => bx(BoolLit(<>)),
+    "(" <Expr> ")",
+};
