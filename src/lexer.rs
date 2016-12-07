@@ -234,6 +234,10 @@ named!(token<&str, Tok>, alt!(
     value!(Tok::Equals, tag!("="))
 ));
 
+fn find_end(input: &str, ending: &str) -> Option<usize> {
+    input.find(ending).map(|i| i + ending.len())
+}
+
 pub struct Lexer<'input> {
     input: &'input str,
     offset: usize,
@@ -269,24 +273,11 @@ impl<'input> Lexer<'input> {
             return false;
         }
         let skip = match &input[0..2] {
-            "{-" => {
-                if let Some(i) = input.find("-}") {
-                    // println!("skipped {} bytes of block comment", i + 2);
-                    i + 2
-                } else {
-                    0
-                }
-            }
-            "--" => {
-                if let Some(i) = input.find("\n") { // FIXME Find CRLF too
-                    // println!("skipped {} bytes of line comment", i + 1);
-                    i + 1
-                } else {
-                    0
-                }
-            }
-            _ => 0,
-        };
+            "{-" => find_end(input, "-}"),
+            "--" => find_end(input, "\n"), // Also skips past \r\n (CRLF)
+            _ => None,
+        }.unwrap_or(0);
+        // println!("skipped {} bytes of comment", skip);
         self.offset += skip;
         skip != 0
     }
