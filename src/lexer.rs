@@ -84,38 +84,6 @@ pub enum LexicalError {
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
-/*
-macro_rules! one_of_chars {
-    ($c:expr, [$($cs:pat),*]) => {
-        match $c {
-            $($cs => true),*,
-            _ => false,
-        }
-    }
-}
-
-fn is_symbol(c: char) -> bool {
-    one_of_chars!(c, [
-        '!',
-        '&',
-        '(',
-        ')',
-        '*',
-        '+',
-        '-',
-        '/',
-        ':',
-        '=',
-        '>',
-        '\\',
-        '|',
-        '∧',
-        'λ'
-    ])
-}
-named!(symbol<&str, &str>, take_while1_s!(is_symbol));
-*/
-
 #[allow(dead_code)]
 fn is_identifier_first_char(c: char) -> bool {
     c.is_alphabetic() || c == '_'
