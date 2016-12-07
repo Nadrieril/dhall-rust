@@ -21,6 +21,7 @@ extern {
 
         Int => Tok::Integer(<isize>),
         Nat => Tok::Natural(<usize>),
+        Text => Tok::Text(<String>),
         Bool => Tok::Bool(<bool>),
         Label => Tok::Identifier(<String>),
         Const => Tok::Const(<core::Const>),
@@ -114,6 +115,7 @@ ExprE: BoxExpr = {
 ExprF: BoxExpr = {
     Nat => bx(NaturalLit(<>)),
     Int => bx(IntegerLit(<>)),
+    Text => bx(TextLit(<>)),
     Label => bx(Var(core::Var(<>, 0))), // FIXME support var@n syntax
     Const => bx(Const(<>)),
     List => bx(List),

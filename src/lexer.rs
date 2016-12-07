@@ -1,7 +1,5 @@
 use nom;
 
-use std::str::FromStr;
-
 use core::Const;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -51,6 +49,7 @@ pub enum Tok {
     Bool(bool),
     Integer(isize),
     Natural(usize),
+    Text(String),
 
     // Symbols
     BraceL,
@@ -90,19 +89,20 @@ fn is_identifier_first_char(c: char) -> bool {
 }
 
 fn is_identifier_rest_char(c: char) -> bool {
-    is_identifier_first_char(c) || is_decimal(c) || c == '/'
+    is_identifier_first_char(c) || c.is_digit(10) || c == '/'
 }
 
-fn is_decimal(c: char) -> bool {
-    c.is_digit(10)
+macro_rules! digits {
+    ($i:expr, $t:tt, $radix:expr) => {{
+        let r: nom::IResult<&str, $t> =
+            map_res!($i, take_while1_s!(call!(|c: char| c.is_digit($radix))),
+                     |s| $t::from_str_radix(s, $radix));
+        r
+    }}
 }
 
-named!(identifier<&str, &str>, recognize!(preceded!(
-    take_while1_s!(is_identifier_first_char),
-    take_while_s!(is_identifier_rest_char))
-));
-named!(natural<&str, &str>, preceded!(tag!("+"), take_while1_s!(is_decimal)));
-named!(integral<&str, isize>, map_res!(take_while1_s!(is_decimal), |s| isize::from_str(s)));
+named!(natural<&str, usize>, preceded!(tag!("+"), digits!(usize, 10)));
+named!(integral<&str, isize>, digits!(isize, 10));
 named!(integer<&str, isize>, alt!(
     preceded!(tag!("-"), map!(integral, |i: isize| -i)) |
     integral
@@ -110,6 +110,11 @@ named!(integer<&str, isize>, alt!(
 named!(boolean<&str, bool>, alt!(
     value!(true, tag!("True")) |
     value!(false, tag!("False"))
+));
+
+named!(identifier<&str, &str>, recognize!(preceded!(
+    take_while1_s!(is_identifier_first_char),
+    take_while_s!(is_identifier_rest_char))
 ));
 
 /// Parse an identifier, ensuring a whole identifier is parsed and not just a prefix.
@@ -127,6 +132,75 @@ macro_rules! ident_tag {
         }
     }
 }
+
+fn string_escape_single(c: char) -> Option<&'static str> {
+    match c {
+        'n'  => Some("\n"),
+        'r'  => Some("\r"),
+        't'  => Some("\t"),
+        '"'  => Some("\""),
+        '\'' => Some("'"),
+        '\\' => Some("\\"),
+        '0'  => Some("\0"),
+        'a'  => Some("\x07"),
+        'b'  => Some("\x08"),
+        'f'  => Some("\x0c"),
+        'v'  => Some("\x0b"),
+        '&'  => Some(""),
+        _    => None,
+    }
+}
+
+named!(string_escape_numeric<&str, char>, map_opt!(alt!(
+    preceded!(tag!("x"), digits!(u32, 16)) |
+    preceded!(tag!("o"), digits!(u32, 8)) |
+    digits!(u32, 10)
+), ::std::char::from_u32));
+
+fn string_lit_inner(input: &str) -> nom::IResult<&str, String> {
+    use nom::IResult::*;;
+    use nom::ErrorKind;
+    let mut s = String::new();
+    let mut cs = input.char_indices().peekable();
+    while let Some((i, c)) = cs.next()  {
+        match c {
+            '"' => return nom::IResult::Done(&input[i..], s),
+            '\\' => match cs.next() {
+                Some((_, s)) if s.is_whitespace() => {
+                    while cs.peek().map(|&(_, s)| s.is_whitespace()) == Some(true) {
+                        let _ = cs.next();
+                    }
+                    if cs.next().map(|p| p.1) != Some('\\') {
+                        return Error(error_position!(ErrorKind::Custom(4 /* FIXME */), input));
+                    }
+                }
+                Some((j, ec)) => {
+                    if let Some(esc) = string_escape_single(ec) {
+                        s.push_str(esc);
+                        // FIXME Named ASCII escapes and control character escapes
+                    } else {
+                        match string_escape_numeric(&input[j..]) {
+                            Done(rest, esc) => {
+                                let &(k, _) = cs.peek().unwrap();
+                                // digits are always single byte ASCII characters
+                                let consumed = input[k..].len() - rest.len();
+                                for _ in 0..consumed { let _ = cs.next(); }
+                                s.push(esc);
+                            }
+                            Incomplete(s) => return Incomplete(s),
+                            Error(e) => return Error(e),
+                        }
+                    }
+                },
+                _ => return Error(error_position!(ErrorKind::Custom(5 /* FIXME */), input)),
+            },
+            _ => s.push(c),
+        }
+    }
+    Error(error_position!(ErrorKind::Custom(3 /* FIXME */), input))
+}
+
+named!(string_lit<&str, String>, delimited!(tag!("\""), string_lit_inner, tag!("\"")));
 
 named!(keyword<&str, Keyword>, alt!(
     value!(Keyword::Let, ident_tag!("let")) |
@@ -182,9 +256,10 @@ named!(token<&str, Tok>, alt!(
     map!(keyword, Tok::Keyword) |
     map!(builtin, Tok::Builtin) |
     map!(list_like, Tok::ListLike) |
-    map_opt!(natural, |s| usize::from_str(s).ok().map(|n| Tok::Natural(n))) |
+    map!(natural, Tok::Natural) |
     map!(integer, Tok::Integer) |
     map!(identifier, |s: &str| Tok::Identifier(s.to_owned())) |
+    map!(string_lit, Tok::Text) |
 
     value!(Tok::BraceL, tag!("{")) |
     value!(Tok::BraceR, tag!("}")) |
@@ -305,4 +380,10 @@ fn test_lex() {
     let lexer = Lexer::new(s);
     let tokens = lexer.map(|r| r.unwrap().1).collect::<Vec<_>>();
     assert_eq!(&tokens, &expected);
+
+    assert_eq!(string_lit(r#""a\&b""#).to_result(), Ok("ab".to_owned()));
+    assert_eq!(string_lit(r#""a\     \b""#).to_result(), Ok("ab".to_owned()));
+    assert!(string_lit(r#""a\     b""#).is_err());
+    assert_eq!(string_lit(r#""a\nb""#).to_result(), Ok("a\nb".to_owned()));
+    assert_eq!(string_lit(r#""\o141\x62\99""#).to_result(), Ok("abc".to_owned()));
 }
