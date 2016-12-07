@@ -6,6 +6,7 @@ dependencies = [
  "lalrpop 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop-util 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "term-painter 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -210,6 +211,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "term-painter"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "term 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "thread-id"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,6 +282,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum rustc-serialize 0.3.21 (registry+https://github.com/rust-lang/crates.io-index)" = "bff9fc1c79f2dec76b253273d07682e94a978bd8f132ded071188122b2af9818"
 "checksum strsim 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "67f84c44fbb2f91db7fef94554e6b2ac05909c9c0b0bc23bb98d3a1aebfe7f7c"
 "checksum term 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "3deff8a2b3b6607d6d7cc32ac25c0b33709453ca9cceac006caac51e963cf94a"
+"checksum term-painter 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ab900bf2f05175932b13d4fc12f8ff09ef777715b04998791ab2c930841e496b"
 "checksum thread-id 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a9539db560102d1cef46b8b78ce737ff0bb64e7e18d35b2a5688f7d097d0ff03"
 "checksum thread_local 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)" = "8576dbbfcaef9641452d5cf0df9b0e7eeab7694956dd33bb61515fb8f18cfdd5"
 "checksum unicode-xid 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f69506a2561962651710609304bbb961fa3da598c812f877975a82e48ee144f9"

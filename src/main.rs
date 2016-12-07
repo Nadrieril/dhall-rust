@@ -2,6 +2,7 @@ extern crate bytecount;
 extern crate lalrpop_util;
 #[macro_use]
 extern crate nom;
+extern crate term_painter;
 
 mod core;
 pub use core::*;
@@ -16,18 +17,46 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
     let line_number = bytecount::count(source[..start].as_bytes(), '\n' as u8);
     let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
     let line_end = source[end..].find('\n').unwrap_or(0) + end;
-    let context = &source[line_start..line_end];
+    let context_prefix = &source[line_start..start];
+    let context_highlighted = &source[start..end];
+    let context_suffix = &source[end..line_end];
 
-    println!("error: {}", message);
-    println!("  --> (stdin):{}:0", line_number);
     let line_number_str = line_number.to_string();
     let line_number_width = line_number_str.len();
-    println!("{:w$} |", "", w = line_number_width);
-    println!("{} | {}", line_number_str, context);
-    println!("{:w$} | {:so$}{:^>ew$}", "", "", "",
-             w = line_number_width,
-             so = source[line_start..start].chars().count(),
-             ew = ::std::cmp::max(1, source[start..end].chars().count()));
+
+    use term_painter::ToStyle;
+    let err_style = term_painter::Color::Red;
+    let bold = term_painter::Attr::Bold;
+
+    bold.with(|| {
+        err_style.with(|| {
+            print!("error: ");
+        });
+        println!("{}", message);
+    });
+    bold.with(|| {
+        print!("  -->");
+    });
+    println!(" {}:{}:0", "(stdin)", line_number);
+    bold.with(|| {
+        println!("{:w$} |", "", w = line_number_width);
+        print!("{} |", line_number_str);
+    });
+    print!(" {}", context_prefix);
+    bold.with(|| {
+        err_style.with(|| {
+            print!("{}", context_highlighted);
+        });
+    });
+    println!("{}", context_suffix);
+    bold.with(|| {
+        print!("{:w$} |", "", w = line_number_width);
+        err_style.with(|| {
+            println!(" {:so$}{:^>ew$}", "", "",
+                     so = source[line_start..start].chars().count(),
+                     ew = ::std::cmp::max(1, source[start..end].chars().count()));
+        });
+    });
 }
 
 fn main() {
