@@ -1,7 +1,11 @@
 use core;
 use core::Expr::*;
 use grammar_util::*;
-use lexer::{Builtin, Keyword, LexicalError, Tok};
+use lexer::*;
+
+use std::collections::HashMap;
+use std::iter;
+use std::iter::FromIterator;
 
 grammar;
 
@@ -19,13 +23,20 @@ extern {
         Nat => Tok::Natural(<usize>),
         Bool => Tok::Bool(<bool>),
         Label => Tok::Identifier(<String>),
+        Const => Tok::Const(<core::Const>),
         Let => Tok::Keyword(Keyword::Let),
         In => Tok::Keyword(Keyword::In),
         If => Tok::Keyword(Keyword::If),
         Then => Tok::Keyword(Keyword::Then),
         Else => Tok::Keyword(Keyword::Else),
+        List => Tok::ListLike(ListLike::List),
+        Optional => Tok::ListLike(ListLike::Optional),
         Builtin => Tok::Builtin(<Builtin>),
 
+        "{" => Tok::BraceL,
+        "}" => Tok::BraceR,
+        "[" => Tok::BracketL,
+        "]" => Tok::BracketR,
         "(" => Tok::ParenL,
         ")" => Tok::ParenR,
         "&&" => Tok::BoolAnd,
@@ -35,6 +46,7 @@ extern {
         "++" => Tok::Append,
         "*" => Tok::Times,
         "+" => Tok::Plus,
+        "," => Tok::Comma,
         "." => Tok::Dot,
         ":" => Tok::Ascription,
         "=" => Tok::Equals,
@@ -52,7 +64,13 @@ ExprB: BoxExpr = {
     If <Expr> Then <ExprB> Else <ExprC> => bx(BoolIf(<>)),
     <ExprC> "->" <ExprB> => bx(Pi("_".to_owned(), <>)),
     Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
+    "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(c, a)),
     ExprC,
+};
+
+ListLike: ExprListFn = {
+    List => ListLit,
+    Optional => OptionalLit,
 };
 
 BoolOr: ExprOpFn = { "||" => BoolOr };
@@ -97,7 +115,44 @@ ExprF: BoxExpr = {
     Nat => bx(NaturalLit(<>)),
     Int => bx(IntegerLit(<>)),
     Label => bx(Var(core::Var(<>, 0))), // FIXME support var@n syntax
+    Const => bx(Const(<>)),
+    List => bx(List),
+    Optional => bx(Optional),
     Builtin => bx(builtin_expr(<>)),
     Bool => bx(BoolLit(<>)),
+    Record,
+    RecordLit,
     "(" <Expr> ")",
+};
+
+SepBy<S, T>: iter::Chain<::std::vec::IntoIter<T>, ::std::option::IntoIter<T>> = {
+    <v:(<T> S)*> <last:T?> => v.into_iter().chain(last.into_iter()),
+};
+
+SepBy1<S, T>: iter::Chain<::std::vec::IntoIter<T>, iter::Once<T>> = {
+    <v:(<T> S)*> <last:T> => v.into_iter().chain(iter::once(last)),
+};
+
+Elems: Vec<ParsedExpr> = {
+    <v:SepBy<",", Expr>> => {
+        v.into_iter()
+         .map(|b| *b)
+         .collect::<Vec<_>>()
+    }
+};
+
+RecordLit: BoxExpr = {
+    "{" "=" "}" => bx(RecordLit(HashMap::new())),
+    "{" <FieldValues> "}" => bx(RecordLit(HashMap::from_iter(<>))),
+};
+
+Record: BoxExpr = {
+    "{" <FieldTypes> "}" => bx(Record(HashMap::from_iter(<>))),
+};
+
+FieldValues = SepBy1<",", Field<"=">>;
+FieldTypes = SepBy<",", Field<":">>;
+
+Field<Sep>: (String, ParsedExpr) = {
+    <a:Label> Sep <b:Expr> => (a, *b),
 };

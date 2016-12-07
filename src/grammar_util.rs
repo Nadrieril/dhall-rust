@@ -1,8 +1,10 @@
 use core::Expr;
 use lexer::Builtin;
 
-pub type BoxExpr = Box<Expr<(), ()>>;
-pub type ExprOpFn = fn(BoxExpr, BoxExpr) -> Expr<(), ()>;
+pub type ParsedExpr = Expr<(), ()>;
+pub type BoxExpr = Box<ParsedExpr>;
+pub type ExprOpFn = fn(BoxExpr, BoxExpr) -> ParsedExpr;
+pub type ExprListFn = fn(BoxExpr, Vec<ParsedExpr>) -> ParsedExpr;
 
 pub fn bx<T>(x: T) -> Box<T> {
     Box::new(x)
@@ -19,7 +21,6 @@ pub fn builtin_expr<S, A>(b: Builtin) -> Expr<S, A> {
         Builtin::Integer => Expr::Integer,
         Builtin::Double => Expr::Double,
         Builtin::Text => Expr::Text,
-        Builtin::List => Expr::List,
         Builtin::ListBuild => Expr::ListBuild,
         Builtin::ListFold => Expr::ListFold,
         Builtin::ListLength => Expr::ListLength,
@@ -27,7 +28,6 @@ pub fn builtin_expr<S, A>(b: Builtin) -> Expr<S, A> {
         Builtin::ListLast => Expr::ListLast,
         Builtin::ListIndexed => Expr::ListIndexed,
         Builtin::ListReverse => Expr::ListReverse,
-        Builtin::Optional => Expr::Optional,
         Builtin::OptionalFold => Expr::OptionalFold,
         Builtin::Bool => Expr::Bool,
     }

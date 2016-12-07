@@ -2,6 +2,8 @@ use nom;
 
 use std::str::FromStr;
 
+use core::Const;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
     Let,
@@ -9,6 +11,12 @@ pub enum Keyword {
     If,
     Then,
     Else,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ListLike {
+    List,
+    Optional,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -22,7 +30,6 @@ pub enum Builtin {
     Integer,
     Double,
     Text,
-    List,
     ListBuild,
     ListFold,
     ListLength,
@@ -30,7 +37,6 @@ pub enum Builtin {
     ListLast,
     ListIndexed,
     ListReverse,
-    Optional,
     OptionalFold,
     Bool,
 }
@@ -40,11 +46,17 @@ pub enum Tok {
     Identifier(String),
     Keyword(Keyword),
     Builtin(Builtin),
+    ListLike(ListLike),
+    Const(Const),
     Bool(bool),
     Integer(isize),
     Natural(usize),
 
     // Symbols
+    BraceL,
+    BraceR,
+    BracketL,
+    BracketR,
     ParenL,
     ParenR,
     Arrow,
@@ -58,6 +70,7 @@ pub enum Tok {
     Append,
     Times,
     Plus,
+    Comma,
     Dot,
     Ascription,
     Equals,
@@ -128,39 +141,63 @@ named!(boolean<&str, bool>, alt!(
     value!(false, tag!("False"))
 ));
 
+/// Parse an identifier, ensuring a whole identifier is parsed and not just a prefix.
+macro_rules! ident_tag {
+    ($i:expr, $tag:expr) => {
+        match identifier($i) {
+            nom::IResult::Done(i, s) => {
+                if s == $tag {
+                    nom::IResult::Done(i, s)
+                } else {
+                    nom::IResult::Error(error_position!(nom::ErrorKind::Tag, $i))
+                }
+            }
+            r => r,
+        }
+    }
+}
+
 named!(keyword<&str, Keyword>, alt!(
-    value!(Keyword::Let, tag!("let")) |
-    value!(Keyword::In, tag!("in")) |
-    value!(Keyword::If, tag!("if")) |
-    value!(Keyword::Then, tag!("then")) |
-    value!(Keyword::Else, tag!("else"))
+    value!(Keyword::Let, ident_tag!("let")) |
+    value!(Keyword::In, ident_tag!("in")) |
+    value!(Keyword::If, ident_tag!("if")) |
+    value!(Keyword::Then, ident_tag!("then")) |
+    value!(Keyword::Else, ident_tag!("else"))
+));
+
+named!(type_const<&str, Const>, alt!(
+    value!(Const::Type, ident_tag!("Type")) |
+    value!(Const::Kind, ident_tag!("Kind"))
+));
+
+named!(list_like<&str, ListLike>, alt!(
+    value!(ListLike::List, ident_tag!("List")) |
+    value!(ListLike::Optional, ident_tag!("Optional"))
 ));
 
 named!(builtin<&str, Builtin>, alt!(
-    value!(Builtin::NaturalFold, tag!("Natural/fold")) |
-    value!(Builtin::NaturalBuild, tag!("Natural/build")) |
-    value!(Builtin::NaturalIsZero, tag!("Natural/isZero")) |
-    value!(Builtin::NaturalEven, tag!("Natural/even")) |
-    value!(Builtin::NaturalOdd, tag!("Natural/odd")) |
-    value!(Builtin::Natural, tag!("Natural")) |
-    value!(Builtin::Integer, tag!("Integer")) |
-    value!(Builtin::Double, tag!("Double")) |
-    value!(Builtin::Text, tag!("Text")) |
-    value!(Builtin::ListBuild, tag!("List/build")) |
-    value!(Builtin::ListFold, tag!("List/fold")) |
-    value!(Builtin::ListLength, tag!("List/length")) |
-    value!(Builtin::ListHead, tag!("List/head")) |
-    value!(Builtin::ListLast, tag!("List/last")) |
-    value!(Builtin::ListIndexed, tag!("List/indexed")) |
-    value!(Builtin::ListReverse, tag!("List/reverse")) |
-    value!(Builtin::List, tag!("List")) |
-    value!(Builtin::OptionalFold, tag!("Optional/fold")) |
-    value!(Builtin::Optional, tag!("Optional")) |
-    value!(Builtin::Bool, tag!("Bool"))
+    value!(Builtin::NaturalFold, ident_tag!("Natural/fold")) |
+    value!(Builtin::NaturalBuild, ident_tag!("Natural/build")) |
+    value!(Builtin::NaturalIsZero, ident_tag!("Natural/isZero")) |
+    value!(Builtin::NaturalEven, ident_tag!("Natural/even")) |
+    value!(Builtin::NaturalOdd, ident_tag!("Natural/odd")) |
+    value!(Builtin::Natural, ident_tag!("Natural")) |
+    value!(Builtin::Integer, ident_tag!("Integer")) |
+    value!(Builtin::Double, ident_tag!("Double")) |
+    value!(Builtin::Text, ident_tag!("Text")) |
+    value!(Builtin::ListBuild, ident_tag!("List/build")) |
+    value!(Builtin::ListFold, ident_tag!("List/fold")) |
+    value!(Builtin::ListLength, ident_tag!("List/length")) |
+    value!(Builtin::ListHead, ident_tag!("List/head")) |
+    value!(Builtin::ListLast, ident_tag!("List/last")) |
+    value!(Builtin::ListIndexed, ident_tag!("List/indexed")) |
+    value!(Builtin::ListReverse, ident_tag!("List/reverse")) |
+    value!(Builtin::OptionalFold, ident_tag!("Optional/fold")) |
+    value!(Builtin::Bool, ident_tag!("Bool"))
 ));
 
 named!(token<&str, Tok>, alt!(
-    value!(Tok::Pi, tag!("forall")) |
+    value!(Tok::Pi, ident_tag!("forall")) |
     value!(Tok::Pi, tag!("∀")) |
     value!(Tok::Lambda, tag!("\\")) |
     value!(Tok::Lambda, tag!("λ")) |
@@ -169,13 +206,19 @@ named!(token<&str, Tok>, alt!(
     value!(Tok::Arrow, tag!("->")) |
     value!(Tok::Arrow, tag!("→")) |
 
+    map!(type_const, Tok::Const) |
     map!(boolean, Tok::Bool) |
     map!(keyword, Tok::Keyword) |
     map!(builtin, Tok::Builtin) |
+    map!(list_like, Tok::ListLike) |
     map_opt!(natural, |s| usize::from_str(s).ok().map(|n| Tok::Natural(n))) |
     map!(integer, Tok::Integer) |
     map!(identifier, |s: &str| Tok::Identifier(s.to_owned())) |
 
+    value!(Tok::BraceL, tag!("{")) |
+    value!(Tok::BraceR, tag!("}")) |
+    value!(Tok::BracketL, tag!("[")) |
+    value!(Tok::BracketR, tag!("]")) |
     value!(Tok::ParenL, tag!("(")) |
     value!(Tok::ParenR, tag!(")")) |
     value!(Tok::BoolAnd, tag!("&&")) |
@@ -185,6 +228,7 @@ named!(token<&str, Tok>, alt!(
     value!(Tok::Append, tag!("++")) |
     value!(Tok::Times, tag!("*")) |
     value!(Tok::Plus, tag!("+")) |
+    value!(Tok::Comma, tag!(",")) |
     value!(Tok::Dot, tag!(".")) |
     value!(Tok::Ascription, tag!(":")) |
     value!(Tok::Equals, tag!("="))
