@@ -90,14 +90,17 @@ fn is_identifier_first_char(c: char) -> bool {
 }
 
 fn is_identifier_rest_char(c: char) -> bool {
-    c.is_alphabetic() || is_decimal(c) || c == '_' || c == '/'
+    is_identifier_first_char(c) || is_decimal(c) || c == '/'
 }
 
 fn is_decimal(c: char) -> bool {
     c.is_digit(10)
 }
 
-named!(identifier<&str, &str>, take_while1_s!(is_identifier_rest_char)); // FIXME use is_identifier_first_char
+named!(identifier<&str, &str>, recognize!(preceded!(
+    take_while1_s!(is_identifier_first_char),
+    take_while_s!(is_identifier_rest_char))
+));
 named!(natural<&str, &str>, preceded!(tag!("+"), take_while1_s!(is_decimal)));
 named!(integral<&str, isize>, map_res!(take_while1_s!(is_decimal), |s| isize::from_str(s)));
 named!(integer<&str, isize>, alt!(
