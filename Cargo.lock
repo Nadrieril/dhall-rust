@@ -2,6 +2,7 @@
 name = "dhall"
 version = "0.1.0"
 dependencies = [
+ "bytecount 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lalrpop-util 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -41,6 +42,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "bitflags"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "bytecount"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -246,6 +252,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum bit-set 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "84527c7b0452f22545cc010e72d366a435561d2b28b978035550b3778c4d428d"
 "checksum bit-vec 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "5b97c2c8e8bbb4251754f559df8af22fb264853c7d009084a576cdf12565089d"
 "checksum bitflags 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8dead7461c1127cf637931a1e50934eb6eee8bff2f74433ac7909e9afcee04a3"
+"checksum bytecount 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "49e3c21915578e2300b08d3c174a8ac887e0c6421dff86fdc4d741dc29e5d413"
 "checksum diff 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "e48977eec6d3b7707462c2dc2e1363ad91b5dd822cf942537ccdc2085dc87587"
 "checksum docopt 0.6.86 (registry+https://github.com/rust-lang/crates.io-index)" = "4a7ef30445607f6fc8720f0a0a2c7442284b629cf0d049286860fae23e71c4d9"
 "checksum fixedbitset 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "88c3c33fc4c00db33f5174eb98aea809c4c007db0b71351d810a7e094ea3b64d"
