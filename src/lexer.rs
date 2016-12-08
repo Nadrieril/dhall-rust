@@ -2,8 +2,6 @@ use nom;
 
 use core::Const;
 
-use std::borrow::Cow;
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
     Let,
@@ -43,7 +41,7 @@ pub enum Builtin {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Tok<'i> {
-    Identifier(Cow<'i, str>),
+    Identifier(&'i str),
     Keyword(Keyword),
     Builtin(Builtin),
     ListLike(ListLike),
@@ -260,7 +258,7 @@ named!(token<&str, Tok>, alt!(
     map!(list_like, Tok::ListLike) |
     map!(natural, Tok::Natural) |
     map!(integer, Tok::Integer) |
-    map!(identifier, |s| Tok::Identifier(Cow::Borrowed(s))) |
+    map!(identifier, Tok::Identifier) |
     map!(string_lit, Tok::Text) |
 
     value!(Tok::BraceL, tag!("{")) |
@@ -371,12 +369,12 @@ fn test_lex() {
     let s = "λ(b : Bool) → b == False";
     let expected = [Lambda,
                     ParenL,
-                    Identifier(Cow::Borrowed("b")),
+                    Identifier("b"),
                     Ascription,
                     Builtin(self::Builtin::Bool),
                     ParenR,
                     Arrow,
-                    Identifier(Cow::Borrowed("b")),
+                    Identifier("b"),
                     CompareEQ,
                     Bool(false)];
     let lexer = Lexer::new(s);

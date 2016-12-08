@@ -29,12 +29,12 @@ fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
 fn match_vars(vl: &V, vr: &V, ctx: &[(&str, &str)]) -> bool {
     let xxs = ctx.get(0).map(|x| (x, ctx.split_at(1).1));
     match (vl, vr, xxs) {
-        (&V(ref xL, nL), &V(ref xR, nR), None) => xL == xR && nL == nR,
-        (&V(ref xL, 0), &V(ref xR, 0), Some((&(ref xL2, ref xR2), _))) if xL == xL2 && xR == xR2 => true,
-        (&V(ref xL, nL), &V(ref xR, nR), Some((&(ref xL2, ref xR2), xs))) => {
-            let nL2 = if *xL == xL2.as_ref() { nL - 1 } else { nL };
-            let nR2 = if *xR == xR2.as_ref() { nR - 1 } else { nR };
-            match_vars(&V(xL.clone(), nL2), &V(xR.clone(), nR2), xs)
+        (&V(xL, nL), &V(xR, nR), None) => xL == xR && nL == nR,
+        (&V(xL, 0), &V(xR, 0), Some((&(xL2, xR2), _))) if xL == xL2 && xR == xR2 => true,
+        (&V(xL, nL), &V(xR, nR), Some((&(xL2, xR2), xs))) => {
+            let nL2 = if xL == xL2 { nL - 1 } else { nL };
+            let nR2 = if xR == xR2 { nR - 1 } else { nR };
+            match_vars(&V(xL, nL2), &V(xR, nR2), xs)
         }
     }
 }
@@ -126,9 +126,9 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 .ok_or_else(|| TypeError::new(ctx, &e, UnboundVariable))
         }
         &Lam(ref x, ref tA, ref b) => {
-            let ctx2 = ctx.insert(x.clone(), (**tA).clone()).map(|e| core::shift(1, V(x.clone(), 0), e.clone()));
+            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e.clone()));
             let tB = type_with(&ctx2, b)?;
-            let p = Pi(x.clone(), tA.clone(), bx(tB));
+            let p = Pi(x, tA.clone(), bx(tB));
             let _ = type_with(ctx, &p)?;
             //Ok(Cow::Owned(p))
             Ok(p)
@@ -140,7 +140,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 _        => return Err(TypeError::new(ctx, e, InvalidInputType((**tA).clone()))),
             };
 
-            let ctx2 = ctx.insert(x.clone(), (**tA).clone()).map(|e| core::shift(1, V(x.clone(), 0), e.clone()));
+            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e.clone()));
             let tB = normalize(type_with(&ctx2, tB)?);
             let kB = match tB {
                 Const(k) => k,
@@ -161,8 +161,8 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             let tA2 = type_with(ctx, a)?;
             if prop_equal(&tA, &tA2) {
                 let vx0 = V(x, 0);
-                let a2  = shift::<S, S, X>( 1, vx0.clone(), (**a).clone());
-                let tB2 = subst(vx0.clone(), a2, (*tB).clone());
+                let a2  = shift::<S, S, X>( 1, vx0, (**a).clone());
+                let tB2 = subst(vx0, a2, (*tB).clone());
                 let tB3 = shift::<S, S, X>(-1, vx0, tB2);
                 Ok(tB3)
             } else {
@@ -181,7 +181,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 _        => return Err(TypeError::new(ctx, &e, InvalidInputType(tR))),
             };
 
-            let ctx2 = ctx.insert(f.clone(), tR.clone());
+            let ctx2 = ctx.insert(f, tR.clone());
             let tB  = type_with(&ctx2, b)?;
             let ttB = normalize::<S, S, X>(type_with(ctx, &tB)?);
             let kB  = match ttB {

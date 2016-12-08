@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// A `(Context a)` associates `Text` labels with values of type `a`
@@ -14,7 +13,7 @@ use std::collections::HashMap;
 /// `n`th occurrence of a given key.
 ///
 #[derive(Debug, Clone)]
-pub struct Context<'i, T>(HashMap<Cow<'i, str>, Vec<T>>);
+pub struct Context<'i, T>(HashMap<&'i str, Vec<T>>);
 
 impl<'i, T> Context<'i, T> {
     /// An empty context with no key-value pairs
@@ -41,7 +40,7 @@ impl<'i, T> Context<'i, T> {
 
 impl<'i, T: Clone> Context<'i, T> {
     /// Add a key-value pair to the `Context`
-    pub fn insert(&self, k: Cow<'i, str>, v: T) -> Self {
+    pub fn insert(&self, k: &'i str, v: T) -> Self {
         let mut ctx = (*self).clone();
         {
             let m = ctx.0.entry(k).or_insert(vec![]);

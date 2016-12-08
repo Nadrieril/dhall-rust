@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -95,8 +94,8 @@ pub enum Path {
 /// Zero indices are omitted when pretty-printing `Var`s and non-zero indices
 /// appear as a numeric suffix.
 ///
-#[derive(Debug, Clone, PartialEq, Eq)] // (Eq, Show)
-pub struct V<'i>(pub Cow<'i, str>, pub usize);
+#[derive(Debug, Copy, Clone, PartialEq, Eq)] // (Eq, Show)
+pub struct V<'i>(pub &'i str, pub usize);
 
 /*
 instance IsString Var where
@@ -115,15 +114,15 @@ pub enum Expr<'i, S, A> {
     ///  `Var (V x n)                              ~  x@n`
     Var(V<'i>),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(Cow<'i, str>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Lam(&'i str, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(Cow<'i, str>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Pi(&'i str, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `App f A                                  ~  f A`
     App(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
-    Let(Cow<'i, str>, Option<Box<Expr<'i, S, A>>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Let(&'i str, Option<Box<Expr<'i, S, A>>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Annot x t                                ~  x : t`
     Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Bool                                     ~  Bool`
@@ -198,19 +197,19 @@ pub enum Expr<'i, S, A> {
     ///  `OptionalFold                             ~  Optional/fold`
     OptionalFold,
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
+    Record(HashMap<&'i str, Expr<'i, S, A>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
+    RecordLit(HashMap<&'i str, Expr<'i, S, A>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
+    Union(HashMap<&'i str, Expr<'i, S, A>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
-    UnionLit(Cow<'i, str>, Box<Expr<'i, S, A>>, HashMap<Cow<'i, str>, Expr<'i, S, A>>),
+    UnionLit(&'i str, Box<Expr<'i, S, A>>, HashMap<&'i str, Expr<'i, S, A>>),
     ///  `Combine x y                              ~  x ∧ y`
     Combine(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr<'i, S, A>>, Cow<'i, str>),
+    Field(Box<Expr<'i, S, A>>, &'i str),
     ///  `Note S x                                 ~  e`
     Note(S, Box<Expr<'i, S, A>>),
     ///  `Embed path                               ~  path`
@@ -254,18 +253,18 @@ impl<'i, S, A> Expr<'i, S, A> {
 
 impl<'i> From<&'i str> for V<'i> {
     fn from(s: &'i str) -> Self {
-        V(Cow::Borrowed(s), 0)
+        V(s, 0)
     }
 }
 
 impl<'i, S, A> From<&'i str> for Expr<'i, S, A> {
     fn from(s: &'i str) -> Self {
-        Expr::Var(V(Cow::Borrowed(s), 0))
+        Expr::Var(s.into())
     }
 }
 
 pub fn pi<'i, S, A, Name, Et, Ev>(var: Name, ty: Et, value: Ev) -> Expr<'i, S, A>
-    where Name: Into<Cow<'i, str>>,
+    where Name: Into<&'i str>,
           Et: Into<Expr<'i, S, A>>,
           Ev: Into<Expr<'i, S, A>>
 {
@@ -378,30 +377,28 @@ pub fn shift<'i, S, T, A>(d: isize, v: V, e: Expr<'i, S, A>) -> Expr<'i, T, A>
           A: ::std::fmt::Debug,
 {
     use Expr::*;
+    let V(x, n) = v;
     match e {
         Const(a) => Const(a),
         Var(V(x2, n2)) => {
-            let V(x, n) = v;
             let n3 = if x == x2 && n <= n2 { add_ui(n2, d) } else { n2 };
             Var(V(x2, n3))
         }
         Lam(x2, tA, b) => {
-            let V(x, n) = v;
             let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x.clone(), n ), *tA);
-            let b2  = shift(d, V(x,         n2), *b);
+            let tA2 = shift(d, V(x, n ), *tA);
+            let b2  = shift(d, V(x, n2), *b);
             Lam(x2, bx(tA2), bx(b2))
         }
         Pi(x2, tA, tB) => {
-            let V(x, n) = v;
             let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x.clone(), n ), *tA);
+            let tA2 = shift(d, V(x, n ), *tA);
             let tB2 = shift(d, V(x, n2), *tB);
             pi(x2, tA2, tB2)
         }
         App(f, a) => {
-            let f2 = shift(d, v.clone(), *f);
-            let a2 = shift(d, v,         *a);
+            let f2 = shift(d, v, *f);
+            let a2 = shift(d, v, *a);
             App(bx(f2), bx(a2))
         }
 /*
@@ -419,7 +416,7 @@ shift d v (Annot a b) = Annot a' b'
     b' = shift d v b
     */
         BoolLit(a) => BoolLit(a),
-        BoolAnd(a, b) => BoolAnd(bx(shift(d, v.clone(), *a)), bx(shift(d, v, *b))),
+        BoolAnd(a, b) => BoolAnd(bx(shift(d, v, *a)), bx(shift(d, v, *b))),
 /*
 shift d v (BoolOr a b) = BoolOr a' b'
   where
@@ -533,30 +530,29 @@ pub fn subst<'i, S, T, A>(v: V<'i>, a: Expr<'i, S, A>, b: Expr<'i, T, A>) -> Exp
           A: Clone + ::std::fmt::Debug,
 {
     use Expr::*;
+    let V(x, n) = v;
     match (a, b) {
         (_, Const(a)) => Const(a),
         (e, Lam(y, tA, b)) => {
-            let V(x, n) = v;
             let n2  = if x == y { n + 1 } else { n };
-            let tA2 = subst(V(x.clone(), n),                    e.clone(), *tA);
-            let b2  = subst(V(x, n2), shift(1, V(y.clone(), 0), e), *b);
+            let tA2 = subst(V(x, n),                    e.clone(), *tA);
+            let b2  = subst(V(x, n2), shift(1, V(y, 0), e), *b);
             Lam(y, bx(tA2), bx(b2))
         }
         (e, Pi(y, tA, tB)) => {
-            let V(x, n) = v;
             let n2  = if x == y { n + 1 } else { n };
-            let tA2 = subst(V(x.clone(), n),                    e.clone(), *tA);
-            let tB2 = subst(V(x, n2), shift(1, V(y.clone(), 0), e), *tB);
+            let tA2 = subst(V(x, n),                    e.clone(), *tA);
+            let tB2 = subst(V(x, n2), shift(1, V(y, 0), e), *tB);
             pi(y, tA2, tB2)
         }
         (e, App(f, a)) => {
-            let f2 = subst(v.clone(), e.clone(), *f);
+            let f2 = subst(v, e.clone(), *f);
             let a2 = subst(v, e, *a);
             app(f2, a2)
         }
         (e, Var(v2)) => if v == v2 { e } else { Var(v2) },
         (e, ListLit(a, b)) => {
-            let b2 = b.into_iter().map(|be| subst(v.clone(), e.clone(), be)).collect();
+            let b2 = b.into_iter().map(|be| subst(v, e.clone(), be)).collect();
             let a2 = subst(v, e, *a);
             ListLit(bx(a2), b2)
         }
@@ -599,8 +595,8 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
         App(f, a) => match normalize::<S, T, A>(*f) {
             Lam(x, _A, b) => { // Beta reduce
                 let vx0 = V(x, 0);
-                let a2 = shift::<S, S, A>( 1, vx0.clone(), *a);
-                let b2 = subst::<S, T, A>(vx0.clone(), a2, *b);
+                let a2 = shift::<S, S, A>( 1, vx0, *a);
+                let b2 = subst::<S, T, A>(vx0, a2, *b);
                 let b3 = shift::<S, T, A>(-1, vx0, b2);
                 normalize(b3)
             }

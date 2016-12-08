@@ -4,7 +4,6 @@ use core::Expr::*;
 use grammar_util::*;
 use lexer::*;
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::iter;
 use std::iter::FromIterator;
@@ -25,7 +24,7 @@ extern {
         Nat => Tok::Natural(<usize>),
         Text => Tok::Text(<String>),
         Bool => Tok::Bool(<bool>),
-        Label => Tok::Identifier(<Cow<'input, str>>),
+        Label => Tok::Identifier(<&'input str>),
         Const => Tok::Const(<core::Const>),
         Let => Tok::Keyword(Keyword::Let),
         In => Tok::Keyword(Keyword::In),
@@ -65,7 +64,7 @@ ExprB: BoxExpr<'input> = {
     Lambda "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Lam(<>)),
     Pi "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Pi(<>)),
     If <Expr> Then <ExprB> Else <ExprC> => bx(BoolIf(<>)),
-    <ExprC> "->" <ExprB> => bx(Pi(Cow::Borrowed("_"), <>)),
+    <ExprC> "->" <ExprB> => bx(Pi("_", <>)),
     Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
     "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(c, a)),
     ExprC,
@@ -157,6 +156,6 @@ Record: BoxExpr<'input> = {
 FieldValues = SepBy1<",", Field<"=">>;
 FieldTypes = SepBy<",", Field<":">>;
 
-Field<Sep>: (Cow<'input, str>, ParsedExpr<'input>) = {
+Field<Sep>: (&'input str, ParsedExpr<'input>) = {
     <a:Label> Sep <b:Expr> => (a, *b),
 };
