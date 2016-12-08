@@ -2,6 +2,8 @@ use nom;
 
 use core::Const;
 
+use std::borrow::Cow;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
     Let,
@@ -40,8 +42,8 @@ pub enum Builtin {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Tok {
-    Identifier(String),
+pub enum Tok<'i> {
+    Identifier(Cow<'i, str>),
     Keyword(Keyword),
     Builtin(Builtin),
     ListLike(ListLike),
@@ -258,7 +260,7 @@ named!(token<&str, Tok>, alt!(
     map!(list_like, Tok::ListLike) |
     map!(natural, Tok::Natural) |
     map!(integer, Tok::Integer) |
-    map!(identifier, |s: &str| Tok::Identifier(s.to_owned())) |
+    map!(identifier, |s| Tok::Identifier(Cow::Borrowed(s))) |
     map!(string_lit, Tok::Text) |
 
     value!(Tok::BraceL, tag!("{")) |
@@ -334,7 +336,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Spanned<Tok, usize, LexicalError>;
+    type Item = Spanned<Tok<'input>, usize, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         use nom::IResult::*;
@@ -369,12 +371,12 @@ fn test_lex() {
     let s = "λ(b : Bool) → b == False";
     let expected = [Lambda,
                     ParenL,
-                    Identifier("b".to_owned()),
+                    Identifier(Cow::Borrowed("b")),
                     Ascription,
                     Builtin(self::Builtin::Bool),
                     ParenR,
                     Arrow,
-                    Identifier("b".to_owned()),
+                    Identifier(Cow::Borrowed("b")),
                     CompareEQ,
                     Bool(false)];
     let lexer = Lexer::new(s);

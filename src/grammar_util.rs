@@ -1,16 +1,16 @@
 use core::Expr;
 use lexer::Builtin;
 
-pub type ParsedExpr = Expr<(), ()>;
-pub type BoxExpr = Box<ParsedExpr>;
-pub type ExprOpFn = fn(BoxExpr, BoxExpr) -> ParsedExpr;
-pub type ExprListFn = fn(BoxExpr, Vec<ParsedExpr>) -> ParsedExpr;
+pub type ParsedExpr<'i> = Expr<'i, (), ()>;
+pub type BoxExpr<'i> = Box<ParsedExpr<'i>>;
+pub type ExprOpFn<'i> = fn(BoxExpr<'i>, BoxExpr<'i>) -> ParsedExpr<'i>;
+pub type ExprListFn<'i> = fn(BoxExpr<'i>, Vec<ParsedExpr<'i>>) -> ParsedExpr<'i>;
 
 pub fn bx<T>(x: T) -> Box<T> {
     Box::new(x)
 }
 
-pub fn builtin_expr<S, A>(b: Builtin) -> Expr<S, A> {
+pub fn builtin_expr<'i, S, A>(b: Builtin) -> Expr<'i, S, A> {
     match b {
         Builtin::Natural => Expr::Natural,
         Builtin::NaturalFold => Expr::NaturalFold,

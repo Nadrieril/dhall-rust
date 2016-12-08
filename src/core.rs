@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -43,7 +44,7 @@ module Dhall.Core (
 /// Note that Dhall does not support functions from terms to types and therefore
 /// Dhall is not a dependently typed language
 ///
-#[derive(Debug, PartialEq, Eq)] // (Show, Bounded, Enum)
+#[derive(Debug, Copy, Clone, PartialEq, Eq)] // (Show, Bounded, Enum)
 pub enum Const {
     Type,
     Kind,
@@ -51,7 +52,7 @@ pub enum Const {
 
 
 /// Path to an external resource
-#[derive(Debug, PartialEq, Eq)] // (Eq, Ord, Show)
+#[derive(Debug, Clone, PartialEq, Eq)] // (Eq, Ord, Show)
 pub enum Path {
     File(PathBuf),
     URL(String),
@@ -93,8 +94,8 @@ pub enum Path {
 /// Zero indices are omitted when pretty-printing `Var`s and non-zero indices
 /// appear as a numeric suffix.
 ///
-#[derive(Debug, PartialEq, Eq)] // (Eq, Show)
-pub struct Var(pub String, pub Int);
+#[derive(Debug, Clone, PartialEq, Eq)] // (Eq, Show)
+pub struct V<'i>(pub Cow<'i, str>, pub usize);
 
 /*
 instance IsString Var where
@@ -105,39 +106,39 @@ instance Buildable Var where
 */
 
 /// Syntax tree for expressions
-#[derive(Debug, PartialEq)] // (Functor, Foldable, Traversable, Show)
-pub enum Expr<S, A> {
+#[derive(Debug, Clone, PartialEq)] // (Functor, Foldable, Traversable, Show)
+pub enum Expr<'i, S, A> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
     ///  `Var (V x n)                              ~  x@n`
-    Var(Var),
+    Var(V<'i>),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(String, Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Lam(Cow<'i, str>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(String, Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Pi(Cow<'i, str>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    App(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
-    Let(String, Option<Box<Expr<S, A>>>, Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Let(Cow<'i, str>, Option<Box<Expr<'i, S, A>>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Annot x t                                ~  x : t`
-    Annot(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Bool                                     ~  Bool`
     Bool,
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolAnd x y                              ~  x && y`
-    BoolAnd(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    BoolAnd(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolOr  x y                              ~  x || y`
-    BoolOr(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    BoolOr(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolEQ  x y                              ~  x == y`
-    BoolEQ(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    BoolEQ(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolNE  x y                              ~  x != y`
-    BoolNE(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    BoolNE(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolIf x y z                             ~  if x then y else z`
-    BoolIf(Box<Expr<S, A>>, Box<Expr<S, A>>, Box<Expr<S, A>>),
+    BoolIf(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Natural                                  ~  Natural`
     Natural,
     ///  `NaturalLit n                             ~  +n`
@@ -153,9 +154,9 @@ pub enum Expr<S, A> {
     ///  `NaturalOdd                               ~  Natural/odd`
     NaturalOdd,
     ///  `NaturalPlus x y                          ~  x + y`
-    NaturalPlus(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    NaturalPlus(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `NaturalTimes x y                         ~  x * y`
-    NaturalTimes(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    NaturalTimes(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Integer                                  ~  Integer`
     Integer,
     ///  `IntegerLit n                             ~  n`
@@ -169,11 +170,11 @@ pub enum Expr<S, A> {
     ///  `TextLit t                                ~  t`
     TextLit(Builder),
     ///  `TextAppend x y                           ~  x ++ y`
-    TextAppend(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    TextAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `List                                     ~  List`
     List,
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Box<Expr<S, A>>, Vec<Expr<S, A>>),
+    ListLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
     ///  `ListBuild                                ~  List/build`
     ListBuild,
     ///  `ListFold                                 ~  List/fold`
@@ -192,25 +193,25 @@ pub enum Expr<S, A> {
     Optional,
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(Box<Expr<S, A>>, Vec<Expr<S, A>>),
+    OptionalLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
     ///  `OptionalFold                             ~  Optional/fold`
     OptionalFold,
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(HashMap<String, Expr<S, A>>),
+    Record(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(HashMap<String, Expr<S, A>>),
+    RecordLit(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(HashMap<String, Expr<S, A>>),
+    Union(HashMap<Cow<'i, str>, Expr<'i, S, A>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
-    UnionLit(String, Box<Expr<S, A>>, HashMap<String, Expr<S, A>>),
+    UnionLit(Cow<'i, str>, Box<Expr<'i, S, A>>, HashMap<Cow<'i, str>, Expr<'i, S, A>>),
     ///  `Combine x y                              ~  x ∧ y`
-    Combine(Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Combine(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
-    Merge(Box<Expr<S, A>>, Box<Expr<S, A>>, Box<Expr<S, A>>),
+    Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr<S, A>>, String),
+    Field(Box<Expr<'i, S, A>>, Cow<'i, str>),
     ///  `Note S x                                 ~  e`
-    Note(S, Box<Expr<S, A>>),
+    Note(S, Box<Expr<'i, S, A>>),
     ///  `Embed path                               ~  path`
     Embed(A),
 }

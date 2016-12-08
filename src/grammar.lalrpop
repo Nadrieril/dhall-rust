@@ -3,17 +3,18 @@ use core::Expr::*;
 use grammar_util::*;
 use lexer::*;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::iter;
 use std::iter::FromIterator;
 
-grammar;
+grammar<'input>;
 
 extern {
     type Location = usize;
     type Error = LexicalError;
 
-    enum Tok {
+    enum Tok<'input> {
         Pi => Tok::Pi,
         Lambda => Tok::Lambda,
         Combine => Tok::Combine,
@@ -23,7 +24,7 @@ extern {
         Nat => Tok::Natural(<usize>),
         Text => Tok::Text(<String>),
         Bool => Tok::Bool(<bool>),
-        Label => Tok::Identifier(<String>),
+        Label => Tok::Identifier(<Cow<'input, str>>),
         Const => Tok::Const(<core::Const>),
         Let => Tok::Keyword(Keyword::Let),
         In => Tok::Keyword(Keyword::In),
@@ -54,36 +55,36 @@ extern {
     }
 }
 
-pub Expr: BoxExpr = { // exprA
+pub Expr: BoxExpr<'input> = { // exprA
     <ExprB> ":" <Expr> => bx(Annot(<>)),
     ExprB,
 };
 
-ExprB: BoxExpr = {
+ExprB: BoxExpr<'input> = {
     Lambda "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Lam(<>)),
     Pi "(" <Label> ":" <Expr> ")" "->" <ExprB> => bx(Pi(<>)),
     If <Expr> Then <ExprB> Else <ExprC> => bx(BoolIf(<>)),
-    <ExprC> "->" <ExprB> => bx(Pi("_".to_owned(), <>)),
+    <ExprC> "->" <ExprB> => bx(Pi(Cow::Borrowed("_"), <>)),
     Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
     "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(c, a)),
     ExprC,
 };
 
-ListLike: ExprListFn = {
+ListLike: ExprListFn<'input> = {
     List => ListLit,
     Optional => OptionalLit,
 };
 
-BoolOr: ExprOpFn = { "||" => BoolOr };
-NaturalPlus: ExprOpFn = { "+" => NaturalPlus };
-TextAppend: ExprOpFn = { "++" => TextAppend };
-BoolAnd: ExprOpFn = { "&&" => BoolAnd };
-CombineOp: ExprOpFn = { Combine => Combine };
-NaturalTimes: ExprOpFn = { "*" => NaturalTimes };
-BoolEQ: ExprOpFn = { "==" => BoolEQ };
-BoolNE: ExprOpFn = { "!=" => BoolNE };
+BoolOr: ExprOpFn<'input> = { "||" => BoolOr };
+NaturalPlus: ExprOpFn<'input> = { "+" => NaturalPlus };
+TextAppend: ExprOpFn<'input> = { "++" => TextAppend };
+BoolAnd: ExprOpFn<'input> = { "&&" => BoolAnd };
+CombineOp: ExprOpFn<'input> = { Combine => Combine };
+NaturalTimes: ExprOpFn<'input> = { "*" => NaturalTimes };
+BoolEQ: ExprOpFn<'input> = { "==" => BoolEQ };
+BoolNE: ExprOpFn<'input> = { "!=" => BoolNE };
 
-Tier<NextTier, Op>: BoxExpr = {
+Tier<NextTier, Op>: BoxExpr<'input> = {
     <a:NextTier> <f:Op> <b:Tier<NextTier, Op>> => bx(f(a, b)),
     // <b:Tier<NextTier, Op>> <f:Op> <a:NextTier> => bx(f(a, b)),
     NextTier,
@@ -98,7 +99,7 @@ ExprC5 = Tier<ExprC6, NaturalTimes>;
 ExprC6 = Tier<ExprC7, BoolEQ>;
 ExprC7 = Tier<ExprD, BoolNE>;
 
-ExprD: BoxExpr = {
+ExprD: BoxExpr<'input> = {
     <v:(ExprE)+> => {
         let mut it = v.into_iter();
         let f = it.next().unwrap();
@@ -106,17 +107,17 @@ ExprD: BoxExpr = {
     }
 };
 
-ExprE: BoxExpr = {
+ExprE: BoxExpr<'input> = {
     <a:ExprF> <fields:("." <Label>)*> => {
         fields.into_iter().fold(a, |x, f| bx(Field(x, f)))
     },
 };
 
-ExprF: BoxExpr = {
+ExprF: BoxExpr<'input> = {
     Nat => bx(NaturalLit(<>)),
     Int => bx(IntegerLit(<>)),
     Text => bx(TextLit(<>)),
-    Label => bx(Var(core::Var(<>, 0))), // FIXME support var@n syntax
+    Label => bx(Var(core::V(<>, 0))), // FIXME support var@n syntax
     Const => bx(Const(<>)),
     List => bx(List),
     Optional => bx(Optional),
@@ -135,7 +136,7 @@ SepBy1<S, T>: iter::Chain<::std::vec::IntoIter<T>, iter::Once<T>> = {
     <v:(<T> S)*> <last:T> => v.into_iter().chain(iter::once(last)),
 };
 
-Elems: Vec<ParsedExpr> = {
+Elems: Vec<ParsedExpr<'input>> = {
     <v:SepBy<",", Expr>> => {
         v.into_iter()
          .map(|b| *b)
@@ -143,18 +144,18 @@ Elems: Vec<ParsedExpr> = {
     }
 };
 
-RecordLit: BoxExpr = {
+RecordLit: BoxExpr<'input> = {
     "{" "=" "}" => bx(RecordLit(HashMap::new())),
     "{" <FieldValues> "}" => bx(RecordLit(HashMap::from_iter(<>))),
 };
 
-Record: BoxExpr = {
+Record: BoxExpr<'input> = {
     "{" <FieldTypes> "}" => bx(Record(HashMap::from_iter(<>))),
 };
 
 FieldValues = SepBy1<",", Field<"=">>;
 FieldTypes = SepBy<",", Field<":">>;
 
-Field<Sep>: (String, ParsedExpr) = {
+Field<Sep>: (Cow<'input, str>, ParsedExpr<'input>) = {
     <a:Label> Sep <b:Expr> => (a, *b),
 };
