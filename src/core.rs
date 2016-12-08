@@ -362,7 +362,7 @@ fn add_ui(u: usize, i: isize) -> usize {
 /// descend into a lambda or let expression that binds a variable of the same
 /// name in order to avoid shifting the bound variables by mistake.
 ///
-pub fn shift<'i, S, T, A>(d: isize, v: V, e: Expr<'i, S, A>) -> Expr<'i, T, A>
+pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
     where S: ::std::fmt::Debug,
           T: ::std::fmt::Debug,
           A: ::std::fmt::Debug,
@@ -370,28 +370,24 @@ pub fn shift<'i, S, T, A>(d: isize, v: V, e: Expr<'i, S, A>) -> Expr<'i, T, A>
     use Expr::*;
     let V(x, n) = v;
     match e {
-        Const(a) => Const(a),
-        Var(V(x2, n2)) => {
+        &Const(a) => Const(a),
+        &Var(V(x2, n2)) => {
             let n3 = if x == x2 && n <= n2 { add_ui(n2, d) } else { n2 };
             Var(V(x2, n3))
         }
-        Lam(x2, tA, b) => {
+        &Lam(x2, ref tA, ref b) => {
             let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x, n ), *tA);
-            let b2  = shift(d, V(x, n2), *b);
+            let tA2 = shift(d, V(x, n ), tA);
+            let b2  = shift(d, V(x, n2), b);
             Lam(x2, bx(tA2), bx(b2))
         }
-        Pi(x2, tA, tB) => {
+        &Pi(x2, ref tA, ref tB) => {
             let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x, n ), *tA);
-            let tB2 = shift(d, V(x, n2), *tB);
+            let tA2 = shift(d, V(x, n ), tA);
+            let tB2 = shift(d, V(x, n2), tB);
             pi(x2, tA2, tB2)
         }
-        App(f, a) => {
-            let f2 = shift(d, v, *f);
-            let a2 = shift(d, v, *a);
-            App(bx(f2), bx(a2))
-        }
+        &App(ref f, ref a) => app(shift(d, v, f), shift(d, v, a)),
 /*
 shift d (V x n) (Let f mt r e) = Let f mt' r' e'
   where
@@ -406,8 +402,8 @@ shift d v (Annot a b) = Annot a' b'
     a' = shift d v a
     b' = shift d v b
     */
-        BoolLit(a) => BoolLit(a),
-        BoolAnd(a, b) => BoolAnd(bx(shift(d, v, *a)), bx(shift(d, v, *b))),
+        &BoolLit(a) => BoolLit(a),
+        &BoolAnd(ref a, ref b) => BoolAnd(bx(shift(d, v, a)), bx(shift(d, v, b))),
 /*
 shift d v (BoolOr a b) = BoolOr a' b'
   where
@@ -500,8 +496,8 @@ shift d v (Note _ b) = b'
 -- and `shift` does nothing to a closed expression
 shift _ _ (Embed p) = Embed p
 */
-        BuiltinType(t) => BuiltinType(t),
-        BuiltinValue(v) => BuiltinValue(v),
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
         e => panic!("Unimplemented shift case: {:?}", (d, v, e)),
     }
 }
@@ -524,14 +520,14 @@ pub fn subst<'i, S, T, A>(v: V<'i>, a: Expr<'i, S, A>, b: Expr<'i, T, A>) -> Exp
         (_, Const(a)) => Const(a),
         (e, Lam(y, tA, b)) => {
             let n2  = if x == y { n + 1 } else { n };
-            let tA2 = subst(V(x, n),                    e.clone(), *tA);
-            let b2  = subst(V(x, n2), shift(1, V(y, 0), e), *b);
+            let b2  = subst(V(x, n2), shift(1, V(y, 0), &e), *b);
+            let tA2 = subst(V(x, n),                     e, *tA);
             Lam(y, bx(tA2), bx(b2))
         }
         (e, Pi(y, tA, tB)) => {
             let n2  = if x == y { n + 1 } else { n };
-            let tA2 = subst(V(x, n),                    e.clone(), *tA);
-            let tB2 = subst(V(x, n2), shift(1, V(y, 0), e), *tB);
+            let tB2 = subst(V(x, n2), shift(1, V(y, 0), &e), *tB);
+            let tA2 = subst(V(x, n),                     e,  *tA);
             pi(y, tA2, tB2)
         }
         (e, App(f, a)) => {
@@ -583,9 +579,9 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
         App(f, a) => match normalize::<S, T, A>(*f) {
             Lam(x, _A, b) => { // Beta reduce
                 let vx0 = V(x, 0);
-                let a2 = shift::<S, S, A>( 1, vx0, *a);
+                let a2 = shift::<S, S, A>( 1, vx0, &a);
                 let b2 = subst::<S, T, A>(vx0, a2, *b);
-                let b3 = shift::<S, T, A>(-1, vx0, b2);
+                let b3 = shift::<S, T, A>(-1, vx0, &b2);
                 normalize(b3)
             }
             f2 => match (f2, normalize::<S, T, A>(*a)) {

@@ -122,7 +122,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 .ok_or_else(|| TypeError::new(ctx, &e, UnboundVariable))
         }
         &Lam(ref x, ref tA, ref b) => {
-            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e.clone()));
+            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e));
             let tB = type_with(&ctx2, b)?;
             let p = Pi(x, tA.clone(), bx(tB));
             let _ = type_with(ctx, &p)?;
@@ -136,7 +136,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 _        => return Err(TypeError::new(ctx, e, InvalidInputType((**tA).clone()))),
             };
 
-            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e.clone()));
+            let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e));
             let tB = normalize(type_with(&ctx2, tB)?);
             let kB = match tB {
                 Const(k) => k,
@@ -157,9 +157,9 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             let tA2 = type_with(ctx, a)?;
             if prop_equal(&tA, &tA2) {
                 let vx0 = V(x, 0);
-                let a2  = shift::<S, S, X>( 1, vx0, (**a).clone());
+                let a2  = shift::<S, S, X>( 1, vx0, a);
                 let tB2 = subst(vx0, a2, (*tB).clone());
-                let tB3 = shift::<S, S, X>(-1, vx0, tB2);
+                let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
                 Ok(tB3)
             } else {
                 let nf_A  = normalize(*tA);
