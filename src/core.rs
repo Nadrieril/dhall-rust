@@ -502,14 +502,13 @@ shift _ _ (Embed p) = Embed p
     }
 }
 
-
 /// Substitute all occurrences of a variable with an expression
 ///
 /// ```c
 /// subst x C B  ~  B[x := C]
 /// ```
 ///
-pub fn subst<'i, S, T, A>(v: V<'i>, a: Expr<'i, S, A>, b: Expr<'i, T, A>) -> Expr<'i, S, A>
+pub fn subst<'i, S, T, A>(v: V<'i>, a: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> Expr<'i, S, A>
     where S: Clone + ::std::fmt::Debug,
           T: Clone + ::std::fmt::Debug,
           A: Clone + ::std::fmt::Debug,
@@ -517,32 +516,32 @@ pub fn subst<'i, S, T, A>(v: V<'i>, a: Expr<'i, S, A>, b: Expr<'i, T, A>) -> Exp
     use Expr::*;
     let V(x, n) = v;
     match (a, b) {
-        (_, Const(a)) => Const(a),
-        (e, Lam(y, tA, b)) => {
+        (_, &Const(a)) => Const(a),
+        (e, &Lam(y, ref tA, ref b)) => {
             let n2  = if x == y { n + 1 } else { n };
-            let b2  = subst(V(x, n2), shift(1, V(y, 0), &e), *b);
-            let tA2 = subst(V(x, n),                     e, *tA);
+            let b2  = subst(V(x, n2), &shift(1, V(y, 0), &e), b);
+            let tA2 = subst(V(x, n),                     &e, tA);
             Lam(y, bx(tA2), bx(b2))
         }
-        (e, Pi(y, tA, tB)) => {
+        (e, &Pi(y, ref tA, ref tB)) => {
             let n2  = if x == y { n + 1 } else { n };
-            let tB2 = subst(V(x, n2), shift(1, V(y, 0), &e), *tB);
-            let tA2 = subst(V(x, n),                     e,  *tA);
+            let tB2 = subst(V(x, n2), &shift(1, V(y, 0), &e), tB);
+            let tA2 = subst(V(x, n),                     &e,  tA);
             pi(y, tA2, tB2)
         }
-        (e, App(f, a)) => {
-            let f2 = subst(v, e.clone(), *f);
-            let a2 = subst(v, e, *a);
+        (e, &App(ref f, ref a)) => {
+            let f2 = subst(v, e, f);
+            let a2 = subst(v, e, a);
             app(f2, a2)
         }
-        (e, Var(v2)) => if v == v2 { e } else { Var(v2) },
-        (e, ListLit(a, b)) => {
-            let b2 = b.into_iter().map(|be| subst(v, e.clone(), be)).collect();
-            let a2 = subst(v, e, *a);
+        (e, &Var(v2)) => if v == v2 { e.clone() } else { Var(v2) },
+        (e, &ListLit(ref a, ref b)) => {
+            let a2 = subst(v, e, a);
+            let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
-        (_, BuiltinType(t)) => BuiltinType(t),
-        (_, BuiltinValue(v)) => BuiltinValue(v),
+        (_, &BuiltinType(t)) => BuiltinType(t),
+        (_, &BuiltinValue(v)) => BuiltinValue(v),
         (a, b) => panic!("Unimplemented subst case: {:?}", (v, a, b)),
     }
 }
@@ -580,7 +579,7 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
             Lam(x, _A, b) => { // Beta reduce
                 let vx0 = V(x, 0);
                 let a2 = shift::<S, S, A>( 1, vx0, &a);
-                let b2 = subst::<S, T, A>(vx0, a2, *b);
+                let b2 = subst::<S, T, A>(vx0, &a2, &b);
                 let b3 = shift::<S, T, A>(-1, vx0, &b2);
                 normalize(b3)
             }

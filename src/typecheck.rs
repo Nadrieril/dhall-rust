@@ -158,7 +158,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             if prop_equal(&tA, &tA2) {
                 let vx0 = V(x, 0);
                 let a2  = shift::<S, S, X>( 1, vx0, a);
-                let tB2 = subst(vx0, a2, (*tB).clone());
+                let tB2 = subst(vx0, &a2, &tB);
                 let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
                 Ok(tB3)
             } else {
