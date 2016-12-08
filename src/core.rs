@@ -508,41 +508,41 @@ shift _ _ (Embed p) = Embed p
 /// subst x C B  ~  B[x := C]
 /// ```
 ///
-pub fn subst<'i, S, T, A>(v: V<'i>, a: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> Expr<'i, S, A>
+pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> Expr<'i, S, A>
     where S: Clone + ::std::fmt::Debug,
           T: Clone + ::std::fmt::Debug,
-          A: Clone + ::std::fmt::Debug,
+          A: Clone + ::std::fmt::Debug
 {
     use Expr::*;
     let V(x, n) = v;
-    match (a, b) {
-        (_, &Const(a)) => Const(a),
-        (e, &Lam(y, ref tA, ref b)) => {
+    match b {
+        &Const(a) => Const(a),
+        &Lam(y, ref tA, ref b) => {
             let n2  = if x == y { n + 1 } else { n };
             let b2  = subst(V(x, n2), &shift(1, V(y, 0), &e), b);
             let tA2 = subst(V(x, n),                     &e, tA);
             Lam(y, bx(tA2), bx(b2))
         }
-        (e, &Pi(y, ref tA, ref tB)) => {
+        &Pi(y, ref tA, ref tB) => {
             let n2  = if x == y { n + 1 } else { n };
             let tB2 = subst(V(x, n2), &shift(1, V(y, 0), &e), tB);
             let tA2 = subst(V(x, n),                     &e,  tA);
             pi(y, tA2, tB2)
         }
-        (e, &App(ref f, ref a)) => {
+        &App(ref f, ref a) => {
             let f2 = subst(v, e, f);
             let a2 = subst(v, e, a);
             app(f2, a2)
         }
-        (e, &Var(v2)) => if v == v2 { e.clone() } else { Var(v2) },
-        (e, &ListLit(ref a, ref b)) => {
+        &Var(v2) => if v == v2 { e.clone() } else { Var(v2) },
+        &ListLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
-        (_, &BuiltinType(t)) => BuiltinType(t),
-        (_, &BuiltinValue(v)) => BuiltinValue(v),
-        (a, b) => panic!("Unimplemented subst case: {:?}", (v, a, b)),
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
+        b => panic!("Unimplemented subst case: {:?}", (v, e, b)),
     }
 }
 
