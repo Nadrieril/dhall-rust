@@ -1,6 +1,10 @@
 use nom;
 
 use core::Const;
+use core::BuiltinType;
+use core::BuiltinType::*;
+use core::BuiltinValue;
+use core::BuiltinValue::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
@@ -19,24 +23,8 @@ pub enum ListLike {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Builtin {
-    Natural,
-    NaturalFold,
-    NaturalBuild,
-    NaturalIsZero,
-    NaturalEven,
-    NaturalOdd,
-    Integer,
-    Double,
-    Text,
-    ListBuild,
-    ListFold,
-    ListLength,
-    ListHead,
-    ListLast,
-    ListIndexed,
-    ListReverse,
-    OptionalFold,
-    Bool,
+    Type(BuiltinType),
+    Value(BuiltinValue),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -221,24 +209,24 @@ named!(list_like<&str, ListLike>, alt!(
 ));
 
 named!(builtin<&str, Builtin>, alt!(
-    value!(Builtin::NaturalFold, ident_tag!("Natural/fold")) |
-    value!(Builtin::NaturalBuild, ident_tag!("Natural/build")) |
-    value!(Builtin::NaturalIsZero, ident_tag!("Natural/isZero")) |
-    value!(Builtin::NaturalEven, ident_tag!("Natural/even")) |
-    value!(Builtin::NaturalOdd, ident_tag!("Natural/odd")) |
-    value!(Builtin::Natural, ident_tag!("Natural")) |
-    value!(Builtin::Integer, ident_tag!("Integer")) |
-    value!(Builtin::Double, ident_tag!("Double")) |
-    value!(Builtin::Text, ident_tag!("Text")) |
-    value!(Builtin::ListBuild, ident_tag!("List/build")) |
-    value!(Builtin::ListFold, ident_tag!("List/fold")) |
-    value!(Builtin::ListLength, ident_tag!("List/length")) |
-    value!(Builtin::ListHead, ident_tag!("List/head")) |
-    value!(Builtin::ListLast, ident_tag!("List/last")) |
-    value!(Builtin::ListIndexed, ident_tag!("List/indexed")) |
-    value!(Builtin::ListReverse, ident_tag!("List/reverse")) |
-    value!(Builtin::OptionalFold, ident_tag!("Optional/fold")) |
-    value!(Builtin::Bool, ident_tag!("Bool"))
+    value!(Builtin::Value(NaturalFold), ident_tag!("Natural/fold")) |
+    value!(Builtin::Value(NaturalBuild), ident_tag!("Natural/build")) |
+    value!(Builtin::Value(NaturalIsZero), ident_tag!("Natural/isZero")) |
+    value!(Builtin::Value(NaturalEven), ident_tag!("Natural/even")) |
+    value!(Builtin::Value(NaturalOdd), ident_tag!("Natural/odd")) |
+    value!(Builtin::Type(Natural), ident_tag!("Natural")) |
+    value!(Builtin::Type(Integer), ident_tag!("Integer")) |
+    value!(Builtin::Type(Double), ident_tag!("Double")) |
+    value!(Builtin::Type(Text), ident_tag!("Text")) |
+    value!(Builtin::Value(ListBuild), ident_tag!("List/build")) |
+    value!(Builtin::Value(ListFold), ident_tag!("List/fold")) |
+    value!(Builtin::Value(ListLength), ident_tag!("List/length")) |
+    value!(Builtin::Value(ListHead), ident_tag!("List/head")) |
+    value!(Builtin::Value(ListLast), ident_tag!("List/last")) |
+    value!(Builtin::Value(ListIndexed), ident_tag!("List/indexed")) |
+    value!(Builtin::Value(ListReverse), ident_tag!("List/reverse")) |
+    value!(Builtin::Value(OptionalFold), ident_tag!("Optional/fold")) |
+    value!(Builtin::Type(Bool), ident_tag!("Bool"))
 ));
 
 named!(token<&str, Tok>, alt!(
@@ -371,7 +359,7 @@ fn test_lex() {
                     ParenL,
                     Identifier("b"),
                     Ascription,
-                    Builtin(self::Builtin::Bool),
+                    Builtin(self::Builtin::Type(::core::BuiltinType::Bool)),
                     ParenR,
                     Arrow,
                     Identifier("b"),

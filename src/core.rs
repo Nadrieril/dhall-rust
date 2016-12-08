@@ -125,8 +125,10 @@ pub enum Expr<'i, S, A> {
     Let(&'i str, Option<Box<Expr<'i, S, A>>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Annot x t                                ~  x : t`
     Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `Bool                                     ~  Bool`
-    Bool,
+    /// Built-in types
+    BuiltinType(BuiltinType),
+    /// Built-in function values
+    BuiltinValue(BuiltinValue),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolAnd x y                              ~  x && y`
@@ -139,63 +141,25 @@ pub enum Expr<'i, S, A> {
     BoolNE(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `Natural                                  ~  Natural`
-    Natural,
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
-    ///  `NaturalFold                              ~  Natural/fold`
-    NaturalFold,
-    ///  `NaturalBuild                             ~  Natural/build`
-    NaturalBuild,
-    ///  `NaturalIsZero                            ~  Natural/isZero`
-    NaturalIsZero,
-    ///  `NaturalEven                              ~  Natural/even`
-    NaturalEven,
-    ///  `NaturalOdd                               ~  Natural/odd`
-    NaturalOdd,
     ///  `NaturalPlus x y                          ~  x + y`
     NaturalPlus(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `NaturalTimes x y                         ~  x * y`
     NaturalTimes(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `Integer                                  ~  Integer`
-    Integer,
     ///  `IntegerLit n                             ~  n`
     IntegerLit(Integer),
-    ///  `Double                                   ~  Double`
-    Double,
     ///  `DoubleLit n                              ~  n`
     DoubleLit(Double),
-    ///  `Text                                     ~  Text`
-    Text,
     ///  `TextLit t                                ~  t`
     TextLit(Builder),
     ///  `TextAppend x y                           ~  x ++ y`
     TextAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `List                                     ~  List`
-    List,
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
     ListLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
-    ///  `ListBuild                                ~  List/build`
-    ListBuild,
-    ///  `ListFold                                 ~  List/fold`
-    ListFold,
-    ///  `ListLength                               ~  List/length`
-    ListLength,
-    ///  `ListHead                                 ~  List/head`
-    ListHead,
-    ///  `ListLast                                 ~  List/last`
-    ListLast,
-    ///  `ListIndexed                              ~  List/indexed`
-    ListIndexed,
-    ///  `ListReverse                              ~  List/reverse`
-    ListReverse,
-    ///  `Optional                                 ~  Optional`
-    Optional,
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
-    ///  `OptionalFold                             ~  Optional/fold`
-    OptionalFold,
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
     Record(HashMap<&'i str, Expr<'i, S, A>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
@@ -216,39 +180,54 @@ pub enum Expr<'i, S, A> {
     Embed(A),
 }
 
-impl<'i, S, A> Expr<'i, S, A> {
-    /// Clones the expression if it is a unit constructor
-    fn clone_unit<T, B>(&self) -> Option<Expr<'static, T, B>> {
-        use Expr::*;
-        match self {
-            &Bool          => Some(Bool),
-            &Natural       => Some(Natural),
-            &NaturalFold   => Some(NaturalFold),
-            &NaturalBuild  => Some(NaturalBuild),
-            &NaturalIsZero => Some(NaturalIsZero),
-            &NaturalEven   => Some(NaturalEven),
-            &NaturalOdd    => Some(NaturalOdd),
-            &Integer       => Some(Integer),
-            &Double        => Some(Double),
-            &Text          => Some(Text),
-            &List          => Some(List),
-            &ListBuild     => Some(ListBuild),
-            &ListFold      => Some(ListFold),
-            &ListLength    => Some(ListLength),
-            &ListHead      => Some(ListHead),
-            &ListLast      => Some(ListLast),
-            &ListIndexed   => Some(ListIndexed),
-            &ListReverse   => Some(ListReverse),
-            &Optional      => Some(Optional),
-            &OptionalFold  => Some(OptionalFold),
-            _              => None,
-        }
-    }
+/// Built-in types
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BuiltinType {
+    ///  `Bool                                     ~  Bool`
+    Bool,
+    ///  `Natural                                  ~  Natural`
+    Natural,
+    ///  `Integer                                  ~  Integer`
+    Integer,
+    ///  `Double                                   ~  Double`
+    Double,
+    ///  `Text                                     ~  Text`
+    Text,
+    ///  `List                                     ~  List`
+    List,
+    ///  `Optional                                 ~  Optional`
+    Optional,
+}
 
-    /// Returns true if the expression is a unit constructor
-    pub fn is_unit(&self) -> bool {
-        self.clone_unit::<S, A>().is_some()
-    }
+/// Built-in function values
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BuiltinValue {
+    ///  `NaturalFold                              ~  Natural/fold`
+    NaturalFold,
+    ///  `NaturalBuild                             ~  Natural/build`
+    NaturalBuild,
+    ///  `NaturalIsZero                            ~  Natural/isZero`
+    NaturalIsZero,
+    ///  `NaturalEven                              ~  Natural/even`
+    NaturalEven,
+    ///  `NaturalOdd                               ~  Natural/odd`
+    NaturalOdd,
+    ///  `ListBuild                                ~  List/build`
+    ListBuild,
+    ///  `ListFold                                 ~  List/fold`
+    ListFold,
+    ///  `ListLength                               ~  List/length`
+    ListLength,
+    ///  `ListHead                                 ~  List/head`
+    ListHead,
+    ///  `ListLast                                 ~  List/last`
+    ListLast,
+    ///  `ListIndexed                              ~  List/indexed`
+    ListIndexed,
+    ///  `ListReverse                              ~  List/reverse`
+    ListReverse,
+    ///  `OptionalFold                             ~  Optional/fold`
+    OptionalFold,
 }
 
 impl<'i> From<&'i str> for V<'i> {
@@ -260,6 +239,18 @@ impl<'i> From<&'i str> for V<'i> {
 impl<'i, S, A> From<&'i str> for Expr<'i, S, A> {
     fn from(s: &'i str) -> Self {
         Expr::Var(s.into())
+    }
+}
+
+impl<'i, S, A> From<BuiltinType> for Expr<'i, S, A> {
+    fn from(t: BuiltinType) -> Self {
+        Expr::BuiltinType(t)
+    }
+}
+
+impl<'i, S, A> From<BuiltinValue> for Expr<'i, S, A> {
+    fn from(t: BuiltinValue) -> Self {
+        Expr::BuiltinValue(t)
     }
 }
 
@@ -509,11 +500,9 @@ shift d v (Note _ b) = b'
 -- and `shift` does nothing to a closed expression
 shift _ _ (Embed p) = Embed p
 */
-        e => if let Some(e2) = e.clone_unit() {
-            e2
-        } else {
-            panic!("Unimplemented shift case: {:?}", (d, v, e))
-        },
+        BuiltinType(t) => BuiltinType(t),
+        BuiltinValue(v) => BuiltinValue(v),
+        e => panic!("Unimplemented shift case: {:?}", (d, v, e)),
     }
 }
 
@@ -556,11 +545,9 @@ pub fn subst<'i, S, T, A>(v: V<'i>, a: Expr<'i, S, A>, b: Expr<'i, T, A>) -> Exp
             let a2 = subst(v, e, *a);
             ListLit(bx(a2), b2)
         }
-        (a, b) => if let Some(e2) = b.clone_unit() {
-            e2
-        } else {
-            panic!("Unimplemented subst case: {:?}", (v, a, b))
-        }
+        (_, BuiltinType(t)) => BuiltinType(t),
+        (_, BuiltinValue(v)) => BuiltinValue(v),
+        (a, b) => panic!("Unimplemented subst case: {:?}", (v, a, b)),
     }
 }
 
@@ -578,6 +565,7 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
           T: Clone + ::std::fmt::Debug,
           A: Clone + ::std::fmt::Debug,
 {
+    use BuiltinValue::*;
     use Expr::*;
     match e {
         Const(k) => Const(k),
@@ -633,9 +621,9 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
                         go (Var "Zero")          = True
                         go  _                    = False
                         */
-                (NaturalIsZero, NaturalLit(n)) => BoolLit(n == 0),
-                (NaturalEven, NaturalLit(n)) => BoolLit(n % 2 == 0),
-                (NaturalOdd, NaturalLit(n)) => BoolLit(n % 2 != 0),
+                (BuiltinValue(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
+                (BuiltinValue(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
+                (BuiltinValue(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
                 /*
                 App (App ListBuild t) k
                     | check     -> ListLit t (buildVector k')
@@ -697,10 +685,8 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
             let es2 = es.into_iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
-        _ => if let Some(e2) = e.clone_unit() {
-            e2
-        } else {
-            panic!("Unimplemented normalize case: {:?}", e)
-        }
+        BuiltinType(t) => BuiltinType(t),
+        BuiltinValue(v) => BuiltinValue(v),
+        _ => panic!("Unimplemented normalize case: {:?}", e),
     }
 }

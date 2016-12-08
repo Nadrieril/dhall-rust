@@ -5,8 +5,10 @@ use context::Context;
 use core;
 use core::{Expr, V, X, bx, normalize, shift, subst};
 use core::{pi, app};
-use core::Expr::*;
+use core::BuiltinType::*;
+use core::BuiltinValue::*;
 use core::Const::*;
+use core::Expr::*;
 
 use self::TypeMessage::*;
 
@@ -67,13 +69,7 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
             }
             (&App(ref fL, ref aL), &App(ref fR, ref aR)) =>
                 if go(ctx, fL, fR) { go(ctx, aL, aR) } else { false },
-            (&Bool, &Bool) => true,
-            (&Natural, &Natural) => true,
-            (&Integer, &Integer) => true,
-            (&Double, &Double) => true,
-            (&Text, &Text) => true,
-            (&List, &List) => true,
-            (&Optional, &Optional) => true,
+            (&BuiltinType(a), &BuiltinType(b)) => a == b,
             (&Record(ref _ktsL0), &Record(ref _ktsR0)) => unimplemented!(),
             /*
                 let loop ((kL, tL):ktsL) ((kR, tR):ktsR)
@@ -219,22 +215,25 @@ type_with ctx e@(Annot x t       ) = do
             let nf_t' = Dhall.Core.normalize t'
             Left (TypeError ctx e (AnnotMismatch x nf_t nf_t'))
 */
-        &Bool => Ok(Const(Type)),
-        &BoolLit(_) => Ok(Bool),
+        &BuiltinType(t) => Ok(match t {
+            List | Optional => pi("_", Const(Type), Const(Type)),
+            Bool | Natural | Integer | Double | Text => Const(Type),
+        }),
+        &BoolLit(_) => Ok(BuiltinType(Bool)),
         &BoolAnd(ref l, ref r) => {
             let tl = normalize(type_with(ctx, l)?);
             match tl {
-                Bool => {}
+                BuiltinType(Bool) => {}
                 _    => return Err(TypeError::new(ctx, e, CantAnd((**l).clone(), tl))),
             }
 
             let tr = normalize(type_with(ctx, r)?);
             match tr {
-                Bool => {}
+                BuiltinType(Bool) => {}
                 _    => return Err(TypeError::new(ctx, e, CantAnd((**r).clone(), tr))),
             }
 
-            Ok(Bool)
+            Ok(BuiltinType(Bool))
         }
     /*
 type_with ctx e@(BoolOr  l r     ) = do
@@ -295,8 +294,7 @@ type_with ctx e@(BoolIf x y z    ) = do
         else Left (TypeError ctx e (IfBranchMismatch y z ty tz))
     return ty
         */
-    &Natural => Ok(Const(Type)),
-    &NaturalLit(_) => Ok(Natural),
+    &NaturalLit(_) => Ok(BuiltinType(Natural)),
     /*
 type_with _      NaturalFold       = do
     return
@@ -312,9 +310,9 @@ type_with _      NaturalBuild      = do
                     (Pi "zero" "natural" "natural") ) )
             Natural )
         */
-    &NaturalIsZero => Ok(pi("_", Natural, Bool)),
-    &NaturalEven => Ok(pi("_", Natural, Bool)),
-    &NaturalOdd => Ok(pi("_", Natural, Bool)),
+    &BuiltinValue(NaturalIsZero) => Ok(pi("_", Natural, Bool)),
+    &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
+    &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
     /*
 type_with ctx e@(NaturalPlus  l r) = do
     tl <- fmap Dhall.Core.normalize (type_with ctx l)
@@ -339,12 +337,9 @@ type_with ctx e@(NaturalTimes l r) = do
         _       -> Left (TypeError ctx e (CantMultiply r tr))
     return Natural
     */
-    &Integer => Ok(Const(Type)),
-    &IntegerLit(_) => Ok(Integer),
-    &Double => Ok(Const(Type)),
-    &DoubleLit(_) => Ok(Double),
-    &Text => Ok(Const(Type)),
-    &TextLit(_) => Ok(Text),
+    &IntegerLit(_) => Ok(BuiltinType(Integer)),
+    &DoubleLit(_) => Ok(BuiltinType(Double)),
+    &TextLit(_) => Ok(BuiltinType(Text)),
     /*
 type_with ctx e@(TextAppend l r  ) = do
     tl <- fmap Dhall.Core.normalize (type_with ctx l)
@@ -358,7 +353,6 @@ type_with ctx e@(TextAppend l r  ) = do
         _    -> Left (TypeError ctx e (CantTextAppend r tr))
     return Text
     */
-    &List => Ok(pi("_", Const(Type), Const(Type))),
     /*
 type_with ctx e@(ListLit t xs    ) = do
     s <- fmap Dhall.Core.normalize (type_with ctx t)
@@ -375,24 +369,24 @@ type_with ctx e@(ListLit t xs    ) = do
                 Left (TypeError ctx e (InvalidListElement i nf_t x nf_t')) )
     return (App List t)
                 */
-    &ListBuild =>
+    &BuiltinValue(ListBuild) =>
         Ok(pi("a", Const(Type),
             pi("_",
                 pi("list", Const(Type),
                     pi("cons", pi("_", "a", pi("_", "list", "list")),
                         pi("nil", "list", "list"))),
                 app(List, "a")))),
-    &ListFold =>
+    &BuiltinValue(ListFold) =>
         Ok(pi("a", Const(Type),
             pi("_", app(List, "a"),
                 pi("list", Const(Type),
                     pi("cons", pi("_", "a", pi("_", "list", "list")),
                         pi("nil", "list", "list")))))),
-    &ListLength =>
+    &BuiltinValue(ListLength) =>
         Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))),
-    &ListHead =>
+    &BuiltinValue(ListHead) =>
         Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-    &ListLast =>
+    &BuiltinValue(ListLast) =>
         Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
         /*
 type_with _      ListIndexed       = do

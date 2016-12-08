@@ -1,6 +1,7 @@
 use core;
 use core::bx;
 use core::Expr::*;
+use core::BuiltinType::*;
 use grammar_util::*;
 use lexer::*;
 
@@ -119,8 +120,8 @@ ExprF: BoxExpr<'input> = {
     Text => bx(TextLit(<>)),
     Label => bx(Var(core::V(<>, 0))), // FIXME support var@n syntax
     Const => bx(Const(<>)),
-    List => bx(List),
-    Optional => bx(Optional),
+    List => bx(BuiltinType(List)),
+    Optional => bx(BuiltinType(Optional)),
     Builtin => bx(builtin_expr(<>)),
     Bool => bx(BoolLit(<>)),
     Record,
