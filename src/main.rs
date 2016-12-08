@@ -4,12 +4,14 @@ extern crate lalrpop_util;
 extern crate nom;
 extern crate term_painter;
 
+pub mod context;
 mod core;
 pub use core::*;
 pub mod grammar;
 mod grammar_util;
 pub mod lexer;
 pub mod parser;
+pub mod typecheck;
 
 use std::io::{self, Read};
 
@@ -62,29 +64,33 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
-    match parser::parse_expr(&buffer) {
-        Ok(e) => println!("{:?}", e),
+    let expr = match parser::parse_expr(&buffer) {
+        Ok(e) => e,
         Err(lalrpop_util::ParseError::User { error: lexer::LexicalError::Error(pos, e) }) => {
             print_error(&format!("Unexpected token {:?}", e), &buffer, pos, pos);
+            return;
         }
         Err(lalrpop_util::ParseError::UnrecognizedToken { token: Some((start, t, end)), expected: e }) => {
             print_error(&format!("Unrecognized token {:?}", t), &buffer, start, end);
             if e.len() > 0 {
                 println!("Expected {:?}", e);
             }
+            return;
         }
         Err(e) => {
             print_error(&format!("Parser error {:?}", e), &buffer, 0, 0);
+            return;
         }
-    }
+    };
+
+    println!("{:?}", expr);
 
     /*
-    expr <- case exprFromText (Directed "(stdin)" 0 0 0 0) inText of
-        Left  err  -> Control.Exception.throwIO err
-        Right expr -> return expr
-
     expr' <- load expr
+    */
 
+    println!("{:?}", typecheck::type_of(&expr));
+    /*
     typeExpr <- case Dhall.TypeCheck.typeOf expr' of
         Left  err      -> Control.Exception.throwIO err
         Right typeExpr -> return typeExpr
