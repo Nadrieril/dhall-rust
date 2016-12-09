@@ -365,7 +365,7 @@ fn add_ui(u: usize, i: isize) -> usize {
 pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
     where S: ::std::fmt::Debug,
           T: ::std::fmt::Debug,
-          A: ::std::fmt::Debug,
+          A: Clone + ::std::fmt::Debug,
 {
     use Expr::*;
     let V(x, n) = v;
@@ -388,20 +388,21 @@ pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             pi(x2, tA2, tB2)
         }
         &App(ref f, ref a) => app(shift(d, v, f), shift(d, v, a)),
+        &Let(f, ref mt, ref r, ref e) => {
+            let n2 = if x == f { n + 1 } else { n };
+            let e2 = shift(d, V(x, n2), e);
+            let mt2 = mt.as_ref().map(|t| bx(shift(d, V(x, n), t)));
+            let r2  = shift(d, V(x, n), r);
+            Let(f, mt2, bx(r2), bx(e2))
+        }
 /*
-shift d (V x n) (Let f mt r e) = Let f mt' r' e'
-  where
-    e' = shift d (V x n') e
-      where
-        n' = if x == f then n + 1 else n
-
-    mt' = fmap (shift d (V x n)) mt
-    r'  =       shift d (V x n)  r
 shift d v (Annot a b) = Annot a' b'
   where
     a' = shift d v a
     b' = shift d v b
     */
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
         &BoolLit(a) => BoolLit(a),
         &BoolAnd(ref a, ref b) => BoolAnd(bx(shift(d, v, a)), bx(shift(d, v, b))),
 /*
@@ -422,26 +423,16 @@ shift d v (BoolIf a b c) = BoolIf a' b' c'
     a' = shift d v a
     b' = shift d v b
     c' = shift d v c
-shift _ _ Natural = Natural
-shift _ _ (NaturalLit a) = NaturalLit a
-shift _ _ NaturalFold = NaturalFold
-shift _ _ NaturalBuild = NaturalBuild
-shift _ _ NaturalIsZero = NaturalIsZero
-shift _ _ NaturalEven = NaturalEven
-shift _ _ NaturalOdd = NaturalOdd
-shift d v (NaturalPlus a b) = NaturalPlus a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
+*/
+        &NaturalLit(a) => NaturalLit(a),
+        &NaturalPlus(ref a, ref b) => NaturalPlus(bx(shift(d, v, a)), bx(shift(d, v, b))),
+/*
 shift d v (NaturalTimes a b) = NaturalTimes a' b'
   where
     a' = shift d v a
     b' = shift d v b
-shift _ _ Integer = Integer
 shift _ _ (IntegerLit a) = IntegerLit a
-shift _ _ Double = Double
 shift _ _ (DoubleLit a) = DoubleLit a
-shift _ _ Text = Text
 shift _ _ (TextLit a) = TextLit a
 shift d v (TextAppend a b) = TextAppend a' b'
   where
@@ -451,28 +442,18 @@ shift d v (ListLit a b) = ListLit a' b'
   where
     a' =       shift d v  a
     b' = fmap (shift d v) b
-shift _ _ ListBuild = ListBuild
-shift _ _ ListFold = ListFold
-shift _ _ ListLength = ListLength
-shift _ _ ListHead = ListHead
-shift _ _ ListLast = ListLast
-shift _ _ ListIndexed = ListIndexed
-shift _ _ ListReverse = ListReverse
-shift _ _ Optional = Optional
 shift d v (OptionalLit a b) = OptionalLit a' b'
   where
     a' =       shift d v  a
     b' = fmap (shift d v) b
-shift _ _ OptionalFold = OptionalFold
-shift d v (Record a) = Record a'
-  where
-    a' = fmap (shift d v) a
-shift d v (RecordLit a) = RecordLit a'
-  where
-    a' = fmap (shift d v) a
-shift d v (Union a) = Union a'
-  where
-    a' = fmap (shift d v) a
+*/
+        &Record(ref a) =>
+            Record(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+        &RecordLit(ref a) =>
+            RecordLit(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+        &Union(ref a) =>
+            Union(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+            /*
 shift d v (UnionLit a b c) = UnionLit a b' c'
   where
     b' =       shift d v  b
@@ -486,18 +467,12 @@ shift d v (Merge a b c) = Merge a' b' c'
     a' = shift d v a
     b' = shift d v b
     c' = shift d v c
-shift d v (Field a b) = Field a' b
-  where
-    a' = shift d v a
-shift d v (Note _ b) = b'
-  where
-    b' = shift d v b
--- The Dhall compiler enforces that all embedded values are closed expressions
--- and `shift` does nothing to a closed expression
-shift _ _ (Embed p) = Embed p
-*/
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
+    */
+        &Field(ref a, b) => Field(bx(shift(d, v, a)), b),
+        &Note(_, ref b) => shift(d, v, b),
+        // The Dhall compiler enforces that all embedded values are closed expressions
+        // and `shift` does nothing to a closed expression
+        &Embed(ref p) => Embed(p.clone()),
         e => panic!("Unimplemented shift case: {:?}", (d, v, e)),
     }
 }
@@ -535,13 +510,22 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
             app(f2, a2)
         }
         &Var(v2) => if v == v2 { e.clone() } else { Var(v2) },
+        &Let(f, ref mt, ref r, ref b) => {
+            let n2 = if x == f { n + 1 } else { n };
+            let b2 = subst(V(x, n2), &shift(1, V(f, 0), e), b);
+            let mt2 = mt.as_ref().map(|t| bx(subst(V(x, n), e, t)));
+            let r2  = subst(V(x, n), e, r);
+            Let(f, mt2, bx(r2), bx(b2))
+        }
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
         &ListLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
+        &Record(ref kts) => Record(kts.iter().map(|(&k, t)| (k, subst(v, e, t))).collect()),
+        &RecordLit(ref kvs) => Record(kvs.iter().map(|(&k, val)| (k, subst(v, e, val))).collect()),
         b => panic!("Unimplemented subst case: {:?}", (v, e, b)),
     }
 }
@@ -680,6 +664,7 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
             let es2 = es.into_iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
+        Record(kts) => Record(kts.into_iter().map(|(k, t)| (k, normalize(t))).collect()),
         BuiltinType(t) => BuiltinType(t),
         BuiltinValue(v) => BuiltinValue(v),
         _ => panic!("Unimplemented normalize case: {:?}", e),

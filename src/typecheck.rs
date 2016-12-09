@@ -70,7 +70,40 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
             (&App(ref fL, ref aL), &App(ref fR, ref aR)) =>
                 if go(ctx, fL, fR) { go(ctx, aL, aR) } else { false },
             (&BuiltinType(a), &BuiltinType(b)) => a == b,
-            (&Record(ref _ktsL0), &Record(ref _ktsR0)) => unimplemented!(),
+            (&Record(ref ktsL0), &Record(ref ktsR0)) => {
+                if ktsL0.len() != ktsR0.len() {
+                    return false;
+                }
+                /*
+                let go ((kL, tL):ktsL) ((kR, tR):ktsR)
+                        | kL == kR = do
+                            b <- go tL tR
+                            if b
+                                then go ktsL ktsR
+                                else return False
+                    go [] [] = return True
+                    go _  _  = return False
+                */
+                /*
+                for ((kL, tL), (kR, tR)) in ktsL0.iter().zip(ktsR0.iter()) {
+                    if kL == kR {
+                        if !go(ctx, tL, tR) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                true
+                */
+                !ktsL0.iter().zip(ktsR0.iter()).any(|((kL, tL), (kR, tR))| {
+                    kL != kR || !go(ctx, tL, tR)
+                })
+            }
+            (&Union(ref ktsL0), &Union(ref ktsR0)) => {
+                if ktsL0.len() != ktsR0.len() {
+                    return false;
+                }
             /*
                 let loop ((kL, tL):ktsL) ((kR, tR):ktsR)
                         | kL == kR = do
@@ -82,18 +115,10 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
                     loop _  _  = return False
                 loop (Data.Map.toList ktsL0) (Data.Map.toList ktsR0)
             */
-            (&Union(ref _ktsL0), &Union(ref _ktsR0)) => unimplemented!(),
-            /*
-                let loop ((kL, tL):ktsL) ((kR, tR):ktsR)
-                        | kL == kR = do
-                            b <- go tL tR
-                            if b
-                                then loop ktsL ktsR
-                                else return False
-                    loop [] [] = return True
-                    loop _  _  = return False
-                loop (Data.Map.toList ktsL0) (Data.Map.toList ktsR0)
-            */
+                !ktsL0.iter().zip(ktsR0.iter()).any(|((kL, tL), (kR, tR))| {
+                    kL != kR || !go(ctx, tL, tR)
+                })
+            }
             (_, _) => false,
         }
     }
@@ -313,18 +338,21 @@ type_with _      NaturalBuild      = do
     &BuiltinValue(NaturalIsZero) => Ok(pi("_", Natural, Bool)),
     &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
     &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
-    /*
-type_with ctx e@(NaturalPlus  l r) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Natural -> return ()
-        _       -> Left (TypeError ctx e (CantAdd l tl))
+    &NaturalPlus(ref l, ref r) => {
+        let tl = normalize(type_with(ctx, l)?);
+        match tl {
+            BuiltinType(Natural) => {}
+            _ => return Err(TypeError::new(ctx, e, CantAdd((**l).clone(), tl))),
+        }
 
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Natural -> return ()
-        _       -> Left (TypeError ctx e (CantAdd r tr))
-    return Natural
+        let tr = normalize(type_with(ctx, r)?);
+        match tr {
+            BuiltinType(Natural) => {}
+            _ => return Err(TypeError::new(ctx, e, CantAdd((**r).clone(), tr))),
+        }
+        Ok(BuiltinType(Natural))
+    }
+    /*
 type_with ctx e@(NaturalTimes l r) = do
     tl <- fmap Dhall.Core.normalize (type_with ctx l)
     case tl of
@@ -424,24 +452,30 @@ type_with _      OptionalFold      = do
                 (Pi "optional" (Const Type)
                     (Pi "just" (Pi "_" "a" "optional")
                         (Pi "nothing" "optional" "optional") ) ) ) )
-type_with ctx e@(Record    kts   ) = do
-    let process (k, t) = do
-            s <- fmap Dhall.Core.normalize (type_with ctx t)
-            case s of
-                Const Type -> return ()
-                _          -> Left (TypeError ctx e (InvalidFieldType k t))
-    mapM_ process (Data.Map.toList kts)
-    return (Const Type)
-type_with ctx e@(RecordLit kvs   ) = do
-    let process (k, v) = do
-            t <- type_with ctx v
-            s <- fmap Dhall.Core.normalize (type_with ctx t)
-            case s of
-                Const Type -> return ()
-                _          -> Left (TypeError ctx e (InvalidField k v))
-            return (k, t)
-    kts <- mapM process (Data.Map.toAscList kvs)
-    return (Record (Data.Map.fromAscList kts))
+*/
+        &Record(ref kts) => {
+            for (k, t) in kts {
+                let s = normalize::<S, S, X>(type_with(ctx, t)?);
+                match s {
+                    Const(Type) => {}
+                    _ => return Err(TypeError::new(ctx, e, InvalidFieldType((*k).to_owned(), (*t).clone()))),
+                }
+            }
+            Ok(Const(Type))
+        }
+        &RecordLit(ref kvs) => {
+            let kts = kvs.iter().map(|(&k, v)| {
+                let t = type_with(ctx, v)?;
+                let s = normalize::<S, S, X>(type_with(ctx, &t)?);
+                match s {
+                    Const(Type) => {}
+                    _ => return Err(TypeError::new(ctx, e, InvalidField((*k).to_owned(), (*v).clone()))),
+                }
+                Ok((k, t))
+            }).collect::<Result<_, _>>()?;
+            Ok(Record(kts))
+        }
+/*
 type_with ctx e@(Union     kts   ) = do
     let process (k, t) = do
             s <- fmap Dhall.Core.normalize (type_with ctx t)
@@ -521,14 +555,16 @@ type_with ctx e@(Merge kvsX kvsY t) = do
                         _ -> Left (TypeError ctx e (HandlerNotAFunction kY tX))
     mapM_ process (Data.Map.toList ktsY)
     return t
-type_with ctx e@(Field r x       ) = do
-    t <- fmap Dhall.Core.normalize (type_with ctx r)
-    case t of
-        Record kts ->
-            case Data.Map.lookup x kts of
-                Just t' -> return t'
-                Nothing -> Left (TypeError ctx e (MissingField x t))
-        _          -> Left (TypeError ctx e (NotARecord x r t))
+    */
+        &Field(ref r, x) => {
+            let t = normalize(type_with(ctx, r)?);
+            match &t {
+                &Record(ref kts) =>
+                    kts.get(x).cloned().ok_or_else(|| TypeError::new(ctx, e, MissingField(x.to_owned(), t.clone()))),
+                _ => Err(TypeError::new(ctx, e, NotARecord(x.to_owned(), (**r).clone(), t.clone()))),
+            }
+        }
+        /*
 type_with ctx   (Note s e'       ) = case type_with ctx e' of
     Left (TypeError ctx2 (Note s' e'') m) -> Left (TypeError ctx2 (Note s' e'') m)
     Left (TypeError ctx2          e''  m) -> Left (TypeError ctx2 (Note s  e'') m)
