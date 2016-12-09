@@ -123,7 +123,7 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
         }
     }
     let mut ctx = vec![];
-    go::<S, T>(&mut ctx, &normalize(eL0.clone()), &normalize(eR0.clone()))
+    go::<S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
 }
 
 
@@ -155,14 +155,14 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             Ok(p)
         }
         &Pi(ref x, ref tA, ref tB) => {
-            let tA2 = normalize::<S, S, X>(type_with(ctx, tA)?);
+            let tA2 = normalize::<S, S, X>(&type_with(ctx, tA)?);
             let kA = match tA2 {
                 Const(k) => k,
                 _        => return Err(TypeError::new(ctx, e, InvalidInputType((**tA).clone()))),
             };
 
             let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e));
-            let tB = normalize(type_with(&ctx2, tB)?);
+            let tB = normalize(&type_with(&ctx2, tB)?);
             let kB = match tB {
                 Const(k) => k,
                 _        => return Err(TypeError::new(&ctx2, e, InvalidOutputType(tB))),
@@ -174,7 +174,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
         }
         &App(ref f, ref a) => {
-            let tf = normalize(type_with(ctx, f)?);
+            let tf = normalize(&type_with(ctx, f)?);
             let (x, tA, tB) = match tf {
                 Pi(x, tA, tB) => (x, tA, tB),
                 _             => return Err(TypeError::new(ctx, e, NotAFunction((**f).clone(), tf))),
@@ -187,14 +187,14 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
                 Ok(tB3)
             } else {
-                let nf_A  = normalize(*tA);
-                let nf_A2 = normalize(tA2);
+                let nf_A  = normalize(&tA);
+                let nf_A2 = normalize(&tA2);
                 Err(TypeError::new(ctx, e, TypeMismatch((**f).clone(), nf_A, (**a).clone(), nf_A2)))
             }
         }
         &Let(ref f, ref mt, ref r, ref b) => {
             let tR  = type_with(ctx, r)?;
-            let ttR = normalize::<S, S, X>(type_with(ctx, &tR)?);
+            let ttR = normalize::<S, S, X>(&type_with(ctx, &tR)?);
             let kR  = match ttR {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
@@ -204,7 +204,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
 
             let ctx2 = ctx.insert(f, tR.clone());
             let tB  = type_with(&ctx2, b)?;
-            let ttB = normalize::<S, S, X>(type_with(ctx, &tB)?);
+            let ttB = normalize::<S, S, X>(&type_with(ctx, &tB)?);
             let kB  = match ttB {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
@@ -217,8 +217,8 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
 
             if let &Some(ref t) = mt {
-                let nf_t  = normalize((**t).clone());
-                let nf_tR = normalize(tR.clone());
+                let nf_t  = normalize(t);
+                let nf_tR = normalize(&tR);
                 if !prop_equal(&nf_tR, &nf_t) {
                     return Err(TypeError::new(ctx, &e, AnnotMismatch((**r).clone(), nf_t, nf_tR)));
                 }
@@ -246,13 +246,13 @@ type_with ctx e@(Annot x t       ) = do
         }),
         &BoolLit(_) => Ok(BuiltinType(Bool)),
         &BoolAnd(ref l, ref r) => {
-            let tl = normalize(type_with(ctx, l)?);
+            let tl = normalize(&type_with(ctx, l)?);
             match tl {
                 BuiltinType(Bool) => {}
                 _    => return Err(TypeError::new(ctx, e, CantAnd((**l).clone(), tl))),
             }
 
-            let tr = normalize(type_with(ctx, r)?);
+            let tr = normalize(&type_with(ctx, r)?);
             match tr {
                 BuiltinType(Bool) => {}
                 _    => return Err(TypeError::new(ctx, e, CantAnd((**r).clone(), tr))),
@@ -339,13 +339,13 @@ type_with _      NaturalBuild      = do
     &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
     &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
     &NaturalPlus(ref l, ref r) => {
-        let tl = normalize(type_with(ctx, l)?);
+        let tl = normalize(&type_with(ctx, l)?);
         match tl {
             BuiltinType(Natural) => {}
             _ => return Err(TypeError::new(ctx, e, CantAdd((**l).clone(), tl))),
         }
 
-        let tr = normalize(type_with(ctx, r)?);
+        let tr = normalize(&type_with(ctx, r)?);
         match tr {
             BuiltinType(Natural) => {}
             _ => return Err(TypeError::new(ctx, e, CantAdd((**r).clone(), tr))),
@@ -455,7 +455,7 @@ type_with _      OptionalFold      = do
 */
         &Record(ref kts) => {
             for (k, t) in kts {
-                let s = normalize::<S, S, X>(type_with(ctx, t)?);
+                let s = normalize::<S, S, X>(&type_with(ctx, t)?);
                 match s {
                     Const(Type) => {}
                     _ => return Err(TypeError::new(ctx, e, InvalidFieldType((*k).to_owned(), (*t).clone()))),
@@ -466,7 +466,7 @@ type_with _      OptionalFold      = do
         &RecordLit(ref kvs) => {
             let kts = kvs.iter().map(|(&k, v)| {
                 let t = type_with(ctx, v)?;
-                let s = normalize::<S, S, X>(type_with(ctx, &t)?);
+                let s = normalize::<S, S, X>(&type_with(ctx, &t)?);
                 match s {
                     Const(Type) => {}
                     _ => return Err(TypeError::new(ctx, e, InvalidField((*k).to_owned(), (*v).clone()))),
@@ -557,7 +557,7 @@ type_with ctx e@(Merge kvsX kvsY t) = do
     return t
     */
         &Field(ref r, x) => {
-            let t = normalize(type_with(ctx, r)?);
+            let t = normalize(&type_with(ctx, r)?);
             match &t {
                 &Record(ref kts) =>
                     kts.get(x).cloned().ok_or_else(|| TypeError::new(ctx, e, MissingField(x.to_owned(), t.clone()))),

@@ -513,6 +513,15 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
+fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> HashMap<K, U>
+    where I: IntoIterator<Item = (&'a K, &'a V)>,
+          K: Eq + ::std::hash::Hash + Copy + 'a,
+          V: 'a,
+          F: Fn(&V) -> U
+{
+    it.into_iter().map(|(&k, v)| (k, f(v))).collect()
+}
+
 /// `shift` is used by both normalization and type-checking to avoid variable
 /// capture by shifting variable indices
 ///
@@ -670,11 +679,11 @@ shift d v (OptionalLit a b) = OptionalLit a' b'
     b' = fmap (shift d v) b
 */
         &Record(ref a) =>
-            Record(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+            Record(map_record_value(a, |val| shift(d, v, val))),
         &RecordLit(ref a) =>
-            RecordLit(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+            RecordLit(map_record_value(a, |val| shift(d, v, val))),
         &Union(ref a) =>
-            Union(a.iter().map(|(&k, val)| (k, shift(d, v, val))).collect()),
+            Union(map_record_value(a, |val| shift(d, v, val))),
             /*
 shift d v (UnionLit a b c) = UnionLit a b' c'
   where
@@ -753,8 +762,8 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
-        &Record(ref kts) => Record(kts.iter().map(|(&k, t)| (k, subst(v, e, t))).collect()),
-        &RecordLit(ref kvs) => Record(kvs.iter().map(|(&k, val)| (k, subst(v, e, val))).collect()),
+        &Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
+        &RecordLit(ref kvs) => Record(map_record_value(kvs, |val| subst(v, e, val))),
         &Field(ref a, b) => Field(bx(subst(v, e, a)), b),
         &Note(_, ref b) => subst(v, e, b),
         b => panic!("Unimplemented subst case: {:?}", b),
@@ -770,7 +779,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
+pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
     where S: Clone + fmt::Debug,
           T: Clone + fmt::Debug,
           A: Clone + fmt::Debug,
@@ -778,27 +787,27 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
     use BuiltinValue::*;
     use Expr::*;
     match e {
-        Const(k) => Const(k),
-        Var(v) => Var(v),
-        Lam(x, tA, b) => {
-            let tA2 = normalize(*tA);
-            let b2  = normalize(*b);
+        &Const(k) => Const(k),
+        &Var(v) => Var(v),
+        &Lam(x, ref tA, ref b) => {
+            let tA2 = normalize(tA);
+            let b2  = normalize(b);
             Lam(x, bx(tA2), bx(b2))
         }
-        Pi(x, tA, tB) => {
-            let tA2 = normalize(*tA);
-            let tB2 = normalize(*tB);
+        &Pi(x, ref tA, ref tB) => {
+            let tA2 = normalize(tA);
+            let tB2 = normalize(tB);
             pi(x, tA2, tB2)
         }
-        App(f, a) => match normalize::<S, T, A>(*f) {
+        &App(ref f, ref a) => match normalize::<S, T, A>(f) {
             Lam(x, _A, b) => { // Beta reduce
                 let vx0 = V(x, 0);
-                let a2 = shift::<S, S, A>( 1, vx0, &a);
+                let a2 = shift::<S, S, A>( 1, vx0, a);
                 let b2 = subst::<S, T, A>(vx0, &a2, &b);
                 let b3 = shift::<S, T, A>(-1, vx0, &b2);
-                normalize(b3)
+                normalize(&b3)
             }
-            f2 => match (f2, normalize::<S, T, A>(*a)) {
+            f2 => match (f2, normalize::<S, T, A>(a)) {
             /*
                 -- fold/build fusion for `List`
                 App (App ListBuild _) (App (App ListFold _) e') -> normalize e'
@@ -890,31 +899,31 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
                 (f2, a2) => app(f2, a2),
             }
         },
-        Let(f, _, ref r, ref b) => {
+        &Let(f, _, ref r, ref b) => {
             let r2 = shift::<_, S, _>( 1, V(f, 0), r);
             let b2 = subst(V(f, 0), &r2, b);
             let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
-            normalize(b3)
+            normalize(&b3)
         }
-        NaturalLit(n) => NaturalLit(n),
-        NaturalPlus(x, y) => match (normalize(*x), normalize(*y)) {
+        &NaturalLit(n) => NaturalLit(n),
+        &NaturalPlus(ref x, ref y) => match (normalize(x), normalize(y)) {
             (NaturalLit(xn), NaturalLit(yn)) => NaturalLit(xn + yn),
             (x2, y2) => NaturalPlus(bx(x2), bx(y2)),
         },
-        IntegerLit(n) => IntegerLit(n),
-        ListLit(t, es) => {
-            let t2  = normalize(*t);
-            let es2 = es.into_iter().map(normalize).collect();
+        &IntegerLit(n) => IntegerLit(n),
+        &ListLit(ref t, ref es) => {
+            let t2  = normalize(t);
+            let es2 = es.iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
-        Record(kts) => Record(kts.into_iter().map(|(k, t)| (k, normalize(t))).collect()),
-        RecordLit(kvs) => Record(kvs.into_iter().map(|(k, v)| (k, normalize(v))).collect()),
-        BuiltinType(t) => BuiltinType(t),
-        BuiltinValue(v) => BuiltinValue(v),
-        Field(r, x) => match normalize(*r) {
-            RecordLit(kvs) => match kvs.get(x).cloned() {
+        &Record(ref kts) => Record(map_record_value(kts, normalize)),
+        &RecordLit(ref kvs) => Record(map_record_value(kvs, normalize)),
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
+        &Field(ref r, x) => match normalize(r) {
+            RecordLit(kvs) => match kvs.get(x) {
                 Some(r2) => normalize(r2),
-                None => Field(bx(RecordLit(kvs.into_iter().map(|(k, v)| (k, normalize(v))).collect())), x),
+                None => Field(bx(RecordLit(map_record_value(&kvs, normalize))), x),
             },
             r2 => Field(bx(r2), x),
         },

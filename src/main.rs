@@ -98,7 +98,7 @@ fn main() {
     };
     println!("{}", type_expr);
     println!("");
-    println!("{}", normalize::<_, X, _>(*expr));
+    println!("{}", normalize::<_, X, _>(&expr));
     /*
     typeExpr <- case Dhall.TypeCheck.typeOf expr' of
         Left  err      -> Control.Exception.throwIO err
