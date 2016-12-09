@@ -89,7 +89,16 @@ fn main() {
     expr' <- load expr
     */
 
-    println!("{:?}", typecheck::type_of(&expr));
+    let type_expr = match typecheck::type_of(&expr) {
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
+        Ok(type_expr) => type_expr,
+    };
+    println!("{}", type_expr);
+    println!("");
+    println!("{}", normalize::<_, X, _>(*expr));
     /*
     typeExpr <- case Dhall.TypeCheck.typeOf expr' of
         Left  err      -> Control.Exception.throwIO err

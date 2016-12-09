@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::path::PathBuf;
 
 /*
@@ -254,6 +255,221 @@ impl<'i, S, A> From<BuiltinValue> for Expr<'i, S, A> {
     }
 }
 
+//  There is a one-to-one correspondence between the formatters in this section
+//  and the grammar in grammar.lalrpop.  Each formatter is named after the
+//  corresponding grammar rule and the relationship between formatters exactly matches
+//  the relationship between grammar rules.  This leads to the nice emergent property
+//  of automatically getting all the parentheses and precedences right.
+//
+//  This approach has one major disadvantage: you can get an infinite loop if
+//  you add a new constructor to the syntax tree without adding a matching
+//  case the corresponding builder.
+
+impl<'i, S, A: Display> Display for Expr<'i, S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> { // buildExprA
+        use Expr::*;
+        match self {
+            &Annot(ref a, ref b) => { a.fmt_b(f)?; write!(f, " : ")?; b.fmt(f) }
+            &Note(_, ref b) => b.fmt(f),
+            a => a.fmt_b(f),
+        }
+    }
+}
+
+impl<'i, S, A: Display> Expr<'i, S, A> {
+    fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use Expr::*;
+        match self {
+            &Lam(a, ref b, ref c) => {
+                write!(f, "λ({} : ", a)?;
+                b.fmt(f)?;
+                write!(f, ") → ")?;
+                c.fmt_b(f)
+            }
+            &BoolIf(ref a, ref b, ref c) => {
+                write!(f, "if ")?;
+                a.fmt(f)?;
+                write!(f, " then ")?;
+                b.fmt_b(f)?;
+                write!(f, " else ")?;
+                c.fmt_c(f)
+            }
+            &Pi(a, ref b, ref c) => {
+                write!(f, "∀({} : ", a)?;
+                b.fmt(f)?;
+                write!(f, ") → ")?;
+                c.fmt_b(f)
+            }
+            &Let(a, None, ref c, ref d) => {
+                write!(f, "let {} = ", a)?;
+                c.fmt(f)?;
+                write!(f, ") → ")?;
+                d.fmt_b(f)
+            }
+            &Let(a, Some(ref b), ref c, ref d) => {
+                write!(f, "let {} : ", a)?;
+                b.fmt(f)?;
+                write!(f, " = ")?;
+                c.fmt(f)?;
+                write!(f, ") → ")?;
+                d.fmt_b(f)
+            }
+            &ListLit(_, _) => f.write_str("ListLit"),
+            &OptionalLit(_, _) => f.write_str("OptionalLit"),
+            &Merge(ref a, ref b, ref c) => {
+                write!(f, "merge ")?;
+                a.fmt_e(f)?;
+                write!(f, " ")?;
+                b.fmt_e(f)?;
+                write!(f, " : ")?;
+                c.fmt_d(f)
+            }
+            &Note(_, ref b) => b.fmt_b(f),
+            a => a.fmt_c(f),
+        }
+    }
+
+    fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use Expr::*;
+        match self {
+            // FIXME precedence
+            &NaturalPlus(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" + ")?; b.fmt_c(f) }
+            &NaturalTimes(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" * ")?; b.fmt_c(f) }
+            &Note(_, ref b) => b.fmt_c(f),
+            a => a.fmt_d(f),
+        }
+    }
+
+    fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use Expr::*;
+        match self {
+            &App(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ")?; b.fmt_e(f) }
+            &Note(_, ref b) => b.fmt_d(f),
+            a => a.fmt_e(f)
+        }
+    }
+
+    fn fmt_e(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use Expr::*;
+        match self {
+            &Field(ref a, b) => { a.fmt_e(f)?; write!(f, ".{}", b) }
+            &Note(_, ref b) => b.fmt_e(f),
+            a => a.fmt_f(f)
+        }
+    }
+
+    fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use Expr::*;
+        fn fmt_list<T,
+                    I: IntoIterator<Item = T>,
+                    F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>>
+            (open: &str,
+             close: &str,
+             it: I,
+             f: &mut fmt::Formatter,
+             func: F)
+             -> Result<(), fmt::Error>
+            where I: IntoIterator<Item = T>,
+                  F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>
+        {
+            f.write_str(open)?;
+            for (i, x) in it.into_iter().enumerate() {
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
+                func(x, f)?;
+            }
+            f.write_str(close)
+        }
+        fn fmt_sorted_map<K, V, I, F>(open: &str,
+                                      close: &str,
+                                      it: I,
+                                      f: &mut fmt::Formatter,
+                                      func: F)
+                                      -> Result<(), fmt::Error>
+            where K: Ord,
+                  I: IntoIterator<Item = (K, V)>,
+                  F: Fn((K, V), &mut fmt::Formatter) -> Result<(), fmt::Error>
+        {
+            let mut v: Vec<_> = it.into_iter().collect();
+            v.sort_by(|&(ref ka, _), &(ref kb, _)| ka.cmp(kb));
+            fmt_list(open, close, v, f, func)
+        }
+        match self {
+            &Var(a) => a.fmt(f),
+            &Const(k) => k.fmt(f),
+            &BuiltinType(t) => t.fmt(f),
+            &BuiltinValue(v) => v.fmt(f),
+            &BoolLit(true) => f.write_str("True"),
+            &BoolLit(false) => f.write_str("False"),
+            &IntegerLit(a) => a.fmt(f),
+            &NaturalLit(a) => {
+                f.write_str("+")?;
+                a.fmt(f)
+            }
+            &DoubleLit(a) => a.fmt(f),
+            &TextLit(ref a) => <String as fmt::Debug>::fmt(a, f), // FIXME Format with Haskell escapes
+            &Record(ref a) if a.is_empty() => f.write_str("{}"),
+            &Record(ref a) => {
+                fmt_sorted_map("{ ", " }", a, f, |(k, t), f| write!(f, "{} : {}", k, t))
+            }
+            &RecordLit(ref a) if a.is_empty() => f.write_str("{=}"),
+            &RecordLit(ref a) => {
+                fmt_sorted_map("{ ", " }", a, f, |(k, v), f| write!(f, "{} = {}", k, v))
+            }
+            &Union(ref a) => f.write_str("Union"),
+            &UnionLit(ref a, ref b, ref c) => f.write_str("UnionLit"),
+            &Embed(ref a) => a.fmt(f),
+            &Note(_, ref b) => b.fmt_f(f),
+            a => write!(f, "({})", a),
+        }
+    }
+}
+
+impl Display for Const {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        <Self as fmt::Debug>::fmt(self, f)
+    }
+}
+
+impl Display for BuiltinType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        <Self as fmt::Debug>::fmt(self, f)
+    }
+}
+
+impl Display for BuiltinValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use BuiltinValue::*;
+        f.write_str(match *self {
+            ListBuild => "List/build",
+            ListFold => "List/fold",
+            ListHead => "List/head",
+            ListIndexed => "List/indexed",
+            ListLast => "List/last",
+            ListLength => "List/length",
+            ListReverse => "List/reverse",
+            NaturalBuild => "Natural/build",
+            NaturalEven => "Natural/even",
+            NaturalFold => "Natural/fold",
+            NaturalIsZero => "Natural/isZero",
+            NaturalOdd => "Natural/odd",
+            OptionalFold => "Optional/fold",
+        })
+    }
+}
+
+impl<'i> Display for V<'i> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let V(x, n) = *self;
+        f.write_str(x)?;
+        if n != 0 {
+            write!(f, "@{}", n)?;
+        }
+        Ok(())
+    }
+}
+
 pub fn pi<'i, S, A, Name, Et, Ev>(var: Name, ty: Et, value: Ev) -> Expr<'i, S, A>
     where Name: Into<&'i str>,
           Et: Into<Expr<'i, S, A>>,
@@ -278,6 +494,12 @@ pub type Natural = usize;
 /// A void type
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum X {}
+
+impl Display for X {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {}
+    }
+}
 
 pub fn bx<T>(x: T) -> Box<T> {
     Box::new(x)
@@ -363,9 +585,9 @@ fn add_ui(u: usize, i: isize) -> usize {
 /// name in order to avoid shifting the bound variables by mistake.
 ///
 pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
-    where S: ::std::fmt::Debug,
-          T: ::std::fmt::Debug,
-          A: Clone + ::std::fmt::Debug,
+    where S: fmt::Debug,
+          T: fmt::Debug,
+          A: Clone + fmt::Debug,
 {
     use Expr::*;
     let V(x, n) = v;
@@ -484,9 +706,9 @@ shift d v (Merge a b c) = Merge a' b' c'
 /// ```
 ///
 pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> Expr<'i, S, A>
-    where S: Clone + ::std::fmt::Debug,
-          T: Clone + ::std::fmt::Debug,
-          A: Clone + ::std::fmt::Debug
+    where S: Clone + fmt::Debug,
+          T: Clone + fmt::Debug,
+          A: Clone + fmt::Debug
 {
     use Expr::*;
     let V(x, n) = v;
@@ -540,9 +762,9 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
 /// leave ill-typed sub-expressions unevaluated.
 ///
 pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
-    where S: Clone + ::std::fmt::Debug,
-          T: Clone + ::std::fmt::Debug,
-          A: Clone + ::std::fmt::Debug,
+    where S: Clone + fmt::Debug,
+          T: Clone + fmt::Debug,
+          A: Clone + fmt::Debug,
 {
     use BuiltinValue::*;
     use Expr::*;
