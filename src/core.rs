@@ -741,6 +741,13 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         }
         &BuiltinType(t) => BuiltinType(t),
         &BuiltinValue(v) => BuiltinValue(v),
+        &BoolLit(a) => BoolLit(a),
+        &NaturalLit(a) => NaturalLit(a),
+        &NaturalPlus(ref a, ref b) => NaturalPlus(bx(subst(v, e, a)), bx(subst(v, e, b))),
+        &NaturalTimes(ref a, ref b) => NaturalTimes(bx(subst(v, e, a)), bx(subst(v, e, b))),
+        &IntegerLit(a) => IntegerLit(a),
+        &DoubleLit(a) => DoubleLit(a),
+        &TextLit(ref a) => TextLit(a.clone()),
         &ListLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
@@ -748,7 +755,9 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         }
         &Record(ref kts) => Record(kts.iter().map(|(&k, t)| (k, subst(v, e, t))).collect()),
         &RecordLit(ref kvs) => Record(kvs.iter().map(|(&k, val)| (k, subst(v, e, val))).collect()),
-        b => panic!("Unimplemented subst case: {:?}", (v, e, b)),
+        &Field(ref a, b) => Field(bx(subst(v, e, a)), b),
+        &Note(_, ref b) => subst(v, e, b),
+        b => panic!("Unimplemented subst case: {:?}", b),
     }
 }
 
@@ -881,14 +890,34 @@ pub fn normalize<S, T, A>(e: Expr<S, A>) -> Expr<T, A>
                 (f2, a2) => app(f2, a2),
             }
         },
+        Let(f, _, ref r, ref b) => {
+            let r2 = shift::<_, S, _>( 1, V(f, 0), r);
+            let b2 = subst(V(f, 0), &r2, b);
+            let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
+            normalize(b3)
+        }
+        NaturalLit(n) => NaturalLit(n),
+        NaturalPlus(x, y) => match (normalize(*x), normalize(*y)) {
+            (NaturalLit(xn), NaturalLit(yn)) => NaturalLit(xn + yn),
+            (x2, y2) => NaturalPlus(bx(x2), bx(y2)),
+        },
+        IntegerLit(n) => IntegerLit(n),
         ListLit(t, es) => {
             let t2  = normalize(*t);
             let es2 = es.into_iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
         Record(kts) => Record(kts.into_iter().map(|(k, t)| (k, normalize(t))).collect()),
+        RecordLit(kvs) => Record(kvs.into_iter().map(|(k, v)| (k, normalize(v))).collect()),
         BuiltinType(t) => BuiltinType(t),
         BuiltinValue(v) => BuiltinValue(v),
+        Field(r, x) => match normalize(*r) {
+            RecordLit(kvs) => match kvs.get(x).cloned() {
+                Some(r2) => normalize(r2),
+                None => Field(bx(RecordLit(kvs.into_iter().map(|(k, v)| (k, normalize(v))).collect())), x),
+            },
+            r2 => Field(bx(r2), x),
+        },
         _ => panic!("Unimplemented normalize case: {:?}", e),
     }
 }
