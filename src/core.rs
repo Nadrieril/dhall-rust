@@ -848,38 +848,60 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                 (BuiltinValue(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
                 (BuiltinValue(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
                 (BuiltinValue(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
-                /*
-                App (App ListBuild t) k
-                    | check     -> ListLit t (buildVector k')
-                    | otherwise -> App f' a'
-                  where
-                    labeled =
-                        normalize (App (App (App k (App List t)) "Cons") "Nil")
+                (App(f@box BuiltinValue(ListBuild), box t), k) => {
+                        let labeled =
+                            normalize::<_, T, _>(&app(app(app(k.clone(), app(
+                                BuiltinType(self::BuiltinType::List), t.clone())), "Cons"), "Nil"));
 
-                    k' cons nil = go labeled
-                      where
-                        go (App (App (Var "Cons") x) e') = cons x (go e')
-                        go (Var "Nil")                   = nil
-                        go  _                            = internalError text
-                    check = go labeled
-                      where
-                        go (App (App (Var "Cons") _) e') = go e'
-                        go (Var "Nil")                   = True
-                        go  _                            = False
-                App (App (App (App (App ListFold _) (ListLit _ xs)) _) cons) nil ->
-                    normalize (Data.Vector.foldr cons' nil xs)
-                  where
-                    cons' y ys = App (App cons y) ys
-                App (App ListLength _) (ListLit _ ys) ->
-                    NaturalLit (fromIntegral (Data.Vector.length ys))
-                App (App ListHead _) (ListLit t ys) ->
-                    normalize (OptionalLit t (Data.Vector.take 1 ys))
-                App (App ListLast _) (ListLit t ys) ->
-                    normalize (OptionalLit t y)
-                  where
-                    y = if Data.Vector.null ys
-                        then Data.Vector.empty
-                        else Data.Vector.singleton (Data.Vector.last ys)
+                        fn list_to_vector<'i, S, A>(v: &mut Vec<Expr<'i, S, A>>, e: Expr<'i, S, A>)
+                            where S: Clone, A: Clone
+                        {
+                            match e {
+                                App(box App(box Var(V("Cons", _)), box x), box e2) => {
+                                    v.push(x);
+                                    list_to_vector(v, e2)
+                                }
+                                Var(V("Nil", _)) => {}
+                                _ => panic!("internalError list_to_vector"),
+                            }
+                        }
+                        fn check<S, A>(e: &Expr<S, A>) -> bool {
+                            match e {
+                                &App(box App(box Var(V("Cons", _)), _), ref e2) => check(e2),
+                                &Var(V("Nil", _)) => true,
+                                _ => false,
+                            }
+                        }
+
+                        if check(&labeled) {
+                            let mut v = vec![];
+                            list_to_vector(&mut v, labeled);
+                            ListLit(bx(t), v)
+                        } else {
+                            app(App(f, bx(t)), k)
+                        }
+                    }
+                (App(box App(box App(box App(box BuiltinValue(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
+                    let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| // foldr
+                        App(bx(App(cons.clone(), bx(y))), bx(ys))
+                    );
+                    normalize(&e2)
+                }
+                (App(f, x_), ListLit(t, ys)) => match *f {
+                    BuiltinValue(ListLength) =>
+                        NaturalLit(ys.len()),
+                    BuiltinValue(ListHead) =>
+                        normalize(&OptionalLit(t, ys.into_iter().take(1).collect())),
+                    BuiltinValue(ListLast) =>
+                        normalize(&OptionalLit(t, ys.into_iter().last().into_iter().collect())),
+                    BuiltinValue(ListReverse) => {
+                        let mut xs = ys;
+                        xs.reverse();
+                        normalize(&ListLit(t, xs))
+                    }
+                    _ => app(App(f, x_), ListLit(t, ys)),
+                },
+                /*
                 App (App ListIndexed _) (ListLit t xs) ->
                     normalize (ListLit t' (fmap adapt (Data.Vector.indexed xs)))
                   where
@@ -893,8 +915,6 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                         kvs = [ ("index", NaturalLit (fromIntegral n))
                               , ("value", x)
                               ]
-                App (App ListReverse _) (ListLit t xs) ->
-                    normalize (ListLit t (Data.Vector.reverse xs))
                 App (App (App (App (App OptionalFold _) (OptionalLit _ xs)) _) just) nothing ->
                     normalize (maybe nothing just' (toMaybe xs))
                   where

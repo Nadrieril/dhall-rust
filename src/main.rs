@@ -1,3 +1,5 @@
+#![feature(box_patterns)]
+
 extern crate bytecount;
 extern crate lalrpop_util;
 #[macro_use]
