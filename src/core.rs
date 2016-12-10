@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
@@ -162,13 +162,13 @@ pub enum Expr<'i, S, A> {
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(HashMap<&'i str, Expr<'i, S, A>>),
+    Record(BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(HashMap<&'i str, Expr<'i, S, A>>),
+    RecordLit(BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(HashMap<&'i str, Expr<'i, S, A>>),
+    Union(BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
-    UnionLit(&'i str, Box<Expr<'i, S, A>>, HashMap<&'i str, Expr<'i, S, A>>),
+    UnionLit(&'i str, Box<Expr<'i, S, A>>, BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `Combine x y                              ~  x ∧ y`
     Combine(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
@@ -386,20 +386,6 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
             }
             f.write_str(close)
         }
-        fn fmt_sorted_map<K, V, I, F>(open: &str,
-                                      close: &str,
-                                      it: I,
-                                      f: &mut fmt::Formatter,
-                                      func: F)
-                                      -> Result<(), fmt::Error>
-            where K: Ord,
-                  I: IntoIterator<Item = (K, V)>,
-                  F: Fn((K, V), &mut fmt::Formatter) -> Result<(), fmt::Error>
-        {
-            let mut v: Vec<_> = it.into_iter().collect();
-            v.sort_by(|&(ref ka, _), &(ref kb, _)| ka.cmp(kb));
-            fmt_list(open, close, v, f, func)
-        }
         match self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
@@ -416,11 +402,11 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
             &TextLit(ref a) => <String as fmt::Debug>::fmt(a, f), // FIXME Format with Haskell escapes
             &Record(ref a) if a.is_empty() => f.write_str("{}"),
             &Record(ref a) => {
-                fmt_sorted_map("{ ", " }", a, f, |(k, t), f| write!(f, "{} : {}", k, t))
+                fmt_list("{ ", " }", a, f, |(k, t), f| write!(f, "{} : {}", k, t))
             }
             &RecordLit(ref a) if a.is_empty() => f.write_str("{=}"),
             &RecordLit(ref a) => {
-                fmt_sorted_map("{ ", " }", a, f, |(k, v), f| write!(f, "{} = {}", k, v))
+                fmt_list("{ ", " }", a, f, |(k, v), f| write!(f, "{} = {}", k, v))
             }
             &Union(ref a) => f.write_str("Union"),
             &UnionLit(ref a, ref b, ref c) => f.write_str("UnionLit"),
@@ -518,9 +504,9 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> HashMap<K, U>
+fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
     where I: IntoIterator<Item = (&'a K, &'a V)>,
-          K: Eq + ::std::hash::Hash + Copy + 'a,
+          K: Eq + Ord + Copy + 'a,
           V: 'a,
           F: Fn(&V) -> U
 {

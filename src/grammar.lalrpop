@@ -5,7 +5,7 @@ use core::BuiltinType::*;
 use grammar_util::*;
 use lexer::*;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::iter;
 use std::iter::FromIterator;
 
@@ -146,12 +146,12 @@ Elems: Vec<ParsedExpr<'input>> = {
 };
 
 RecordLit: BoxExpr<'input> = {
-    "{" "=" "}" => bx(RecordLit(HashMap::new())),
-    "{" <FieldValues> "}" => bx(RecordLit(HashMap::from_iter(<>))),
+    "{" "=" "}" => bx(RecordLit(BTreeMap::new())),
+    "{" <FieldValues> "}" => bx(RecordLit(BTreeMap::from_iter(<>))),
 };
 
 Record: BoxExpr<'input> = {
-    "{" <FieldTypes> "}" => bx(Record(HashMap::from_iter(<>))),
+    "{" <FieldTypes> "}" => bx(Record(BTreeMap::from_iter(<>))),
 };
 
 FieldValues = SepBy1<",", Field<"=">>;
