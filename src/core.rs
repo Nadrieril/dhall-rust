@@ -294,6 +294,11 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
                 write!(f, " else ")?;
                 c.fmt_c(f)
             }
+            &Pi("_", ref b, ref c) => {
+                b.fmt_c(f)?;
+                write!(f, " → ")?;
+                c.fmt_b(f)
+            }
             &Pi(a, ref b, ref c) => {
                 write!(f, "∀({} : ", a)?;
                 b.fmt(f)?;
