@@ -584,11 +584,7 @@ fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
 /// descend into a lambda or let expression that binds a variable of the same
 /// name in order to avoid shifting the bound variables by mistake.
 ///
-pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
-    where S: fmt::Debug,
-          T: fmt::Debug,
-          A: Clone + fmt::Debug,
-{
+pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A> {
     use Expr::*;
     let V(x, n) = v;
     match e {
@@ -617,86 +613,62 @@ pub fn shift<'i, S, T, A>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             let r2  = shift(d, V(x, n), r);
             Let(f, mt2, bx(r2), bx(e2))
         }
-/*
-shift d v (Annot a b) = Annot a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-    */
+        &Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
         &BuiltinType(t) => BuiltinType(t),
         &BuiltinValue(v) => BuiltinValue(v),
         &BoolLit(a) => BoolLit(a),
-        &BoolAnd(ref a, ref b) => BoolAnd(bx(shift(d, v, a)), bx(shift(d, v, b))),
-/*
-shift d v (BoolOr a b) = BoolOr a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift d v (BoolEQ a b) = BoolEQ a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift d v (BoolNE a b) = BoolNE a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift d v (BoolIf a b c) = BoolIf a' b' c'
-  where
-    a' = shift d v a
-    b' = shift d v b
-    c' = shift d v c
-*/
+        &BoolAnd(ref a, ref b) => shift_op2(BoolAnd, d, v, a, b),
+        &BoolOr(ref a, ref b) => shift_op2(BoolOr, d, v, a, b),
+        &BoolEQ(ref a, ref b) => shift_op2(BoolEQ, d, v, a, b),
+        &BoolNE(ref a, ref b) => shift_op2(BoolNE, d, v, a, b),
+        &BoolIf(ref a, ref b, ref c) => {
+            BoolIf(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
+        }
         &NaturalLit(a) => NaturalLit(a),
         &NaturalPlus(ref a, ref b) => NaturalPlus(bx(shift(d, v, a)), bx(shift(d, v, b))),
-/*
-shift d v (NaturalTimes a b) = NaturalTimes a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift _ _ (IntegerLit a) = IntegerLit a
-shift _ _ (DoubleLit a) = DoubleLit a
-shift _ _ (TextLit a) = TextLit a
-shift d v (TextAppend a b) = TextAppend a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift d v (ListLit a b) = ListLit a' b'
-  where
-    a' =       shift d v  a
-    b' = fmap (shift d v) b
-shift d v (OptionalLit a b) = OptionalLit a' b'
-  where
-    a' =       shift d v  a
-    b' = fmap (shift d v) b
-*/
-        &Record(ref a) =>
-            Record(map_record_value(a, |val| shift(d, v, val))),
-        &RecordLit(ref a) =>
-            RecordLit(map_record_value(a, |val| shift(d, v, val))),
-        &Union(ref a) =>
-            Union(map_record_value(a, |val| shift(d, v, val))),
-            /*
-shift d v (UnionLit a b c) = UnionLit a b' c'
-  where
-    b' =       shift d v  b
-    c' = fmap (shift d v) c
-shift d v (Combine a b) = Combine a' b'
-  where
-    a' = shift d v a
-    b' = shift d v b
-shift d v (Merge a b c) = Merge a' b' c'
-  where
-    a' = shift d v a
-    b' = shift d v b
-    c' = shift d v c
-    */
+        &NaturalTimes(ref a, ref b) => shift_op2(NaturalTimes, d, v, a, b),
+        &IntegerLit(a) => IntegerLit(a),
+        &DoubleLit(a) => DoubleLit(a),
+        &TextLit(ref a) => TextLit(a.clone()),
+        &TextAppend(ref a, ref b) => shift_op2(TextAppend, d, v, a, b),
+        &ListLit(ref t, ref es) => {
+            ListLit(bx(shift(d, v, t)),
+                    es.iter().map(|e| shift(d, v, e)).collect())
+        }
+        &OptionalLit(ref t, ref es) => {
+            OptionalLit(bx(shift(d, v, t)),
+                        es.iter().map(|e| shift(d, v, e)).collect())
+        }
+        &Record(ref a) => Record(map_record_value(a, |val| shift(d, v, val))),
+        &RecordLit(ref a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
+        &Union(ref a) => Union(map_record_value(a, |val| shift(d, v, val))),
+        &UnionLit(k, ref uv, ref a) => {
+            UnionLit(k,
+                     bx(shift(d, v, uv)),
+                     map_record_value(a, |val| shift(d, v, val)))
+        }
+        &Combine(ref a, ref b) => shift_op2(Combine, d, v, a, b),
+        &Merge(ref a, ref b, ref c) => {
+            Merge(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
+        }
         &Field(ref a, b) => Field(bx(shift(d, v, a)), b),
         &Note(_, ref b) => shift(d, v, b),
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
         &Embed(ref p) => Embed(p.clone()),
-        e => panic!("Unimplemented shift case: {:?}", (d, v, e)),
     }
+}
+
+fn shift_op2<'i, S, T, A, F>(f: F,
+                             d: isize,
+                             v: V,
+                             a: &Expr<'i, S, A>,
+                             b: &Expr<'i, S, A>)
+                             -> Expr<'i, T, A>
+    where F: FnOnce(Box<Expr<'i, T, A>>, Box<Expr<'i, T, A>>) -> Expr<'i, T, A>,
+          A: Clone
+{
+    f(bx(shift(d, v, a)), bx(shift(d, v, b)))
 }
 
 /// Substitute all occurrences of a variable with an expression
