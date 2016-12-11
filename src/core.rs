@@ -513,6 +513,13 @@ fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
     it.into_iter().map(|(&k, v)| (k, f(v))).collect()
 }
 
+fn map_op2<T, U, V, F, G>(f: F, g: G, a: T, b: T) -> V
+    where F: FnOnce(U, U) -> V,
+          G: Fn(T) -> U,
+{
+    f(g(a), g(b))
+}
+
 /// `shift` is used by both normalization and type-checking to avoid variable
 /// capture by shifting variable indices
 ///
@@ -668,7 +675,7 @@ fn shift_op2<'i, S, T, A, F>(f: F,
     where F: FnOnce(Box<Expr<'i, T, A>>, Box<Expr<'i, T, A>>) -> Expr<'i, T, A>,
           A: Clone
 {
-    f(bx(shift(d, v, a)), bx(shift(d, v, b)))
+    map_op2(f, |x| bx(shift(d, v, x)), a, b)
 }
 
 /// Substitute all occurrences of a variable with an expression
@@ -678,9 +685,8 @@ fn shift_op2<'i, S, T, A, F>(f: F,
 /// ```
 ///
 pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> Expr<'i, S, A>
-    where S: Clone + fmt::Debug,
-          T: Clone + fmt::Debug,
-          A: Clone + fmt::Debug
+    where S: Clone,
+          A: Clone
 {
     use Expr::*;
     let V(x, n) = v;
@@ -711,26 +717,63 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
             let r2  = subst(V(x, n), e, r);
             Let(f, mt2, bx(r2), bx(b2))
         }
+        &Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
         &BuiltinType(t) => BuiltinType(t),
         &BuiltinValue(v) => BuiltinValue(v),
         &BoolLit(a) => BoolLit(a),
+        &BoolAnd(ref a, ref b) => subst_op2(BoolAnd, v, e, a, b),
+        &BoolOr(ref a, ref b) => subst_op2(BoolOr, v, e, a, b),
+        &BoolEQ(ref a, ref b) => subst_op2(BoolEQ, v, e, a, b),
+        &BoolNE(ref a, ref b) => subst_op2(BoolNE, v, e, a, b),
+        &BoolIf(ref a, ref b, ref c) => {
+            BoolIf(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
+        }
         &NaturalLit(a) => NaturalLit(a),
-        &NaturalPlus(ref a, ref b) => NaturalPlus(bx(subst(v, e, a)), bx(subst(v, e, b))),
-        &NaturalTimes(ref a, ref b) => NaturalTimes(bx(subst(v, e, a)), bx(subst(v, e, b))),
+        &NaturalPlus(ref a, ref b) => subst_op2(NaturalPlus, v, e, a, b),
+        &NaturalTimes(ref a, ref b) => subst_op2(NaturalTimes, v, e, a, b),
         &IntegerLit(a) => IntegerLit(a),
         &DoubleLit(a) => DoubleLit(a),
         &TextLit(ref a) => TextLit(a.clone()),
+        &TextAppend(ref a, ref b) => subst_op2(TextAppend, v, e, a, b),
         &ListLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
+        &OptionalLit(ref a, ref b) => {
+            let a2 = subst(v, e, a);
+            let b2 = b.iter().map(|be| subst(v, e, be)).collect();
+            OptionalLit(bx(a2), b2)
+        }
         &Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
-        &RecordLit(ref kvs) => Record(map_record_value(kvs, |val| subst(v, e, val))),
+        &RecordLit(ref kvs) => RecordLit(map_record_value(kvs, |val| subst(v, e, val))),
+        &Union(ref kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
+        &UnionLit(k, ref uv, ref kvs) => {
+            UnionLit(k,
+                     bx(subst(v, e, uv)),
+                     map_record_value(kvs, |val| subst(v, e, val)))
+        }
+        &Combine(ref a, ref b) => subst_op2(Combine, v, e, a, b),
+        &Merge(ref a, ref b, ref c) => {
+            Merge(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
+        }
         &Field(ref a, b) => Field(bx(subst(v, e, a)), b),
         &Note(_, ref b) => subst(v, e, b),
-        b => panic!("Unimplemented subst case: {:?}", b),
+        &Embed(ref p) => Embed(p.clone()),
     }
+}
+
+fn subst_op2<'i, S, T, A, F>(f: F,
+                             v: V<'i>,
+                             e: &Expr<'i, S, A>,
+                             a: &Expr<'i, T, A>,
+                             b: &Expr<'i, T, A>)
+                             -> Expr<'i, S, A>
+    where F: FnOnce(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>) -> Expr<'i, S, A>,
+          S: Clone,
+          A: Clone
+{
+    map_op2(f, |x| bx(subst(v, e, x)), a, b)
 }
 
 /// Reduce an expression to its normal form, performing beta reduction
