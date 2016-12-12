@@ -847,15 +847,15 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                 normalize(&b3)
             }
             f2 => match (f2, normalize::<S, T, A>(a)) {
+                // fold/build fusion for `List`
+                (App(box BuiltinValue(ListBuild), _), App(box App(box BuiltinValue(ListFold), _), box e2)) => normalize(&e2),
+                (App(box BuiltinValue(ListFold), _), App(box App(box BuiltinValue(ListBuild), _), box e2)) => normalize(&e2),
+
+                // fold/build fusion for `Natural`
+                (BuiltinValue(NaturalBuild), App(box BuiltinValue(NaturalFold), box e2)) => normalize(&e2),
+                (BuiltinValue(NaturalFold), App(box BuiltinValue(NaturalBuild), box e2)) => normalize(&e2),
+
             /*
-                -- fold/build fusion for `List`
-                App (App ListBuild _) (App (App ListFold _) e') -> normalize e'
-                App (App ListFold _) (App (App ListBuild _) e') -> normalize e'
-
-                -- fold/build fusion for `Natural`
-                App NaturalBuild (App NaturalFold e') -> normalize e'
-                App NaturalFold (App NaturalBuild e') -> normalize e'
-
                 App (App (App (App NaturalFold (NaturalLit n0)) _) succ') zero ->
                     normalize (go n0)
                   where
