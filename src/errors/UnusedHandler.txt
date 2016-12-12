@@ -1,0 +1,32 @@
+Explanation: You can ❰merge❱ the alternatives of a union using a record with one
+handler per alternative, like this:
+
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │     let union    = < Left = +2 | Right : Bool >                     │
+    │ in  let handlers = { Left = Natural/even, Right = λ(x : Bool) → x } │
+    │ in  merge handlers union : Bool                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+... but you must provide exactly one handler per alternative in the union.  You
+cannot supply extra handlers
+
+For example, the following expression is $_NOT valid:
+
+
+    ┌───────────────────────────────────────┐
+    │     let union    = < Left = +2 >      │  The ❰Right❱ alternative is missing
+    │ in  let handlers =                    │ 
+    │             { Left  = Natural/even    │
+    │             , Right = λ(x : Bool) → x │  Invalid: ❰Right❱ handler isn't used
+    │             }                         │
+    │ in  merge handlers union : Bool       │
+    └───────────────────────────────────────┘
+
+
+You provided the following handlers:
+
+↳ $txt0
+
+... which had no matching alternatives in the union you tried to ❰merge❱

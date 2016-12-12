@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::fmt;
 
 use context::Context;
 use core;
@@ -566,9 +567,9 @@ pub enum TypeMessage<'i, S> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<'i, S> {
-    context: Context<'i, Expr<'i, S, X>>,
-    current: Expr<'i, S, X>,
-    type_message: TypeMessage<'i, S>,
+    pub context: Context<'i, Expr<'i, S, X>>,
+    pub current: Expr<'i, S, X>,
+    pub type_message: TypeMessage<'i, S>,
 }
 
 impl<'i, S: Clone> TypeError<'i, S> {
@@ -580,6 +581,37 @@ impl<'i, S: Clone> TypeError<'i, S> {
             context: context.clone(),
             current: current.clone(),
             type_message: type_message,
+        }
+    }
+}
+
+impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<'i, S> {
+    fn description(&self) -> &str {
+        match self {
+            &UnboundVariable => "Unbound variable",
+            &InvalidInputType(_) => "Invalid function input",
+            &InvalidOutputType(_) => "Invalid function output",
+            &NotAFunction(_, _) => "Not a function",
+            &TypeMismatch(_, _, _, _) => "Wrong type of function argument",
+            _ => "Unhandled error",
+        }
+    }
+}
+
+impl<'i, S> fmt::Display for TypeMessage<'i, S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            &UnboundVariable => f.write_str(include_str!("errors/UnboundVariable.txt")),
+            &TypeMismatch(ref e0, ref e1, ref e2, ref e3) => {
+                let template = include_str!("errors/TypeMismatch.txt");
+                let s = template
+                    .replace("$txt0", &format!("{}", e0))
+                    .replace("$txt1", &format!("{}", e1))
+                    .replace("$txt2", &format!("{}", e2))
+                    .replace("$txt3", &format!("{}", e3));
+                f.write_str(&s)
+            }
+            _ => f.write_str("Unhandled error message"),
         }
     }
 }

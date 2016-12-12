@@ -1,0 +1,28 @@
+Explanation: The ❰++❱ operator expects two arguments that have type ❰Text❱
+
+For example, this is a valid use of ❰++❱: 
+
+
+    ┌────────────────┐
+    │ "ABC" ++ "DEF" │
+    └────────────────┘
+
+
+You provided this argument:
+
+↳ $txt0
+
+... which does not have type ❰Text❱ but instead has type:
+
+↳ $txt1
+
+Some common reasons why you might get this error:
+
+● You might have thought that ❰++❱ was the operator to combine two lists:
+
+    ┌───────────────────────────────────────────────────────────┐
+    │ ([1, 2, 3] : List Integer) ++ ([4, 5, 6] : List Integer ) │  Not valid
+    └───────────────────────────────────────────────────────────┘
+
+  The Dhall programming language does not provide a built-in operator for
+  combining two lists

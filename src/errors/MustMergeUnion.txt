@@ -1,0 +1,31 @@
+Explanation: You can ❰merge❱ the alternatives of a union using a record with one
+handler per alternative, like this:
+
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │     let union    = < Left = +2 | Right : Bool >                     │
+    │ in  let handlers = { Left = Natural/even, Right = λ(x : Bool) → x } │
+    │ in  merge handlers union : Bool                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+... but the second argument to ❰merge❱ must be a union and not some other type.
+
+For example, the following expression is $_NOT valid:
+
+
+    ┌──────────────────────────────────────────┐
+    │ let handlers = { Foo = λ(x : Bool) → x } │
+    │ in  merge handlers True : True           │
+    └──────────────────────────────────────────┘
+                         ⇧
+                         Invalid: ❰True❱ isn't a union
+
+
+You tried to ❰merge❱ this expression:
+
+↳ $txt0
+
+... which is not a union, but is actually a value of type:
+
+↳ $txt1

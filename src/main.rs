@@ -16,6 +16,12 @@ pub mod parser;
 pub mod typecheck;
 
 use std::io::{self, Read};
+use std::error::Error;
+
+use term_painter::ToStyle;
+
+const ERROR_STYLE: term_painter::Color = term_painter::Color::Red;
+const BOLD: term_painter::Attr = term_painter::Attr::Bold;
 
 fn print_error(message: &str, source: &str, start: usize, end: usize) {
     let line_number = bytecount::count(source[..start].as_bytes(), '\n' as u8);
@@ -28,34 +34,30 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
     let line_number_str = line_number.to_string();
     let line_number_width = line_number_str.len();
 
-    use term_painter::ToStyle;
-    let err_style = term_painter::Color::Red;
-    let bold = term_painter::Attr::Bold;
-
-    bold.with(|| {
-        err_style.with(|| {
+    BOLD.with(|| {
+        ERROR_STYLE.with(|| {
             print!("error: ");
         });
         println!("{}", message);
     });
-    bold.with(|| {
+    BOLD.with(|| {
         print!("  -->");
     });
     println!(" {}:{}:0", "(stdin)", line_number);
-    bold.with(|| {
+    BOLD.with(|| {
         println!("{:w$} |", "", w = line_number_width);
         print!("{} |", line_number_str);
     });
     print!(" {}", context_prefix);
-    bold.with(|| {
-        err_style.with(|| {
+    BOLD.with(|| {
+        ERROR_STYLE.with(|| {
             print!("{}", context_highlighted);
         });
     });
     println!("{}", context_suffix);
-    bold.with(|| {
+    BOLD.with(|| {
         print!("{:w$} |", "", w = line_number_width);
-        err_style.with(|| {
+        ERROR_STYLE.with(|| {
             println!(" {:so$}{:^>ew$}", "", "",
                      so = source[line_start..start].chars().count(),
                      ew = ::std::cmp::max(1, source[start..end].chars().count()));
@@ -85,28 +87,31 @@ fn main() {
         }
     };
 
-    println!("{:?}", expr);
-
     /*
     expr' <- load expr
     */
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {
-            println!("{:?}", e);
+            let explain = ::std::env::args().find(|s| s == "--explain").is_some();
+            if !explain {
+                term_painter::Color::BrightBlack.with(|| {
+                    println!("Use \"dhall --explain\" for detailed errors");
+                });
+            }
+            ERROR_STYLE.with(|| print!("Error: "));
+            println!("{}", e.type_message.description());
+            if explain {
+                println!("{}", e.type_message);
+            }
+            println!("{}", e.current);
+            // FIXME Print source position
             return;
         }
         Ok(type_expr) => type_expr,
     };
+
     println!("{}", type_expr);
     println!("");
     println!("{}", normalize::<_, X, _>(&expr));
-    /*
-    typeExpr <- case Dhall.TypeCheck.typeOf expr' of
-        Left  err      -> Control.Exception.throwIO err
-        Right typeExpr -> return typeExpr
-    Data.Text.Lazy.IO.hPutStrLn stderr (pretty (normalize typeExpr))
-    Data.Text.Lazy.IO.hPutStrLn stderr mempty
-    Data.Text.Lazy.IO.putStrLn (pretty (normalize expr')) )
-    */
 }

@@ -1,0 +1,30 @@
+Explanation: Every element in the list must have a type matching the type
+annotation at the end of the list
+
+For example, this is a valid ❰List❱:
+
+
+    ┌──────────────────────────┐
+    │ [1, 2, 3] : List Integer │  Every element in this ❰List❱ is an ❰Integer❱
+    └──────────────────────────┘
+
+
+.. but this is $_NOT a valid ❰List❱:
+
+
+    ┌──────────────────────────────┐
+    │ [1, "ABC", 3] : List Integer │  The second element is not an ❰Integer❱
+    └──────────────────────────────┘
+
+
+Your ❰List❱ elements should have this type:
+
+↳ $txt0
+
+... but the following element at index $txt1:
+
+↳ $txt2
+
+... has this type instead:
+
+↳ $txt3

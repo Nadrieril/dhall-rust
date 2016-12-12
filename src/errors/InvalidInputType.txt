@@ -1,0 +1,61 @@
+Explanation: A function can accept an input "term" that has a given "type", like
+this:
+
+
+        This is the input term that the function accepts
+        ⇩
+    ┌───────────────────────┐
+    │ ∀(x : Natural) → Bool │  This is the type of a function that accepts an
+    └───────────────────────┘  input term named ❰x❱ that has type ❰Natural❱
+            ⇧
+            This is the type of the input term
+
+
+    ┌────────────────┐
+    │ Bool → Integer │  This is the type of a function that accepts an anonymous
+    └────────────────┘  input term that has type ❰Bool❱
+      ⇧
+      This is the type of the input term
+
+
+... or a function can accept an input "type" that has a given "kind", like this:
+
+
+        This is the input type that the function accepts
+        ⇩
+    ┌────────────────────┐
+    │ ∀(a : Type) → Type │  This is the type of a function that accepts an input
+    └────────────────────┘  type named ❰a❱ that has kind ❰Type❱
+            ⇧
+            This is the kind of the input type
+
+
+    ┌──────────────────────┐
+    │ (Type → Type) → Type │  This is the type of a function that accepts an
+    └──────────────────────┘  anonymous input type that has kind ❰Type → Type❱
+       ⇧
+       This is the kind of the input type
+
+
+Other function inputs are $_NOT valid, like this:
+
+
+    ┌──────────────┐
+    │ ∀(x : 1) → x │  ❰1❱ is a "term" and not a "type" nor a "kind" so ❰x❱
+    └──────────────┘  cannot have "type" ❰1❱ or "kind" ❰1❱
+            ⇧
+            This is not a type or kind
+
+
+    ┌──────────┐
+    │ True → x │  ❰True❱ is a "term" and not a "type" nor a "kind" so the
+    └──────────┘  anonymous input cannot have "type" ❰True❱ or "kind" ❰True❱
+      ⇧
+      This is not a type or kind
+
+
+You annotated a function input with the following expression:
+
+↳ $txt
+
+... which is neither a type nor a kind

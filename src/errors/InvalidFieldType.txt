@@ -1,0 +1,34 @@
+Explanation: Every record type documents the type of each field, like this:
+
+    ┌──────────────────────────────────────────────┐
+    │ { foo : Integer, bar : Integer, baz : Text } │
+    └──────────────────────────────────────────────┘
+
+However, fields cannot be annotated with expressions other than types
+
+For example, these record types are $_NOT valid:
+
+
+    ┌────────────────────────────┐
+    │ { foo : Integer, bar : 1 } │
+    └────────────────────────────┘
+                             ⇧
+                             ❰1❱ is an ❰Integer❱ and not a ❰Type❱
+
+
+    ┌───────────────────────────────┐
+    │ { foo : Integer, bar : Type } │
+    └───────────────────────────────┘
+                             ⇧
+                             ❰Type❱ is a ❰Kind❱ and not a ❰Type❱
+
+
+You provided a record type with a key named:
+
+↳ $txt0
+
+... annotated with the following expression:
+
+↳ $txt1
+
+... which is not a type

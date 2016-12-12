@@ -1,0 +1,44 @@
+Explanation: Every optional element ends with a type annotation for the element
+that might be present, like this:
+
+
+    ┌────────────────────────┐
+    │ [1] : Optional Integer │  An optional element that's present
+    └────────────────────────┘
+                     ⇧
+                     The type of the ❰Optional❱ element, which is an ❰Integer❱
+
+
+    ┌────────────────────────┐
+    │ [] : Optional Integer  │  An optional element that's absent
+    └────────────────────────┘
+                    ⇧
+                    You still specify the type even when the element is absent
+
+
+The element type must be a type and not something else.  For example, the
+following element types are $_NOT valid:
+
+
+    ┌──────────────────┐
+    │ ... : Optional 1 │
+    └──────────────────┘
+                     ⇧
+                     This is an ❰Integer❱ and not a ❰Type❱
+
+
+    ┌─────────────────────┐
+    │ ... : Optional Type │
+    └─────────────────────┘
+                     ⇧
+                     This is a ❰Kind❱ and not a ❰Type❱
+
+
+Even if the element is absent you still must specify a valid type
+
+You declared that the ❰Optional❱ element should have type:
+
+↳ $txt0
+
+... which is not a ❰Type❱
+

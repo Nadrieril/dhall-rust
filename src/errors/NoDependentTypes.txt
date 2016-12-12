@@ -1,0 +1,31 @@
+Explanation: The Dhall programming language does not allow functions from terms
+to types.  These function types are also known as "dependent function types"
+because you have a type whose value "depends" on the value of a term.
+
+For example, this is $_NOT a legal function type:
+
+
+    ┌─────────────┐
+    │ Bool → Type │
+    └─────────────┘
+
+
+Similarly, this is $_NOT legal code:
+
+
+    ┌────────────────────────────────────────────────────┐
+    │ λ(Vector : Natural → Type → Type) → Vector +0 Text │
+    └────────────────────────────────────────────────────┘
+                 ⇧
+                 Invalid dependent type
+
+
+Your function type is invalid because the input has type:
+
+↳ $txt0
+
+... and the output has kind:
+
+↳ $txt1
+
+... which makes this a forbidden dependent function type

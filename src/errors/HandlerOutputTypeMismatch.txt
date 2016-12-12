@@ -1,0 +1,51 @@
+Explanation: You can ❰merge❱ the alternatives of a union using a record with one
+handler per alternative, like this:
+
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │     let union    = < Left = +2 | Right : Bool >                     │
+    │ in  let handlers = { Left = Natural/even, Right = λ(x : Bool) → x } │
+    │ in  merge handlers union : Bool                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+... as long as the output type of each handler function matches the declared type
+of the result:
+
+
+    ┌───────────────────────────────────────────────────────────┐
+    │ handlers : { Left : Natural → Bool, Right : Bool → Bool } │
+    └───────────────────────────────────────────────────────────┘
+                                    ⇧                    ⇧
+                                    These output types ...
+
+                             ... must match the declared type of the ❰merge❱
+                             ⇩
+    ┌─────────────────────────────┐
+    │ merge handlers union : Bool │
+    └─────────────────────────────┘
+
+
+For example, the following expression is $_NOT valid:
+
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │     let union    = < Left = +2 | Right : Bool >                     │
+    │ in  let handlers = { Left = Natural/even, Right = λ(x : Bool) → x } │
+    │ in  merge handlers union : Text                                      │
+    └──────────────────────────────────────────────────────────────────────┘
+                                 ⇧
+                                 Invalid: Doesn't match output of either handler
+
+
+Your handler for the following alternative:
+
+↳ $txt0
+
+... needs to return an output value of type:
+
+↳ $txt1
+
+... but actually returns an output value of a different type:
+
+↳ $txt2
