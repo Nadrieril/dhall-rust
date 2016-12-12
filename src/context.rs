@@ -30,7 +30,7 @@ impl<'i, T> Context<'i, T> {
     /// lookup k n (insert j v c) = lookup k  n      c  -- k /= j
     /// ```
     pub fn lookup<'a>(&'a self, k: &str, n: usize) -> Option<&'a T> {
-        self.0.get(k).and_then(|v| v.get(n))
+        self.0.get(k).and_then(|v| v.get(v.len() - 1 - n))
     }
 
     pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<'i, U> {
