@@ -367,8 +367,14 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
         use Expr::*;
         match self {
             // FIXME precedence
+            &BoolOr(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" || ")?; b.fmt_c(f) }
+            &TextAppend(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ++ ")?; b.fmt_c(f) }
             &NaturalPlus(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" + ")?; b.fmt_c(f) }
+            &BoolAnd(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" && ")?; b.fmt_c(f) }
+            &Combine(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ^ ")?; b.fmt_c(f) }
             &NaturalTimes(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" * ")?; b.fmt_c(f) }
+            &BoolEQ(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" == ")?; b.fmt_c(f) }
+            &BoolNE(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" != ")?; b.fmt_c(f) }
             &Note(_, ref b) => b.fmt_c(f),
             a => a.fmt_d(f),
         }
