@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use context::Context;
@@ -126,6 +127,30 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
     go::<S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
 }
 
+fn op2_type<'i, S, EF>(ctx: &Context<'i, Expr<'i, S, X>>,
+                       e: &Expr<'i, S, X>,
+                       t: core::BuiltinType,
+                       ef: EF,
+                       l: &Expr<'i, S, X>,
+                       r: &Expr<'i, S, X>)
+                       -> Result<Expr<'i, S, X>, TypeError<'i, S>>
+    where S: Clone + ::std::fmt::Debug + 'i,
+          EF: FnOnce(Expr<'i, S, X>, Expr<'i, S, X>) -> TypeMessage<'i, S>,
+{
+    let tl = normalize(&type_with(ctx, l)?);
+    match tl {
+        BuiltinType(lt) if lt == t => {}
+        _ => return Err(TypeError::new(ctx, e, ef((*l).clone(), tl))),
+    }
+
+    let tr = normalize(&type_with(ctx, r)?);
+    match tr {
+        BuiltinType(rt) if rt == t => {}
+        _ => return Err(TypeError::new(ctx, e, ef((*r).clone(), tr))),
+    }
+
+    Ok(BuiltinType(t))
+}
 
 /// Type-check an expression and return the expression'i type if type-checking
 /// suceeds or an error if type-checking fails
@@ -226,233 +251,143 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
 
             Ok(tB)
         }
-/*
-type_with ctx e@(Annot x t       ) = do
-    -- This is mainly just to check that `t` is not `Kind`
-    _ <- type_with ctx t
+        &Annot(ref x, ref t) => {
+            // This is mainly just to check that `t` is not `Kind`
+            let _ = type_with(ctx, t)?;
 
-    t' <- type_with ctx x
-    if prop_equal t t'
-        then do
-            return t
-        else do
-            let nf_t  = Dhall.Core.normalize t
-            let nf_t' = Dhall.Core.normalize t'
-            Left (TypeError ctx e (AnnotMismatch x nf_t nf_t'))
-*/
+            let t2 = type_with(ctx, x)?;
+            if prop_equal(t, &t2) {
+                Ok((**t).clone())
+            } else {
+                let nf_t  = normalize(t);
+                let nf_t2 = normalize(&t2);
+                Err(TypeError::new(ctx, e, AnnotMismatch((**x).clone(), nf_t, nf_t2)))
+            }
+        }
         &BuiltinType(t) => Ok(match t {
             List | Optional => pi("_", Const(Type), Const(Type)),
             Bool | Natural | Integer | Double | Text => Const(Type),
         }),
         &BoolLit(_) => Ok(BuiltinType(Bool)),
-        &BoolAnd(ref l, ref r) => {
-            let tl = normalize(&type_with(ctx, l)?);
-            match tl {
+        &BoolAnd(ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
+        &BoolOr(ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
+        &BoolEQ(ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
+        &BoolNE(ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
+        &BoolIf(ref x, ref y, ref z) => {
+            let tx = normalize(&type_with(ctx, x)?);
+            match tx {
                 BuiltinType(Bool) => {}
-                _    => return Err(TypeError::new(ctx, e, CantAnd((**l).clone(), tl))),
+                _ => return Err(TypeError::new(ctx, e, InvalidPredicate((**x).clone(), tx))),
+            }
+            let ty = normalize(&type_with(ctx, y)?);
+            let tty = normalize(&type_with(ctx, &ty)?);
+            match tty {
+                Const(Type) => {}
+                _ => return Err(TypeError::new(ctx, e, IfBranchMustBeTerm(true, (**y).clone(), ty, tty))),
             }
 
-            let tr = normalize(&type_with(ctx, r)?);
-            match tr {
-                BuiltinType(Bool) => {}
-                _    => return Err(TypeError::new(ctx, e, CantAnd((**r).clone(), tr))),
+            let tz = normalize(&type_with(ctx, z)?);
+            let ttz = normalize(&type_with(ctx, &tz)?);
+            match ttz {
+                Const(Type) => {}
+                _ => return Err(TypeError::new(ctx, e, IfBranchMustBeTerm(false, (**z).clone(), tz, ttz))),
             }
 
-            Ok(BuiltinType(Bool))
+            if !prop_equal(&ty, &tz) {
+                return Err(TypeError::new(ctx, e, IfBranchMismatch((**y).clone(), (**z).clone(), ty, tz)));
+            }
+            Ok(ty)
         }
-    /*
-type_with ctx e@(BoolOr  l r     ) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantOr l tl))
-
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantOr r tr))
-
-    return Bool
-type_with ctx e@(BoolEQ  l r     ) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantEQ l tl))
-
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantEQ r tr))
-
-    return Bool
-type_with ctx e@(BoolNE  l r     ) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantNE l tl))
-
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (CantNE r tr))
-
-    return Bool
-type_with ctx e@(BoolIf x y z    ) = do
-    tx <- fmap Dhall.Core.normalize (type_with ctx x)
-    case tx of
-        Bool -> return ()
-        _    -> Left (TypeError ctx e (InvalidPredicate x tx))
-    ty  <- fmap Dhall.Core.normalize (type_with ctx y )
-    tty <- fmap Dhall.Core.normalize (type_with ctx ty)
-    case tty of
-        Const Type -> return ()
-        _          -> Left (TypeError ctx e (IfBranchMustBeTerm True y ty tty))
-
-    tz <- fmap Dhall.Core.normalize (type_with ctx z)
-    ttz <- fmap Dhall.Core.normalize (type_with ctx tz)
-    case ttz of
-        Const Type -> return ()
-        _          -> Left (TypeError ctx e (IfBranchMustBeTerm False z tz ttz))
-
-    if prop_equal ty tz
-        then return ()
-        else Left (TypeError ctx e (IfBranchMismatch y z ty tz))
-    return ty
-        */
-    &NaturalLit(_) => Ok(BuiltinType(Natural)),
-    /*
-type_with _      NaturalFold       = do
-    return
-        (Pi "_" Natural
-            (Pi "natural" (Const Type)
-                (Pi "succ" (Pi "_" "natural" "natural")
-                    (Pi "zero" "natural" "natural") ) ) )
-type_with _      NaturalBuild      = do
-    return
-        (Pi "_"
-            (Pi "natural" (Const Type)
-                (Pi "succ" (Pi "_" "natural" "natural")
-                    (Pi "zero" "natural" "natural") ) )
-            Natural )
-        */
-    &BuiltinValue(NaturalIsZero) => Ok(pi("_", Natural, Bool)),
-    &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
-    &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
-    &NaturalPlus(ref l, ref r) => {
-        let tl = normalize(&type_with(ctx, l)?);
-        match tl {
-            BuiltinType(Natural) => {}
-            _ => return Err(TypeError::new(ctx, e, CantAdd((**l).clone(), tl))),
+        &NaturalLit(_) => Ok(BuiltinType(Natural)),
+        &BuiltinValue(NaturalFold) =>
+            Ok(pi("_", Natural,
+                pi("natural", Const(Type),
+                    pi("succ", pi("_", "natural", "natural"),
+                        pi("zero", "natural", "natural"))))),
+        &BuiltinValue(NaturalBuild) =>
+            Ok(pi("_",
+                pi("natural", Const(Type),
+                    pi("succ", pi("_", "natural", "natural"),
+                        pi("zero", "natural", "natural"))),
+                Natural)),
+        &BuiltinValue(NaturalIsZero) => Ok(pi("_", Natural, Bool)),
+        &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
+        &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
+        &NaturalPlus(ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
+        &NaturalTimes(ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
+        &IntegerLit(_) => Ok(BuiltinType(Integer)),
+        &DoubleLit(_) => Ok(BuiltinType(Double)),
+        &TextLit(_) => Ok(BuiltinType(Text)),
+        &TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
+        &ListLit(ref t, ref xs) => {
+            let s = normalize::<_, S, _>(&type_with(ctx, t)?);
+            match s {
+                Const(Type) => {}
+                _ => return Err(TypeError::new(ctx, e, InvalidListType((**t).clone()))),
+            }
+            for (i, x) in xs.iter().enumerate() {
+                let t2 = type_with(ctx, x)?;
+                if !prop_equal(t, &t2) {
+                    let nf_t  = normalize(t);
+                    let nf_t2 = normalize(&t2);
+                    return Err(TypeError::new(ctx, e, InvalidListElement(i, nf_t, x.clone(), nf_t2)) )
+                }
+            }
+            Ok(App(bx(BuiltinType(List)), t.clone()))
         }
-
-        let tr = normalize(&type_with(ctx, r)?);
-        match tr {
-            BuiltinType(Natural) => {}
-            _ => return Err(TypeError::new(ctx, e, CantAdd((**r).clone(), tr))),
+        &BuiltinValue(ListBuild) =>
+            Ok(pi("a", Const(Type),
+                pi("_",
+                    pi("list", Const(Type),
+                        pi("cons", pi("_", "a", pi("_", "list", "list")),
+                            pi("nil", "list", "list"))),
+                    app(List, "a")))),
+        &BuiltinValue(ListFold) =>
+            Ok(pi("a", Const(Type),
+                pi("_", app(List, "a"),
+                    pi("list", Const(Type),
+                        pi("cons", pi("_", "a", pi("_", "list", "list")),
+                            pi("nil", "list", "list")))))),
+        &BuiltinValue(ListLength) =>
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))),
+        &BuiltinValue(ListHead) =>
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
+        &BuiltinValue(ListLast) =>
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
+        &BuiltinValue(ListIndexed) => {
+            let mut m = BTreeMap::new();
+            m.insert("index", BuiltinType(Natural));
+            m.insert("value", Expr::from("a"));
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, Record(m)))))
         }
-        Ok(BuiltinType(Natural))
-    }
-    /*
-type_with ctx e@(NaturalTimes l r) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Natural -> return ()
-        _       -> Left (TypeError ctx e (CantMultiply l tl))
-
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Natural -> return ()
-        _       -> Left (TypeError ctx e (CantMultiply r tr))
-    return Natural
-    */
-    &IntegerLit(_) => Ok(BuiltinType(Integer)),
-    &DoubleLit(_) => Ok(BuiltinType(Double)),
-    &TextLit(_) => Ok(BuiltinType(Text)),
-    /*
-type_with ctx e@(TextAppend l r  ) = do
-    tl <- fmap Dhall.Core.normalize (type_with ctx l)
-    case tl of
-        Text -> return ()
-        _    -> Left (TypeError ctx e (CantTextAppend l tl))
-
-    tr <- fmap Dhall.Core.normalize (type_with ctx r)
-    case tr of
-        Text -> return ()
-        _    -> Left (TypeError ctx e (CantTextAppend r tr))
-    return Text
-    */
-    /*
-type_with ctx e@(ListLit t xs    ) = do
-    s <- fmap Dhall.Core.normalize (type_with ctx t)
-    case s of
-        Const Type -> return ()
-        _ -> Left (TypeError ctx e (InvalidListType t))
-    flip Data.Vector.imapM_ xs (\i x -> do
-        t' <- type_with ctx x
-        if prop_equal t t'
-            then return ()
-            else do
-                let nf_t  = Dhall.Core.normalize t
-                let nf_t' = Dhall.Core.normalize t'
-                Left (TypeError ctx e (InvalidListElement i nf_t x nf_t')) )
-    return (App List t)
-                */
-    &BuiltinValue(ListBuild) =>
-        Ok(pi("a", Const(Type),
-            pi("_",
-                pi("list", Const(Type),
-                    pi("cons", pi("_", "a", pi("_", "list", "list")),
-                        pi("nil", "list", "list"))),
-                app(List, "a")))),
-    &BuiltinValue(ListFold) =>
-        Ok(pi("a", Const(Type),
-            pi("_", app(List, "a"),
-                pi("list", Const(Type),
-                    pi("cons", pi("_", "a", pi("_", "list", "list")),
-                        pi("nil", "list", "list")))))),
-    &BuiltinValue(ListLength) =>
-        Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))),
-    &BuiltinValue(ListHead) =>
-        Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-    &BuiltinValue(ListLast) =>
-        Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-        /*
-type_with _      ListIndexed       = do
-    let kts = [("index", Natural), ("value", "a")]
-    return
-        (Pi "a" (Const Type)
-            (Pi "_" (App List "a")
-                (App List (Record (Data.Map.fromList kts))) ) )
-type_with _      ListReverse       = do
-    return (Pi "a" (Const Type) (Pi "_" (App List "a") (App List "a")))
-type_with _      Optional          = do
-    return (Pi "_" (Const Type) (Const Type))
-type_with ctx e@(OptionalLit t xs) = do
-    s <- fmap Dhall.Core.normalize (type_with ctx t)
-    case s of
-        Const Type -> return ()
-        _ -> Left (TypeError ctx e (InvalidOptionalType t))
-    let n = Data.Vector.length xs
-    if 2 <= n
-        then Left (TypeError ctx e (InvalidOptionalLiteral n))
-        else return ()
-    forM_ xs (\x -> do
-        t' <- type_with ctx x
-        if prop_equal t t'
-            then return ()
-            else do
-                let nf_t  = Dhall.Core.normalize t
-                let nf_t' = Dhall.Core.normalize t'
-                Left (TypeError ctx e (InvalidOptionalElement nf_t x nf_t')) )
-    return (App Optional t)
-type_with _      OptionalFold      = do
-    return
-        (Pi "a" (Const Type)
-            (Pi "_" (App Optional "a")
-                (Pi "optional" (Const Type)
-                    (Pi "just" (Pi "_" "a" "optional")
-                        (Pi "nothing" "optional" "optional") ) ) ) )
-*/
+        &BuiltinValue(ListReverse) =>
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, "a")))),
+        &OptionalLit(ref t, ref xs) => {
+            let s = normalize::<_, S, _>(&type_with(ctx, t)?);
+            match s {
+                Const(Type) => {}
+                _ => return Err(TypeError::new(ctx, e, InvalidOptionalType((**t).clone()))),
+            }
+            let n = xs.len();
+            if 2 <= n {
+                return Err(TypeError::new(ctx, e, InvalidOptionalLiteral(n)));
+            }
+            for x in xs {
+                let t2 = type_with(ctx, x)?;
+                if !prop_equal(t, &t2) {
+                    let nf_t  = normalize(t);
+                    let nf_t2 = normalize(&t2);
+                    return Err(TypeError::new(ctx, e, InvalidOptionalElement(nf_t, x.clone(), nf_t2)));
+                }
+            }
+            Ok(App(bx(BuiltinType(Optional)), t.clone()))
+        }
+        &BuiltinValue(OptionalFold) =>
+            Ok(pi("a", Const(Type),
+                pi("_", app(Optional, "a"),
+                    pi("optional", Const(Type),
+                        pi("just", pi("_", "a", "optional"),
+                            pi("nothing", "optional", "optional")))))),
         &Record(ref kts) => {
             for (k, t) in kts {
                 let s = normalize::<S, S, X>(&type_with(ctx, t)?);
@@ -569,9 +504,8 @@ type_with ctx   (Note s e'       ) = case type_with ctx e' of
     Left (TypeError ctx2 (Note s' e'') m) -> Left (TypeError ctx2 (Note s' e'') m)
     Left (TypeError ctx2          e''  m) -> Left (TypeError ctx2 (Note s  e'') m)
     Right r                               -> Right r
-type_with _     (Embed p         ) = do
-    absurd p
 */
+        &Embed(ref p) => match p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }
 }
@@ -594,10 +528,10 @@ pub enum TypeMessage<'i, S> {
     TypeMismatch(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
     AnnotMismatch(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
     Untyped,
-    InvalidListElement(isize, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
+    InvalidListElement(usize, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
     InvalidListType(Expr<'i, S, X>),
     InvalidOptionalElement(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
-    InvalidOptionalLiteral(isize),
+    InvalidOptionalLiteral(usize),
     InvalidOptionalType(Expr<'i, S, X>),
     InvalidPredicate(Expr<'i, S, X>, Expr<'i, S, X>),
     IfBranchMismatch(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
@@ -622,7 +556,7 @@ pub enum TypeMessage<'i, S> {
     CantOr(Expr<'i, S, X>, Expr<'i, S, X>),
     CantEQ(Expr<'i, S, X>, Expr<'i, S, X>),
     CantNE(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantStringAppend(Expr<'i, S, X>, Expr<'i, S, X>),
+    CantTextAppend(Expr<'i, S, X>, Expr<'i, S, X>),
     CantAdd(Expr<'i, S, X>, Expr<'i, S, X>),
     CantMultiply(Expr<'i, S, X>, Expr<'i, S, X>),
     NoDependentLet(Expr<'i, S, X>, Expr<'i, S, X>),

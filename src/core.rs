@@ -255,6 +255,29 @@ impl<'i, S, A> From<BuiltinValue> for Expr<'i, S, A> {
     }
 }
 
+impl<'i, S, A> Expr<'i, S, A> {
+    fn bool_lit(&self) -> Option<bool> {
+        match self {
+            &Expr::BoolLit(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    fn natural_lit(&self) -> Option<usize> {
+        match self {
+            &Expr::NaturalLit(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    fn text_lit(&self) -> Option<String> {
+        match self {
+            &Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
+            _ => None,
+        }
+    }
+}
+
 //  There is a one-to-one correspondence between the formatters in this section
 //  and the grammar in grammar.lalrpop.  Each formatter is named after the
 //  corresponding grammar rule and the relationship between formatters exactly matches
@@ -931,21 +954,70 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
             normalize(&b3)
         }
-        &NaturalLit(n) => NaturalLit(n),
-        &NaturalPlus(ref x, ref y) => match (normalize(x), normalize(y)) {
-            (NaturalLit(xn), NaturalLit(yn)) => NaturalLit(xn + yn),
-            (x2, y2) => NaturalPlus(bx(x2), bx(y2)),
+        &Annot(ref x, _) => normalize(x),
+        &BuiltinType(t) => BuiltinType(t),
+        &BuiltinValue(v) => BuiltinValue(v),
+        &BoolLit(b) => BoolLit(b),
+        &BoolAnd(ref x, ref y) => {
+            with_binop(BoolAnd, Expr::bool_lit,
+                       |xn, yn| BoolLit(xn && yn),
+                       normalize(x), normalize(y))
+        }
+        &BoolOr(ref x, ref y) => {
+            with_binop(BoolOr, Expr::bool_lit,
+                       |xn, yn| BoolLit(xn || yn),
+                       normalize(x), normalize(y))
+        }
+        &BoolEQ(ref x, ref y) => {
+            with_binop(BoolEQ, Expr::bool_lit,
+                       |xn, yn| BoolLit(xn == yn),
+                       normalize(x), normalize(y))
+        }
+        &BoolNE(ref x, ref y) => {
+            with_binop(BoolNE, Expr::bool_lit,
+                       |xn, yn| BoolLit(xn != yn),
+                       normalize(x), normalize(y))
+        }
+        &BoolIf(ref b, ref t, ref f) => match normalize(b) {
+            BoolLit(true) => normalize(t),
+            BoolLit(false) => normalize(f),
+            b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
         },
+        &NaturalLit(n) => NaturalLit(n),
+        &NaturalPlus(ref x, ref y) => {
+            with_binop(NaturalPlus, Expr::natural_lit,
+                       |xn, yn| NaturalLit(xn + yn),
+                       normalize(x), normalize(y))
+        }
+        &NaturalTimes(ref x, ref y) => {
+            with_binop(NaturalTimes, Expr::natural_lit,
+                       |xn, yn| NaturalLit(xn * yn),
+                       normalize(x), normalize(y))
+        }
         &IntegerLit(n) => IntegerLit(n),
+        &DoubleLit(n) => DoubleLit(n),
+        &TextLit(ref t) => TextLit(t.clone()),
+        &TextAppend(ref x, ref y) => {
+            with_binop(TextAppend, Expr::text_lit,
+                       |xt, yt| TextLit(xt + &yt),
+                       normalize(x), normalize(y))
+        }
         &ListLit(ref t, ref es) => {
             let t2  = normalize(t);
             let es2 = es.iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
+        &OptionalLit(ref t, ref es) => {
+            let t2  = normalize(t);
+            let es2 = es.iter().map(normalize).collect();
+            OptionalLit(bx(t2), es2)
+        }
         &Record(ref kts) => Record(map_record_value(kts, normalize)),
-        &RecordLit(ref kvs) => Record(map_record_value(kvs, normalize)),
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
+        &RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
+        &Union(ref kts) => Union(map_record_value(kts, normalize)),
+        &UnionLit(k, ref v, ref kvs) => UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize)),
+        &Combine(ref x0, ref y0) => unimplemented!(),
+        &Merge(ref x, ref y, ref t) => unimplemented!(),
         &Field(ref r, x) => match normalize(r) {
             RecordLit(kvs) => match kvs.get(x) {
                 Some(r2) => normalize(r2),
@@ -953,6 +1025,19 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             },
             r2 => Field(bx(r2), x),
         },
-        _ => panic!("Unimplemented normalize case: {:?}", e),
+        &Note(_, ref e) => normalize(e),
+        &Embed(ref a) => Embed(a.clone()),
+    }
+}
+
+fn with_binop<T, U, Get, Set, Op>(op: Op, get: Get, set: Set, x: T, y: T) -> T
+    where Get: Fn(&T) -> Option<U>,
+          Set: FnOnce(U, U) -> T,
+          Op: FnOnce(Box<T>, Box<T>) -> T,
+{
+    if let (Some(xv), Some(yv)) = (get(&x), get(&y)) {
+        set(xv, yv)
+    } else {
+        op(bx(x), bx(y))
     }
 }
