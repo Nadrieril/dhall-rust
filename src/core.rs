@@ -342,8 +342,14 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
                 write!(f, ") → ")?;
                 d.fmt_b(f)
             }
-            &ListLit(_, _) => f.write_str("ListLit"),
-            &OptionalLit(_, _) => f.write_str("OptionalLit"),
+            &ListLit(ref t, ref es) => {
+                fmt_list("[", "] : List ", es, f, |e, f| e.fmt(f))?;
+                t.fmt_e(f)
+            }
+            &OptionalLit(ref t, ref es) => {
+                fmt_list("[", "] : Optional ", es, f, |e, f| e.fmt(f))?;
+                t.fmt_e(f)
+            }
             &Merge(ref a, ref b, ref c) => {
                 write!(f, "merge ")?;
                 a.fmt_e(f)?;
@@ -388,27 +394,6 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
 
     fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use Expr::*;
-        fn fmt_list<T,
-                    I: IntoIterator<Item = T>,
-                    F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>>
-            (open: &str,
-             close: &str,
-             it: I,
-             f: &mut fmt::Formatter,
-             func: F)
-             -> Result<(), fmt::Error>
-            where I: IntoIterator<Item = T>,
-                  F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>
-        {
-            f.write_str(open)?;
-            for (i, x) in it.into_iter().enumerate() {
-                if i > 0 {
-                    f.write_str(", ")?;
-                }
-                func(x, f)?;
-            }
-            f.write_str(close)
-        }
         match self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
@@ -438,6 +423,25 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
             a => write!(f, "({})", a),
         }
     }
+}
+
+fn fmt_list<T, I, F>(open: &str,
+                     close: &str,
+                     it: I,
+                     f: &mut fmt::Formatter,
+                     func: F)
+                     -> Result<(), fmt::Error>
+    where I: IntoIterator<Item = T>,
+          F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>
+{
+    f.write_str(open)?;
+    for (i, x) in it.into_iter().enumerate() {
+        if i > 0 {
+            f.write_str(", ")?;
+        }
+        func(x, f)?;
+    }
+    f.write_str(close)
 }
 
 impl Display for Const {
