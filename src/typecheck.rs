@@ -506,7 +506,7 @@ type_with ctx   (Note s e'       ) = case type_with ctx e' of
     Left (TypeError ctx2          e''  m) -> Left (TypeError ctx2 (Note s  e'') m)
     Right r                               -> Right r
 */
-        &Embed(ref p) => match p {},
+        &Embed(p) => match p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }
 }
