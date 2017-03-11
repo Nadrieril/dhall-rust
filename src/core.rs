@@ -422,8 +422,8 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
             &RecordLit(ref a) => {
                 fmt_list("{ ", " }", a, f, |(k, v), f| write!(f, "{} = {}", k, v))
             }
-            &Union(ref a) => f.write_str("Union"),
-            &UnionLit(ref a, ref b, ref c) => f.write_str("UnionLit"),
+            &Union(ref _a) => f.write_str("Union"),
+            &UnionLit(ref _a, ref _b, ref _c) => f.write_str("UnionLit"),
             &Embed(ref a) => a.fmt(f),
             &Note(_, ref b) => b.fmt_f(f),
             a => write!(f, "({})", a),
@@ -520,7 +520,7 @@ pub type Natural = usize;
 pub enum X {}
 
 impl Display for X {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {}
     }
 }
@@ -1026,8 +1026,8 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         &RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
         &Union(ref kts) => Union(map_record_value(kts, normalize)),
         &UnionLit(k, ref v, ref kvs) => UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize)),
-        &Combine(ref x0, ref y0) => unimplemented!(),
-        &Merge(ref x, ref y, ref t) => unimplemented!(),
+        &Combine(ref _x0, ref _y0) => unimplemented!(),
+        &Merge(ref _x, ref _y, ref _t) => unimplemented!(),
         &Field(ref r, x) => match normalize(r) {
             RecordLit(kvs) => match kvs.get(x) {
                 Some(r2) => normalize(r2),
