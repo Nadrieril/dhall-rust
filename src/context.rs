@@ -34,7 +34,7 @@ impl<'i, T> Context<'i, T> {
     }
 
     pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<'i, U> {
-        Context(self.0.iter().map(|(k, v)| (k.clone(), v.iter().map(&f).collect())).collect())
+        Context(self.0.iter().map(|(k, v)| (*k, v.iter().map(&f).collect())).collect())
     }
 }
 
@@ -43,7 +43,7 @@ impl<'i, T: Clone> Context<'i, T> {
     pub fn insert(&self, k: &'i str, v: T) -> Self {
         let mut ctx = (*self).clone();
         {
-            let m = ctx.0.entry(k).or_insert(vec![]);
+            let m = ctx.0.entry(k).or_insert_with(Vec::new);
             m.push(v);
         }
         ctx

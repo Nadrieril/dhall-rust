@@ -24,8 +24,8 @@ fn axiom<'i, S: Clone>(c: core::Const) -> Result<core::Const, TypeError<'i, S>> 
 fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
     match (a, b) {
         (Type, Kind) => Err(()),
-        (Type, Type) => Ok(Type),
         (Kind, Kind) => Ok(Kind),
+        (Type, Type) |
         (Kind, Type) => Ok(Type),
     }
 }
@@ -52,10 +52,10 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
               T: Clone + ::std::fmt::Debug
     {
         match (el, er) {
-            (&Const(Type), &Const(Type)) => true,
+            (&Const(Type), &Const(Type)) |
             (&Const(Kind), &Const(Kind)) => true,
             (&Var(ref vL), &Var(ref vR)) => match_vars(vL, vR, &*ctx),
-            (&Pi(ref xL, ref tL, ref bL), &Pi(ref xR, ref tR, ref bR)) => {
+            (&Pi(xL, ref tL, ref bL), &Pi(xR, ref tR, ref bR)) => {
                 //ctx <- State.get
                 let eq1 = go(ctx, tL, tR);
                 if eq1 {
@@ -164,15 +164,15 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                         -> Result<Expr<'i, S, X>, TypeError<'i, S>>
     where S: Clone + ::std::fmt::Debug + 'i
 {
-    match e {
-        &Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
-        &Var(V(ref x, n)) => {
+    match *e {
+        Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
+        Var(V(x, n)) => {
             ctx.lookup(x, n)
                 .cloned()
                 //.map(Cow::Borrowed)
-                .ok_or_else(|| TypeError::new(ctx, &e, UnboundVariable))
+                .ok_or_else(|| TypeError::new(ctx, e, UnboundVariable))
         }
-        &Lam(ref x, ref tA, ref b) => {
+        Lam(x, ref tA, ref b) => {
             let ctx2 = ctx.insert(x, (**tA).clone()).map(|e| core::shift(1, V(x, 0), e));
             let tB = type_with(&ctx2, b)?;
             let p = Pi(x, tA.clone(), bx(tB));
@@ -180,7 +180,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             //Ok(Cow::Owned(p))
             Ok(p)
         }
-        &Pi(ref x, ref tA, ref tB) => {
+        Pi(x, ref tA, ref tB) => {
             let tA2 = normalize::<S, S, X>(&type_with(ctx, tA)?);
             let kA = match tA2 {
                 Const(k) => k,
@@ -199,7 +199,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 Ok(k) => Ok(Const(k)),
             }
         }
-        &App(ref f, ref a) => {
+        App(ref f, ref a) => {
             let tf = normalize(&type_with(ctx, f)?);
             let (x, tA, tB) = match tf {
                 Pi(x, tA, tB) => (x, tA, tB),
@@ -218,14 +218,14 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 Err(TypeError::new(ctx, e, TypeMismatch((**f).clone(), nf_A, (**a).clone(), nf_A2)))
             }
         }
-        &Let(ref f, ref mt, ref r, ref b) => {
+        Let(f, ref mt, ref r, ref b) => {
             let tR  = type_with(ctx, r)?;
             let ttR = normalize::<S, S, X>(&type_with(ctx, &tR)?);
             let kR  = match ttR {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _        => return Err(TypeError::new(ctx, &e, InvalidInputType(tR))),
+                _        => return Err(TypeError::new(ctx, e, InvalidInputType(tR))),
             };
 
             let ctx2 = ctx.insert(f, tR.clone());
@@ -235,24 +235,24 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _        => return Err(TypeError::new(ctx, &e, InvalidOutputType(tB))),
+                _        => return Err(TypeError::new(ctx, e, InvalidOutputType(tB))),
             };
 
             if let Err(()) = rule(kR, kB) {
-                return Err(TypeError::new(ctx, &e, NoDependentLet(tR, tB)));
+                return Err(TypeError::new(ctx, e, NoDependentLet(tR, tB)));
             }
 
-            if let &Some(ref t) = mt {
+            if let Some(ref t) = *mt {
                 let nf_t  = normalize(t);
                 let nf_tR = normalize(&tR);
                 if !prop_equal(&nf_tR, &nf_t) {
-                    return Err(TypeError::new(ctx, &e, AnnotMismatch((**r).clone(), nf_t, nf_tR)));
+                    return Err(TypeError::new(ctx, e, AnnotMismatch((**r).clone(), nf_t, nf_tR)));
                 }
             }
 
             Ok(tB)
         }
-        &Annot(ref x, ref t) => {
+        Annot(ref x, ref t) => {
             // This is mainly just to check that `t` is not `Kind`
             let _ = type_with(ctx, t)?;
 
@@ -265,16 +265,16 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 Err(TypeError::new(ctx, e, AnnotMismatch((**x).clone(), nf_t, nf_t2)))
             }
         }
-        &BuiltinType(t) => Ok(match t {
+        BuiltinType(t) => Ok(match t {
             List | Optional => pi("_", Const(Type), Const(Type)),
             Bool | Natural | Integer | Double | Text => Const(Type),
         }),
-        &BoolLit(_) => Ok(BuiltinType(Bool)),
-        &BoolAnd(ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
-        &BoolOr(ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
-        &BoolEQ(ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
-        &BoolNE(ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
-        &BoolIf(ref x, ref y, ref z) => {
+        BoolLit(_) => Ok(BuiltinType(Bool)),
+        BoolAnd(ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
+        BoolOr(ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
+        BoolEQ(ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
+        BoolNE(ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
+        BoolIf(ref x, ref y, ref z) => {
             let tx = normalize(&type_with(ctx, x)?);
             match tx {
                 BuiltinType(Bool) => {}
@@ -299,28 +299,28 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
             Ok(ty)
         }
-        &NaturalLit(_) => Ok(BuiltinType(Natural)),
-        &BuiltinValue(NaturalFold) =>
+        NaturalLit(_) => Ok(BuiltinType(Natural)),
+        BuiltinValue(NaturalFold) =>
             Ok(pi("_", Natural,
                 pi("natural", Const(Type),
                     pi("succ", pi("_", "natural", "natural"),
                         pi("zero", "natural", "natural"))))),
-        &BuiltinValue(NaturalBuild) =>
+        BuiltinValue(NaturalBuild) =>
             Ok(pi("_",
                 pi("natural", Const(Type),
                     pi("succ", pi("_", "natural", "natural"),
                         pi("zero", "natural", "natural"))),
                 Natural)),
-        &BuiltinValue(NaturalIsZero) => Ok(pi("_", Natural, Bool)),
-        &BuiltinValue(NaturalEven) => Ok(pi("_", Natural, Bool)),
-        &BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
-        &NaturalPlus(ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
-        &NaturalTimes(ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
-        &IntegerLit(_) => Ok(BuiltinType(Integer)),
-        &DoubleLit(_) => Ok(BuiltinType(Double)),
-        &TextLit(_) => Ok(BuiltinType(Text)),
-        &TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
-        &ListLit(ref t, ref xs) => {
+        BuiltinValue(NaturalIsZero) |
+        BuiltinValue(NaturalEven) |
+        BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
+        NaturalPlus(ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
+        NaturalTimes(ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
+        IntegerLit(_) => Ok(BuiltinType(Integer)),
+        DoubleLit(_) => Ok(BuiltinType(Double)),
+        TextLit(_) => Ok(BuiltinType(Text)),
+        TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
+        ListLit(ref t, ref xs) => {
             let s = normalize::<_, S, _>(&type_with(ctx, t)?);
             match s {
                 Const(Type) => {}
@@ -336,34 +336,33 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
             Ok(App(bx(BuiltinType(List)), t.clone()))
         }
-        &BuiltinValue(ListBuild) =>
+        BuiltinValue(ListBuild) =>
             Ok(pi("a", Const(Type),
                 pi("_",
                     pi("list", Const(Type),
                         pi("cons", pi("_", "a", pi("_", "list", "list")),
                             pi("nil", "list", "list"))),
                     app(List, "a")))),
-        &BuiltinValue(ListFold) =>
+        BuiltinValue(ListFold) =>
             Ok(pi("a", Const(Type),
                 pi("_", app(List, "a"),
                     pi("list", Const(Type),
                         pi("cons", pi("_", "a", pi("_", "list", "list")),
                             pi("nil", "list", "list")))))),
-        &BuiltinValue(ListLength) =>
+        BuiltinValue(ListLength) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))),
-        &BuiltinValue(ListHead) =>
+        BuiltinValue(ListHead) |
+        BuiltinValue(ListLast) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-        &BuiltinValue(ListLast) =>
-            Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-        &BuiltinValue(ListIndexed) => {
+        BuiltinValue(ListIndexed) => {
             let mut m = BTreeMap::new();
             m.insert("index", BuiltinType(Natural));
             m.insert("value", Expr::from("a"));
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, Record(m)))))
         }
-        &BuiltinValue(ListReverse) =>
+        BuiltinValue(ListReverse) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, "a")))),
-        &OptionalLit(ref t, ref xs) => {
+        OptionalLit(ref t, ref xs) => {
             let s = normalize::<_, S, _>(&type_with(ctx, t)?);
             match s {
                 Const(Type) => {}
@@ -383,13 +382,13 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
             Ok(App(bx(BuiltinType(Optional)), t.clone()))
         }
-        &BuiltinValue(OptionalFold) =>
+        BuiltinValue(OptionalFold) =>
             Ok(pi("a", Const(Type),
                 pi("_", app(Optional, "a"),
                     pi("optional", Const(Type),
                         pi("just", pi("_", "a", "optional"),
                             pi("nothing", "optional", "optional")))))),
-        &Record(ref kts) => {
+        Record(ref kts) => {
             for (k, t) in kts {
                 let s = normalize::<S, S, X>(&type_with(ctx, t)?);
                 match s {
@@ -399,7 +398,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
             Ok(Const(Type))
         }
-        &RecordLit(ref kvs) => {
+        RecordLit(ref kvs) => {
             let kts = kvs.iter().map(|(&k, v)| {
                 let t = type_with(ctx, v)?;
                 let s = normalize::<S, S, X>(&type_with(ctx, &t)?);
@@ -492,10 +491,10 @@ type_with ctx e@(Merge kvsX kvsY t) = do
     mapM_ process (Data.Map.toList ktsY)
     return t
     */
-        &Field(ref r, x) => {
+        Field(ref r, x) => {
             let t = normalize(&type_with(ctx, r)?);
-            match &t {
-                &Record(ref kts) =>
+            match t {
+                Record(ref kts) =>
                     kts.get(x).cloned().ok_or_else(|| TypeError::new(ctx, e, MissingField(x.to_owned(), t.clone()))),
                 _ => Err(TypeError::new(ctx, e, NotARecord(x.to_owned(), (**r).clone(), t.clone()))),
             }
@@ -506,7 +505,7 @@ type_with ctx   (Note s e'       ) = case type_with ctx e' of
     Left (TypeError ctx2          e''  m) -> Left (TypeError ctx2 (Note s  e'') m)
     Right r                               -> Right r
 */
-        &Embed(p) => match p {},
+        Embed(p) => match p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }
 }
@@ -587,12 +586,12 @@ impl<'i, S: Clone> TypeError<'i, S> {
 
 impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<'i, S> {
     fn description(&self) -> &str {
-        match self {
-            &UnboundVariable => "Unbound variable",
-            &InvalidInputType(_) => "Invalid function input",
-            &InvalidOutputType(_) => "Invalid function output",
-            &NotAFunction(_, _) => "Not a function",
-            &TypeMismatch(_, _, _, _) => "Wrong type of function argument",
+        match *self {
+            UnboundVariable => "Unbound variable",
+            InvalidInputType(_) => "Invalid function input",
+            InvalidOutputType(_) => "Invalid function output",
+            NotAFunction(_, _) => "Not a function",
+            TypeMismatch(_, _, _, _) => "Wrong type of function argument",
             _ => "Unhandled error",
         }
     }
@@ -600,9 +599,9 @@ impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<'i, S> {
 
 impl<'i, S> fmt::Display for TypeMessage<'i, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            &UnboundVariable => f.write_str(include_str!("errors/UnboundVariable.txt")),
-            &TypeMismatch(ref e0, ref e1, ref e2, ref e3) => {
+        match *self {
+            UnboundVariable => f.write_str(include_str!("errors/UnboundVariable.txt")),
+            TypeMismatch(ref e0, ref e1, ref e2, ref e3) => {
                 let template = include_str!("errors/TypeMismatch.txt");
                 let s = template
                     .replace("$txt0", &format!("{}", e0))

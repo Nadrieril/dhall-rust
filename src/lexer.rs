@@ -328,7 +328,7 @@ impl<'input> Iterator for Lexer<'input> {
         use nom::IResult::*;
         self.skip_comments_and_whitespace();
         let input = self.current_input();
-        if input.len() == 0 {
+        if input.is_empty() {
             return None;
         }
         match token(input) {

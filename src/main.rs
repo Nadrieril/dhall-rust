@@ -24,7 +24,7 @@ const ERROR_STYLE: term_painter::Color = term_painter::Color::Red;
 const BOLD: term_painter::Attr = term_painter::Attr::Bold;
 
 fn print_error(message: &str, source: &str, start: usize, end: usize) {
-    let line_number = bytecount::count(source[..start].as_bytes(), '\n' as u8);
+    let line_number = bytecount::count(source[..start].as_bytes(), b'\n');
     let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
     let line_end = source[end..].find('\n').unwrap_or(0) + end;
     let context_prefix = &source[line_start..start];
@@ -76,7 +76,7 @@ fn main() {
         }
         Err(lalrpop_util::ParseError::UnrecognizedToken { token: Some((start, t, end)), expected: e }) => {
             print_error(&format!("Unrecognized token {:?}", t), &buffer, start, end);
-            if e.len() > 0 {
+            if !e.is_empty() {
                 println!("Expected {:?}", e);
             }
             return;
@@ -93,7 +93,7 @@ fn main() {
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {
-            let explain = ::std::env::args().find(|s| s == "--explain").is_some();
+            let explain = ::std::env::args().any(|s| s == "--explain");
             if !explain {
                 term_painter::Color::BrightBlack.with(|| {
                     println!("Use \"dhall --explain\" for detailed errors");

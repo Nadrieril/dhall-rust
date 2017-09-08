@@ -257,22 +257,22 @@ impl<'i, S, A> From<BuiltinValue> for Expr<'i, S, A> {
 
 impl<'i, S, A> Expr<'i, S, A> {
     fn bool_lit(&self) -> Option<bool> {
-        match self {
-            &Expr::BoolLit(v) => Some(v),
+        match *self {
+            Expr::BoolLit(v) => Some(v),
             _ => None,
         }
     }
 
     fn natural_lit(&self) -> Option<usize> {
-        match self {
-            &Expr::NaturalLit(v) => Some(v),
+        match *self {
+            Expr::NaturalLit(v) => Some(v),
             _ => None,
         }
     }
 
     fn text_lit(&self) -> Option<String> {
-        match self {
-            &Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
+        match *self {
+            Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
             _ => None,
         }
     }
@@ -423,7 +423,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
                 fmt_list("{ ", " }", a, f, |(k, v), f| write!(f, "{} = {}", k, v))
             }
             &Union(ref _a) => f.write_str("Union"),
-            &UnionLit(ref _a, ref _b, ref _c) => f.write_str("UnionLit"),
+            &UnionLit(_a, ref _b, ref _c) => f.write_str("UnionLit"),
             &Embed(ref a) => a.fmt(f),
             &Note(_, ref b) => b.fmt_f(f),
             a => write!(f, "({})", a),
@@ -531,7 +531,7 @@ pub fn bx<T>(x: T) -> Box<T> {
 
 fn add_ui(u: usize, i: isize) -> usize {
     if i < 0 {
-        u.checked_sub((i.checked_neg().unwrap() as usize)).unwrap()
+        u.checked_sub(i.checked_neg().unwrap() as usize).unwrap()
     } else {
         u.checked_add(i as usize).unwrap()
     }
@@ -627,75 +627,75 @@ fn map_op2<T, U, V, F, G>(f: F, g: G, a: T, b: T) -> V
 pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A> {
     use Expr::*;
     let V(x, n) = v;
-    match e {
-        &Const(a) => Const(a),
-        &Var(V(x2, n2)) => {
+    match *e {
+        Const(a) => Const(a),
+        Var(V(x2, n2)) => {
             let n3 = if x == x2 && n <= n2 { add_ui(n2, d) } else { n2 };
             Var(V(x2, n3))
         }
-        &Lam(x2, ref tA, ref b) => {
+        Lam(x2, ref tA, ref b) => {
             let n2 = if x == x2 { n + 1 } else { n };
             let tA2 = shift(d, V(x, n ), tA);
             let b2  = shift(d, V(x, n2), b);
             Lam(x2, bx(tA2), bx(b2))
         }
-        &Pi(x2, ref tA, ref tB) => {
+        Pi(x2, ref tA, ref tB) => {
             let n2 = if x == x2 { n + 1 } else { n };
             let tA2 = shift(d, V(x, n ), tA);
             let tB2 = shift(d, V(x, n2), tB);
             pi(x2, tA2, tB2)
         }
-        &App(ref f, ref a) => app(shift(d, v, f), shift(d, v, a)),
-        &Let(f, ref mt, ref r, ref e) => {
+        App(ref f, ref a) => app(shift(d, v, f), shift(d, v, a)),
+        Let(f, ref mt, ref r, ref e) => {
             let n2 = if x == f { n + 1 } else { n };
             let e2 = shift(d, V(x, n2), e);
             let mt2 = mt.as_ref().map(|t| bx(shift(d, V(x, n), t)));
             let r2  = shift(d, V(x, n), r);
             Let(f, mt2, bx(r2), bx(e2))
         }
-        &Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
-        &BoolLit(a) => BoolLit(a),
-        &BoolAnd(ref a, ref b) => shift_op2(BoolAnd, d, v, a, b),
-        &BoolOr(ref a, ref b) => shift_op2(BoolOr, d, v, a, b),
-        &BoolEQ(ref a, ref b) => shift_op2(BoolEQ, d, v, a, b),
-        &BoolNE(ref a, ref b) => shift_op2(BoolNE, d, v, a, b),
-        &BoolIf(ref a, ref b, ref c) => {
+        Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
+        BuiltinType(t) => BuiltinType(t),
+        BuiltinValue(v) => BuiltinValue(v),
+        BoolLit(a) => BoolLit(a),
+        BoolAnd(ref a, ref b) => shift_op2(BoolAnd, d, v, a, b),
+        BoolOr(ref a, ref b) => shift_op2(BoolOr, d, v, a, b),
+        BoolEQ(ref a, ref b) => shift_op2(BoolEQ, d, v, a, b),
+        BoolNE(ref a, ref b) => shift_op2(BoolNE, d, v, a, b),
+        BoolIf(ref a, ref b, ref c) => {
             BoolIf(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
         }
-        &NaturalLit(a) => NaturalLit(a),
-        &NaturalPlus(ref a, ref b) => NaturalPlus(bx(shift(d, v, a)), bx(shift(d, v, b))),
-        &NaturalTimes(ref a, ref b) => shift_op2(NaturalTimes, d, v, a, b),
-        &IntegerLit(a) => IntegerLit(a),
-        &DoubleLit(a) => DoubleLit(a),
-        &TextLit(ref a) => TextLit(a.clone()),
-        &TextAppend(ref a, ref b) => shift_op2(TextAppend, d, v, a, b),
-        &ListLit(ref t, ref es) => {
+        NaturalLit(a) => NaturalLit(a),
+        NaturalPlus(ref a, ref b) => NaturalPlus(bx(shift(d, v, a)), bx(shift(d, v, b))),
+        NaturalTimes(ref a, ref b) => shift_op2(NaturalTimes, d, v, a, b),
+        IntegerLit(a) => IntegerLit(a),
+        DoubleLit(a) => DoubleLit(a),
+        TextLit(ref a) => TextLit(a.clone()),
+        TextAppend(ref a, ref b) => shift_op2(TextAppend, d, v, a, b),
+        ListLit(ref t, ref es) => {
             ListLit(bx(shift(d, v, t)),
                     es.iter().map(|e| shift(d, v, e)).collect())
         }
-        &OptionalLit(ref t, ref es) => {
+        OptionalLit(ref t, ref es) => {
             OptionalLit(bx(shift(d, v, t)),
                         es.iter().map(|e| shift(d, v, e)).collect())
         }
-        &Record(ref a) => Record(map_record_value(a, |val| shift(d, v, val))),
-        &RecordLit(ref a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
-        &Union(ref a) => Union(map_record_value(a, |val| shift(d, v, val))),
-        &UnionLit(k, ref uv, ref a) => {
+        Record(ref a) => Record(map_record_value(a, |val| shift(d, v, val))),
+        RecordLit(ref a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
+        Union(ref a) => Union(map_record_value(a, |val| shift(d, v, val))),
+        UnionLit(k, ref uv, ref a) => {
             UnionLit(k,
                      bx(shift(d, v, uv)),
                      map_record_value(a, |val| shift(d, v, val)))
         }
-        &Combine(ref a, ref b) => shift_op2(Combine, d, v, a, b),
-        &Merge(ref a, ref b, ref c) => {
+        Combine(ref a, ref b) => shift_op2(Combine, d, v, a, b),
+        Merge(ref a, ref b, ref c) => {
             Merge(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
         }
-        &Field(ref a, b) => Field(bx(shift(d, v, a)), b),
-        &Note(_, ref b) => shift(d, v, b),
+        Field(ref a, b) => Field(bx(shift(d, v, a)), b),
+        Note(_, ref b) => shift(d, v, b),
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
-        &Embed(ref p) => Embed(p.clone()),
+        Embed(ref p) => Embed(p.clone()),
     }
 }
 
@@ -723,76 +723,76 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
 {
     use Expr::*;
     let V(x, n) = v;
-    match b {
-        &Const(a) => Const(a),
-        &Lam(y, ref tA, ref b) => {
+    match *b {
+        Const(a) => Const(a),
+        Lam(y, ref tA, ref b) => {
             let n2  = if x == y { n + 1 } else { n };
-            let b2  = subst(V(x, n2), &shift(1, V(y, 0), &e), b);
-            let tA2 = subst(V(x, n),                     &e, tA);
+            let b2  = subst(V(x, n2), &shift(1, V(y, 0), e), b);
+            let tA2 = subst(V(x, n),                     e, tA);
             Lam(y, bx(tA2), bx(b2))
         }
-        &Pi(y, ref tA, ref tB) => {
+        Pi(y, ref tA, ref tB) => {
             let n2  = if x == y { n + 1 } else { n };
-            let tB2 = subst(V(x, n2), &shift(1, V(y, 0), &e), tB);
-            let tA2 = subst(V(x, n),                     &e,  tA);
+            let tB2 = subst(V(x, n2), &shift(1, V(y, 0), e), tB);
+            let tA2 = subst(V(x, n),                     e,  tA);
             pi(y, tA2, tB2)
         }
-        &App(ref f, ref a) => {
+        App(ref f, ref a) => {
             let f2 = subst(v, e, f);
             let a2 = subst(v, e, a);
             app(f2, a2)
         }
-        &Var(v2) => if v == v2 { e.clone() } else { Var(v2) },
-        &Let(f, ref mt, ref r, ref b) => {
+        Var(v2) => if v == v2 { e.clone() } else { Var(v2) },
+        Let(f, ref mt, ref r, ref b) => {
             let n2 = if x == f { n + 1 } else { n };
             let b2 = subst(V(x, n2), &shift(1, V(f, 0), e), b);
             let mt2 = mt.as_ref().map(|t| bx(subst(V(x, n), e, t)));
             let r2  = subst(V(x, n), e, r);
             Let(f, mt2, bx(r2), bx(b2))
         }
-        &Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
-        &BoolLit(a) => BoolLit(a),
-        &BoolAnd(ref a, ref b) => subst_op2(BoolAnd, v, e, a, b),
-        &BoolOr(ref a, ref b) => subst_op2(BoolOr, v, e, a, b),
-        &BoolEQ(ref a, ref b) => subst_op2(BoolEQ, v, e, a, b),
-        &BoolNE(ref a, ref b) => subst_op2(BoolNE, v, e, a, b),
-        &BoolIf(ref a, ref b, ref c) => {
+        Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
+        BuiltinType(t) => BuiltinType(t),
+        BuiltinValue(v) => BuiltinValue(v),
+        BoolLit(a) => BoolLit(a),
+        BoolAnd(ref a, ref b) => subst_op2(BoolAnd, v, e, a, b),
+        BoolOr(ref a, ref b) => subst_op2(BoolOr, v, e, a, b),
+        BoolEQ(ref a, ref b) => subst_op2(BoolEQ, v, e, a, b),
+        BoolNE(ref a, ref b) => subst_op2(BoolNE, v, e, a, b),
+        BoolIf(ref a, ref b, ref c) => {
             BoolIf(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
         }
-        &NaturalLit(a) => NaturalLit(a),
-        &NaturalPlus(ref a, ref b) => subst_op2(NaturalPlus, v, e, a, b),
-        &NaturalTimes(ref a, ref b) => subst_op2(NaturalTimes, v, e, a, b),
-        &IntegerLit(a) => IntegerLit(a),
-        &DoubleLit(a) => DoubleLit(a),
-        &TextLit(ref a) => TextLit(a.clone()),
-        &TextAppend(ref a, ref b) => subst_op2(TextAppend, v, e, a, b),
-        &ListLit(ref a, ref b) => {
+        NaturalLit(a) => NaturalLit(a),
+        NaturalPlus(ref a, ref b) => subst_op2(NaturalPlus, v, e, a, b),
+        NaturalTimes(ref a, ref b) => subst_op2(NaturalTimes, v, e, a, b),
+        IntegerLit(a) => IntegerLit(a),
+        DoubleLit(a) => DoubleLit(a),
+        TextLit(ref a) => TextLit(a.clone()),
+        TextAppend(ref a, ref b) => subst_op2(TextAppend, v, e, a, b),
+        ListLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(bx(a2), b2)
         }
-        &OptionalLit(ref a, ref b) => {
+        OptionalLit(ref a, ref b) => {
             let a2 = subst(v, e, a);
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             OptionalLit(bx(a2), b2)
         }
-        &Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
-        &RecordLit(ref kvs) => RecordLit(map_record_value(kvs, |val| subst(v, e, val))),
-        &Union(ref kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
-        &UnionLit(k, ref uv, ref kvs) => {
+        Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
+        RecordLit(ref kvs) => RecordLit(map_record_value(kvs, |val| subst(v, e, val))),
+        Union(ref kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
+        UnionLit(k, ref uv, ref kvs) => {
             UnionLit(k,
                      bx(subst(v, e, uv)),
                      map_record_value(kvs, |val| subst(v, e, val)))
         }
-        &Combine(ref a, ref b) => subst_op2(Combine, v, e, a, b),
-        &Merge(ref a, ref b, ref c) => {
+        Combine(ref a, ref b) => subst_op2(Combine, v, e, a, b),
+        Merge(ref a, ref b, ref c) => {
             Merge(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
         }
-        &Field(ref a, b) => Field(bx(subst(v, e, a)), b),
-        &Note(_, ref b) => subst(v, e, b),
-        &Embed(ref p) => Embed(p.clone()),
+        Field(ref a, b) => Field(bx(subst(v, e, a)), b),
+        Note(_, ref b) => subst(v, e, b),
+        Embed(ref p) => Embed(p.clone()),
     }
 }
 
@@ -825,20 +825,20 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
 {
     use BuiltinValue::*;
     use Expr::*;
-    match e {
-        &Const(k) => Const(k),
-        &Var(v) => Var(v),
-        &Lam(x, ref tA, ref b) => {
+    match *e {
+        Const(k) => Const(k),
+        Var(v) => Var(v),
+        Lam(x, ref tA, ref b) => {
             let tA2 = normalize(tA);
             let b2  = normalize(b);
             Lam(x, bx(tA2), bx(b2))
         }
-        &Pi(x, ref tA, ref tB) => {
+        Pi(x, ref tA, ref tB) => {
             let tA2 = normalize(tA);
             let tB2 = normalize(tB);
             pi(x, tA2, tB2)
         }
-        &App(ref f, ref a) => match normalize::<S, T, A>(f) {
+        App(ref f, ref a) => match normalize::<S, T, A>(f) {
             Lam(x, _A, b) => { // Beta reduce
                 let vx0 = V(x, 0);
                 let a2 = shift::<S, S, A>( 1, vx0, a);
@@ -848,11 +848,11 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             }
             f2 => match (f2, normalize::<S, T, A>(a)) {
                 // fold/build fusion for `List`
-                (App(box BuiltinValue(ListBuild), _), App(box App(box BuiltinValue(ListFold), _), box e2)) => normalize(&e2),
-                (App(box BuiltinValue(ListFold), _), App(box App(box BuiltinValue(ListBuild), _), box e2)) => normalize(&e2),
+                (App(box BuiltinValue(ListBuild), _), App(box App(box BuiltinValue(ListFold), _), box e2)) |
+                (App(box BuiltinValue(ListFold), _), App(box App(box BuiltinValue(ListBuild), _), box e2)) |
 
                 // fold/build fusion for `Natural`
-                (BuiltinValue(NaturalBuild), App(box BuiltinValue(NaturalFold), box e2)) => normalize(&e2),
+                (BuiltinValue(NaturalBuild), App(box BuiltinValue(NaturalFold), box e2)) |
                 (BuiltinValue(NaturalFold), App(box BuiltinValue(NaturalBuild), box e2)) => normalize(&e2),
 
             /*
@@ -900,9 +900,9 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                             }
                         }
                         fn check<S, A>(e: &Expr<S, A>) -> bool {
-                            match e {
-                                &App(box App(box Var(V("Cons", _)), _), ref e2) => check(e2),
-                                &Var(V("Nil", _)) => true,
+                            match *e {
+                                App(box App(box Var(V("Cons", _)), _), ref e2) => check(e2),
+                                Var(V("Nil", _)) => true,
                                 _ => false,
                             }
                         }
@@ -958,85 +958,85 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                 (f2, a2) => app(f2, a2),
             }
         },
-        &Let(f, _, ref r, ref b) => {
+        Let(f, _, ref r, ref b) => {
             let r2 = shift::<_, S, _>( 1, V(f, 0), r);
             let b2 = subst(V(f, 0), &r2, b);
             let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
             normalize(&b3)
         }
-        &Annot(ref x, _) => normalize(x),
-        &BuiltinType(t) => BuiltinType(t),
-        &BuiltinValue(v) => BuiltinValue(v),
-        &BoolLit(b) => BoolLit(b),
-        &BoolAnd(ref x, ref y) => {
+        Annot(ref x, _) => normalize(x),
+        BuiltinType(t) => BuiltinType(t),
+        BuiltinValue(v) => BuiltinValue(v),
+        BoolLit(b) => BoolLit(b),
+        BoolAnd(ref x, ref y) => {
             with_binop(BoolAnd, Expr::bool_lit,
                        |xn, yn| BoolLit(xn && yn),
                        normalize(x), normalize(y))
         }
-        &BoolOr(ref x, ref y) => {
+        BoolOr(ref x, ref y) => {
             with_binop(BoolOr, Expr::bool_lit,
                        |xn, yn| BoolLit(xn || yn),
                        normalize(x), normalize(y))
         }
-        &BoolEQ(ref x, ref y) => {
+        BoolEQ(ref x, ref y) => {
             with_binop(BoolEQ, Expr::bool_lit,
                        |xn, yn| BoolLit(xn == yn),
                        normalize(x), normalize(y))
         }
-        &BoolNE(ref x, ref y) => {
+        BoolNE(ref x, ref y) => {
             with_binop(BoolNE, Expr::bool_lit,
                        |xn, yn| BoolLit(xn != yn),
                        normalize(x), normalize(y))
         }
-        &BoolIf(ref b, ref t, ref f) => match normalize(b) {
+        BoolIf(ref b, ref t, ref f) => match normalize(b) {
             BoolLit(true) => normalize(t),
             BoolLit(false) => normalize(f),
             b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
         },
-        &NaturalLit(n) => NaturalLit(n),
-        &NaturalPlus(ref x, ref y) => {
+        NaturalLit(n) => NaturalLit(n),
+        NaturalPlus(ref x, ref y) => {
             with_binop(NaturalPlus, Expr::natural_lit,
                        |xn, yn| NaturalLit(xn + yn),
                        normalize(x), normalize(y))
         }
-        &NaturalTimes(ref x, ref y) => {
+        NaturalTimes(ref x, ref y) => {
             with_binop(NaturalTimes, Expr::natural_lit,
                        |xn, yn| NaturalLit(xn * yn),
                        normalize(x), normalize(y))
         }
-        &IntegerLit(n) => IntegerLit(n),
-        &DoubleLit(n) => DoubleLit(n),
-        &TextLit(ref t) => TextLit(t.clone()),
-        &TextAppend(ref x, ref y) => {
+        IntegerLit(n) => IntegerLit(n),
+        DoubleLit(n) => DoubleLit(n),
+        TextLit(ref t) => TextLit(t.clone()),
+        TextAppend(ref x, ref y) => {
             with_binop(TextAppend, Expr::text_lit,
                        |xt, yt| TextLit(xt + &yt),
                        normalize(x), normalize(y))
         }
-        &ListLit(ref t, ref es) => {
+        ListLit(ref t, ref es) => {
             let t2  = normalize(t);
             let es2 = es.iter().map(normalize).collect();
             ListLit(bx(t2), es2)
         }
-        &OptionalLit(ref t, ref es) => {
+        OptionalLit(ref t, ref es) => {
             let t2  = normalize(t);
             let es2 = es.iter().map(normalize).collect();
             OptionalLit(bx(t2), es2)
         }
-        &Record(ref kts) => Record(map_record_value(kts, normalize)),
-        &RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
-        &Union(ref kts) => Union(map_record_value(kts, normalize)),
-        &UnionLit(k, ref v, ref kvs) => UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize)),
-        &Combine(ref _x0, ref _y0) => unimplemented!(),
-        &Merge(ref _x, ref _y, ref _t) => unimplemented!(),
-        &Field(ref r, x) => match normalize(r) {
+        Record(ref kts) => Record(map_record_value(kts, normalize)),
+        RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
+        Union(ref kts) => Union(map_record_value(kts, normalize)),
+        UnionLit(k, ref v, ref kvs) => UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize)),
+        Combine(ref _x0, ref _y0) => unimplemented!(),
+        Merge(ref _x, ref _y, ref _t) => unimplemented!(),
+        Field(ref r, x) => match normalize(r) {
             RecordLit(kvs) => match kvs.get(x) {
                 Some(r2) => normalize(r2),
                 None => Field(bx(RecordLit(map_record_value(&kvs, normalize))), x),
             },
             r2 => Field(bx(r2), x),
         },
-        &Note(_, ref e) => normalize(e),
-        &Embed(ref a) => Embed(a.clone()),
+        Note(_, ref e) => normalize(e),
+        Embed(ref a) => Embed(a.clone()),
     }
 }
 
