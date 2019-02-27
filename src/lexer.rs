@@ -6,7 +6,7 @@ use core::BuiltinType::*;
 use core::BuiltinValue;
 use core::BuiltinValue::*;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
     Let,
     In,
@@ -15,19 +15,19 @@ pub enum Keyword {
     Else,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListLike {
     List,
     Optional,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Builtin {
     Type(BuiltinType),
     Value(BuiltinValue),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tok<'i> {
     Identifier(&'i str),
     Keyword(Keyword),
@@ -291,7 +291,7 @@ impl<'input> Lexer<'input> {
 
     fn skip_whitespace(&mut self) -> bool {
         let input = self.current_input();
-        let trimmed = input.trim_left();
+        let trimmed = input.trim_start();
         let whitespace_len = input.len() - trimmed.len();
         let skipped = whitespace_len > 0;
         if skipped {

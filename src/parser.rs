@@ -7,7 +7,7 @@ use lexer::{Lexer, LexicalError, Tok};
 pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError>;
 
 pub fn parse_expr(s: &str) -> Result<BoxExpr, ParseError>  {
-    grammar::parse_Expr(Lexer::new(s))
+    grammar::ExprParser::new().parse(Lexer::new(s))
 }
 
 #[test]
