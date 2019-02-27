@@ -1,23 +1,8 @@
-#![feature(box_patterns)]
-
-use bytecount;
-use lalrpop_util;
-use lalrpop_util::lalrpop_mod;
-use term_painter;
-
-pub mod context;
-mod core;
-pub use crate::core::*;
-lalrpop_mod!(pub grammar); // synthesized by LALRPOP
-mod grammar_util;
-pub mod lexer;
-pub mod parser;
-pub mod typecheck;
-
 use std::io::{self, Read};
 use std::error::Error;
-
 use term_painter::ToStyle;
+
+use dhall::*;
 
 const ERROR_STYLE: term_painter::Color = term_painter::Color::Red;
 const BOLD: term_painter::Attr = term_painter::Attr::Bold;
