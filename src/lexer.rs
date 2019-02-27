@@ -89,11 +89,11 @@ macro_rules! digits {
     }}
 }
 
-named!(natural<&str, usize>, preceded!(tag!("+"), digits!(usize, 10)));
+named!(natural<&str, usize>, digits!(usize, 10));
 named!(integral<&str, isize>, digits!(isize, 10));
 named!(integer<&str, isize>, alt!(
     preceded!(tag!("-"), map!(integral, |i: isize| -i)) |
-    integral
+    preceded!(tag!("+"), integral)
 ));
 named!(boolean<&str, bool>, alt!(
     value!(true, tag!("True")) |
