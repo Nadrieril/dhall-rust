@@ -3,14 +3,14 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt;
 
-use context::Context;
-use core;
-use core::{Expr, V, X, bx, normalize, shift, subst};
-use core::{pi, app};
-use core::BuiltinType::*;
-use core::BuiltinValue::*;
-use core::Const::*;
-use core::Expr::*;
+use crate::context::Context;
+use crate::core;
+use crate::core::{Expr, V, X, bx, normalize, shift, subst};
+use crate::core::{pi, app};
+use crate::core::BuiltinType::*;
+use crate::core::BuiltinValue::*;
+use crate::core::Const::*;
+use crate::core::Expr::*;
 
 use self::TypeMessage::*;
 

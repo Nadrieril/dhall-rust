@@ -1,15 +1,13 @@
 #![feature(box_patterns)]
 
-extern crate bytecount;
-#[macro_use]
-extern crate lalrpop_util;
-#[macro_use]
-extern crate nom;
-extern crate term_painter;
+use bytecount;
+use lalrpop_util;
+use lalrpop_util::lalrpop_mod;
+use term_painter;
 
 pub mod context;
 mod core;
-pub use core::*;
+pub use crate::core::*;
 lalrpop_mod!(pub grammar); // synthesized by LALRPOP
 mod grammar_util;
 pub mod lexer;

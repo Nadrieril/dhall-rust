@@ -290,7 +290,7 @@ impl<'i, S, A> Expr<'i, S, A> {
 
 impl<'i, S, A: Display> Display for Expr<'i, S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> { // buildExprA
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             &Annot(ref a, ref b) => { a.fmt_b(f)?; write!(f, " : ")?; b.fmt(f) }
             &Note(_, ref b) => b.fmt(f),
@@ -301,7 +301,7 @@ impl<'i, S, A: Display> Display for Expr<'i, S, A> {
 
 impl<'i, S, A: Display> Expr<'i, S, A> {
     fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             &Lam(a, ref b, ref c) => {
                 write!(f, "λ({} : ", a)?;
@@ -364,7 +364,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             // FIXME precedence
             &BoolOr(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" || ")?; b.fmt_c(f) }
@@ -381,7 +381,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             &App(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ")?; b.fmt_e(f) }
             &Note(_, ref b) => b.fmt_d(f),
@@ -390,7 +390,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_e(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             &Field(ref a, b) => { a.fmt_e(f)?; write!(f, ".{}", b) }
             &Note(_, ref b) => b.fmt_e(f),
@@ -399,7 +399,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use Expr::*;
+        use crate::Expr::*;
         match self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
@@ -464,7 +464,7 @@ impl Display for BuiltinType {
 
 impl Display for BuiltinValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use BuiltinValue::*;
+        use crate::BuiltinValue::*;
         f.write_str(match *self {
             ListBuild => "List/build",
             ListFold => "List/fold",
@@ -625,7 +625,7 @@ fn map_op2<T, U, V, F, G>(f: F, g: G, a: T, b: T) -> V
 /// name in order to avoid shifting the bound variables by mistake.
 ///
 pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i, T, A> {
-    use Expr::*;
+    use crate::Expr::*;
     let V(x, n) = v;
     match *e {
         Const(a) => Const(a),
@@ -721,7 +721,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
     where S: Clone,
           A: Clone
 {
-    use Expr::*;
+    use crate::Expr::*;
     let V(x, n) = v;
     match *b {
         Const(a) => Const(a),
@@ -823,8 +823,8 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
           T: Clone + fmt::Debug,
           A: Clone + fmt::Debug,
 {
-    use BuiltinValue::*;
-    use Expr::*;
+    use crate::BuiltinValue::*;
+    use crate::Expr::*;
     match *e {
         Const(k) => Const(k),
         Var(v) => Var(v),

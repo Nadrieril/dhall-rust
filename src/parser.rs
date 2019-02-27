@@ -1,8 +1,8 @@
 use lalrpop_util;
 
-use grammar;
-use grammar_util::BoxExpr;
-use lexer::{Lexer, LexicalError, Tok};
+use crate::grammar;
+use crate::grammar_util::BoxExpr;
+use crate::lexer::{Lexer, LexicalError, Tok};
 
 pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError>;
 
@@ -12,7 +12,7 @@ pub fn parse_expr(s: &str) -> Result<BoxExpr, ParseError>  {
 
 #[test]
 fn test_parse() {
-    use core::Expr::*;
+    use crate::core::Expr::*;
     println!("test {:?}", parse_expr("+3 + +5 * +10"));
     assert!(parse_expr("22").is_ok());
     assert!(parse_expr("(22)").is_ok());

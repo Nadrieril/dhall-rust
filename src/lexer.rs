@@ -1,10 +1,10 @@
-use nom;
+use nom::*;
 
-use core::Const;
-use core::BuiltinType;
-use core::BuiltinType::*;
-use core::BuiltinValue;
-use core::BuiltinValue::*;
+use crate::core::Const;
+use crate::core::BuiltinType;
+use crate::core::BuiltinType::*;
+use crate::core::BuiltinValue;
+use crate::core::BuiltinValue::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
@@ -359,7 +359,7 @@ fn test_lex() {
                     ParenL,
                     Identifier("b"),
                     Ascription,
-                    Builtin(self::Builtin::Type(::core::BuiltinType::Bool)),
+                    Builtin(self::Builtin::Type(crate::core::BuiltinType::Bool)),
                     ParenR,
                     Arrow,
                     Identifier("b"),
