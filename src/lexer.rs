@@ -64,7 +64,10 @@ pub enum Tok<'i> {
 }
 
 #[derive(Debug)]
-pub struct LexicalError<'a>(pub usize, pub nom::Err<&'a str>);
+pub enum LexicalError {
+    Error(usize, nom::simple_errors::Err<u32>),
+    Incomplete(nom::Needed),
+}
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
@@ -106,11 +109,11 @@ named!(identifier<&str, &str>, recognize!(preceded!(
 macro_rules! ident_tag {
     ($i:expr, $tag:expr) => {
         match identifier($i) {
-            Ok((i, s)) => {
+            nom::IResult::Done(i, s) => {
                 if s == $tag {
-                    Ok((i, s))
+                    nom::IResult::Done(i, s)
                 } else {
-                    Err(nom::Err::Error(error_position!($i, nom::ErrorKind::Tag)))
+                    nom::IResult::Error(error_position!(nom::ErrorKind::Tag, $i))
                 }
             }
             r => r,
@@ -143,20 +146,20 @@ named!(string_escape_numeric<&str, char>, map_opt!(alt!(
 ), ::std::char::from_u32));
 
 fn string_lit_inner(input: &str) -> nom::IResult<&str, String> {
-    use nom::Err;
+    use nom::IResult::*;;
     use nom::ErrorKind;
     let mut s = String::new();
     let mut cs = input.char_indices().peekable();
     while let Some((i, c)) = cs.next()  {
         match c {
-            '"' => return Ok((&input[i..], s)),
+            '"' => return nom::IResult::Done(&input[i..], s),
             '\\' => match cs.next() {
                 Some((_, s)) if s.is_whitespace() => {
                     while cs.peek().map(|&(_, s)| s.is_whitespace()) == Some(true) {
                         let _ = cs.next();
                     }
                     if cs.next().map(|p| p.1) != Some('\\') {
-                        return Err(Err::Error(error_position!(input, ErrorKind::Custom(4 /* FIXME */))));
+                        return Error(error_position!(ErrorKind::Custom(4 /* FIXME */), input));
                     }
                 }
                 Some((j, ec)) => {
@@ -165,23 +168,24 @@ fn string_lit_inner(input: &str) -> nom::IResult<&str, String> {
                         // FIXME Named ASCII escapes and control character escapes
                     } else {
                         match string_escape_numeric(&input[j..]) {
-                            Ok((rest, esc)) => {
+                            Done(rest, esc) => {
                                 let &(k, _) = cs.peek().unwrap();
                                 // digits are always single byte ASCII characters
                                 let consumed = input[k..].len() - rest.len();
                                 for _ in 0..consumed { let _ = cs.next(); }
                                 s.push(esc);
                             }
-                            Err(e) => return Err(e),
+                            Incomplete(s) => return Incomplete(s),
+                            Error(e) => return Error(e),
                         }
                     }
                 },
-                _ => return Err(Err::Error(error_position!(input, ErrorKind::Custom(5 /* FIXME */)))),
+                _ => return Error(error_position!(ErrorKind::Custom(5 /* FIXME */), input)),
             },
             _ => s.push(c),
         }
     }
-    Err(Err::Error(error_position!(input, ErrorKind::Custom(3 /* FIXME */))))
+    Error(error_position!(ErrorKind::Custom(3 /* FIXME */), input))
 }
 
 named!(string_lit<&str, String>, delimited!(tag!("\""), string_lit_inner, tag!("\"")));
@@ -318,26 +322,30 @@ impl<'input> Lexer<'input> {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Spanned<Tok<'input>, usize, LexicalError<'input>>;
+    type Item = Spanned<Tok<'input>, usize, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        use nom::IResult::*;
         self.skip_comments_and_whitespace();
         let input = self.current_input();
         if input.is_empty() {
             return None;
         }
         match token(input) {
-            Ok((rest, t)) => {
+            Done(rest, t) => {
                 let parsed_len = input.len() - rest.len();
                 //println!("parsed {} bytes => {:?}", parsed_len, t);
                 let start = self.offset;
                 self.offset += parsed_len;
                 Some(Ok((start, t, self.offset)))
             }
-            Err(e) => {
+            Error(e) => {
                 let offset = self.offset;
-                // self.offset = self.input.len();
-                Some(Err(LexicalError(offset, e)))
+                self.offset = self.input.len();
+                Some(Err(LexicalError::Error(offset, e)))
+            }
+            Incomplete(needed) => {
+                Some(Err(LexicalError::Incomplete(needed)))
             }
         }
     }
@@ -346,12 +354,6 @@ impl<'input> Iterator for Lexer<'input> {
 #[test]
 fn test_lex() {
     use self::Tok::*;
-    let s = "22";
-    let expected = [Lambda, Bool(false)];
-    let lexer = Lexer::new(s);
-    let tokens = lexer.map(|r| r.unwrap().1).collect::<Vec<_>>();
-    assert_eq!(&tokens, &expected);
-
     let s = "λ(b : Bool) → b == False";
     let expected = [Lambda,
                     ParenL,
@@ -367,9 +369,9 @@ fn test_lex() {
     let tokens = lexer.map(|r| r.unwrap().1).collect::<Vec<_>>();
     assert_eq!(&tokens, &expected);
 
-    assert_eq!(string_lit(r#""a\&b""#), Ok(("", "ab".to_owned())));
-    assert_eq!(string_lit(r#""a\     \b""#), Ok(("", "ab".to_owned())));
+    assert_eq!(string_lit(r#""a\&b""#).to_result(), Ok("ab".to_owned()));
+    assert_eq!(string_lit(r#""a\     \b""#).to_result(), Ok("ab".to_owned()));
     assert!(string_lit(r#""a\     b""#).is_err());
-    assert_eq!(string_lit(r#""a\nb""#), Ok(("", "a\nb".to_owned())));
-    assert_eq!(string_lit(r#""\o141\x62\99""#), Ok(("", "abd".to_owned())));
+    assert_eq!(string_lit(r#""a\nb""#).to_result(), Ok("a\nb".to_owned()));
+    assert_eq!(string_lit(r#""\o141\x62\99""#).to_result(), Ok("abc".to_owned()));
 }

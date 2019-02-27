@@ -4,7 +4,7 @@ use grammar;
 use grammar_util::BoxExpr;
 use lexer::{Lexer, LexicalError, Tok};
 
-pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError<'i>>;
+pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError>;
 
 pub fn parse_expr(s: &str) -> Result<BoxExpr, ParseError>  {
     grammar::ExprParser::new().parse(Lexer::new(s))

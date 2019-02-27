@@ -10,5 +10,5 @@ lalrpop = "0.16.3"
 [dependencies]
 bytecount = "0.5.1"
 lalrpop-util = "0.16.3"
-nom = "4.0.0"
+nom = "3.0.0"
 term-painter = "0.2.3"

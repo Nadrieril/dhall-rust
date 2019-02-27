@@ -13,7 +13,7 @@ grammar<'input>;
 
 extern {
     type Location = usize;
-    type Error = LexicalError<'input>;
+    type Error = LexicalError;
 
     enum Tok<'input> {
         Pi => Tok::Pi,
