@@ -214,6 +214,7 @@ named!(builtin<&str, Builtin>, alt!(
     value!(Builtin::Value(NaturalIsZero), ident_tag!("Natural/isZero")) |
     value!(Builtin::Value(NaturalEven), ident_tag!("Natural/even")) |
     value!(Builtin::Value(NaturalOdd), ident_tag!("Natural/odd")) |
+    value!(Builtin::Value(NaturalShow), ident_tag!("Natural/show")) |
     value!(Builtin::Type(Natural), ident_tag!("Natural")) |
     value!(Builtin::Type(Integer), ident_tag!("Integer")) |
     value!(Builtin::Type(Double), ident_tag!("Double")) |

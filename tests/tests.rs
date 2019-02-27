@@ -1,12 +1,25 @@
 use dhall::*;
 
+macro_rules! include_test_str {
+    ($x:expr) => { include_str!(concat!("../dhall-lang/tests/", $x, ".dhall")) };
+}
+
+macro_rules! include_test_strs_ab {
+    ($x:expr) => { (include_test_str!(concat!($x, "A")), include_test_str!(concat!($x, "B"))) };
+}
+
+macro_rules! test_normalization {
+    ($x:expr) => {
+        let (expr_str, expected_str) = include_test_strs_ab!($x);
+        let expr = parser::parse_expr(&expr_str).unwrap();
+        let expected = parser::parse_expr(&expected_str).unwrap();
+        assert_eq!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
+    };
+}
+
+
 #[test]
 fn test(){
-    let buffer_expr = String::from(include_str!("../dhall-lang/tests/normalization/success/simple/naturalPlusA.dhall"));
-    let buffer_expected = String::from(include_str!("../dhall-lang/tests/normalization/success/simple/naturalPlusB.dhall"));
-    let expr = parser::parse_expr(&buffer_expr).unwrap();
-    let expected = parser::parse_expr(&buffer_expected).unwrap();
-    // let type_expr = typecheck::type_of(&expr).unwrap();
-    // let normalized = normalize::<_, X, _>(&expr);
-    assert_eq!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
+    test_normalization!("normalization/success/simple/naturalPlus");
+    test_normalization!("normalization/success/simple/naturalShow");
 }

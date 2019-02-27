@@ -213,6 +213,7 @@ pub enum BuiltinValue {
     NaturalEven,
     ///  `NaturalOdd                               ~  Natural/odd`
     NaturalOdd,
+    NaturalShow,
     ///  `ListBuild                                ~  List/build`
     ListBuild,
     ///  `ListFold                                 ~  List/fold`
@@ -478,6 +479,7 @@ impl Display for BuiltinValue {
             NaturalFold => "Natural/fold",
             NaturalIsZero => "Natural/isZero",
             NaturalOdd => "Natural/odd",
+            NaturalShow => "Natural/show",
             OptionalFold => "Optional/fold",
         })
     }
@@ -882,6 +884,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                 (BuiltinValue(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
                 (BuiltinValue(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
                 (BuiltinValue(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
+                (BuiltinValue(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
                 (App(f@box BuiltinValue(ListBuild), box t), k) => {
                         let labeled =
                             normalize::<_, T, _>(&app(app(app(k.clone(), app(
