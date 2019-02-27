@@ -71,7 +71,7 @@ fn main() {
     io::stdin().read_to_string(&mut buffer).unwrap();
     let expr = match parser::parse_expr(&buffer) {
         Ok(e) => e,
-        Err(lalrpop_util::ParseError::User { error: lexer::LexicalError::Error(pos, e) }) => {
+        Err(lalrpop_util::ParseError::User { error: lexer::LexicalError(pos, e) }) => {
             print_error(&format!("Unexpected token {:?}", e), &buffer, pos, pos);
             return;
         }
