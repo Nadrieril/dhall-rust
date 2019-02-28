@@ -13,3 +13,5 @@ bytecount = "0.5.1"
 lalrpop-util = "0.16.3"
 nom = "3.0.0"
 term-painter = "0.2.3"
+pest = { git = "https://github.com/pest-parser/pest" }
+pest_derive = "2.0"
