@@ -1,13 +1,13 @@
-use core;
-use core::bx;
-use core::Expr::*;
-use core::BuiltinType::*;
-use grammar_util::*;
-use lexer::*;
-
 use std::collections::BTreeMap;
 use std::iter;
 use std::iter::FromIterator;
+
+use crate::core;
+use crate::core::bx;
+use crate::core::Expr::*;
+use crate::core::BuiltinType::*;
+use crate::grammar_util::*;
+use crate::lexer::*;
 
 grammar<'input>;
 
