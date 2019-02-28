@@ -9,6 +9,7 @@ build = "build.rs"
 lalrpop = "0.16.3"
 abnf = { git = "https://github.com/Nadrieril/abnf" }
 itertools = "0.8.0"
+pretty = "0.5.2"
 
 [dependencies]
 bytecount = "0.5.1"

@@ -7,12 +7,21 @@ use lalrpop;
 
 fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::io::Result<String> {
     use abnf::abnf::*;
-    fn format_rule(x: Rule, visibility_map: &HashMap<String, bool>) -> String {
+    use pretty::{Doc, BoxDoc};
+    fn format_rule(x: Rule, visibility_map: &HashMap<String, bool>) -> Doc<BoxDoc<()>> {
         let rulename = format_rulename(x.name);
         let contents = format_alternation(x.elements);
         let visible = visibility_map.get(&rulename).unwrap_or(&true);
-        let visible = if *visible {""} else {"_"};
-        format!("{} = {}{{ {} }}", rulename, visible, contents)
+        let visible = if *visible { "" } else { "_" };
+        Doc::nil()
+            .append(Doc::text(rulename))
+            .append(Doc::text(" = "))
+            .append(Doc::text(visible))
+            .append(Doc::text("{"))
+            .append(Doc::space().append(contents).nest(2))
+            .append(Doc::space())
+            .append(Doc::text("}"))
+            .group()
     }
     fn format_rulename(x: String) -> String {
         let x = x.replace("-", "_");
@@ -22,14 +31,21 @@ fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::
             x
         }
     }
-    fn format_alternation(x: Alternation) -> String {
-        x.concatenations.into_iter().map(format_concatenation).join("\n    | ")
+    fn format_alternation(x: Alternation) -> Doc<'static, BoxDoc<'static, ()>> {
+        Doc::intersperse(
+            x.concatenations.into_iter().map(format_concatenation),
+            Doc::space().append(Doc::text("| "))
+        )
     }
-    fn format_concatenation(x: Concatenation) -> String {
-        x.repetitions.into_iter().map(format_repetition).join(" ~ ")
+    fn format_concatenation(x: Concatenation) -> Doc<'static, BoxDoc<'static, ()>> {
+        Doc::intersperse(
+            x.repetitions.into_iter().map(format_repetition),
+            Doc::text(" ~ ")
+        )
     }
-    fn format_repetition(x: Repetition) -> String {
-        format!("{}{}", format_element(x.element), x.repeat.map(format_repeat).unwrap_or("".into()))
+    fn format_repetition(x: Repetition) -> Doc<'static, BoxDoc<'static, ()>> {
+        format_element(x.element)
+            .append(x.repeat.map(format_repeat).map(Doc::text).unwrap_or(Doc::nil()))
     }
     fn format_repeat(x: Repeat) -> String {
         match (x.min.unwrap_or(0), x.max) {
@@ -41,14 +57,20 @@ fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::
             (min, Some(max)) => format!("{{{},{}}}", min, max),
         }
     }
-    fn format_element(x: Element) -> String {
+    fn format_element(x: Element) -> Doc<'static, BoxDoc<'static, ()>> {
         use abnf::abnf::Element::*;
         match x {
-            Rulename(s) => format_rulename(s),
-            Group(g) => format!("({})", format_alternation(g.alternation)),
-            Option(o) => format!("({})?", format_alternation(o.alternation)),
-            CharVal(s) => format!("^\"{}\"", s.replace("\"", "\\\"").replace("\\", "\\\\")),
-            NumVal(r) => format_range(r),
+            Rulename(s) => Doc::text(format_rulename(s)),
+            Group(g) =>
+                Doc::text("(")
+                    .append(format_alternation(g.alternation).nest(4).group())
+                    .append(Doc::text(")")),
+            Option(o) =>
+                Doc::text("(")
+                    .append(format_alternation(o.alternation).nest(4).group())
+                    .append(Doc::text(")?")),
+            CharVal(s) => Doc::text(format!("^\"{}\"", s.replace("\"", "\\\"").replace("\\", "\\\\"))),
+            NumVal(r) => Doc::text(format_range(r)),
             ProseVal(_) => unimplemented!(),
         }
     }
@@ -74,7 +96,9 @@ fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::
     let make_err = |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
 
     let rules = rulelist_comp(&data).map_err(make_err)?.1;
-    Ok(rules.into_iter().map(|x| format_rule(x, visibility_map)).join("\n"))
+    let formatted_rules = rules.into_iter().map(|x| format_rule(x, visibility_map));
+    let doc: Doc<_> = Doc::intersperse(formatted_rules, Doc::newline());
+    Ok(format!("{}", doc.pretty(80)))
 }
 
 fn main() -> std::io::Result<()> {
