@@ -7,6 +7,8 @@ build = "build.rs"
 
 [build-dependencies]
 lalrpop = "0.16.3"
+abnf = { git = "https://github.com/Nadrieril/abnf" }
+itertools = "0.8.0"
 
 [dependencies]
 bytecount = "0.5.1"

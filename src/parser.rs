@@ -13,13 +13,9 @@ pub fn parse_expr(s: &str) -> Result<BoxExpr, ParseError>  {
 
 use pest::Parser;
 use pest::error::Error;
-use pest_derive::*;
-
-#[derive(Parser)]
-#[grammar = "dhall.pest"]
-struct DhallParser;
-
 use pest::iterators::Pair;
+use crate::generated_parser::{DhallParser, Rule};
+
 fn debug_pair(pair: Pair<Rule>) {
     fn aux(indent: usize, pair: Pair<Rule>) {
         let indent_str = "| ".repeat(indent);
@@ -61,11 +57,11 @@ pub fn parse_expr_pest(s: &str) -> Result<BoxExpr, Error<Rule>>  {
 fn test_parse() {
     use crate::core::Expr::*;
     let expr = "((22 + 3) * 10)";
+    println!("{:?}", parse_expr(expr));
     match parse_expr_pest(expr) {
         Err(e) => println!("{}", e),
         ok => println!("{:?}", ok),
     }
-    println!("{:?}", parse_expr(expr));
     assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr(expr).unwrap());
     assert!(false);
 
