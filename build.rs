@@ -139,8 +139,6 @@ fn main() -> std::io::Result<()> {
             rule_settings.insert(line, PestRuleSettings { visible: true, ..Default::default() });
         }
     }
-    let simple_label_replace = r#"!keyword ~ simple_label_first_char ~ simple_label_next_char* | keyword ~ simple_label_next_char+"#;
-    rule_settings.insert("simple_label".into(), PestRuleSettings { visible: true, replace: Some(simple_label_replace.into()) });
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
