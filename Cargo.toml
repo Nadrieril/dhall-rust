@@ -1,20 +1,6 @@
-[package]
-name = "dhall"
-version = "0.1.0"
-authors = ["NanoTech <nanotech@nanotechcorp.net>"]
-edition = "2018"
-build = "build.rs"
+[workspace]
 
-[build-dependencies]
-lalrpop = "0.16.3"
-abnf = { git = "https://github.com/Nadrieril/abnf" }
-itertools = "0.8.0"
-pretty = "0.5.2"
-
-[dependencies]
-bytecount = "0.5.1"
-lalrpop-util = "0.16.3"
-nom = "3.0.0"
-term-painter = "0.2.3"
-pest = { git = "https://github.com/pest-parser/pest" }
-pest_derive = "2.0"
+members = [
+    "dhall",
+    "abnf_to_pest"
+]

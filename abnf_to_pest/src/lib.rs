@@ -1,20 +1,18 @@
-use std::fs::File;
-use std::io::{Read,Write,BufReader,BufRead};
 use std::collections::HashMap;
 use itertools::Itertools;
 
-use lalrpop;
-
-struct PestRuleSettings {
-    visible: bool,
-    replace: Option<String>,
+pub struct PestRuleSettings {
+    pub visible: bool,
+    pub replace: Option<String>,
 }
 
 impl Default for PestRuleSettings {
-    fn default() -> Self { PestRuleSettings { visible: true, replace: None } }
+    fn default() -> Self {
+        PestRuleSettings { visible: true, replace: None }
+    }
 }
 
-fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSettings>) -> std::io::Result<String> {
+pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSettings>) -> std::io::Result<String> {
     use abnf::abnf::*;
     use pretty::{Doc, BoxDoc};
     fn format_rule(x: Rule, rule_settings: &HashMap<String, PestRuleSettings>) -> Doc<BoxDoc<()>> {
@@ -114,35 +112,3 @@ fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSettings
     Ok(format!("{}", doc.pretty(80)))
 }
 
-fn main() -> std::io::Result<()> {
-    lalrpop::process_root().unwrap();
-    println!("cargo:rerun-if-changed=src/grammar.lalrpop");
-
-
-    let abnf_path = "dhall-lang/standard/dhall.abnf";
-    let visibility_path = "src/dhall.pest.visibility";
-    let pest_path = "src/dhall.pest";
-    println!("cargo:rerun-if-changed={}", abnf_path);
-    println!("cargo:rerun-if-changed={}", visibility_path);
-
-    let mut file = File::open(abnf_path)?;
-    let mut data = Vec::new();
-    file.read_to_end(&mut data)?;
-    data.push('\n' as u8);
-
-    let mut rule_settings: HashMap<String, PestRuleSettings> = HashMap::new();
-    for line in BufReader::new(File::open(visibility_path)?).lines() {
-        let line = line?;
-        if line.len() >= 2 && &line[0..2] == "# " {
-            rule_settings.insert(line[2..].into(), PestRuleSettings { visible: false, ..Default::default() });
-        } else {
-            rule_settings.insert(line, PestRuleSettings { visible: true, ..Default::default() });
-        }
-    }
-
-    let mut file = File::create(pest_path)?;
-    writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
-    writeln!(&mut file, "final_expression = _{{ SOI ~ complete_expression ~ EOI }}")?;
-
-    Ok(())
-}

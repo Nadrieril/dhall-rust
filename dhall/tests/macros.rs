@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! include_test_str {
-    ($x:expr) => { include_str!(concat!("../dhall-lang/tests/", $x, ".dhall")) };
+    ($x:expr) => { include_str!(concat!("../../dhall-lang/tests/", $x, ".dhall")) };
 }
 
 #[macro_export]
