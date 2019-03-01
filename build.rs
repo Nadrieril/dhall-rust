@@ -5,14 +5,27 @@ use itertools::Itertools;
 
 use lalrpop;
 
-fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::io::Result<String> {
+struct PestRuleSettings {
+    visible: bool,
+    replace: Option<String>,
+}
+
+impl Default for PestRuleSettings {
+    fn default() -> Self { PestRuleSettings { visible: true, replace: None } }
+}
+
+fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSettings>) -> std::io::Result<String> {
     use abnf::abnf::*;
     use pretty::{Doc, BoxDoc};
-    fn format_rule(x: Rule, visibility_map: &HashMap<String, bool>) -> Doc<BoxDoc<()>> {
+    fn format_rule(x: Rule, rule_settings: &HashMap<String, PestRuleSettings>) -> Doc<BoxDoc<()>> {
         let rulename = format_rulename(x.name);
-        let contents = format_alternation(x.elements);
-        let visible = visibility_map.get(&rulename).unwrap_or(&true);
-        let visible = if *visible { "" } else { "_" };
+        let default = Default::default();
+        let setting = rule_settings.get(&rulename).unwrap_or(&default);
+        let visible = if setting.visible { "" } else { "_" };
+        let contents = match setting.replace {
+            None => format_alternation(x.elements),
+            Some(ref x) => Doc::text(x.clone()),
+        };
         Doc::nil()
             .append(Doc::text(rulename))
             .append(Doc::text(" = "))
@@ -96,7 +109,7 @@ fn abnf_to_pest(data: &Vec<u8>, visibility_map: &HashMap<String, bool>) -> std::
     let make_err = |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
 
     let rules = rulelist_comp(&data).map_err(make_err)?.1;
-    let formatted_rules = rules.into_iter().map(|x| format_rule(x, visibility_map));
+    let formatted_rules = rules.into_iter().map(|x| format_rule(x, rule_settings));
     let doc: Doc<_> = Doc::intersperse(formatted_rules, Doc::newline());
     Ok(format!("{}", doc.pretty(80)))
 }
@@ -117,18 +130,20 @@ fn main() -> std::io::Result<()> {
     file.read_to_end(&mut data)?;
     data.push('\n' as u8);
 
-    let mut visibility_map: HashMap<String, bool> = HashMap::new();
+    let mut rule_settings: HashMap<String, PestRuleSettings> = HashMap::new();
     for line in BufReader::new(File::open(visibility_path)?).lines() {
         let line = line?;
         if line.len() >= 2 && &line[0..2] == "# " {
-            visibility_map.insert(line[2..].into(), false);
+            rule_settings.insert(line[2..].into(), PestRuleSettings { visible: false, ..Default::default() });
         } else {
-            visibility_map.insert(line, true);
+            rule_settings.insert(line, PestRuleSettings { visible: true, ..Default::default() });
         }
     }
+    let simple_label_replace = r#"!keyword ~ simple_label_first_char ~ simple_label_next_char* | keyword ~ simple_label_next_char+"#;
+    rule_settings.insert("simple_label".into(), PestRuleSettings { visible: true, replace: Some(simple_label_replace.into()) });
 
     let mut file = File::create(pest_path)?;
-    writeln!(&mut file, "{}", abnf_to_pest(&data, &visibility_map)?)?;
+    writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
     writeln!(&mut file, "final_expression = _{{ SOI ~ complete_expression ~ EOI }}")?;
 
     Ok(())
