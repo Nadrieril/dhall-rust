@@ -1,10 +1,8 @@
 use nom::*;
 
 use crate::core::Const;
-use crate::core::BuiltinType;
-use crate::core::BuiltinType::*;
-use crate::core::BuiltinValue;
-use crate::core::BuiltinValue::*;
+use crate::core::Builtin;
+use crate::core::Builtin::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
@@ -19,12 +17,6 @@ pub enum Keyword {
 pub enum ListLike {
     List,
     Optional,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Builtin {
-    Type(BuiltinType),
-    Value(BuiltinValue),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,25 +201,25 @@ named!(list_like<&str, ListLike>, alt!(
 ));
 
 named!(builtin<&str, Builtin>, alt!(
-    value!(Builtin::Value(NaturalFold), ident_tag!("Natural/fold")) |
-    value!(Builtin::Value(NaturalBuild), ident_tag!("Natural/build")) |
-    value!(Builtin::Value(NaturalIsZero), ident_tag!("Natural/isZero")) |
-    value!(Builtin::Value(NaturalEven), ident_tag!("Natural/even")) |
-    value!(Builtin::Value(NaturalOdd), ident_tag!("Natural/odd")) |
-    value!(Builtin::Value(NaturalShow), ident_tag!("Natural/show")) |
-    value!(Builtin::Type(Natural), ident_tag!("Natural")) |
-    value!(Builtin::Type(Integer), ident_tag!("Integer")) |
-    value!(Builtin::Type(Double), ident_tag!("Double")) |
-    value!(Builtin::Type(Text), ident_tag!("Text")) |
-    value!(Builtin::Value(ListBuild), ident_tag!("List/build")) |
-    value!(Builtin::Value(ListFold), ident_tag!("List/fold")) |
-    value!(Builtin::Value(ListLength), ident_tag!("List/length")) |
-    value!(Builtin::Value(ListHead), ident_tag!("List/head")) |
-    value!(Builtin::Value(ListLast), ident_tag!("List/last")) |
-    value!(Builtin::Value(ListIndexed), ident_tag!("List/indexed")) |
-    value!(Builtin::Value(ListReverse), ident_tag!("List/reverse")) |
-    value!(Builtin::Value(OptionalFold), ident_tag!("Optional/fold")) |
-    value!(Builtin::Type(Bool), ident_tag!("Bool"))
+    value!(NaturalFold, ident_tag!("Natural/fold")) |
+    value!(NaturalBuild, ident_tag!("Natural/build")) |
+    value!(NaturalIsZero, ident_tag!("Natural/isZero")) |
+    value!(NaturalEven, ident_tag!("Natural/even")) |
+    value!(NaturalOdd, ident_tag!("Natural/odd")) |
+    value!(NaturalShow, ident_tag!("Natural/show")) |
+    value!(Natural, ident_tag!("Natural")) |
+    value!(Integer, ident_tag!("Integer")) |
+    value!(Double, ident_tag!("Double")) |
+    value!(Text, ident_tag!("Text")) |
+    value!(ListBuild, ident_tag!("List/build")) |
+    value!(ListFold, ident_tag!("List/fold")) |
+    value!(ListLength, ident_tag!("List/length")) |
+    value!(ListHead, ident_tag!("List/head")) |
+    value!(ListLast, ident_tag!("List/last")) |
+    value!(ListIndexed, ident_tag!("List/indexed")) |
+    value!(ListReverse, ident_tag!("List/reverse")) |
+    value!(OptionalFold, ident_tag!("Optional/fold")) |
+    value!(Bool, ident_tag!("Bool"))
 ));
 
 named!(token<&str, Tok>, alt!(
@@ -360,7 +352,7 @@ fn test_lex() {
                     ParenL,
                     Identifier("b"),
                     Ascription,
-                    Builtin(self::Builtin::Type(crate::core::BuiltinType::Bool)),
+                    Builtin(crate::core::Builtin::Bool),
                     ParenR,
                     Arrow,
                     Identifier("b"),

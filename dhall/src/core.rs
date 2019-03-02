@@ -126,10 +126,8 @@ pub enum Expr<'i, S, A> {
     Let(&'i str, Option<Box<Expr<'i, S, A>>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Annot x t                                ~  x : t`
     Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    /// Built-in types
-    BuiltinType(BuiltinType),
-    /// Built-in function values
-    BuiltinValue(BuiltinValue),
+    /// Built-in values
+    Builtin(Builtin),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolAnd x y                              ~  x && y`
@@ -183,9 +181,9 @@ pub enum Expr<'i, S, A> {
     FailedParse(String, Vec<Expr<'i, S, A>>),
 }
 
-/// Built-in types
+/// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BuiltinType {
+pub enum Builtin {
     ///  `Bool                                     ~  Bool`
     Bool,
     ///  `Natural                                  ~  Natural`
@@ -200,11 +198,6 @@ pub enum BuiltinType {
     List,
     ///  `Optional                                 ~  Optional`
     Optional,
-}
-
-/// Built-in function values
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BuiltinValue {
     ///  `NaturalFold                              ~  Natural/fold`
     NaturalFold,
     ///  `NaturalBuild                             ~  Natural/build`
@@ -246,15 +239,9 @@ impl<'i, S, A> From<&'i str> for Expr<'i, S, A> {
     }
 }
 
-impl<'i, S, A> From<BuiltinType> for Expr<'i, S, A> {
-    fn from(t: BuiltinType) -> Self {
-        Expr::BuiltinType(t)
-    }
-}
-
-impl<'i, S, A> From<BuiltinValue> for Expr<'i, S, A> {
-    fn from(t: BuiltinValue) -> Self {
-        Expr::BuiltinValue(t)
+impl<'i, S, A> From<Builtin> for Expr<'i, S, A> {
+    fn from(t: Builtin) -> Self {
+        Expr::Builtin(t)
     }
 }
 
@@ -406,8 +393,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
         match self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
-            &BuiltinType(t) => t.fmt(f),
-            &BuiltinValue(v) => v.fmt(f),
+            &Builtin(v) => v.fmt(f),
             &BoolLit(true) => f.write_str("True"),
             &BoolLit(false) => f.write_str("False"),
             &IntegerLit(a) => a.fmt(f),
@@ -459,29 +445,30 @@ impl Display for Const {
     }
 }
 
-impl Display for BuiltinType {
+impl Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        <Self as fmt::Debug>::fmt(self, f)
-    }
-}
-
-impl Display for BuiltinValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::BuiltinValue::*;
+        use crate::Builtin::*;
         f.write_str(match *self {
-            ListBuild => "List/build",
-            ListFold => "List/fold",
-            ListHead => "List/head",
-            ListIndexed => "List/indexed",
-            ListLast => "List/last",
-            ListLength => "List/length",
-            ListReverse => "List/reverse",
-            NaturalBuild => "Natural/build",
-            NaturalEven => "Natural/even",
+            Bool     => "Bool",
+            Natural  => "Natural",
+            Integer  => "Integer",
+            Double   => "Double",
+            Text     => "Text",
+            List     => "List",
+            Optional => "Optional",
             NaturalFold => "Natural/fold",
+            NaturalBuild => "Natural/build",
             NaturalIsZero => "Natural/isZero",
+            NaturalEven => "Natural/even",
             NaturalOdd => "Natural/odd",
             NaturalShow => "Natural/show",
+            ListBuild => "List/build",
+            ListFold => "List/fold",
+            ListLength => "List/length",
+            ListHead => "List/head",
+            ListLast => "List/last",
+            ListIndexed => "List/indexed",
+            ListReverse => "List/reverse",
             OptionalFold => "Optional/fold",
         })
     }
@@ -658,8 +645,7 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
             Let(f, mt2, bx(r2), bx(e2))
         }
         Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
-        BuiltinType(t) => BuiltinType(t),
-        BuiltinValue(v) => BuiltinValue(v),
+        Builtin(v) => Builtin(v),
         BoolLit(a) => BoolLit(a),
         BoolAnd(ref a, ref b) => shift_op2(BoolAnd, d, v, a, b),
         BoolOr(ref a, ref b) => shift_op2(BoolOr, d, v, a, b),
@@ -756,8 +742,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
             Let(f, mt2, bx(r2), bx(b2))
         }
         Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
-        BuiltinType(t) => BuiltinType(t),
-        BuiltinValue(v) => BuiltinValue(v),
+        Builtin(v) => Builtin(v),
         BoolLit(a) => BoolLit(a),
         BoolAnd(ref a, ref b) => subst_op2(BoolAnd, v, e, a, b),
         BoolOr(ref a, ref b) => subst_op2(BoolOr, v, e, a, b),
@@ -829,7 +814,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
           T: Clone + fmt::Debug,
           A: Clone + fmt::Debug,
 {
-    use crate::BuiltinValue::*;
+    use crate::Builtin::*;
     use crate::Expr::*;
     match *e {
         Const(k) => Const(k),
@@ -854,12 +839,12 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             }
             f2 => match (f2, normalize::<S, T, A>(a)) {
                 // fold/build fusion for `List`
-                (App(box BuiltinValue(ListBuild), _), App(box App(box BuiltinValue(ListFold), _), box e2)) |
-                (App(box BuiltinValue(ListFold), _), App(box App(box BuiltinValue(ListBuild), _), box e2)) |
+                (App(box Builtin(ListBuild), _), App(box App(box Builtin(ListFold), _), box e2)) |
+                (App(box Builtin(ListFold), _), App(box App(box Builtin(ListBuild), _), box e2)) |
 
                 // fold/build fusion for `Natural`
-                (BuiltinValue(NaturalBuild), App(box BuiltinValue(NaturalFold), box e2)) |
-                (BuiltinValue(NaturalFold), App(box BuiltinValue(NaturalBuild), box e2)) => normalize(&e2),
+                (Builtin(NaturalBuild), App(box Builtin(NaturalFold), box e2)) |
+                (Builtin(NaturalFold), App(box Builtin(NaturalBuild), box e2)) => normalize(&e2),
 
             /*
                 App (App (App (App NaturalFold (NaturalLit n0)) _) succ') zero ->
@@ -885,14 +870,14 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                         go (Var "Zero")          = True
                         go  _                    = False
                         */
-                (BuiltinValue(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
-                (BuiltinValue(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
-                (BuiltinValue(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
-                (BuiltinValue(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
-                (App(f@box BuiltinValue(ListBuild), box t), k) => {
+                (Builtin(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
+                (Builtin(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
+                (Builtin(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
+                (Builtin(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
+                (App(f@box Builtin(ListBuild), box t), k) => {
                         let labeled =
                             normalize::<_, T, _>(&app(app(app(k.clone(), app(
-                                BuiltinType(self::BuiltinType::List), t.clone())), "Cons"), "Nil"));
+                                Builtin(self::Builtin::List), t.clone())), "Cons"), "Nil"));
 
                         fn list_to_vector<'i, S, A>(v: &mut Vec<Expr<'i, S, A>>, e: Expr<'i, S, A>)
                             where S: Clone, A: Clone
@@ -922,20 +907,20 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                             app(App(f, bx(t)), k)
                         }
                     }
-                (App(box App(box App(box App(box BuiltinValue(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
+                (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
                     let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| // foldr
                         App(bx(App(cons.clone(), bx(y))), bx(ys))
                     );
                     normalize(&e2)
                 }
                 (App(f, x_), ListLit(t, ys)) => match *f {
-                    BuiltinValue(ListLength) =>
+                    Builtin(ListLength) =>
                         NaturalLit(ys.len()),
-                    BuiltinValue(ListHead) =>
+                    Builtin(ListHead) =>
                         normalize(&OptionalLit(t, ys.into_iter().take(1).collect())),
-                    BuiltinValue(ListLast) =>
+                    Builtin(ListLast) =>
                         normalize(&OptionalLit(t, ys.into_iter().last().into_iter().collect())),
-                    BuiltinValue(ListReverse) => {
+                    Builtin(ListReverse) => {
                         let mut xs = ys;
                         xs.reverse();
                         normalize(&ListLit(t, xs))
@@ -972,8 +957,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             normalize(&b3)
         }
         Annot(ref x, _) => normalize(x),
-        BuiltinType(t) => BuiltinType(t),
-        BuiltinValue(v) => BuiltinValue(v),
+        Builtin(v) => Builtin(v),
         BoolLit(b) => BoolLit(b),
         BoolAnd(ref x, ref y) => {
             with_binop(BoolAnd, Expr::bool_lit,

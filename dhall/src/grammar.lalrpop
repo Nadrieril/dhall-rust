@@ -5,7 +5,8 @@ use std::iter::FromIterator;
 use crate::core;
 use crate::core::bx;
 use crate::core::Expr::*;
-use crate::core::BuiltinType::*;
+use crate::core::Builtin;
+use crate::core::Builtin::*;
 use crate::grammar_util::*;
 use crate::lexer::*;
 
@@ -120,9 +121,9 @@ ExprF: BoxExpr<'input> = {
     Text => bx(TextLit(<>)),
     Label => bx(Var(core::V(<>, 0))), // FIXME support var@n syntax
     Const => bx(Const(<>)),
-    List => bx(BuiltinType(List)),
-    Optional => bx(BuiltinType(Optional)),
-    Builtin => bx(builtin_expr(<>)),
+    List => bx(Builtin(List)),
+    Optional => bx(Builtin(Optional)),
+    Builtin => bx(Builtin(<>)),
     Bool => bx(BoolLit(<>)),
     Record,
     RecordLit,

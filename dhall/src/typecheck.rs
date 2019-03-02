@@ -7,8 +7,7 @@ use crate::context::Context;
 use crate::core;
 use crate::core::{Expr, V, X, bx, normalize, shift, subst};
 use crate::core::{pi, app};
-use crate::core::BuiltinType::*;
-use crate::core::BuiltinValue::*;
+use crate::core::Builtin::*;
 use crate::core::Const::*;
 use crate::core::Expr::*;
 
@@ -71,7 +70,7 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
             }
             (&App(ref fL, ref aL), &App(ref fR, ref aR)) =>
                 if go(ctx, fL, fR) { go(ctx, aL, aR) } else { false },
-            (&BuiltinType(a), &BuiltinType(b)) => a == b,
+            (&Builtin(a), &Builtin(b)) => a == b,
             (&Record(ref ktsL0), &Record(ref ktsR0)) => {
                 if ktsL0.len() != ktsR0.len() {
                     return false;
@@ -130,7 +129,7 @@ fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
 
 fn op2_type<'i, S, EF>(ctx: &Context<'i, Expr<'i, S, X>>,
                        e: &Expr<'i, S, X>,
-                       t: core::BuiltinType,
+                       t: core::Builtin,
                        ef: EF,
                        l: &Expr<'i, S, X>,
                        r: &Expr<'i, S, X>)
@@ -140,17 +139,17 @@ fn op2_type<'i, S, EF>(ctx: &Context<'i, Expr<'i, S, X>>,
 {
     let tl = normalize(&type_with(ctx, l)?);
     match tl {
-        BuiltinType(lt) if lt == t => {}
+        Builtin(lt) if lt == t => {}
         _ => return Err(TypeError::new(ctx, e, ef((*l).clone(), tl))),
     }
 
     let tr = normalize(&type_with(ctx, r)?);
     match tr {
-        BuiltinType(rt) if rt == t => {}
+        Builtin(rt) if rt == t => {}
         _ => return Err(TypeError::new(ctx, e, ef((*r).clone(), tr))),
     }
 
-    Ok(BuiltinType(t))
+    Ok(Builtin(t))
 }
 
 /// Type-check an expression and return the expression'i type if type-checking
@@ -265,11 +264,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                 Err(TypeError::new(ctx, e, AnnotMismatch((**x).clone(), nf_t, nf_t2)))
             }
         }
-        BuiltinType(t) => Ok(match t {
-            List | Optional => pi("_", Const(Type), Const(Type)),
-            Bool | Natural | Integer | Double | Text => Const(Type),
-        }),
-        BoolLit(_) => Ok(BuiltinType(Bool)),
+        BoolLit(_) => Ok(Builtin(Bool)),
         BoolAnd(ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
         BoolOr(ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
         BoolEQ(ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
@@ -277,7 +272,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
         BoolIf(ref x, ref y, ref z) => {
             let tx = normalize(&type_with(ctx, x)?);
             match tx {
-                BuiltinType(Bool) => {}
+                Builtin(Bool) => {}
                 _ => return Err(TypeError::new(ctx, e, InvalidPredicate((**x).clone(), tx))),
             }
             let ty = normalize(&type_with(ctx, y)?);
@@ -299,26 +294,26 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
             Ok(ty)
         }
-        NaturalLit(_) => Ok(BuiltinType(Natural)),
-        BuiltinValue(NaturalFold) =>
+        NaturalLit(_) => Ok(Builtin(Natural)),
+        Builtin(NaturalFold) =>
             Ok(pi("_", Natural,
                 pi("natural", Const(Type),
                     pi("succ", pi("_", "natural", "natural"),
                         pi("zero", "natural", "natural"))))),
-        BuiltinValue(NaturalBuild) =>
+        Builtin(NaturalBuild) =>
             Ok(pi("_",
                 pi("natural", Const(Type),
                     pi("succ", pi("_", "natural", "natural"),
                         pi("zero", "natural", "natural"))),
                 Natural)),
-        BuiltinValue(NaturalIsZero) |
-        BuiltinValue(NaturalEven) |
-        BuiltinValue(NaturalOdd) => Ok(pi("_", Natural, Bool)),
+        Builtin(NaturalIsZero) |
+        Builtin(NaturalEven) |
+        Builtin(NaturalOdd) => Ok(pi("_", Natural, Bool)),
         NaturalPlus(ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
         NaturalTimes(ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
-        IntegerLit(_) => Ok(BuiltinType(Integer)),
-        DoubleLit(_) => Ok(BuiltinType(Double)),
-        TextLit(_) => Ok(BuiltinType(Text)),
+        IntegerLit(_) => Ok(Builtin(Integer)),
+        DoubleLit(_) => Ok(Builtin(Double)),
+        TextLit(_) => Ok(Builtin(Text)),
         TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
         ListLit(ref t, ref xs) => {
             let s = normalize::<_, S, _>(&type_with(ctx, t)?);
@@ -334,33 +329,33 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                     return Err(TypeError::new(ctx, e, InvalidListElement(i, nf_t, x.clone(), nf_t2)) )
                 }
             }
-            Ok(App(bx(BuiltinType(List)), t.clone()))
+            Ok(App(bx(Builtin(List)), t.clone()))
         }
-        BuiltinValue(ListBuild) =>
+        Builtin(ListBuild) =>
             Ok(pi("a", Const(Type),
                 pi("_",
                     pi("list", Const(Type),
                         pi("cons", pi("_", "a", pi("_", "list", "list")),
                             pi("nil", "list", "list"))),
                     app(List, "a")))),
-        BuiltinValue(ListFold) =>
+        Builtin(ListFold) =>
             Ok(pi("a", Const(Type),
                 pi("_", app(List, "a"),
                     pi("list", Const(Type),
                         pi("cons", pi("_", "a", pi("_", "list", "list")),
                             pi("nil", "list", "list")))))),
-        BuiltinValue(ListLength) =>
+        Builtin(ListLength) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))),
-        BuiltinValue(ListHead) |
-        BuiltinValue(ListLast) =>
+        Builtin(ListHead) |
+        Builtin(ListLast) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(Optional, "a")))),
-        BuiltinValue(ListIndexed) => {
+        Builtin(ListIndexed) => {
             let mut m = BTreeMap::new();
-            m.insert("index", BuiltinType(Natural));
+            m.insert("index", Builtin(Natural));
             m.insert("value", Expr::from("a"));
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, Record(m)))))
         }
-        BuiltinValue(ListReverse) =>
+        Builtin(ListReverse) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, "a")))),
         OptionalLit(ref t, ref xs) => {
             let s = normalize::<_, S, _>(&type_with(ctx, t)?);
@@ -380,14 +375,18 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                     return Err(TypeError::new(ctx, e, InvalidOptionalElement(nf_t, x.clone(), nf_t2)));
                 }
             }
-            Ok(App(bx(BuiltinType(Optional)), t.clone()))
+            Ok(App(bx(Builtin(Optional)), t.clone()))
         }
-        BuiltinValue(OptionalFold) =>
+        Builtin(OptionalFold) =>
             Ok(pi("a", Const(Type),
                 pi("_", app(Optional, "a"),
                     pi("optional", Const(Type),
                         pi("just", pi("_", "a", "optional"),
                             pi("nothing", "optional", "optional")))))),
+        Builtin(List) | Builtin(Optional) =>
+            Ok(pi("_", Const(Type), Const(Type))),
+        Builtin(Bool) | Builtin(Natural) | Builtin(Integer) | Builtin(Double) | Builtin(Text) =>
+            Ok(Const(Type)),
         Record(ref kts) => {
             for (k, t) in kts {
                 let s = normalize::<S, S, X>(&type_with(ctx, t)?);
