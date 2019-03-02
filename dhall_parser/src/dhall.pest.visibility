@@ -1,95 +1,95 @@
-end_of_line
-tab
-block_comment
-block_comment_chunk
-block_comment_continue
-not_end_of_line
-line_comment
-whitespace_chunk
-whitespace
-nonempty_whitespace
-ALPHA
-DIGIT
-HEXDIG
-simple_label_first_char
-simple_label_next_other_char
-simple_label_next_char
-simple_label_start
+# end_of_line
+# tab
+# block_comment
+# block_comment_chunk
+# block_comment_continue
+# not_end_of_line
+# line_comment
+# whitespace_chunk
+# whitespace
+# nonempty_whitespace
+# ALPHA
+# DIGIT
+# HEXDIG
+# simple_label_first_char
+# simple_label_next_other_char
+# simple_label_next_char
+# simple_label_start
 simple_label
 quoted_label
 label_raw
 label
-double_quote_chunk
+# double_quote_chunk
 double_quote_literal
-single_quote_continue
+# single_quote_continue
 single_quote_literal
 text_literal_raw
-if_raw
-then_raw
-else_raw
-let_raw
-in_raw
-as_raw
-using_raw
-merge_raw
-missing_raw
-Optional_raw
-Text_raw
-List_raw
+# if_raw
+# then_raw
+# else_raw
+# let_raw
+# in_raw
+# as_raw
+# using_raw
+# merge_raw
+# missing_raw
+# Optional_raw
+# Text_raw
+# List_raw
 Infinity_raw
-if_
-then
-else_
-let_
-in_
-as_
-using
-merge
+# if_
+# then
+# else_
+# let_
+# in_
+# as_
+# using
+# merge
 Optional
 Text
 List
-equal
-or
-plus
-text_append
-list_append
-and
-times
-double_equal
-not_equal
-dot
-bar
-comma
-at
-colon
-import_alt
-open_parens
-close_parens_raw
-close_parens
-open_brace
-close_brace_raw
-close_brace
-open_bracket
-close_bracket_raw
-close_bracket
-open_angle
-close_angle_raw
-close_angle
-combine
-combine_types
-prefer
-lambda
-forall
-arrow
-exponent
+# equal
+# or
+# plus
+# text_append
+# list_append
+# and
+# times
+# double_equal
+# not_equal
+# dot
+# bar
+# comma
+# at
+# colon
+# import_alt
+# open_parens
+# close_parens_raw
+# close_parens
+# open_brace
+# close_brace_raw
+# close_brace
+# open_bracket
+# close_bracket_raw
+# close_bracket
+# open_angle
+# close_angle_raw
+# close_angle
+# combine
+# combine_types
+# prefer
+# lambda
+# forall
+# arrow
+# exponent
 double_literal_raw
 natural_literal_raw
 integer_literal_raw
 identifier_raw
 identifier
-path_character
-quoted_path_character
-path_component
+# path_character
+# quoted_path_character
+# path_component
 path
 local_raw
 scheme
@@ -121,11 +121,18 @@ import_type_raw
 hash_raw
 import_hashed_raw
 import_raw
-expression
-annotated_expression
+# expression
+lambda_expression
+ifthenelse_expression
+let_expression
+forall_expression
+arrow_expression
+merge_expression
+empty_list_or_optional
 empty_collection
 non_empty_optional
-operator_expression
+annotated_expression
+# operator_expression
 import_alt_expression
 or_expression
 plus_expression
@@ -139,16 +146,23 @@ times_expression
 equal_expression
 not_equal_expression
 application_expression
-import_expression_raw
-import_expression
+# atomic_expression
+# atomic_expression_raw
 selector_expression_raw
-primitive_expression_raw
+selector_raw
 labels_raw
+# primitive_expression_raw
+# literal_expression_raw
 record_type_or_literal
+empty_record_literal
+empty_record_type
 non_empty_record_type_or_literal
 non_empty_record_type
 non_empty_record_literal
 union_type_or_literal
+empty_union_type
 non_empty_union_type_or_literal
-non_empty_list_literal
-complete_expression
+non_empty_list_literal_raw
+# parenthesized_expression_raw
+# complete_expression
+# final_expression

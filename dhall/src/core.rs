@@ -179,6 +179,8 @@ pub enum Expr<'i, S, A> {
     Note(S, Box<Expr<'i, S, A>>),
     ///  `Embed path                               ~  path`
     Embed(A),
+
+    FailedParse(String, Vec<Expr<'i, S, A>>),
 }
 
 /// Built-in types
@@ -698,6 +700,7 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
         Embed(ref p) => Embed(p.clone()),
+        FailedParse(_, _) => unreachable!(),
     }
 }
 
@@ -795,6 +798,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         Field(ref a, b) => Field(bx(subst(v, e, a)), b),
         Note(_, ref b) => subst(v, e, b),
         Embed(ref p) => Embed(p.clone()),
+        FailedParse(_, _) => unreachable!(),
     }
 }
 
@@ -1040,6 +1044,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         },
         Note(_, ref e) => normalize(e),
         Embed(ref a) => Embed(a.clone()),
+        FailedParse(_, _) => unreachable!(),
     }
 }
 
