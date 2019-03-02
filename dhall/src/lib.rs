@@ -1,4 +1,5 @@
 #![feature(box_patterns)]
+#![feature(concat_idents)]
 
 pub mod context;
 mod core;
