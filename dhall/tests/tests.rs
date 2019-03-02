@@ -211,3 +211,13 @@ make_spec_test!(parser, spec_parser_success_union, "parser/success/union");
 make_spec_test!(parser, spec_parser_success_urls, "parser/success/urls");
 make_spec_test!(parser, spec_parser_success_whitespace, "parser/success/whitespace");
 make_spec_test!(parser, spec_parser_success_whitespaceBuffet, "parser/success/whitespaceBuffet");
+
+make_spec_test!(parser_failure, spec_parser_failure_annotation, "parser/failure/annotation");
+// make_spec_test!(parser_failure, spec_parser_failure_doubleBoundsNeg, "parser/failure/doubleBoundsNeg");
+// make_spec_test!(parser_failure, spec_parser_failure_doubleBoundsPos, "parser/failure/doubleBoundsPos");
+make_spec_test!(parser_failure, spec_parser_failure_importAccess, "parser/failure/importAccess");
+make_spec_test!(parser_failure, spec_parser_failure_incompleteIf, "parser/failure/incompleteIf");
+make_spec_test!(parser_failure, spec_parser_failure_mandatoryNewline, "parser/failure/mandatoryNewline");
+make_spec_test!(parser_failure, spec_parser_failure_missingSpace, "parser/failure/missingSpace");
+make_spec_test!(parser_failure, spec_parser_failure_spaceAfterListAppend, "parser/failure/spaceAfterListAppend");
+// make_spec_test!(parser_failure, spec_parser_failure_boundBuiltin, "parser/failure/boundBuiltin");

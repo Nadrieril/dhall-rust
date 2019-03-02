@@ -18,7 +18,13 @@ macro_rules! run_spec_test {
     };
     (parser, $path:expr) => {
         let expr_str = include_test_str!(concat!($path, "A"));
-        parser::parse_expr(&expr_str).unwrap();
+        parser::parse_expr_pest(&expr_str).map_err(|e| println!("{}", e)).unwrap();
+        // parser::parse_expr(&expr_str).unwrap();
+    };
+    (parser_failure, $path:expr) => {
+        let expr_str = include_test_str!($path);
+        parser::parse_expr_pest(&expr_str).map_err(|e| println!("{}", e)).unwrap_err();
+        // parser::parse_expr(&expr_str).unwrap();
     };
 }
 

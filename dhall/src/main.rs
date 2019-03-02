@@ -52,7 +52,7 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
-    let expr = match parser::parse_expr(&buffer) {
+    let expr = match parser::parse_expr_lalrpop(&buffer) {
         Ok(e) => e,
         Err(lalrpop_util::ParseError::User { error: lexer::LexicalError::Error(pos, e) }) => {
             print_error(&format!("Unexpected token {:?}", e), &buffer, pos, pos);
