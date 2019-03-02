@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "abnf_to_pest",
     "dhall",
-    "abnf_to_pest"
+    "dhall_parser",
 ]

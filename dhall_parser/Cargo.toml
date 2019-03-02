@@ -1,0 +1,13 @@
+[package]
+name = "dhall_parser"
+version = "0.1.0"
+authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
+edition = "2018"
+build = "build.rs"
+
+[build-dependencies]
+abnf_to_pest = { path = "../abnf_to_pest" }
+
+[dependencies]
+pest = { git = "https://github.com/pest-parser/pest" }
+pest_derive = { version = "2.1", path = "../../pest/derive" }

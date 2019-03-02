@@ -7,7 +7,6 @@ build = "build.rs"
 
 [build-dependencies]
 lalrpop = "0.16.3"
-abnf_to_pest = { path = "../abnf_to_pest" }
 
 [dependencies]
 bytecount = "0.5.1"
@@ -15,4 +14,4 @@ lalrpop-util = "0.16.3"
 nom = "3.0.0"
 term-painter = "0.2.3"
 pest = { git = "https://github.com/pest-parser/pest" }
-pest_derive = "2.0"
+dhall_parser = { path = "../dhall_parser" }
