@@ -184,46 +184,26 @@ pub enum Expr<'i, S, A> {
 /// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Builtin {
-    ///  `Bool                                     ~  Bool`
     Bool,
-    ///  `Natural                                  ~  Natural`
     Natural,
-    ///  `Integer                                  ~  Integer`
     Integer,
-    ///  `Double                                   ~  Double`
     Double,
-    ///  `Text                                     ~  Text`
     Text,
-    ///  `List                                     ~  List`
     List,
-    ///  `Optional                                 ~  Optional`
     Optional,
-    ///  `NaturalFold                              ~  Natural/fold`
     NaturalFold,
-    ///  `NaturalBuild                             ~  Natural/build`
     NaturalBuild,
-    ///  `NaturalIsZero                            ~  Natural/isZero`
     NaturalIsZero,
-    ///  `NaturalEven                              ~  Natural/even`
     NaturalEven,
-    ///  `NaturalOdd                               ~  Natural/odd`
     NaturalOdd,
     NaturalShow,
-    ///  `ListBuild                                ~  List/build`
     ListBuild,
-    ///  `ListFold                                 ~  List/fold`
     ListFold,
-    ///  `ListLength                               ~  List/length`
     ListLength,
-    ///  `ListHead                                 ~  List/head`
     ListHead,
-    ///  `ListLast                                 ~  List/last`
     ListLast,
-    ///  `ListIndexed                              ~  List/indexed`
     ListIndexed,
-    ///  `ListReverse                              ~  List/reverse`
     ListReverse,
-    ///  `OptionalFold                             ~  Optional/fold`
     OptionalFold,
 }
 
@@ -471,6 +451,36 @@ impl Display for Builtin {
             ListReverse => "List/reverse",
             OptionalFold => "Optional/fold",
         })
+    }
+}
+
+impl Builtin {
+    pub fn parse(s: &str) -> Option<Self> {
+        use self::Builtin::*;
+        match s {
+            "Bool" => Some(Bool),
+            "Natural" => Some(Natural),
+            "Integer" => Some(Integer),
+            "Double" => Some(Double),
+            "Text" => Some(Text),
+            "List" => Some(List),
+            "Optional" => Some(Optional),
+            "Natural/fold" => Some(NaturalFold),
+            "Natural/build" => Some(NaturalBuild),
+            "Natural/isZero" => Some(NaturalIsZero),
+            "Natural/even" => Some(NaturalEven),
+            "Natural/odd" => Some(NaturalOdd),
+            "Natural/show" => Some(NaturalShow),
+            "List/build" => Some(ListBuild),
+            "List/fold" => Some(ListFold),
+            "List/length" => Some(ListLength),
+            "List/head" => Some(ListHead),
+            "List/last" => Some(ListLast),
+            "List/indexed" => Some(ListIndexed),
+            "List/reverse" => Some(ListReverse),
+            "Optional/fold" => Some(OptionalFold),
+            _ => None,
+        }
     }
 }
 

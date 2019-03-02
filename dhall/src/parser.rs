@@ -3,7 +3,7 @@ use lalrpop_util;
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
-use crate::core::{bx, Expr, V};
+use crate::core::{bx, Expr, Builtin, V};
 
 pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError>;
 
@@ -127,7 +127,14 @@ fn parse_expression(pair: Pair<Rule>) -> BoxExpr {
 
         Rule::identifier_raw =>
             parse!(pair; (name: str, idx?: natural) => {
-                bx(Expr::Var(V(name, idx.unwrap_or(0))))
+                match Builtin::parse(name) {
+                    Some(b) => bx(Expr::Builtin(b)),
+                    None => match name {
+                        "True" => bx(Expr::BoolLit(true)),
+                        "False" => bx(Expr::BoolLit(false)),
+                        name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
+                    }
+                }
             }),
 
         Rule::ifthenelse_expression =>
