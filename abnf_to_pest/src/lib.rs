@@ -44,14 +44,14 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
     }
     fn format_alternation(x: Alternation) -> Doc<'static, BoxDoc<'static, ()>> {
         Doc::intersperse(
-            x.concatenations.into_iter().map(format_concatenation),
+            x.concatenations.into_iter().map(|x| format_concatenation(x).nest(2).group()),
             Doc::space().append(Doc::text("| "))
         )
     }
     fn format_concatenation(x: Concatenation) -> Doc<'static, BoxDoc<'static, ()>> {
         Doc::intersperse(
             x.repetitions.into_iter().map(format_repetition),
-            Doc::text(" ~ ")
+            Doc::space().append(Doc::text("~ "))
         )
     }
     fn format_repetition(x: Repetition) -> Doc<'static, BoxDoc<'static, ()>> {
