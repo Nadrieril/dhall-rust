@@ -1,64 +1,41 @@
 use lalrpop_util;
+use itertools::*;
+use pest::Parser;
+use pest::iterators::Pair;
+
+use dhall_parser::{DhallParser, Rule};
 
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
 use crate::core::{bx, Expr, Builtin, V};
 
-pub type ParseError<'i> = lalrpop_util::ParseError<usize, Tok<'i>, LexicalError>;
-
-pub fn parse_expr_lalrpop(s: &str) -> Result<BoxExpr, ParseError>  {
+pub fn parse_expr_lalrpop(s: &str) -> Result<BoxExpr, lalrpop_util::ParseError<usize, Tok, LexicalError>>  {
     grammar::ExprParser::new().parse(Lexer::new(s))
 }
 
-use pest::Parser;
-use pest::error::Error;
-use pest::iterators::Pair;
-use dhall_parser::{DhallParser, Rule};
+pub type ParseError = pest::error::Error<Rule>;
 
-fn debug_pair(pair: Pair<Rule>) {
-    fn aux(indent: usize, prefix: String, pair: Pair<Rule>) {
-        let indent_str = "| ".repeat(indent);
-        let rule = pair.as_rule();
-        let contents = pair.as_str().clone();
-        let mut inner = pair.into_inner();
-        let mut first = true;
-        while let Some(p) = inner.next() {
-            if first {
-                first = false;
-                let last = inner.peek().is_none();
-                if last && p.as_str() == contents {
-                    let prefix = format!("{}{:?} > ", prefix, rule);
-                    aux(indent, prefix, p);
-                    continue;
-                } else {
-                    println!(r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents);
-                }
-            }
-            aux(indent+1, "".into(), p);
-        }
-        if first {
-            println!(r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents);
-        }
-        // println!(r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents);
-        // for p in inner {
-        //     aux(indent+1, "".into(), p);
-        // }
-    }
-    aux(0, "".into(), pair)
+pub type ParseResult<T> = Result<T, ParseError>;
+
+pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
+    let e = pest::error::ErrorVariant::CustomError{ message: msg };
+    pest::error::Error::new_from_span(e, pair.as_span())
 }
+
 
 macro_rules! parse_aux {
     ($inner:expr, true, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = concat_idents!(parse_, $ty)($inner.next().unwrap());
+        let $x = concat_idents!(parse_, $ty)($inner.next().unwrap())?;
         parse_aux!($inner, true $($rest)*)
     };
     ($inner:expr, true, $x:ident? : $ty:ident $($rest:tt)*) => {
-        let $x = $inner.next().map(concat_idents!(parse_, $ty));
+        let $x = $inner.next().map(concat_idents!(parse_, $ty)).transpose()?;
         parse_aux!($inner, true $($rest)*)
     };
     ($inner:expr, true, $x:ident* : $ty:ident $($rest:tt)*) => {
-        let $x = $inner.map(concat_idents!(parse_, $ty));
+        #[allow(unused_mut)]
+        let mut $x = $inner.map(concat_idents!(parse_, $ty));
         parse_aux!($inner, false $($rest)*)
     };
     ($inner:expr, false) => {};
@@ -73,37 +50,38 @@ macro_rules! parse {
             #[allow(unused_mut)]
             let mut inner = $pair.into_inner();
             parse_aux!(inner, true, $($args)*);
-            $body
+            Ok($body)
         }
     };
 }
 
 
-fn parse_binop<'a, F>(pair: Pair<'a, Rule>, mut f: F) -> BoxExpr<'a>
+fn parse_binop<'a, F>(pair: Pair<'a, Rule>, mut f: F) -> ParseResult<BoxExpr<'a>>
 where F: FnMut(BoxExpr<'a>, BoxExpr<'a>) -> ParsedExpr<'a> {
     parse!(pair; (first: expression, rest*: expression) => {
-        rest.fold(first, |acc, e| bx(f(acc, e)))
+        rest.fold_results(first, |acc, e| bx(f(acc, e)))?
     })
 }
 
-fn skip_expr(pair: Pair<Rule>) -> BoxExpr {
+fn skip_expr(pair: Pair<Rule>) -> ParseResult<BoxExpr> {
     parse!(pair; (expr: expression) => {
         expr
     })
 }
 
-fn parse_str(pair: Pair<Rule>) -> &str {
-    pair.as_str().trim()
+fn parse_str(pair: Pair<Rule>) -> ParseResult<&str> {
+    Ok(pair.as_str().trim())
 }
 
-// fn parse_natural(pair: Pair<Rule>) -> Result<usize, std::num::ParseIntError> {
-fn parse_natural(pair: Pair<Rule>) -> usize {
-    parse_str(pair).parse().unwrap()
+fn parse_natural(pair: Pair<Rule>) -> ParseResult<usize> {
+    parse_str(pair.clone())?
+        .parse()
+        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))
 }
 
-fn parse_expression(pair: Pair<Rule>) -> BoxExpr {
+fn parse_expression(pair: Pair<Rule>) -> ParseResult<BoxExpr> {
     match pair.as_rule() {
-        Rule::natural_literal_raw => bx(Expr::NaturalLit(parse_natural(pair))),
+        Rule::natural_literal_raw => Ok(bx(Expr::NaturalLit(parse_natural(pair)?))),
 
         Rule::annotated_expression => { parse_binop(pair, Expr::Annot) }
         Rule::import_alt_expression => { skip_expr(pair) }
@@ -122,7 +100,7 @@ fn parse_expression(pair: Pair<Rule>) -> BoxExpr {
 
         Rule::selector_expression_raw =>
             parse!(pair; (first: expression, rest*: str) => {
-                rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
+                rest.fold_results(first, |acc, e| bx(Expr::Field(acc, e)))?
             }),
 
         Rule::identifier_raw =>
@@ -152,19 +130,16 @@ fn parse_expression(pair: Pair<Rule>) -> BoxExpr {
         _ => {
             let rulename = format!("{:?}", pair.as_rule());
             parse!(pair; (exprs*: expression) => {
-                bx(Expr::FailedParse(rulename, exprs.map(|x| *x).collect()))
+                bx(Expr::FailedParse(rulename, exprs.map_results(|x| *x).collect::<ParseResult<_>>()?))
             })
         }
     }
 }
 
-pub fn parse_expr_pest(s: &str) -> Result<BoxExpr, Error<Rule>>  {
+pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
     let parsed_expr = DhallParser::parse(Rule::final_expression, s)?.next().unwrap();
-    debug_pair(parsed_expr.clone());
-    // println!("{}", parsed_expr.clone());
 
-
-    Ok(parse_expression(parsed_expr))
+    parse_expression(parsed_expr)
 }
 
 
