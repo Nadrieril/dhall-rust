@@ -25,188 +25,276 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
 }
 
 
-macro_rules! parse_aux {
+macro_rules! match_children {
     // Normal pattern
-    (0, $inner:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = concat_idents!(parse_, $ty)($inner.next().unwrap())?;
-        parse_aux!(0, $inner $($rest)*);
+    (@0, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        let $x = concat_idents!($ty)($pairs.next().unwrap())?;
+        match_children!(@0, $pairs $($rest)*);
     };
     // Normal pattern after a variable length one: declare reversed and take from the end
-    ($w:expr, $inner:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        parse_aux!($w, $inner $($rest)*);
-        let $x = concat_idents!(parse_, $ty)($inner.next_back().unwrap())?;
+    (@$w:expr, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        match_children!(@$w, $pairs $($rest)*);
+        let $x = concat_idents!($ty)($pairs.next_back().unwrap())?;
     };
     // Optional pattern
-    (0, $inner:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        parse_aux!(1, $inner $($rest)*);
-        let $x = $inner.next().map(concat_idents!(parse_, $ty)).transpose()?;
-        $inner.next().ok_or(()).expect_err("Some parsed values remain unused");
+    (@0, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
+        match_children!(@1, $pairs $($rest)*);
+        let $x = $pairs.next().map(concat_idents!($ty)).transpose()?;
+        $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
     };
     // Everything else pattern
-    (0, $inner:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
-        parse_aux!(2, $inner $($rest)*);
+    (@0, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
+        match_children!(@2, $pairs $($rest)*);
         #[allow(unused_mut)]
-        let mut $x = $inner.map(concat_idents!(parse_, $ty));
+        let mut $x = $pairs.map(concat_idents!($ty));
     };
 
     // Check no elements remain
-    (0, $inner:expr) => {
-        $inner.next().ok_or(()).expect_err("Some parsed values remain unused");
+    (@0, $pairs:expr) => {
+        $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
     };
-    ($_:expr, $inner:expr) => {};
-}
+    (@$_:expr, $pairs:expr) => {};
 
-macro_rules! parse {
-    ($pair:expr; ($($args:tt)*) => $body:expr) => {
+    // Entrypoints
+    (@pairs; $pairs:expr; ($($args:tt)*) => $body:expr) => {
+        {
+            match_children!(@0, $pairs, $($args)*);
+            Ok($body)
+        }
+    };
+    ($pair:expr; $($rest:tt)*) => {
         {
             #[allow(unused_mut)]
-            let mut inner = $pair.into_inner();
-            parse_aux!(0, inner, $($args)*);
+            let mut pairs = $pair.into_inner();
+            match_children!(@pairs; pairs; $($rest)*)
+        }
+    };
+}
+
+macro_rules! with_captured_str {
+    ($pair:expr; $x:ident; $body:expr) => {
+        {
+            #[allow(unused_mut)]
+            let mut $x = $pair.as_str();
             Ok($body)
         }
     };
 }
 
+macro_rules! with_raw_pair {
+    ($pair:expr; $x:ident; $body:expr) => {
+        {
+            #[allow(unused_mut)]
+            let mut $x = $pair;
+            Ok($body)
+        }
+    };
+}
 
+macro_rules! map {
+    ($pair:expr; $ty:ident; $f:expr) => {
+        {
+            let x = $ty($pair)?;
+            Ok($f(x))
+        }
+    };
+}
+
+macro_rules! plain_value {
+    ($_pair:expr; $body:expr) => {
+        Ok($body)
+    };
+}
+
+macro_rules! with_rule {
+    ($pair:expr; $x:ident; $submac:ident!( $($args:tt)* )) => {
+        {
+            #[allow(unused_mut)]
+            let mut $x = $pair.as_rule();
+            $submac!($pair; $($args)*)
+        }
+    };
+}
+
+macro_rules! match_rule {
+    ($pair:expr; $($pat:pat => $submac:ident!( $($args:tt)* ),)*) => {
+        #[allow(unreachable_patterns)]
+        match $pair.as_rule() {
+            $(
+                $pat => $submac!($pair; $($args)*),
+            )*
+            r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
+        }
+    };
+}
+
+macro_rules! named {
+    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
+        #[allow(unused_variables)]
+        fn $name(pair: Pair<Rule>) -> ParseResult<$o> {
+            $submac!(pair; $($args)*)
+        }
+    );
+}
+
+
+// TODO: remove when stack overflow fixed
 fn parse_binop<'a, F>(pair: Pair<'a, Rule>, mut f: F) -> ParseResult<BoxExpr<'a>>
 where F: FnMut(BoxExpr<'a>, BoxExpr<'a>) -> ParsedExpr<'a> {
-    parse!(pair; (first: expression, rest*: expression) => {
+    match_children!(pair; (first: expression, rest*: expression) => {
         rest.fold_results(first, |acc, e| bx(f(acc, e)))?
     })
 }
+macro_rules! binop {
+    ($pair:expr; $f:expr) => {
+        parse_binop($pair, $f)
+    };
+}
+// macro_rules! binop {
+//     ($pair:expr; $f:expr) => {
+//         {
+//             let f = $f;
+//             match_children!($pair; (first: expression, rest*: expression) => {
+//                 rest.fold_results(first, |acc, e| bx(f(acc, e)))?
+//             })
+//         }
+//     };
+// }
 
-fn skip_expr(pair: Pair<Rule>) -> ParseResult<BoxExpr> {
-    parse!(pair; (expr: expression) => {
-        expr
-    })
+// TODO: remove when stack overflow fixed
+named!(single_expr<BoxExpr>;
+    match_children!((expr: expression) => expr)
+);
+macro_rules! single {
+    ($pair:expr; expression) => {
+        single_expr($pair)
+    };
+    ($pair:expr; $ty:ident) => {
+        match_children!($pair; (expr: $ty) => expr)
+    };
 }
 
-fn parse_str(pair: Pair<Rule>) -> ParseResult<&str> {
-    Ok(pair.as_str().trim())
-}
+named!(eoi<()>; plain_value!(()));
 
-fn parse_natural(pair: Pair<Rule>) -> ParseResult<usize> {
-    parse_str(pair.clone())?
+named!(str<&str>; with_captured_str!(s; { s.trim() }));
+
+named!(natural<usize>; with_raw_pair!(pair; {
+    pair.as_str().trim()
         .parse()
-        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))
-}
+        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+}));
 
-fn parse_integer(pair: Pair<Rule>) -> ParseResult<isize> {
-    parse_str(pair.clone())?
+named!(integer<isize>; with_raw_pair!(pair; {
+    pair.as_str().trim()
         .parse()
-        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))
-}
+        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+}));
 
-fn parse_letbinding(pair: Pair<Rule>) -> ParseResult<(&str, Option<BoxExpr>, BoxExpr)> {
-    parse!(pair; (name: str, annot?: expression, expr: expression) => {
-        (name, annot, expr)
-    })
-}
+named!(letbinding<(&str, Option<BoxExpr>, BoxExpr)>;
+    match_children!((name: str, annot?: expression, expr: expression) => (name, annot, expr))
+);
 
-fn parse_record_entry(pair: Pair<Rule>) -> ParseResult<(&str, BoxExpr)> {
-    parse!(pair; (name: str, expr: expression) => { (name, expr) })
-}
+named!(record_entry<(&str, BoxExpr)>;
+    match_children!((name: str, expr: expression) => (name, expr))
+);
 
-fn parse_partial_record_entries(pair: Pair<Rule>) -> ParseResult<(Rule, BoxExpr, BTreeMap<&str, ParsedExpr>)> {
-    let rule = pair.as_rule();
-    parse!(pair; (expr: expression, entries*: record_entry) => {
-        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
-        for entry in entries {
-            let (n, e) = entry?;
-            map.insert(n, *e);
-        }
-        (rule, expr, map)
-    })
-}
+named!(partial_record_entries<(Rule, BoxExpr, BTreeMap<&str, ParsedExpr>)>;
+   with_rule!(rule;
+        match_children!((expr: expression, entries*: record_entry) => {
+            let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+            for entry in entries {
+                let (n, e) = entry?;
+                map.insert(n, *e);
+            }
+            (rule, expr, map)
+        })
+    )
+);
 
 // TODO: handle stack manually
-fn parse_expression(pair: Pair<Rule>) -> ParseResult<BoxExpr> {
-    match pair.as_rule() {
-        Rule::natural_literal_raw => Ok(bx(Expr::NaturalLit(parse_natural(pair)?))),
-        Rule::integer_literal_raw => Ok(bx(Expr::IntegerLit(parse_integer(pair)?))),
+named!(expression<BoxExpr>; match_rule!(
+    Rule::natural_literal_raw => map!(natural; |n| bx(Expr::NaturalLit(n))),
+    Rule::integer_literal_raw => map!(integer; |n| bx(Expr::IntegerLit(n))),
 
-        Rule::identifier_raw =>
-            parse!(pair; (name: str, idx?: natural) => {
-                match Builtin::parse(name) {
-                    Some(b) => bx(Expr::Builtin(b)),
-                    None => match name {
-                        "True" => bx(Expr::BoolLit(true)),
-                        "False" => bx(Expr::BoolLit(false)),
-                        "Type" => bx(Expr::Const(Const::Type)),
-                        "Kind" => bx(Expr::Const(Const::Kind)),
-                        name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
-                    }
+    Rule::identifier_raw =>
+        match_children!((name: str, idx?: natural) => {
+            match Builtin::parse(name) {
+                Some(b) => bx(Expr::Builtin(b)),
+                None => match name {
+                    "True" => bx(Expr::BoolLit(true)),
+                    "False" => bx(Expr::BoolLit(false)),
+                    "Type" => bx(Expr::Const(Const::Type)),
+                    "Kind" => bx(Expr::Const(Const::Kind)),
+                    name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
                 }
-            }),
+            }
+        }),
 
-        Rule::lambda_expression =>
-            parse!(pair; (label: str, typ: expression, body: expression) => {
-                bx(Expr::Lam(label, typ, body))
-            }),
+    Rule::lambda_expression =>
+        match_children!((label: str, typ: expression, body: expression) => {
+            bx(Expr::Lam(label, typ, body))
+        }),
 
-        Rule::ifthenelse_expression =>
-            parse!(pair; (cond: expression, left: expression, right: expression) => {
-                bx(Expr::BoolIf(cond, left, right))
-            }),
+    Rule::ifthenelse_expression =>
+        match_children!((cond: expression, left: expression, right: expression) => {
+            bx(Expr::BoolIf(cond, left, right))
+        }),
 
-        Rule::let_expression =>
-            parse!(pair; (bindings*: letbinding, final_expr: expression) => {
-                bindings.fold_results(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))?
-            }),
+    Rule::let_expression =>
+        match_children!((bindings*: letbinding, final_expr: expression) => {
+            bindings.fold_results(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))?
+        }),
 
-        Rule::forall_expression =>
-            parse!(pair; (label: str, typ: expression, body: expression) => {
-                bx(Expr::Pi(label, typ, body))
-            }),
+    // Rule::forall_expression =>
+    //     match_children!((label: str, typ: expression, body: expression) => {
+    //         bx(Expr::Pi(label, typ, body))
+    //     }),
 
-        Rule::annotated_expression => { parse_binop(pair, Expr::Annot) }
-        Rule::import_alt_expression => { skip_expr(pair) }
-        Rule::or_expression => { parse_binop(pair, Expr::BoolOr) }
-        Rule::plus_expression => { parse_binop(pair, Expr::NaturalPlus) }
-        Rule::text_append_expression => { parse_binop(pair, Expr::TextAppend) }
-        Rule::list_append_expression => { skip_expr(pair) }
-        Rule::and_expression => { parse_binop(pair, Expr::BoolAnd) }
-        Rule::combine_expression => { skip_expr(pair) }
-        Rule::prefer_expression => { skip_expr(pair) }
-        Rule::combine_types_expression => { skip_expr(pair) }
-        Rule::times_expression => { parse_binop(pair, Expr::NaturalTimes) }
-        Rule::equal_expression => { parse_binop(pair, Expr::BoolEQ) }
-        Rule::not_equal_expression => { parse_binop(pair, Expr::BoolNE) }
-        Rule::application_expression => { parse_binop(pair, Expr::App) }
+    Rule::annotated_expression => binop!(Expr::Annot),
+    Rule::import_alt_expression => single!(expression),
+    Rule::or_expression => binop!(Expr::BoolOr),
+    Rule::plus_expression => binop!(Expr::NaturalPlus),
+    Rule::text_append_expression => binop!(Expr::TextAppend),
+    Rule::list_append_expression => single!(expression),
+    Rule::and_expression => binop!(Expr::BoolAnd),
+    Rule::combine_expression => single!(expression),
+    Rule::prefer_expression => single!(expression),
+    Rule::combine_types_expression => single!(expression),
+    Rule::times_expression => binop!(Expr::NaturalTimes),
+    Rule::equal_expression => binop!(Expr::BoolEQ),
+    Rule::not_equal_expression => binop!(Expr::BoolNE),
+    Rule::application_expression => binop!(Expr::App),
 
-        Rule::selector_expression_raw =>
-            parse!(pair; (first: expression, rest*: str) => {
-                rest.fold_results(first, |acc, e| bx(Expr::Field(acc, e)))?
-            }),
+    Rule::selector_expression_raw =>
+        match_children!((first: expression, rest*: str) => {
+            rest.fold_results(first, |acc, e| bx(Expr::Field(acc, e)))?
+        }),
 
-        Rule::empty_record_type => Ok(bx(Expr::Record(BTreeMap::new()))),
-        Rule::empty_record_literal => Ok(bx(Expr::RecordLit(BTreeMap::new()))),
-        Rule::non_empty_record_type_or_literal =>
-            parse!(pair; (first_label: str, rest: partial_record_entries) => {
-                let (rule, first_expr, mut map) = rest;
-                map.insert(first_label, *first_expr);
-                match rule {
-                    Rule::non_empty_record_type => bx(Expr::Record(map)),
-                    Rule::non_empty_record_literal => bx(Expr::RecordLit(map)),
-                    _ => unreachable!()
-                }
-            }),
+    Rule::empty_record_type => plain_value!(bx(Expr::Record(BTreeMap::new()))),
+    Rule::empty_record_literal => plain_value!(bx(Expr::RecordLit(BTreeMap::new()))),
+    Rule::non_empty_record_type_or_literal =>
+        match_children!((first_label: str, rest: partial_record_entries) => {
+            let (rule, first_expr, mut map) = rest;
+            map.insert(first_label, *first_expr);
+            match rule {
+                Rule::non_empty_record_type => bx(Expr::Record(map)),
+                Rule::non_empty_record_literal => bx(Expr::RecordLit(map)),
+                _ => unreachable!()
+            }
+        }),
 
-
-        _ => {
+    _ => with_rule!(rule;
+        match_children!((exprs*: expression) => {
             // panic!();
-            let rulename = format!("{:?}", pair.as_rule());
-            parse!(pair; (exprs*: expression) => {
-                bx(Expr::FailedParse(rulename, exprs.map_results(|x| *x).collect::<ParseResult<_>>()?))
-            })
-        }
-    }
-}
+            let rulename = format!("{:?}", rule);
+            bx(Expr::FailedParse(rulename, exprs.map_results(|x| *x).collect::<ParseResult<_>>()?))
+        })
+    ),
+));
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
-    let parsed_expr = DhallParser::parse(Rule::final_expression, s)?.next().unwrap();
-
-    parse_expression(parsed_expr)
+    let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
+    match_children!(@pairs; pairs; (e: expression, _eoi: eoi) => e)
 }
 
 
