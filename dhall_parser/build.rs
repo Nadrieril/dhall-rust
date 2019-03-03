@@ -28,7 +28,7 @@ fn main() -> std::io::Result<()> {
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
-    writeln!(&mut file, "final_expression = _{{ SOI ~ complete_expression ~ EOI }}")?;
+    writeln!(&mut file, "final_expression = {{ SOI ~ complete_expression ~ EOI }}")?;
 
     Ok(())
 }

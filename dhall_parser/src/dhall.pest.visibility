@@ -165,4 +165,3 @@ non_empty_union_type_or_literal
 non_empty_list_literal_raw
 # parenthesized_expression_raw
 # complete_expression
-# final_expression

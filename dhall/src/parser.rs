@@ -25,15 +25,86 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
 }
 
 
+/* Macro to pattern-match iterators.
+ * Panics if the sequence doesn't match;
+ *
+ * Example:
+ * ```
+ * let vec = vec![1, 2, 3];
+ *
+ * match_iter!(vec.into_iter(); (x, y?, z) => {
+ *  // x: T
+ *  // y: Option<T>
+ *  // z: T
+ * })
+ *
+ * // or
+ * match_iter!(vec.into_iter(); (x, y, z*) => {
+ *  // x, y: T
+ *  // z: impl Iterator<T>
+ * })
+ * ```
+ *
+ */
+macro_rules! match_iter {
+    // Everything else pattern
+    (@match 0, $iter:expr, $x:ident* $($rest:tt)*) => {
+        match_iter!(@match 2, $iter $($rest)*);
+        #[allow(unused_mut)]
+        let mut $x = $iter;
+    };
+    // Alias to use in macros
+    (@match 0, $iter:expr, $x:ident?? $($rest:tt)*) => {
+        match_iter!(@match 2, $iter $($rest)*);
+        #[allow(unused_mut)]
+        let mut $x = $iter;
+    };
+    // Optional pattern
+    (@match 0, $iter:expr, $x:ident? $($rest:tt)*) => {
+        match_iter!(@match 1, $iter $($rest)*);
+        let $x = $iter.next();
+        $iter.next().ok_or(()).expect_err("Some values remain unused");
+    };
+    // Normal pattern
+    (@match 0, $iter:expr, $x:ident $($rest:tt)*) => {
+        let $x = $iter.next().unwrap();
+        match_iter!(@match 0, $iter $($rest)*);
+    };
+    // Normal pattern after a variable length one: declare reversed and take from the end
+    (@match $w:expr, $iter:expr, $x:ident $($rest:tt)*) => {
+        match_iter!(@match $w, $iter $($rest)*);
+        let $x = $iter.next_back().unwrap();
+    };
+
+    // Check no elements remain
+    (@match 0, $iter:expr) => {
+        $iter.next().ok_or(()).expect_err("Some values remain unused");
+    };
+    (@match $_:expr, $iter:expr) => {};
+
+    // Entrypoint
+    ($iter:expr; ($($args:tt)*) => $body:expr) => {
+        {
+            #[allow(unused_mut)]
+            let mut iter = $iter;
+            match_iter!(@match 0, iter, $($args)*);
+            $body
+        }
+    };
+}
+
+
 
 macro_rules! make_parser {
     ($( named!( $name:ident<$o:ty>; $($args:tt)* ); )*) => (
+        #[allow(dead_code)]
         #[allow(non_camel_case_types)]
         enum ParsedType {
             $( $name, )*
         }
 
         impl ParsedType {
+            #[allow(dead_code)]
             fn parse(self, pair: Pair<Rule>) -> ParseResult<ParsedValue> {
                 match self {
                     $( ParsedType::$name => $name(pair), )*
@@ -57,6 +128,11 @@ macro_rules! make_parser {
             )*
         }
 
+        fn do_the_parse(s: &str, r: Rule, ty: ParsedType) -> ParseResult<ParsedValue>  {
+            let pairs = DhallParser::parse(r, s)?;
+            match_iter!(pairs; (e) => ty.parse(e))
+        }
+
         $(
             named!($name<$o>; $($args)*);
         )*
@@ -66,56 +142,55 @@ macro_rules! make_parser {
 macro_rules! named {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
         #[allow(unused_variables)]
-        fn $name(pair: Pair<Rule>) -> ParseResult<ParsedValue> {
-            let res = $submac!(pair; $($args)*);
+        fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
+            let res: ParseResult<$o> = $submac!(pair; $($args)*);
             Ok(ParsedValue::$name(res?))
         }
     );
 }
 
 macro_rules! match_children {
-    // Normal pattern
-    (@match 0, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = $ty($pairs.next().unwrap())?.$ty()?;
-        match_children!(@match 0, $pairs $($rest)*);
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x), ($($rest)*))
     };
-    // Normal pattern after a variable length one: declare reversed and take from the end
-    (@match $w:expr, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        match_children!(@match $w, $pairs $($rest)*);
-        let $x = $ty($pairs.next_back().unwrap())?.$ty()?;
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x?), ($($rest)*))
     };
-    // Optional pattern
-    (@match 0, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        match_children!(@match 1, $pairs $($rest)*);
-        let $x = $pairs.next().map($ty).map(|x| x?.$ty()).transpose()?;
-        $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x??), ($($rest)*))
     };
-    // Everything else pattern
-    (@match 0, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
-        match_children!(@match 2, $pairs $($rest)*);
-        #[allow(unused_mut)]
-        let mut $x = $pairs.map($ty).map(|x| x?.$ty());
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, (,$($acc:tt)*), ()) => {
+        match_iter!($pairs; ($($acc)*) => {
+            match_children!(@parse, $pairs, $($args)*);
+            Ok($body)
+        })
     };
 
-    // Check no elements remain
-    (@match 0, $pairs:expr) => {
-        $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
+    (@parse, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        let $x = $ty($x)?.$ty()?;
+        match_children!(@parse, $pairs $($rest)*);
     };
-    (@match $_:expr, $pairs:expr) => {};
+    (@parse, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
+        let $x = $x.map($ty).map(|x| x?.$ty()).transpose()?;
+        match_children!(@parse, $pairs $($rest)*);
+    };
+    (@parse, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
+        #[allow(unused_mut)]
+        let mut $x = $x.map($ty).map(|x| x?.$ty());
+        match_children!(@parse, $pairs $($rest)*);
+    };
+    (@parse, $pairs:expr) => {};
 
     // Entrypoints
-    (@pairs; $pairs:expr; ($($args:tt)*) => $body:expr) => {
-        {
-            match_children!(@match 0, $pairs, $($args)*);
-            Ok($body)
-        }
-    };
     ($pair:expr; $($rest:tt)*) => {
         {
             #[allow(unused_mut)]
             let mut pairs = $pair.into_inner();
             match_children!(@pairs; pairs; $($rest)*)
         }
+    };
+    (@pairs; $pairs:expr; ($($args:tt)*) => $body:expr) => {
+        match_children!(@collect, $pairs, ($($args)*), $body, (), ($($args)*,))
     };
 }
 
@@ -313,12 +388,15 @@ make_parser!{
             })
         ),
     ));
+
+    named!(final_expression<BoxExpr<'a>>;
+        match_children!((e: expression, _eoi: eoi) => e)
+    );
 }
 
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
-    let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
-    match_children!(@pairs; pairs; (e: expression, _eoi: eoi) => e)
+    do_the_parse(s, Rule::final_expression, ParsedType::final_expression)?.final_expression()
 }
 
 
