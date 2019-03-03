@@ -106,6 +106,23 @@ macro_rules! plain_value {
     };
 }
 
+macro_rules! binop {
+    ($pair:expr; $f:expr) => {
+        {
+            let f = $f;
+            match_children!($pair; (first: expression, rest*: expression) => {
+                rest.fold_results(first, |acc, e| bx(f(acc, e)))?
+            })
+        }
+    };
+}
+
+macro_rules! single {
+    ($pair:expr; $ty:ident) => {
+        match_children!($pair; (expr: $ty) => expr)
+    };
+}
+
 macro_rules! with_rule {
     ($pair:expr; $x:ident; $submac:ident!( $($args:tt)* )) => {
         {
@@ -138,41 +155,6 @@ macro_rules! named {
 }
 
 
-// TODO: remove when stack overflow fixed
-fn parse_binop<'a, F>(pair: Pair<'a, Rule>, mut f: F) -> ParseResult<BoxExpr<'a>>
-where F: FnMut(BoxExpr<'a>, BoxExpr<'a>) -> ParsedExpr<'a> {
-    match_children!(pair; (first: expression, rest*: expression) => {
-        rest.fold_results(first, |acc, e| bx(f(acc, e)))?
-    })
-}
-macro_rules! binop {
-    ($pair:expr; $f:expr) => {
-        parse_binop($pair, $f)
-    };
-}
-// macro_rules! binop {
-//     ($pair:expr; $f:expr) => {
-//         {
-//             let f = $f;
-//             match_children!($pair; (first: expression, rest*: expression) => {
-//                 rest.fold_results(first, |acc, e| bx(f(acc, e)))?
-//             })
-//         }
-//     };
-// }
-
-// TODO: remove when stack overflow fixed
-named!(single_expr<BoxExpr>;
-    match_children!((expr: expression) => expr)
-);
-macro_rules! single {
-    ($pair:expr; expression) => {
-        single_expr($pair)
-    };
-    ($pair:expr; $ty:ident) => {
-        match_children!($pair; (expr: $ty) => expr)
-    };
-}
 
 named!(eoi<()>; plain_value!(()));
 
@@ -211,7 +193,6 @@ named!(partial_record_entries<(Rule, BoxExpr, BTreeMap<&str, ParsedExpr>)>;
     )
 );
 
-// TODO: handle stack manually
 named!(expression<BoxExpr>; match_rule!(
     Rule::natural_literal_raw => map!(natural; |n| bx(Expr::NaturalLit(n))),
     Rule::integer_literal_raw => map!(integer; |n| bx(Expr::IntegerLit(n))),
@@ -245,10 +226,10 @@ named!(expression<BoxExpr>; match_rule!(
             bindings.fold_results(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))?
         }),
 
-    // Rule::forall_expression =>
-    //     match_children!((label: str, typ: expression, body: expression) => {
-    //         bx(Expr::Pi(label, typ, body))
-    //     }),
+    Rule::forall_expression =>
+        match_children!((label: str, typ: expression, body: expression) => {
+            bx(Expr::Pi(label, typ, body))
+        }),
 
     Rule::annotated_expression => binop!(Expr::Annot),
     Rule::import_alt_expression => single!(expression),
@@ -292,6 +273,7 @@ named!(expression<BoxExpr>; match_rule!(
     ),
 ));
 
+
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     match_children!(@pairs; pairs; (e: expression, _eoi: eoi) => e)
@@ -312,7 +294,7 @@ fn test_parse() {
         },
         ok => println!("{:?}", ok),
     }
-    assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr_lalrpop(expr).unwrap());
+    // assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr_lalrpop(expr).unwrap());
     // assert!(false);
 
     println!("test {:?}", parse_expr_lalrpop("3 + 5 * 10"));

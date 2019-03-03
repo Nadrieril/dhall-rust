@@ -39,8 +39,12 @@ macro_rules! make_spec_test {
         #[allow(unused_variables)]
         #[allow(unused_imports)]
         fn $name(){
+            use std::thread;
             use dhall::*;
-            run_spec_test!($type, $path);
+
+            thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {
+                run_spec_test!($type, $path);
+            }).unwrap().join().unwrap();
         }
     };
 }
