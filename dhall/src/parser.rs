@@ -25,6 +25,16 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
 }
 
 
+
+macro_rules! named {
+    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
+        #[allow(unused_variables)]
+        fn $name(pair: Pair<Rule>) -> ParseResult<$o> {
+            $submac!(pair; $($args)*)
+        }
+    );
+}
+
 macro_rules! match_children {
     // Normal pattern
     (@0, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
@@ -143,15 +153,6 @@ macro_rules! match_rule {
             r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
         }
     };
-}
-
-macro_rules! named {
-    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
-        #[allow(unused_variables)]
-        fn $name(pair: Pair<Rule>) -> ParseResult<$o> {
-            $submac!(pair; $($args)*)
-        }
-    );
 }
 
 
