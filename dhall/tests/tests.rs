@@ -142,7 +142,6 @@ make_spec_test!(normalization, spec_normalization_success_haskell_tutorial_acces
 // make_spec_test!(normalization, spec_normalization_success_prelude_Text_show_0, "normalization/success/prelude/Text/show/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Text_show_1, "normalization/success/prelude/Text/show/1");
 // make_spec_test!(normalization, spec_normalization_success_remoteSystems, "normalization/success/remoteSystems");
-// make_spec_test!(normalization, spec_normalization_success_simple_constructorsId, "normalization/success/simple/constructorsId");
 // make_spec_test!(normalization, spec_normalization_success_simple_doubleShow, "normalization/success/simple/doubleShow");
 make_spec_test!(normalization, spec_normalization_success_simple_integerShow, "normalization/success/simple/integerShow");
 // make_spec_test!(normalization, spec_normalization_success_simple_integerToDouble, "normalization/success/simple/integerToDouble");
@@ -169,7 +168,6 @@ make_spec_test!(parser, spec_parser_success_asText, "parser/success/asText");
 make_spec_test!(parser, spec_parser_success_blockComment, "parser/success/blockComment");
 make_spec_test!(parser, spec_parser_success_builtins, "parser/success/builtins");
 make_spec_test!(parser, spec_parser_success_collectionImportType, "parser/success/collectionImportType");
-make_spec_test!(parser, spec_parser_success_constructors, "parser/success/constructors");
 make_spec_test!(parser, spec_parser_success_double, "parser/success/double");
 make_spec_test!(parser, spec_parser_success_doubleQuotedString, "parser/success/doubleQuotedString");
 make_spec_test!(parser, spec_parser_success_environmentVariables, "parser/success/environmentVariables");
