@@ -26,49 +26,87 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
 
 
 
+macro_rules! make_parser {
+    ($( named!( $name:ident<$o:ty>; $($args:tt)* ); )*) => (
+        #[allow(non_camel_case_types)]
+        enum ParsedType {
+            $( $name, )*
+        }
+
+        impl ParsedType {
+            fn parse(self, pair: Pair<Rule>) -> ParseResult<ParsedValue> {
+                match self {
+                    $( ParsedType::$name => $name(pair), )*
+                }
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        enum ParsedValue<'a> {
+            $( $name($o), )*
+        }
+
+        impl<'a> ParsedValue<'a> {
+            $(
+                fn $name(self) -> ParseResult<$o> {
+                    match self {
+                        ParsedValue::$name(x) => Ok(x),
+                        _ => unreachable!(),
+                    }
+                }
+            )*
+        }
+
+        $(
+            named!($name<$o>; $($args)*);
+        )*
+    );
+}
+
 macro_rules! named {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
         #[allow(unused_variables)]
-        fn $name(pair: Pair<Rule>) -> ParseResult<$o> {
-            $submac!(pair; $($args)*)
+        fn $name(pair: Pair<Rule>) -> ParseResult<ParsedValue> {
+            let res = $submac!(pair; $($args)*);
+            Ok(ParsedValue::$name(res?))
         }
     );
 }
 
 macro_rules! match_children {
     // Normal pattern
-    (@0, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = concat_idents!($ty)($pairs.next().unwrap())?;
-        match_children!(@0, $pairs $($rest)*);
+    (@match 0, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        let $x = $ty($pairs.next().unwrap())?.$ty()?;
+        match_children!(@match 0, $pairs $($rest)*);
     };
     // Normal pattern after a variable length one: declare reversed and take from the end
-    (@$w:expr, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        match_children!(@$w, $pairs $($rest)*);
-        let $x = concat_idents!($ty)($pairs.next_back().unwrap())?;
+    (@match $w:expr, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        match_children!(@match $w, $pairs $($rest)*);
+        let $x = $ty($pairs.next_back().unwrap())?.$ty()?;
     };
     // Optional pattern
-    (@0, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        match_children!(@1, $pairs $($rest)*);
-        let $x = $pairs.next().map(concat_idents!($ty)).transpose()?;
+    (@match 0, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
+        match_children!(@match 1, $pairs $($rest)*);
+        let $x = $pairs.next().map($ty).map(|x| x?.$ty()).transpose()?;
         $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
     };
     // Everything else pattern
-    (@0, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
-        match_children!(@2, $pairs $($rest)*);
+    (@match 0, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
+        match_children!(@match 2, $pairs $($rest)*);
         #[allow(unused_mut)]
-        let mut $x = $pairs.map(concat_idents!($ty));
+        let mut $x = $pairs.map($ty).map(|x| x?.$ty());
     };
 
     // Check no elements remain
-    (@0, $pairs:expr) => {
+    (@match 0, $pairs:expr) => {
         $pairs.next().ok_or(()).expect_err("Some parsed values remain unused");
     };
-    (@$_:expr, $pairs:expr) => {};
+    (@match $_:expr, $pairs:expr) => {};
 
     // Entrypoints
     (@pairs; $pairs:expr; ($($args:tt)*) => $body:expr) => {
         {
-            match_children!(@0, $pairs, $($args)*);
+            match_children!(@match 0, $pairs, $($args)*);
             Ok($body)
         }
     };
@@ -104,7 +142,7 @@ macro_rules! with_raw_pair {
 macro_rules! map {
     ($pair:expr; $ty:ident; $f:expr) => {
         {
-            let x = $ty($pair)?;
+            let x = $ty($pair)?.$ty()?;
             Ok($f(x))
         }
     };
@@ -145,21 +183,24 @@ macro_rules! with_rule {
 
 macro_rules! match_rule {
     ($pair:expr; $($pat:pat => $submac:ident!( $($args:tt)* ),)*) => {
-        #[allow(unreachable_patterns)]
-        match $pair.as_rule() {
-            $(
-                $pat => $submac!($pair; $($args)*),
-            )*
-            r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
+        {
+            #[allow(unreachable_patterns)]
+            match $pair.as_rule() {
+                $(
+                    $pat => $submac!($pair; $($args)*),
+                )*
+                r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
+            }
         }
     };
 }
 
 
+make_parser!{
 
 named!(eoi<()>; plain_value!(()));
 
-named!(str<&str>; with_captured_str!(s; { s.trim() }));
+named!(str<&'a str>; with_captured_str!(s; { s.trim() }));
 
 named!(natural<usize>; with_raw_pair!(pair; {
     pair.as_str().trim()
@@ -173,15 +214,15 @@ named!(integer<isize>; with_raw_pair!(pair; {
         .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
 }));
 
-named!(letbinding<(&str, Option<BoxExpr>, BoxExpr)>;
+named!(letbinding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     match_children!((name: str, annot?: expression, expr: expression) => (name, annot, expr))
 );
 
-named!(record_entry<(&str, BoxExpr)>;
+named!(record_entry<(&'a str, BoxExpr<'a>)>;
     match_children!((name: str, expr: expression) => (name, expr))
 );
 
-named!(partial_record_entries<(Rule, BoxExpr, BTreeMap<&str, ParsedExpr>)>;
+named!(partial_record_entries<(Rule, BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
    with_rule!(rule;
         match_children!((expr: expression, entries*: record_entry) => {
             let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
@@ -194,7 +235,7 @@ named!(partial_record_entries<(Rule, BoxExpr, BTreeMap<&str, ParsedExpr>)>;
     )
 );
 
-named!(expression<BoxExpr>; match_rule!(
+named!(expression<BoxExpr<'a>>; match_rule!(
     Rule::natural_literal_raw => map!(natural; |n| bx(Expr::NaturalLit(n))),
     Rule::integer_literal_raw => map!(integer; |n| bx(Expr::IntegerLit(n))),
 
@@ -273,6 +314,8 @@ named!(expression<BoxExpr>; match_rule!(
         })
     ),
 ));
+
+}
 
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
