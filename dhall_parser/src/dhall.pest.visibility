@@ -153,7 +153,7 @@ selector_raw
 labels_raw
 # primitive_expression_raw
 # literal_expression_raw
-record_type_or_literal
+# record_type_or_literal
 empty_record_literal
 empty_record_type
 non_empty_record_type_or_literal
