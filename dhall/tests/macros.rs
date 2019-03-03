@@ -26,8 +26,7 @@ macro_rules! run_spec_test {
     };
     (parser_failure, $path:expr) => {
         let expr_str = include_test_str!($path);
-        parser::parse_expr_pest(&expr_str).map_err(|e| println!("{}", e)).unwrap_err();
-        // parser::parse_expr(&expr_str).unwrap();
+        parser::parse_expr_pest(&expr_str).unwrap_err();
     };
 }
 
@@ -42,7 +41,7 @@ macro_rules! make_spec_test {
             use std::thread;
             use dhall::*;
 
-            thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {
+            thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(move || {
                 run_spec_test!($type, $path);
             }).unwrap().join().unwrap();
         }

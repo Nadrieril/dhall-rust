@@ -58,7 +58,6 @@ extern {
 }
 
 pub Expr: BoxExpr<'input> = { // exprA
-    <ExprB> ":" <Expr> => bx(Annot(<>)),
     ExprB,
 };
 
@@ -69,6 +68,7 @@ ExprB: BoxExpr<'input> = {
     <ExprC> "->" <ExprB> => bx(Pi("_", <>)),
     Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
     "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(c, a)),
+    <ExprC> ":" <Expr> => bx(Annot(<>)),
     ExprC,
 };
 

@@ -169,6 +169,14 @@ pub enum Expr<'i, S, A> {
     UnionLit(&'i str, Box<Expr<'i, S, A>>, BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `Combine x y                              ~  x ∧ y`
     Combine(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    /// x //\\ y
+    CombineTypes(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    /// x ? y
+    ImportAlt(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    /// x // y
+    Prefer(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    /// x # y
+    ListAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Field e x                                ~  e.x`
@@ -696,7 +704,7 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
         Embed(ref p) => Embed(p.clone()),
-        FailedParse(_, _) => unreachable!(),
+        _ => panic!(),
     }
 }
 
@@ -793,7 +801,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         Field(ref a, b) => Field(bx(subst(v, e, a)), b),
         Note(_, ref b) => subst(v, e, b),
         Embed(ref p) => Embed(p.clone()),
-        FailedParse(_, _) => unreachable!(),
+        _ => panic!(),
     }
 }
 
@@ -1038,7 +1046,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         },
         Note(_, ref e) => normalize(e),
         Embed(ref a) => Embed(a.clone()),
-        FailedParse(_, _) => unreachable!(),
+        _ => panic!(),
     }
 }
 

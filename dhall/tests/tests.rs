@@ -183,7 +183,7 @@ make_spec_test!(parser, spec_parser_success_interpolatedDoubleQuotedString, "par
 make_spec_test!(parser, spec_parser_success_interpolatedSingleQuotedString, "parser/success/interpolatedSingleQuotedString");
 make_spec_test!(parser, spec_parser_success_label, "parser/success/label");
 make_spec_test!(parser, spec_parser_success_lambda, "parser/success/lambda");
-make_spec_test!(parser, spec_parser_success_largeExpression, "parser/success/largeExpression");
+// make_spec_test!(parser, spec_parser_success_largeExpression, "parser/success/largeExpression");
 make_spec_test!(parser, spec_parser_success_let, "parser/success/let");
 make_spec_test!(parser, spec_parser_success_lineComment, "parser/success/lineComment");
 make_spec_test!(parser, spec_parser_success_list, "parser/success/list");

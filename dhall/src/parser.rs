@@ -240,12 +240,6 @@ macro_rules! binop {
     };
 }
 
-macro_rules! single {
-    ($pair:expr; $ty:ident) => {
-        match_children!($pair; (expr: $ty) => expr)
-    };
-}
-
 macro_rules! with_rule {
     ($pair:expr; $x:ident; $submac:ident!( $($args:tt)* )) => {
         {
@@ -347,16 +341,21 @@ make_parser!{
                 bx(Expr::Pi(label, typ, body))
             }),
 
+        Rule::arrow_expression =>
+            match_children!((typ: expression, body: expression) => {
+                bx(Expr::Pi("_", typ, body))
+            }),
+
         Rule::annotated_expression => binop!(Expr::Annot),
-        Rule::import_alt_expression => single!(expression),
+        Rule::import_alt_expression => binop!(Expr::ImportAlt),
         Rule::or_expression => binop!(Expr::BoolOr),
         Rule::plus_expression => binop!(Expr::NaturalPlus),
         Rule::text_append_expression => binop!(Expr::TextAppend),
-        Rule::list_append_expression => single!(expression),
+        Rule::list_append_expression => binop!(Expr::ListAppend),
         Rule::and_expression => binop!(Expr::BoolAnd),
-        Rule::combine_expression => single!(expression),
-        Rule::prefer_expression => single!(expression),
-        Rule::combine_types_expression => single!(expression),
+        Rule::combine_expression => binop!(Expr::Combine),
+        Rule::prefer_expression => binop!(Expr::Prefer),
+        Rule::combine_types_expression => binop!(Expr::CombineTypes),
         Rule::times_expression => binop!(Expr::NaturalTimes),
         Rule::equal_expression => binop!(Expr::BoolEQ),
         Rule::not_equal_expression => binop!(Expr::BoolNE),
