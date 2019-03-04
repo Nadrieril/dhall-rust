@@ -18,6 +18,7 @@ macro_rules! parse_str {
                 Ok(larlpop_expr) => assert_eq!(pest_expr, larlpop_expr),
                 Err(_) => {},
             };
+            // panic!("{:?}", pest_expr);
             pest_expr
         }
     };

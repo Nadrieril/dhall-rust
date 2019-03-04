@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use itertools::*;
+// use itertools::*;
 use lalrpop_util;
 use pest::Parser;
 use pest::iterators::Pair;
@@ -24,6 +24,36 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
     pest::error::Error::new_from_span(e, pair.as_span())
 }
 
+fn debug_pair(pair: Pair<Rule>) -> String {
+    use std::fmt::Write;
+    let mut s = String::new();
+    fn aux(s: &mut String, indent: usize, prefix: String, pair: Pair<Rule>) {
+        let indent_str = "| ".repeat(indent);
+        let rule = pair.as_rule();
+        let contents = pair.as_str().clone();
+        let mut inner = pair.into_inner();
+        let mut first = true;
+        while let Some(p) = inner.next() {
+            if first {
+                first = false;
+                let last = inner.peek().is_none();
+                if last && p.as_str() == contents {
+                    let prefix = format!("{}{:?} > ", prefix, rule);
+                    aux(s, indent, prefix, p);
+                    continue;
+                } else {
+                    writeln!(s, r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents).unwrap();
+                }
+            }
+            aux(s, indent+1, "".into(), p);
+        }
+        if first {
+            writeln!(s, r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents).unwrap();
+        }
+    }
+    aux(&mut s, 0, "".into(), pair);
+    s
+}
 
 /* Macro to pattern-match iterators.
  * Panics if the sequence doesn't match;
@@ -45,7 +75,13 @@ pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
  * })
  * ```
  *
- */
+*/
+#[derive(Debug)]
+enum IterMatchError<T> {
+    NotEnoughItems,
+    TooManyItems,
+    Other(T), // Allow other macros to inkect their own errors
+}
 macro_rules! match_iter {
     // Everything else pattern
     (@match 0, $iter:expr, $x:ident* $($rest:tt)*) => {
@@ -63,11 +99,17 @@ macro_rules! match_iter {
     (@match 0, $iter:expr, $x:ident? $($rest:tt)*) => {
         match_iter!(@match 1, $iter $($rest)*);
         let $x = $iter.next();
-        $iter.next().ok_or(()).expect_err("Some values remain unused");
+        match $iter.next() {
+            Some(_) => break Err(IterMatchError::TooManyItems),
+            None => {},
+        };
     };
     // Normal pattern
     (@match 0, $iter:expr, $x:ident $($rest:tt)*) => {
-        let $x = $iter.next().unwrap();
+        let $x = match $iter.next() {
+            Some(x) => x,
+            None => break Err(IterMatchError::NotEnoughItems),
+        };
         match_iter!(@match 0, $iter $($rest)*);
     };
     // Normal pattern after a variable length one: declare reversed and take from the end
@@ -78,17 +120,29 @@ macro_rules! match_iter {
 
     // Check no elements remain
     (@match 0, $iter:expr) => {
-        $iter.next().ok_or(()).expect_err("Some values remain unused");
+        match $iter.next() {
+            Some(_) => break Err(IterMatchError::TooManyItems),
+            None => {},
+        };
     };
     (@match $_:expr, $iter:expr) => {};
 
-    // Entrypoint
-    ($iter:expr; ($($args:tt)*) => $body:expr) => {
+    // Entrypoints
+    (@get_err, $iter:expr; ($($args:tt)*) => $body:expr) => {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
-            match_iter!(@match 0, iter, $($args)*);
-            $body
+            let ret: Result<_, IterMatchError<_>> = loop {
+                match_iter!(@match 0, iter, $($args)*);
+                break Ok($body);
+            };
+            ret
+        }
+    };
+    ($($args:tt)*) => {
+        {
+            let ret: Result<_, IterMatchError<()>> = match_iter!(@get_err, $($args)*);
+            ret.unwrap()
         }
     };
 }
@@ -115,37 +169,60 @@ macro_rules! match_children {
         match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x??), ($($rest)*))
     };
     (@collect, $pairs:expr, ($($args:tt)*), $body:expr, (,$($acc:tt)*), ()) => {
-        match_iter!($pairs; ($($acc)*) => {
-            match_children!(@parse, $pairs, $($args)*);
-            Ok($body)
-        })
+        let matched: Result<_, IterMatchError<ParseError>> =
+            match_iter!(@get_err, $pairs; ($($acc)*) => {
+                match_children!(@parse, $pairs, $($args)*);
+                Ok($body)
+        });
+        match matched {
+            Ok(v) => break v,
+            Err(_) => {},
+        };
     };
 
     (@parse, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = $ty($x)?;
+        let $x = $ty($x);
+        let $x = match $x {
+            Ok(x) => x,
+            Err(e) => break Err(IterMatchError::Other(e)),
+        };
         match_children!(@parse, $pairs $($rest)*);
     };
     (@parse, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map($ty).transpose()?;
+        let $x = $x.map($ty).transpose();
+        let $x = match $x {
+            Ok(x) => x,
+            Err(e) => break Err(IterMatchError::Other(e)),
+        };
         match_children!(@parse, $pairs $($rest)*);
     };
     (@parse, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
+        let $x = $x.map($ty).collect::<ParseResult<Vec<_>>>();
         #[allow(unused_mut)]
-        let mut $x = $x.map($ty);
+        let mut $x = match $x {
+            Ok(x) => x.into_iter(),
+            Err(e) => break Err(IterMatchError::Other(e)),
+        };
         match_children!(@parse, $pairs $($rest)*);
     };
     (@parse, $pairs:expr) => {};
 
-    // Entrypoints
-    ($pair:expr; $($rest:tt)*) => {
+    // Entrypoint
+    ($pair:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
+            let pair = $pair;
             #[allow(unused_mut)]
-            let mut pairs = $pair.into_inner();
-            match_children!(@pairs; pairs; $($rest)*)
+            let mut pairs = pair.clone().into_inner();
+            // Would use loop labels but they create warnings
+            #[allow(unreachable_code)]
+            loop {
+                $(
+                    match_children!(@collect, pairs.clone(), ($($args)*), $body, (), ($($args)*,));
+                )*
+                // break Err(TODO);
+                panic!("No match found while matching on:\n{}", debug_pair(pair));
+            }
         }
-    };
-    (@pairs; $pairs:expr; ($($args:tt)*) => $body:expr) => {
-        match_children!(@collect, $pairs, ($($args)*), $body, (), ($($args)*,))
     };
 }
 
@@ -189,7 +266,7 @@ macro_rules! binop {
         {
             let f = $f;
             match_children!($pair; (first: expression, rest*: expression) => {
-                rest.fold_results(first, |acc, e| bx(f(acc, e)))?
+                rest.fold(first, |acc, e| bx(f(acc, e)))
             })
         }
     };
@@ -245,11 +322,10 @@ named!(record_entry<(&'a str, BoxExpr<'a>)>;
 );
 
 named!(partial_record_entries<(Rule, BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-   with_rule!(rule;
+    with_rule!(rule;
         match_children!((expr: expression, entries*: record_entry) => {
             let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
-            for entry in entries {
-                let (n, e) = entry?;
+            for (n, e) in entries {
                 map.insert(n, *e);
             }
             (rule, expr, map)
@@ -287,7 +363,7 @@ named!(expression<BoxExpr<'a>>; match_rule!(
 
     Rule::let_expression =>
         match_children!((bindings*: letbinding, final_expr: expression) => {
-            bindings.fold_results(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))?
+            bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
         }),
 
     Rule::forall_expression =>
@@ -317,7 +393,7 @@ named!(expression<BoxExpr<'a>>; match_rule!(
 
     Rule::selector_expression_raw =>
         match_children!((first: expression, rest*: str) => {
-            rest.fold_results(first, |acc, e| bx(Expr::Field(acc, e)))?
+            rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
         }),
 
     Rule::empty_record_type => plain_value!(bx(Expr::Record(BTreeMap::new()))),
@@ -335,9 +411,9 @@ named!(expression<BoxExpr<'a>>; match_rule!(
 
     _ => with_rule!(rule;
         match_children!((exprs*: expression) => {
-            // panic!();
             let rulename = format!("{:?}", rule);
-            bx(Expr::FailedParse(rulename, exprs.map_results(|x| *x).collect::<ParseResult<_>>()?))
+            // panic!(rulename);
+            bx(Expr::FailedParse(rulename, exprs.map(|x| *x).collect()))
         })
     ),
 ));
