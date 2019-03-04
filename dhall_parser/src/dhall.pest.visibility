@@ -23,7 +23,7 @@ label
 double_quote_literal
 # single_quote_continue
 single_quote_literal
-text_literal_raw
+# text_literal_raw
 # if_raw
 # then_raw
 # else_raw
@@ -128,7 +128,7 @@ let_expression
 forall_expression
 arrow_expression
 merge_expression
-empty_list_or_optional
+# empty_list_or_optional
 empty_collection
 non_empty_optional
 annotated_expression
