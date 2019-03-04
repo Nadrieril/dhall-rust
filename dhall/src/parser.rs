@@ -1,17 +1,19 @@
 use std::collections::BTreeMap;
 // use itertools::*;
 use lalrpop_util;
-use pest::Parser;
 use pest::iterators::Pair;
+use pest::Parser;
 
 use dhall_parser::{DhallParser, Rule};
 
+use crate::core::{bx, Builtin, Const, Expr, V};
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
-use crate::core::{bx, Expr, Builtin, Const, V};
 
-pub fn parse_expr_lalrpop(s: &str) -> Result<BoxExpr, lalrpop_util::ParseError<usize, Tok, LexicalError>>  {
+pub fn parse_expr_lalrpop(
+    s: &str,
+) -> Result<BoxExpr, lalrpop_util::ParseError<usize, Tok, LexicalError>> {
     grammar::ExprParser::new().parse(Lexer::new(s))
     // Ok(bx(Expr::BoolLit(false)))
 }
@@ -21,7 +23,7 @@ pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
 
 pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
-    let e = pest::error::ErrorVariant::CustomError{ message: msg };
+    let e = pest::error::ErrorVariant::CustomError { message: msg };
     pest::error::Error::new_from_span(e, pair.as_span())
 }
 
@@ -43,13 +45,23 @@ fn debug_pair(pair: Pair<Rule>) -> String {
                     aux(s, indent, prefix, p);
                     continue;
                 } else {
-                    writeln!(s, r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents).unwrap();
+                    writeln!(
+                        s,
+                        r#"{}{}{:?}: "{}""#,
+                        indent_str, prefix, rule, contents
+                    )
+                    .unwrap();
                 }
             }
-            aux(s, indent+1, "".into(), p);
+            aux(s, indent + 1, "".into(), p);
         }
         if first {
-            writeln!(s, r#"{}{}{:?}: "{}""#, indent_str, prefix, rule, contents).unwrap();
+            writeln!(
+                s,
+                r#"{}{}{:?}: "{}""#,
+                indent_str, prefix, rule, contents
+            )
+            .unwrap();
         }
     }
     aux(&mut s, 0, "".into(), pair);
@@ -148,8 +160,6 @@ macro_rules! match_iter {
     };
 }
 
-
-
 macro_rules! named {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
         #[allow(unused_variables)]
@@ -236,32 +246,26 @@ macro_rules! match_children {
 }
 
 macro_rules! with_captured_str {
-    ($pair:expr; $x:ident; $body:expr) => {
-        {
-            #[allow(unused_mut)]
-            let mut $x = $pair.as_str();
-            Ok($body)
-        }
-    };
+    ($pair:expr; $x:ident; $body:expr) => {{
+        #[allow(unused_mut)]
+        let mut $x = $pair.as_str();
+        Ok($body)
+    }};
 }
 
 macro_rules! with_raw_pair {
-    ($pair:expr; $x:ident; $body:expr) => {
-        {
-            #[allow(unused_mut)]
-            let mut $x = $pair;
-            Ok($body)
-        }
-    };
+    ($pair:expr; $x:ident; $body:expr) => {{
+        #[allow(unused_mut)]
+        let mut $x = $pair;
+        Ok($body)
+    }};
 }
 
 macro_rules! map {
-    ($pair:expr; $ty:ident; $f:expr) => {
-        {
-            let x = $ty($pair)?;
-            Ok($f(x))
-        }
-    };
+    ($pair:expr; $ty:ident; $f:expr) => {{
+        let x = $ty($pair)?;
+        Ok($f(x))
+    }};
 }
 
 macro_rules! plain_value {
@@ -304,7 +308,6 @@ macro_rules! match_rule {
         }
     };
 }
-
 
 named!(eoi<()>; plain_value!(()));
 
@@ -509,12 +512,10 @@ named!(final_expression<BoxExpr<'a>>;
     match_children!((e: expression, _eoi: eoi) => e)
 );
 
-
-pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr>  {
+pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     match_iter!(pairs; (e) => final_expression(e))
 }
-
 
 #[test]
 fn test_parse() {
@@ -527,7 +528,7 @@ fn test_parse() {
         Err(e) => {
             println!("{:?}", e);
             println!("{}", e);
-        },
+        }
         ok => println!("{:?}", ok),
     }
     // assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr_lalrpop(expr).unwrap());
@@ -536,15 +537,27 @@ fn test_parse() {
     println!("test {:?}", parse_expr_lalrpop("3 + 5 * 10"));
     assert!(parse_expr_lalrpop("22").is_ok());
     assert!(parse_expr_lalrpop("(22)").is_ok());
-    assert_eq!(parse_expr_lalrpop("3 + 5 * 10").ok(),
-               Some(Box::new(NaturalPlus(Box::new(NaturalLit(3)),
-                                Box::new(NaturalTimes(Box::new(NaturalLit(5)),
-                                                      Box::new(NaturalLit(10))))))));
+    assert_eq!(
+        parse_expr_lalrpop("3 + 5 * 10").ok(),
+        Some(Box::new(NaturalPlus(
+            Box::new(NaturalLit(3)),
+            Box::new(NaturalTimes(
+                Box::new(NaturalLit(5)),
+                Box::new(NaturalLit(10))
+            ))
+        )))
+    );
     // The original parser is apparently right-associative
-    assert_eq!(parse_expr_lalrpop("2 * 3 * 4").ok(),
-               Some(Box::new(NaturalTimes(Box::new(NaturalLit(2)),
-                                 Box::new(NaturalTimes(Box::new(NaturalLit(3)),
-                                                       Box::new(NaturalLit(4))))))));
+    assert_eq!(
+        parse_expr_lalrpop("2 * 3 * 4").ok(),
+        Some(Box::new(NaturalTimes(
+            Box::new(NaturalLit(2)),
+            Box::new(NaturalTimes(
+                Box::new(NaturalLit(3)),
+                Box::new(NaturalLit(4))
+            ))
+        )))
+    );
     assert!(parse_expr_lalrpop("((((22))))").is_ok());
     assert!(parse_expr_lalrpop("((22)").is_err());
     println!("{:?}", parse_expr_lalrpop("\\(b : Bool) -> b == False"));
