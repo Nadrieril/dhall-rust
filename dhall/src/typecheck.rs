@@ -316,20 +316,29 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
         TextLit(_) => Ok(Builtin(Text)),
         TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
         ListLit(ref t, ref xs) => {
-            let s = normalize::<_, S, _>(&type_with(ctx, t)?);
+            let mut iter = xs.iter().enumerate();
+            let t: Box<Expr<_, _>> = match t {
+                Some(t) => t.clone(),
+                None => {
+                    let (_, first_x) = iter.next().unwrap();
+                    bx(type_with(ctx, first_x)?)
+                },
+            };
+
+            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
             match s {
                 Const(Type) => {}
-                _ => return Err(TypeError::new(ctx, e, InvalidListType((**t).clone()))),
+                _ => return Err(TypeError::new(ctx, e, InvalidListType(*t))),
             }
-            for (i, x) in xs.iter().enumerate() {
+            for (i, x) in iter {
                 let t2 = type_with(ctx, x)?;
-                if !prop_equal(t, &t2) {
-                    let nf_t  = normalize(t);
+                if !prop_equal(&t, &t2) {
+                    let nf_t  = normalize(&t);
                     let nf_t2 = normalize(&t2);
                     return Err(TypeError::new(ctx, e, InvalidListElement(i, nf_t, x.clone(), nf_t2)) )
                 }
             }
-            Ok(App(bx(Builtin(List)), t.clone()))
+            Ok(App(bx(Builtin(List)), t))
         }
         Builtin(ListBuild) =>
             Ok(pi("a", Const(Type),
@@ -358,24 +367,33 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
         Builtin(ListReverse) =>
             Ok(pi("a", Const(Type), pi("_", app(List, "a"), app(List, "a")))),
         OptionalLit(ref t, ref xs) => {
-            let s = normalize::<_, S, _>(&type_with(ctx, t)?);
+            let mut iter = xs.iter();
+            let t: Box<Expr<_, _>> = match t {
+                Some(t) => t.clone(),
+                None => {
+                    let first_x = iter.next().unwrap();
+                    bx(type_with(ctx, first_x)?)
+                },
+            };
+
+            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
             match s {
                 Const(Type) => {}
-                _ => return Err(TypeError::new(ctx, e, InvalidOptionalType((**t).clone()))),
+                _ => return Err(TypeError::new(ctx, e, InvalidOptionalType(*t))),
             }
             let n = xs.len();
             if 2 <= n {
                 return Err(TypeError::new(ctx, e, InvalidOptionalLiteral(n)));
             }
-            for x in xs {
+            for x in iter {
                 let t2 = type_with(ctx, x)?;
-                if !prop_equal(t, &t2) {
-                    let nf_t  = normalize(t);
+                if !prop_equal(&t, &t2) {
+                    let nf_t  = normalize(&t);
                     let nf_t2 = normalize(&t2);
                     return Err(TypeError::new(ctx, e, InvalidOptionalElement(nf_t, x.clone(), nf_t2)));
                 }
             }
-            Ok(App(bx(Builtin(Optional)), t.clone()))
+            Ok(App(bx(Builtin(Optional)), t))
         }
         Builtin(OptionalFold) =>
             Ok(pi("a", Const(Type),

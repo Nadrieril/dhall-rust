@@ -67,7 +67,7 @@ ExprB: BoxExpr<'input> = {
     If <Expr> Then <ExprB> Else <ExprC> => bx(BoolIf(<>)),
     <ExprC> "->" <ExprB> => bx(Pi("_", <>)),
     Let <Label> <(":" <Expr>)?> "=" <Expr> In <ExprB> => bx(Let(<>)),
-    "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(c, a)),
+    "[" <a:Elems> "]" ":" <b:ListLike> <c:ExprE> => bx(b(Some(c), a)),
     <ExprC> ":" <Expr> => bx(Annot(<>)),
     ExprC,
 };

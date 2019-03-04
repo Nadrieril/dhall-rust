@@ -155,10 +155,10 @@ pub enum Expr<'i, S, A> {
     ///  `TextAppend x y                           ~  x ++ y`
     TextAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
+    ListLit(Option<Box<Expr<'i, S, A>>>, Vec<Expr<'i, S, A>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(Box<Expr<'i, S, A>>, Vec<Expr<'i, S, A>>),
+    OptionalLit(Option<Box<Expr<'i, S, A>>>, Vec<Expr<'i, S, A>>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
     Record(BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
@@ -178,7 +178,7 @@ pub enum Expr<'i, S, A> {
     /// x # y
     ListAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
-    Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Option<Box<Expr<'i, S, A>>>),
     ///  `Field e x                                ~  e.x`
     Field(Box<Expr<'i, S, A>>, &'i str),
     ///  `Note S x                                 ~  e`
@@ -321,20 +321,40 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
                 d.fmt_b(f)
             }
             &ListLit(ref t, ref es) => {
-                fmt_list("[", "] : List ", es, f, |e, f| e.fmt(f))?;
-                t.fmt_e(f)
+                fmt_list("[", "]", es, f, |e, f| e.fmt(f))?;
+                match t {
+                    Some(t) => {
+                        write!(f, " : List ")?;
+                        t.fmt_e(f)?
+                    },
+                    None => {},
+                }
+                Ok(())
             }
             &OptionalLit(ref t, ref es) => {
-                fmt_list("[", "] : Optional ", es, f, |e, f| e.fmt(f))?;
-                t.fmt_e(f)
+                fmt_list("[", "]", es, f, |e, f| e.fmt(f))?;
+                match t {
+                    Some(t) => {
+                        write!(f, " : Optional ")?;
+                        t.fmt_e(f)?
+                    },
+                    None => {},
+                }
+                Ok(())
             }
             &Merge(ref a, ref b, ref c) => {
                 write!(f, "merge ")?;
                 a.fmt_e(f)?;
                 write!(f, " ")?;
                 b.fmt_e(f)?;
-                write!(f, " : ")?;
-                c.fmt_d(f)
+                match c {
+                    Some(c) => {
+                        write!(f, " : ")?;
+                        c.fmt_d(f)?
+                    },
+                    None => {},
+                }
+                Ok(())
             }
             &Note(_, ref b) => b.fmt_b(f),
             a => a.fmt_c(f),
@@ -680,11 +700,11 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
         TextLit(ref a) => TextLit(a.clone()),
         TextAppend(ref a, ref b) => shift_op2(TextAppend, d, v, a, b),
         ListLit(ref t, ref es) => {
-            ListLit(bx(shift(d, v, t)),
+            ListLit(t.as_ref().map(|t| bx(shift(d, v, t))),
                     es.iter().map(|e| shift(d, v, e)).collect())
         }
         OptionalLit(ref t, ref es) => {
-            OptionalLit(bx(shift(d, v, t)),
+            OptionalLit(t.as_ref().map(|t| bx(shift(d, v, t))),
                         es.iter().map(|e| shift(d, v, e)).collect())
         }
         Record(ref a) => Record(map_record_value(a, |val| shift(d, v, val))),
@@ -697,7 +717,7 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
         }
         Combine(ref a, ref b) => shift_op2(Combine, d, v, a, b),
         Merge(ref a, ref b, ref c) => {
-            Merge(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
+            Merge(bx(shift(d, v, a)), bx(shift(d, v, b)), c.as_ref().map(|c| bx(shift(d, v, c))))
         }
         Field(ref a, b) => Field(bx(shift(d, v, a)), b),
         Note(_, ref b) => shift(d, v, b),
@@ -777,14 +797,14 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         TextLit(ref a) => TextLit(a.clone()),
         TextAppend(ref a, ref b) => subst_op2(TextAppend, v, e, a, b),
         ListLit(ref a, ref b) => {
-            let a2 = subst(v, e, a);
+            let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
-            ListLit(bx(a2), b2)
+            ListLit(a2, b2)
         }
         OptionalLit(ref a, ref b) => {
-            let a2 = subst(v, e, a);
+            let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
-            OptionalLit(bx(a2), b2)
+            OptionalLit(a2, b2)
         }
         Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
         RecordLit(ref kvs) => RecordLit(map_record_value(kvs, |val| subst(v, e, val))),
@@ -796,7 +816,7 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         }
         Combine(ref a, ref b) => subst_op2(Combine, v, e, a, b),
         Merge(ref a, ref b, ref c) => {
-            Merge(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
+            Merge(bx(subst(v, e, a)), bx(subst(v, e, b)), c.as_ref().map(|c| bx(subst(v, e, c))))
         }
         Field(ref a, b) => Field(bx(subst(v, e, a)), b),
         Note(_, ref b) => subst(v, e, b),
@@ -920,7 +940,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                         if check(&labeled) {
                             let mut v = vec![];
                             list_to_vector(&mut v, labeled);
-                            ListLit(bx(t), v)
+                            ListLit(Some(bx(t)), v)
                         } else {
                             app(App(f, bx(t)), k)
                         }
@@ -1022,14 +1042,14 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
                        normalize(x), normalize(y))
         }
         ListLit(ref t, ref es) => {
-            let t2  = normalize(t);
+            let t2  = t.as_ref().map(|x| x.as_ref()).map(normalize).map(bx);
             let es2 = es.iter().map(normalize).collect();
-            ListLit(bx(t2), es2)
+            ListLit(t2, es2)
         }
         OptionalLit(ref t, ref es) => {
-            let t2  = normalize(t);
+            let t2  = t.as_ref().map(|x| x.as_ref()).map(normalize).map(bx);
             let es2 = es.iter().map(normalize).collect();
-            OptionalLit(bx(t2), es2)
+            OptionalLit(t2, es2)
         }
         Record(ref kts) => Record(map_record_value(kts, normalize)),
         RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
