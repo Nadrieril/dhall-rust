@@ -214,7 +214,7 @@ macro_rules! match_iter_typed {
     (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
         match_iter!($iter; ($($acc)*) => {
             match_iter_typed!(@callback, $callback, $iter, $($args)*);
-            Ok($body)
+            $body
         })
     };
 
@@ -312,7 +312,7 @@ macro_rules! match_iter_branching {
                     let matched: Result<_, IterMatchError<_>> = $callback!(@branch_callback, $submac, iter.clone(); ($($args)*) => $body);
                     #[allow(unused_assignments)]
                     match matched {
-                        Ok(v) => break v,
+                        Ok(v) => break Ok(v),
                         Err(e) => last_error = e,
                     };
                 )*
