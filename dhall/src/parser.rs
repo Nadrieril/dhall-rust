@@ -454,22 +454,6 @@ rule!(single_quote_continue<Vec<&'a str>>;
     },
 );
 
-named!(natural<usize>;
-    raw_pair!(pair) => {
-        pair.as_str().trim()
-            .parse()
-            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-    }
-);
-
-named!(integer<isize>;
-    raw_pair!(pair) => {
-        pair.as_str().trim()
-            .parse()
-            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-    }
-);
-
 rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
 );
@@ -530,10 +514,6 @@ rule!(non_empty_union_type_or_literal
 rule!(empty_union_type<()>; children!() => ());
 
 rule_group!(expression<BoxExpr<'a>>;
-    double_quote_literal,
-    single_quote_literal,
-    natural_literal_raw,
-    integer_literal_raw,
     identifier_raw,
     lambda_expression,
     ifthenelse_expression,
@@ -560,6 +540,7 @@ rule_group!(expression<BoxExpr<'a>>;
     application_expression,
 
     selector_expression_raw,
+    literal_expression_raw,
     empty_record_type,
     empty_record_literal,
     non_empty_record_type_or_literal,
@@ -569,27 +550,36 @@ rule_group!(expression<BoxExpr<'a>>;
 );
 
 // TODO: parse escapes and interpolation
-rule!(double_quote_literal<BoxExpr<'a>>;
+rule!(double_quote_literal<String>;
     children!(strs*: raw_str) => {
-        bx(Expr::TextLit(strs.collect()))
+        strs.collect()
     }
 );
-rule!(single_quote_literal<BoxExpr<'a>>;
+rule!(single_quote_literal<String>;
     children!(eol: raw_str, contents: single_quote_continue) => {
         contents.push(eol);
-        bx(Expr::TextLit(contents.into_iter().rev().collect()))
+        contents.into_iter().rev().collect()
     }
 );
 
-rule!(natural_literal_raw<BoxExpr<'a>>;
-    self!(n: natural) => bx(Expr::NaturalLit(n))
+rule!(natural_literal_raw<usize>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+    }
 );
-rule!(integer_literal_raw<BoxExpr<'a>>;
-    self!(n: integer) => bx(Expr::IntegerLit(n))
+
+rule!(integer_literal_raw<isize>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+    }
 );
 
 rule!(identifier_raw<BoxExpr<'a>>;
-    children!(name: str, idx?: natural) => {
+    children!(name: str, idx?: natural_literal_raw) => {
         match Builtin::parse(name) {
             Some(b) => bx(Expr::Builtin(b)),
             None => match name {
@@ -686,6 +676,14 @@ rule!(selector_expression_raw<BoxExpr<'a>>;
     }
 );
 
+rule!(literal_expression_raw<BoxExpr<'a>>;
+    children!(n: natural_literal_raw) => bx(Expr::NaturalLit(n)),
+    children!(n: integer_literal_raw) => bx(Expr::IntegerLit(n)),
+    children!(s: double_quote_literal) => bx(Expr::TextLit(s)),
+    children!(s: single_quote_literal) => bx(Expr::TextLit(s)),
+    children!(e: expression) => e,
+);
+
 rule!(empty_record_type<BoxExpr<'a>>;
     children!() => bx(Expr::Record(BTreeMap::new()))
 );
@@ -716,6 +714,7 @@ rule!(union_type_or_literal<BoxExpr<'a>>;
         }
     },
 );
+
 rule!(non_empty_list_literal_raw<BoxExpr<'a>>;
     children!(items*: expression) => {
         bx(Expr::ListLit(None, items.map(|x| *x).collect()))
