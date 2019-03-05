@@ -128,7 +128,10 @@ macro_rules! match_iter {
     // Normal pattern after a variable length one: declare reversed and take from the end
     (@match $w:expr, $iter:expr, $x:ident $($rest:tt)*) => {
         match_iter!(@match $w, $iter $($rest)*);
-        let $x = $iter.next_back().unwrap();
+        let $x = match $iter.next_back() {
+            Some(x) => x,
+            None => break Err(IterMatchError::NotEnoughItems),
+        };
     };
 
     // Check no elements remain
