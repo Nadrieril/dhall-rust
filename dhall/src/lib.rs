@@ -1,6 +1,4 @@
 #![feature(box_patterns)]
-#![feature(concat_idents)]
-#![feature(transpose_result)]
 
 pub mod context;
 mod core;

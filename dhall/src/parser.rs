@@ -208,10 +208,11 @@ macro_rules! match_children {
         match_children!(@parse, $pairs $($rest)*);
     };
     (@parse, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map($ty).transpose();
+        let $x = $x.map($ty);
         let $x = match $x {
-            Ok(x) => x,
-            Err(e) => break Err(IterMatchError::Other(e)),
+            Some(Ok(x)) => Some(x),
+            Some(Err(e)) => break Err(IterMatchError::Other(e)),
+            None => None,
         };
         match_children!(@parse, $pairs $($rest)*);
     };
