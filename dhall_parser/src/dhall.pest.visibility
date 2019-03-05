@@ -1,4 +1,5 @@
-# end_of_line
+end_of_line
+# end_of_line_silent
 # tab
 # block_comment
 # block_comment_chunk
@@ -21,7 +22,7 @@ label_raw
 label
 # double_quote_chunk
 double_quote_literal
-# single_quote_continue
+single_quote_continue
 single_quote_literal
 # text_literal_raw
 # if_raw

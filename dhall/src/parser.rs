@@ -399,6 +399,29 @@ named!(str<&'a str>; with_captured_str!(s; { s.trim() }));
 
 named!(raw_str<&'a str>; with_captured_str!(s; s));
 
+named_rule!(escaped_quote_pair<&'a str>; plain_value!("''"));
+named_rule!(escaped_interpolation<&'a str>; plain_value!("${"));
+
+named_rule!(single_quote_continue<Vec<&'a str>>; match_children!(
+    // TODO: handle interpolation
+    // (c: expression, rest: single_quote_continue) => {
+    //     rest.push(c); rest
+    // },
+    (c: escaped_quote_pair, rest: single_quote_continue) => {
+        rest.push(c); rest
+    },
+    (c: escaped_interpolation, rest: single_quote_continue) => {
+        rest.push(c); rest
+    },
+    // capture interpolation as string
+    (c: raw_str, rest: single_quote_continue) => {
+        rest.push(c); rest
+    },
+    () => {
+        vec![]
+    },
+));
+
 named!(natural<usize>; with_raw_pair!(pair; {
     pair.as_str().trim()
         .parse()
@@ -411,7 +434,7 @@ named!(integer<isize>; with_raw_pair!(pair; {
         .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
 }));
 
-named!(letbinding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
+named_rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     match_children!((name: str, annot?: expression, expr: expression) => (name, annot, expr))
 );
 
@@ -445,7 +468,8 @@ named_rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
     })
 );
 
-named_rule!(non_empty_union_type_or_literal<(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+named_rule!(non_empty_union_type_or_literal
+        <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     match_children!(
         (label: str, e: expression, entries: union_type_entries) => {
             (Some((label, e)), entries)
@@ -466,9 +490,15 @@ named_rule!(non_empty_union_type_or_literal<(Option<(&'a str, BoxExpr<'a>)>, BTr
 named_rule!(empty_union_type<()>; plain_value!(()));
 
 named!(expression<BoxExpr<'a>>; match_rule!(
+    // TODO: parse escapes and interpolation
     Rule::double_quote_literal =>
         match_children!((strs*: raw_str) => {
             bx(Expr::TextLit(strs.collect()))
+        }),
+    Rule::single_quote_literal =>
+        match_children!((eol: raw_str, contents: single_quote_continue) => {
+            contents.push(eol);
+            bx(Expr::TextLit(contents.into_iter().rev().collect()))
         }),
 
     Rule::natural_literal_raw => map!(natural; |n| bx(Expr::NaturalLit(n))),
@@ -499,7 +529,7 @@ named!(expression<BoxExpr<'a>>; match_rule!(
         }),
 
     Rule::let_expression =>
-        match_children!((bindings*: letbinding, final_expr: expression) => {
+        match_children!((bindings*: let_binding, final_expr: expression) => {
             bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
         }),
 
@@ -583,13 +613,13 @@ named!(expression<BoxExpr<'a>>; match_rule!(
         }),
 
 
-    _ => with_rule!(rule;
-        match_children!((exprs*: expression) => {
-            let rulename = format!("{:?}", rule);
-            // panic!(rulename);
-            bx(Expr::FailedParse(rulename, exprs.map(|x| *x).collect()))
-        })
-    ),
+    // _ => with_rule!(rule;
+    //     match_children!((exprs*: expression) => {
+    //         let rulename = format!("{:?}", rule);
+    //         // panic!(rulename);
+    //         bx(Expr::FailedParse(rulename, exprs.map(|x| *x).collect()))
+    //     })
+    // ),
 ));
 
 named!(final_expression<BoxExpr<'a>>;
@@ -608,13 +638,20 @@ fn test_parse() {
     // let expr = r#"(1 + 2) * 3"#;
     let expr = r#"if True then 1 + 3 * 5 else 2"#;
     println!("{:?}", parse_expr_lalrpop(expr));
-    match parse_expr_pest(expr) {
-        Err(e) => {
-            println!("{:?}", e);
-            println!("{}", e);
-        }
-        ok => println!("{:?}", ok),
-    }
+    use std::thread;
+    // I don't understand why it stack overflows even on tiny expressions...
+    thread::Builder::new()
+        .stack_size(3 * 1024 * 1024)
+        .spawn(move || match parse_expr_pest(expr) {
+            Err(e) => {
+                println!("{:?}", e);
+                println!("{}", e);
+            }
+            ok => println!("{:?}", ok),
+        })
+        .unwrap()
+        .join()
+        .unwrap();
     // assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr_lalrpop(expr).unwrap());
     // assert!(false);
 
