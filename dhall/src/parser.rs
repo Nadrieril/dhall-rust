@@ -328,7 +328,7 @@ macro_rules! match_iter_branching {
     };
 }
 
-macro_rules! match_pest {
+macro_rules! match_pair {
     (@type_callback, $ty:ident, $x:expr) => {
         $ty($x)
     };
@@ -336,12 +336,12 @@ macro_rules! match_pest {
         {
             #[allow(unused_mut)]
             let mut pairs = $pair.clone().into_inner();
-            match_iter_typed!(match_pest; pairs; $($args)*)
+            match_iter_typed!(match_pair; pairs; $($args)*)
         }
     };
     (@branch_callback, self, $pair:expr; ($x:ident : $ty:ident) => $body:expr) => {
         {
-            let $x = match_pest!(@type_callback, $ty, $pair.clone());
+            let $x = match_pair!(@type_callback, $ty, $pair.clone());
             match $x {
                 Ok($x) => Ok($body),
                 Err(e) => Err(IterMatchError::Other(e)),
@@ -364,7 +364,7 @@ macro_rules! match_pest {
     ($pair:expr; $($args:tt)*) => {
         {
             let pair = $pair;
-            let result = match_iter_branching!(@noclone, match_pest; pair; $($args)*);
+            let result = match_iter_branching!(@noclone, match_pair; pair; $($args)*);
             result.map_err(|e| match e {
                 IterMatchError::Other(e) => e,
                 _ => custom_parse_error(&pair, "No match found".to_owned()),
@@ -373,7 +373,7 @@ macro_rules! match_pest {
     };
 }
 
-macro_rules! named {
+macro_rules! make_pest_parse_function {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
         #[allow(unused_variables)]
         #[allow(non_snake_case)]
@@ -383,19 +383,25 @@ macro_rules! named {
     );
 }
 
+macro_rules! named {
+    ($name:ident<$o:ty>; $($args:tt)*) => (
+        make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
+    );
+}
+
 macro_rules! rule {
     ($name:ident<$o:ty>; $($args:tt)*) => (
-        named!($name<$o>; match_rule!(
-            Rule::$name => match_pest!( $($args)* ),
+        make_pest_parse_function!($name<$o>; match_rule!(
+            Rule::$name => match_pair!( $($args)* ),
         ));
     );
 }
 
 macro_rules! rule_group {
     ($name:ident<$o:ty>; $($ty:ident),*) => (
-        named!($name<$o>; match_rule!(
+        make_pest_parse_function!($name<$o>; match_rule!(
             $(
-                Rule::$ty => match_pest!(raw_pair!(p) => $ty(p)?),
+                Rule::$ty => match_pair!(raw_pair!(p) => $ty(p)?),
             )*
         ));
     );
@@ -417,13 +423,9 @@ macro_rules! match_rule {
 
 rule!(EOI<()>; children!() => ());
 
-named!(str<&'a str>; match_pest!(
-    captured_str!(s) => s.trim()
-));
+named!(str<&'a str>; captured_str!(s) => s.trim());
 
-named!(raw_str<&'a str>; match_pest!(
-    captured_str!(s) => s
-));
+named!(raw_str<&'a str>; captured_str!(s) => s);
 
 rule!(escaped_quote_pair<&'a str>;
     children!() => "''"
@@ -452,31 +454,31 @@ rule!(single_quote_continue<Vec<&'a str>>;
     },
 );
 
-named!(natural<usize>; match_pest!(
+named!(natural<usize>;
     raw_pair!(pair) => {
         pair.as_str().trim()
             .parse()
             .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
     }
-));
+);
 
-named!(integer<isize>; match_pest!(
+named!(integer<isize>;
     raw_pair!(pair) => {
         pair.as_str().trim()
             .parse()
             .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
     }
-));
+);
 
 rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
 );
 
-named!(record_entry<(&'a str, BoxExpr<'a>)>; match_pest!(
+named!(record_entry<(&'a str, BoxExpr<'a>)>;
     children!(name: str, expr: expression) => (name, expr)
-));
+);
 
-named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>; match_pest!(
+named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     children!(expr: expression, entries*: record_entry) => {
         let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
         for (n, e) in entries {
@@ -484,7 +486,7 @@ named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
         }
         (expr, map)
     }
-));
+);
 
 rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     self!(x: partial_record_entries) => x
