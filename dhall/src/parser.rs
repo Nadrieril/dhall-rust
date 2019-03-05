@@ -135,7 +135,7 @@ macro_rules! match_iter {
     };
 
     // Check no elements remain
-    (@match 0, $iter:expr) => {
+    (@match 0, $iter:expr $(,)*) => {
         match $iter.next() {
             Some(_) => break Err(IterMatchError::TooManyItems),
             None => {},
@@ -190,7 +190,11 @@ macro_rules! match_children {
     (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
         match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x??), ($($rest)*))
     };
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, (,$($acc:tt)*), ()) => {
+    // Catch extra comma if exists
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, (,$($acc:tt)*), ($(,)*)) => {
+        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*), ())
+    };
+    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($(,)*)) => {
         let matched: Result<_, IterMatchError<ParseError>> =
             match_iter!(@get_err, $pairs; ($($acc)*) => {
                 match_children!(@parse, $pairs, $($args)*);
@@ -228,7 +232,7 @@ macro_rules! match_children {
         };
         match_children!(@parse, $pairs $($rest)*);
     };
-    (@parse, $pairs:expr) => {};
+    (@parse, $pairs:expr $(,)*) => {};
 
     // Entrypoint
     ($pair:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
