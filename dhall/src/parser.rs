@@ -71,7 +71,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 /* Macro to pattern-match iterators.
- * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
+ * Returns `Result<_, IterMatchError<_>>`.
  *
  * Example:
  * ```
@@ -149,8 +149,13 @@ macro_rules! match_iter {
     };
     (@match $_:expr, $iter:expr) => {};
 
-    // Entrypoints
-    (@get_err, $iter:expr; ($($args:tt)*) => $body:expr) => {
+    (@panic; $($args:tt)*) => {
+        {
+            let ret: Result<_, IterMatchError<()>> = match_iter!($($args)*);
+            ret.unwrap()
+        }
+    };
+    ($iter:expr; ($($args:tt)*) => $body:expr) => {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
@@ -162,19 +167,12 @@ macro_rules! match_iter {
             ret
         }
     };
-    ($($args:tt)*) => {
-        {
-            let ret: Result<_, IterMatchError<()>> = match_iter!(@get_err, $($args)*);
-            ret.unwrap()
-        }
-    };
 }
 
 /* Extends match_iter with typed matches. Takes a callback that determines
  * when a capture matches.
- * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
- * If using the @get_err entrypoint, errors returned by the callback will get propagated
- * using IterMatchError::Other.
+ * Returns `Result<_, IterMatchError<_>>`; errors returned by the callback will
+ * get propagated using IterMatchError::Other.
  *
  * Example:
  * ```
@@ -214,7 +212,7 @@ macro_rules! match_iter_typed {
         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
     };
     (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
-        match_iter!(@get_err, $iter; ($($acc)*) => {
+        match_iter!($iter; ($($acc)*) => {
             match_iter_typed!(@callback, $callback, $iter, $($args)*);
             Ok($body)
         })
@@ -252,8 +250,7 @@ macro_rules! match_iter_typed {
     };
     (@callback, $callback:ident, $iter:expr $(,)*) => {};
 
-    // Entrypoints
-    (@get_err, $callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
+    ($callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
@@ -263,18 +260,11 @@ macro_rules! match_iter_typed {
             )
         }
     };
-    ($($args:tt)*) => {
-        {
-            let ret: Result<_, IterMatchError<()>> = match_iter_typed!(@get_err, $($args)*);
-            ret.unwrap()
-        }
-    };
 }
 
 /* Extends match_iter and match_iter_typed with branching.
- * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
- * If using the @get_err entrypoint, errors returned by the callback will get propagated
- * using IterMatchError::Other.
+ * Returns `Result<_, IterMatchError<_>>`; errors returned by the callback will
+ * get propagated using IterMatchError::Other.
  * Allows multiple branches. The passed iterator must be Clone.
  * Will check the branches in order, testing each branch using the callback macro provided.
  *
@@ -291,10 +281,10 @@ macro_rules! match_iter_typed {
  *         Ok($x)
  *     };
  *     (@branch_callback, typed, $($args:tt)*) => {
- *         match_iter_typed!(@get_err, callback; $($args)*)
+ *         match_iter_typed!(callback; $($args)*)
  *     };
  *     (@branch_callback, untyped, $($args:tt)*) => {
- *         match_iter!(@get_err, $($args)*)
+ *         match_iter!($($args)*)
  *     };
  * }
  *
@@ -308,8 +298,7 @@ macro_rules! match_iter_typed {
  *
 */
 macro_rules! match_iter_branching {
-    // Entrypoints
-    (@get_err, $callback:ident; $iter:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
+    ($callback:ident; $iter:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
@@ -329,12 +318,6 @@ macro_rules! match_iter_branching {
                 )*
                 break Err(last_error);
             }
-        }
-    };
-    ($($args:tt)*) => {
-        {
-            let ret: Result<_, IterMatchError<()>> = match_iter_branching!(@get_err, $($args)*);
-            ret.unwrap()
         }
     };
 }
@@ -361,7 +344,7 @@ macro_rules! match_pest {
         $ty($x)
     };
     (@branch_callback, children, $($args:tt)*) => {
-        match_iter_typed!(@get_err, match_pest; $($args)*)
+        match_iter_typed!(match_pest; $($args)*)
     };
 
     ($pair:expr; $($args:tt)*) => {
@@ -369,7 +352,7 @@ macro_rules! match_pest {
             let pair = $pair;
             #[allow(unused_mut)]
             let mut pairs = pair.clone().into_inner();
-            let result = match_iter_branching!(@get_err, match_pest; pairs; $($args)*);
+            let result = match_iter_branching!(match_pest; pairs; $($args)*);
             result.map_err(|e| match e {
                 IterMatchError::Other(e) => e,
                 _ => custom_parse_error(&pair, "No match found".to_owned()),
@@ -685,7 +668,7 @@ named!(final_expression<BoxExpr<'a>>;
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
-    match_iter!(pairs; (e) => final_expression(e))
+    match_iter!(@panic; pairs; (e) => final_expression(e))
 }
 
 #[test]
