@@ -6,6 +6,7 @@ use pest::Parser;
 
 use dhall_parser::{DhallParser, Rule};
 
+use crate::core;
 use crate::core::{bx, Builtin, Const, Expr, V};
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
@@ -562,7 +563,7 @@ rule!(single_quote_literal<String>;
     }
 );
 
-rule!(double_literal_raw<f64>;
+rule!(double_literal_raw<core::Double>;
     raw_pair!(pair) => {
         pair.as_str().trim()
             .parse()
@@ -574,7 +575,7 @@ rule!(minus_infinity_literal<()>; children!() => ());
 rule!(plus_infinity_literal<()>; children!() => ());
 rule!(NaN_raw<()>; children!() => ());
 
-rule!(natural_literal_raw<usize>;
+rule!(natural_literal_raw<core::Natural>;
     raw_pair!(pair) => {
         pair.as_str().trim()
             .parse()
@@ -582,7 +583,7 @@ rule!(natural_literal_raw<usize>;
     }
 );
 
-rule!(integer_literal_raw<isize>;
+rule!(integer_literal_raw<core::Integer>;
     raw_pair!(pair) => {
         pair.as_str().trim()
             .parse()
