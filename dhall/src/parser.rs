@@ -337,10 +337,10 @@ macro_rules! named {
     );
 }
 
-macro_rules! named_rule {
-    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
+macro_rules! rule {
+    ($name:ident<$o:ty>; $($args:tt)*) => (
         named!($name<$o>; match_rule!(
-            Rule::$name => $submac!( $($args)* ),
+            Rule::$name => match_pest!( $($args)* ),
         ));
     );
 }
@@ -433,14 +433,14 @@ named!(raw_str<&'a str>; match_pest!(
     captured_str!(s) => s
 ));
 
-named_rule!(escaped_quote_pair<&'a str>; match_pest!(
+rule!(escaped_quote_pair<&'a str>;
     children!() => "''"
-));
-named_rule!(escaped_interpolation<&'a str>; match_pest!(
+);
+rule!(escaped_interpolation<&'a str>;
     children!() => "${"
-));
+);
 
-named_rule!(single_quote_continue<Vec<&'a str>>; match_pest!(
+rule!(single_quote_continue<Vec<&'a str>>;
     // TODO: handle interpolation
     // children!(c: expression, rest: single_quote_continue) => {
     //     rest.push(c); rest
@@ -458,7 +458,7 @@ named_rule!(single_quote_continue<Vec<&'a str>>; match_pest!(
     children!() => {
         vec![]
     },
-));
+);
 
 named!(natural<usize>; match_pest!(
     raw_pair!(pair) => {
@@ -476,8 +476,8 @@ named!(integer<isize>; match_pest!(
     }
 ));
 
-named_rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
-    match_children!((name: str, annot?: expression, expr: expression) => (name, annot, expr))
+rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
+    children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
 );
 
 named!(record_entry<(&'a str, BoxExpr<'a>)>;
@@ -494,50 +494,46 @@ named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     })
 );
 
-named_rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    match_pest!(self!(x: partial_record_entries) => x)
+rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    self!(x: partial_record_entries) => x
 );
 
-named_rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    match_pest!(self!(x: partial_record_entries) => x)
+rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    self!(x: partial_record_entries) => x
 );
 
-named_rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
-    match_children!((name: str, expr: expression) => (name, expr))
+rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
+    children!(name: str, expr: expression) => (name, expr)
 );
 
-named_rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
-    match_children!((entries*: union_type_entry) => {
+rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
+    children!(entries*: union_type_entry) => {
         let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
         for (n, e) in entries {
             map.insert(n, *e);
         }
         map
-    })
+    }
 );
 
-named_rule!(non_empty_union_type_or_literal
-        <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    match_pest!(
-        children!(label: str, e: expression, entries: union_type_entries) => {
-            (Some((label, e)), entries)
-        },
-        children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
-            let (x, mut entries) = rest;
-            entries.insert(l, *e);
-            (x, entries)
-        },
-        children!(l: str, e: expression) => {
-            let mut entries = BTreeMap::new();
-            entries.insert(l, *e);
-            (None, entries)
-        },
-    )
+rule!(non_empty_union_type_or_literal
+      <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    children!(label: str, e: expression, entries: union_type_entries) => {
+        (Some((label, e)), entries)
+    },
+    children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
+        let (x, mut entries) = rest;
+        entries.insert(l, *e);
+        (x, entries)
+    },
+    children!(l: str, e: expression) => {
+        let mut entries = BTreeMap::new();
+        entries.insert(l, *e);
+        (None, entries)
+    },
 );
 
-named_rule!(empty_union_type<()>; match_children!(() => {
-    ()
-}));
+rule!(empty_union_type<()>; children!() => ());
 
 named!(expression<BoxExpr<'a>>; match_rule!(
     // TODO: parse escapes and interpolation
@@ -673,13 +669,15 @@ named!(expression<BoxExpr<'a>>; match_rule!(
         }),
 ));
 
-named!(final_expression<BoxExpr<'a>>;
-    match_children!((e: expression, _eoi: eoi) => e)
+rule!(final_expression<BoxExpr<'a>>;
+    children!(e: expression, _eoi: eoi) => e
 );
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
-    match_iter!(@panic; pairs; (e) => final_expression(e))
+    // Match the only item in the pairs iterator
+    match_iter!(@panic; pairs; (p) => final_expression(p))
+    // Ok(bx(Expr::BoolLit(false)))
 }
 
 #[test]
