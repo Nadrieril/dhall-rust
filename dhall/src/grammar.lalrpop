@@ -7,6 +7,7 @@ use crate::core::bx;
 use crate::core::Expr::*;
 use crate::core::Builtin;
 use crate::core::Builtin::*;
+use crate::core::BinOp::*;
 use crate::grammar_util::*;
 use crate::lexer::*;
 
@@ -77,14 +78,14 @@ ListLike: ExprListFn<'input> = {
     Optional => OptionalLit,
 };
 
-BoolOr: ExprOpFn<'input> = { "||" => BoolOr };
-NaturalPlus: ExprOpFn<'input> = { "+" => NaturalPlus };
-TextAppend: ExprOpFn<'input> = { "++" => TextAppend };
-BoolAnd: ExprOpFn<'input> = { "&&" => BoolAnd };
-CombineOp: ExprOpFn<'input> = { Combine => Combine };
-NaturalTimes: ExprOpFn<'input> = { "*" => NaturalTimes };
-BoolEQ: ExprOpFn<'input> = { "==" => BoolEQ };
-BoolNE: ExprOpFn<'input> = { "!=" => BoolNE };
+BoolOr: ExprOpFn<'input> = { "||" => (|x,y| BinOp(BoolOr, x, y)) };
+NaturalPlus: ExprOpFn<'input> = { "+" => (|x,y| BinOp(NaturalPlus, x, y)) };
+TextAppend: ExprOpFn<'input> = { "++" => (|x,y| BinOp(TextAppend, x, y)) };
+BoolAnd: ExprOpFn<'input> = { "&&" => (|x,y| BinOp(BoolAnd, x, y)) };
+CombineOp: ExprOpFn<'input> = { Combine => (|x,y| BinOp(Combine, x, y)) };
+NaturalTimes: ExprOpFn<'input> = { "*" => (|x,y| BinOp(NaturalTimes, x, y)) };
+BoolEQ: ExprOpFn<'input> = { "==" => (|x,y| BinOp(BoolEQ, x, y)) };
+BoolNE: ExprOpFn<'input> = { "!=" => (|x,y| BinOp(BoolNE, x, y)) };
 
 Tier<NextTier, Op>: BoxExpr<'input> = {
     <a:NextTier> <f:Op> <b:Tier<NextTier, Op>> => bx(f(a, b)),

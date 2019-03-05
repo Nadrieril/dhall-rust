@@ -7,7 +7,7 @@ use pest::Parser;
 use dhall_parser::{DhallParser, Rule};
 
 use crate::core;
-use crate::core::{bx, Builtin, Const, Expr, V};
+use crate::core::{bx, Builtin, Const, Expr, BinOp, V};
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
@@ -659,29 +659,40 @@ rule!(non_empty_optional<BoxExpr<'a>>;
 );
 
 macro_rules! binop {
-    ($rule:ident, $f:expr) => {
+    ($rule:ident, $op:ident) => {
         rule!($rule<BoxExpr<'a>>;
             children!(first: expression, rest*: expression) => {
-                rest.fold(first, |acc, e| bx($f(acc, e)))
+                rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
             }
         );
     };
 }
 
-binop!(annotated_expression, Expr::Annot);
-binop!(import_alt_expression, Expr::ImportAlt);
-binop!(or_expression, Expr::BoolOr);
-binop!(plus_expression, Expr::NaturalPlus);
-binop!(text_append_expression, Expr::TextAppend);
-binop!(list_append_expression, Expr::ListAppend);
-binop!(and_expression, Expr::BoolAnd);
-binop!(combine_expression, Expr::Combine);
-binop!(prefer_expression, Expr::Prefer);
-binop!(combine_types_expression, Expr::CombineTypes);
-binop!(times_expression, Expr::NaturalTimes);
-binop!(equal_expression, Expr::BoolEQ);
-binop!(not_equal_expression, Expr::BoolNE);
-binop!(application_expression, Expr::App);
+rule!(annotated_expression<BoxExpr<'a>>;
+    children!(e: expression, annot: expression) => {
+        bx(Expr::Annot(e, annot))
+    },
+    children!(e: expression) => e,
+);
+
+binop!(import_alt_expression, ImportAlt);
+binop!(or_expression, BoolOr);
+binop!(plus_expression, NaturalPlus);
+binop!(text_append_expression, TextAppend);
+binop!(list_append_expression, ListAppend);
+binop!(and_expression, BoolAnd);
+binop!(combine_expression, Combine);
+binop!(prefer_expression, Prefer);
+binop!(combine_types_expression, CombineTypes);
+binop!(times_expression, NaturalTimes);
+binop!(equal_expression, BoolEQ);
+binop!(not_equal_expression, BoolNE);
+
+rule!(application_expression<BoxExpr<'a>>;
+    children!(first: expression, rest*: expression) => {
+        rest.fold(first, |acc, e| bx(Expr::App(acc, e)))
+    }
+);
 
 rule!(selector_expression_raw<BoxExpr<'a>>;
     children!(first: expression, rest*: str) => {
@@ -752,6 +763,7 @@ pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
 #[test]
 fn test_parse() {
     use crate::core::Expr::*;
+    use crate::core::BinOp::*;
     // let expr = r#"{ x = "foo", y = 4 }.x"#;
     // let expr = r#"(1 + 2) * 3"#;
     let expr = r#"if True then 1 + 3 * 5 else 2"#;
@@ -778,9 +790,9 @@ fn test_parse() {
     assert!(parse_expr_lalrpop("(22)").is_ok());
     assert_eq!(
         parse_expr_lalrpop("3 + 5 * 10").ok(),
-        Some(Box::new(NaturalPlus(
+        Some(Box::new(BinOp(NaturalPlus,
             Box::new(NaturalLit(3)),
-            Box::new(NaturalTimes(
+            Box::new(BinOp(NaturalTimes,
                 Box::new(NaturalLit(5)),
                 Box::new(NaturalLit(10))
             ))
@@ -789,9 +801,9 @@ fn test_parse() {
     // The original parser is apparently right-associative
     assert_eq!(
         parse_expr_lalrpop("2 * 3 * 4").ok(),
-        Some(Box::new(NaturalTimes(
+        Some(Box::new(BinOp(NaturalTimes,
             Box::new(NaturalLit(2)),
-            Box::new(NaturalTimes(
+            Box::new(BinOp(NaturalTimes,
                 Box::new(NaturalLit(3)),
                 Box::new(NaturalLit(4))
             ))

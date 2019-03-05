@@ -163,6 +163,7 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
                         -> Result<Expr<'i, S, X>, TypeError<'i, S>>
     where S: Clone + ::std::fmt::Debug + 'i
 {
+    use crate::BinOp::*;
     match *e {
         Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
         Var(V(x, n)) => {
@@ -265,10 +266,10 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
             }
         }
         BoolLit(_) => Ok(Builtin(Bool)),
-        BoolAnd(ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
-        BoolOr(ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
-        BoolEQ(ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
-        BoolNE(ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
+        BinOp(BoolAnd, ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
+        BinOp(BoolOr, ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
+        BinOp(BoolEQ, ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
+        BinOp(BoolNE, ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
         BoolIf(ref x, ref y, ref z) => {
             let tx = normalize(&type_with(ctx, x)?);
             match tx {
@@ -309,12 +310,12 @@ pub fn type_with<'i, S>(ctx: &Context<'i, Expr<'i, S, X>>,
         Builtin(NaturalIsZero) |
         Builtin(NaturalEven) |
         Builtin(NaturalOdd) => Ok(pi("_", Natural, Bool)),
-        NaturalPlus(ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
-        NaturalTimes(ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
+        BinOp(NaturalPlus, ref l, ref r) => op2_type(ctx, e, Natural, CantAdd, l, r),
+        BinOp(NaturalTimes, ref l, ref r) => op2_type(ctx, e, Natural, CantMultiply, l, r),
         IntegerLit(_) => Ok(Builtin(Integer)),
         DoubleLit(_) => Ok(Builtin(Double)),
         TextLit(_) => Ok(Builtin(Text)),
-        TextAppend(ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
+        BinOp(TextAppend, ref l, ref r) => op2_type(ctx, e, Text, CantTextAppend, l, r),
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
             let t: Box<Expr<_, _>> = match t {

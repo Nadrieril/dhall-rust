@@ -3,26 +3,6 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
-/*
-module Dhall.Core (
-    -- * Syntax
-      Const(..)
-    , Path(..)
-    , Var(..)
-    , Expr(..)
-
-    -- * Normalization
-    , normalize
-    , subst
-    , shift
-
-    -- * Pretty-printing
-    , pretty
-
-    -- * Miscellaneous
-    , internalError
-    ) where
-*/
 
 /// Constants for a pure type system
 ///
@@ -95,19 +75,41 @@ pub enum Path {
 /// Zero indices are omitted when pretty-printing `Var`s and non-zero indices
 /// appear as a numeric suffix.
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq)] // (Eq, Show)
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct V<'i>(pub &'i str, pub usize);
 
-/*
-instance IsString Var where
-    fromString str = V (fromString str) 0
 
-instance Buildable Var where
-    build = buildVar
-*/
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BinOp {
+    /// x && y`
+    BoolAnd,
+    /// x || y`
+    BoolOr,
+    /// x == y`
+    BoolEQ,
+    /// x != y`
+    BoolNE,
+    /// x + y`
+    NaturalPlus,
+    /// x * y`
+    NaturalTimes,
+    /// x ++ y`
+    TextAppend,
+    /// x ∧ y`
+    Combine,
+    /// x //\\ y
+    CombineTypes,
+    /// x ? y
+    ImportAlt,
+    /// x // y
+    Prefer,
+    /// x # y
+    ListAppend,
+}
+
 
 /// Syntax tree for expressions
-#[derive(Debug, Clone, PartialEq)] // (Functor, Foldable, Traversable, Show)
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr<'i, S, A> {
     ///  `Const c                                  ~  c`
     Const(Const),
@@ -128,32 +130,20 @@ pub enum Expr<'i, S, A> {
     Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     /// Built-in values
     Builtin(Builtin),
+    // Binary operations
+    BinOp(BinOp, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
-    ///  `BoolAnd x y                              ~  x && y`
-    BoolAnd(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `BoolOr  x y                              ~  x || y`
-    BoolOr(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `BoolEQ  x y                              ~  x == y`
-    BoolEQ(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `BoolNE  x y                              ~  x != y`
-    BoolNE(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
-    ///  `NaturalPlus x y                          ~  x + y`
-    NaturalPlus(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    ///  `NaturalTimes x y                         ~  x * y`
-    NaturalTimes(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `IntegerLit n                             ~  n`
     IntegerLit(Integer),
     ///  `DoubleLit n                              ~  n`
     DoubleLit(Double),
     ///  `TextLit t                                ~  t`
     TextLit(Builder),
-    ///  `TextAppend x y                           ~  x ++ y`
-    TextAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
     ListLit(Option<Box<Expr<'i, S, A>>>, Vec<Expr<'i, S, A>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
@@ -167,16 +157,6 @@ pub enum Expr<'i, S, A> {
     Union(BTreeMap<&'i str, Expr<'i, S, A>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(&'i str, Box<Expr<'i, S, A>>, BTreeMap<&'i str, Expr<'i, S, A>>),
-    ///  `Combine x y                              ~  x ∧ y`
-    Combine(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    /// x //\\ y
-    CombineTypes(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    /// x ? y
-    ImportAlt(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    /// x // y
-    Prefer(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
-    /// x # y
-    ListAppend(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>, Option<Box<Expr<'i, S, A>>>),
     ///  `Field e x                                ~  e.x`
@@ -363,16 +343,17 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
 
     fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::Expr::*;
+        use crate::BinOp::*;
         match self {
             // FIXME precedence
-            &BoolOr(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" || ")?; b.fmt_c(f) }
-            &TextAppend(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ++ ")?; b.fmt_c(f) }
-            &NaturalPlus(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" + ")?; b.fmt_c(f) }
-            &BoolAnd(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" && ")?; b.fmt_c(f) }
-            &Combine(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ^ ")?; b.fmt_c(f) }
-            &NaturalTimes(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" * ")?; b.fmt_c(f) }
-            &BoolEQ(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" == ")?; b.fmt_c(f) }
-            &BoolNE(ref a, ref b) => { a.fmt_d(f)?; f.write_str(" != ")?; b.fmt_c(f) }
+            &BinOp(BoolOr, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" || ")?; b.fmt_c(f) }
+            &BinOp(TextAppend, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ++ ")?; b.fmt_c(f) }
+            &BinOp(NaturalPlus, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" + ")?; b.fmt_c(f) }
+            &BinOp(BoolAnd, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" && ")?; b.fmt_c(f) }
+            &BinOp(Combine, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" ^ ")?; b.fmt_c(f) }
+            &BinOp(NaturalTimes, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" * ")?; b.fmt_c(f) }
+            &BinOp(BoolEQ, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" == ")?; b.fmt_c(f) }
+            &BinOp(BoolNE, ref a, ref b) => { a.fmt_d(f)?; f.write_str(" != ")?; b.fmt_c(f) }
             &Note(_, ref b) => b.fmt_c(f),
             a => a.fmt_d(f),
         }
@@ -685,20 +666,14 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
         Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
         Builtin(v) => Builtin(v),
         BoolLit(a) => BoolLit(a),
-        BoolAnd(ref a, ref b) => shift_op2(BoolAnd, d, v, a, b),
-        BoolOr(ref a, ref b) => shift_op2(BoolOr, d, v, a, b),
-        BoolEQ(ref a, ref b) => shift_op2(BoolEQ, d, v, a, b),
-        BoolNE(ref a, ref b) => shift_op2(BoolNE, d, v, a, b),
+        BinOp(o, ref a, ref b) => shift_op2(|x,y| BinOp(o, x, y), d, v, a, b),
         BoolIf(ref a, ref b, ref c) => {
             BoolIf(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
         }
         NaturalLit(a) => NaturalLit(a),
-        NaturalPlus(ref a, ref b) => NaturalPlus(bx(shift(d, v, a)), bx(shift(d, v, b))),
-        NaturalTimes(ref a, ref b) => shift_op2(NaturalTimes, d, v, a, b),
         IntegerLit(a) => IntegerLit(a),
         DoubleLit(a) => DoubleLit(a),
         TextLit(ref a) => TextLit(a.clone()),
-        TextAppend(ref a, ref b) => shift_op2(TextAppend, d, v, a, b),
         ListLit(ref t, ref es) => {
             ListLit(t.as_ref().map(|t| bx(shift(d, v, t))),
                     es.iter().map(|e| shift(d, v, e)).collect())
@@ -715,7 +690,6 @@ pub fn shift<'i, S, T, A: Clone>(d: isize, v: V, e: &Expr<'i, S, A>) -> Expr<'i,
                      bx(shift(d, v, uv)),
                      map_record_value(a, |val| shift(d, v, val)))
         }
-        Combine(ref a, ref b) => shift_op2(Combine, d, v, a, b),
         Merge(ref a, ref b, ref c) => {
             Merge(bx(shift(d, v, a)), bx(shift(d, v, b)), c.as_ref().map(|c| bx(shift(d, v, c))))
         }
@@ -782,20 +756,14 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
         Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
         Builtin(v) => Builtin(v),
         BoolLit(a) => BoolLit(a),
-        BoolAnd(ref a, ref b) => subst_op2(BoolAnd, v, e, a, b),
-        BoolOr(ref a, ref b) => subst_op2(BoolOr, v, e, a, b),
-        BoolEQ(ref a, ref b) => subst_op2(BoolEQ, v, e, a, b),
-        BoolNE(ref a, ref b) => subst_op2(BoolNE, v, e, a, b),
+        BinOp(o, ref a, ref b) => subst_op2(|x,y| BinOp(o, x, y), v, e, a, b),
         BoolIf(ref a, ref b, ref c) => {
             BoolIf(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
         }
         NaturalLit(a) => NaturalLit(a),
-        NaturalPlus(ref a, ref b) => subst_op2(NaturalPlus, v, e, a, b),
-        NaturalTimes(ref a, ref b) => subst_op2(NaturalTimes, v, e, a, b),
         IntegerLit(a) => IntegerLit(a),
         DoubleLit(a) => DoubleLit(a),
         TextLit(ref a) => TextLit(a.clone()),
-        TextAppend(ref a, ref b) => subst_op2(TextAppend, v, e, a, b),
         ListLit(ref a, ref b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
@@ -814,7 +782,6 @@ pub fn subst<'i, S, T, A>(v: V<'i>, e: &Expr<'i, S, A>, b: &Expr<'i, T, A>) -> E
                      bx(subst(v, e, uv)),
                      map_record_value(kvs, |val| subst(v, e, val)))
         }
-        Combine(ref a, ref b) => subst_op2(Combine, v, e, a, b),
         Merge(ref a, ref b, ref c) => {
             Merge(bx(subst(v, e, a)), bx(subst(v, e, b)), c.as_ref().map(|c| bx(subst(v, e, c))))
         }
@@ -853,6 +820,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
           A: Clone + fmt::Debug,
 {
     use crate::Builtin::*;
+    use crate::BinOp::*;
     use crate::Expr::*;
     match *e {
         Const(k) => Const(k),
@@ -997,22 +965,22 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         Annot(ref x, _) => normalize(x),
         Builtin(v) => Builtin(v),
         BoolLit(b) => BoolLit(b),
-        BoolAnd(ref x, ref y) => {
+        BinOp(BoolAnd, ref x, ref y) => {
             with_binop(BoolAnd, Expr::bool_lit,
                        |xn, yn| BoolLit(xn && yn),
                        normalize(x), normalize(y))
         }
-        BoolOr(ref x, ref y) => {
+        BinOp(BoolOr, ref x, ref y) => {
             with_binop(BoolOr, Expr::bool_lit,
                        |xn, yn| BoolLit(xn || yn),
                        normalize(x), normalize(y))
         }
-        BoolEQ(ref x, ref y) => {
+        BinOp(BoolEQ, ref x, ref y) => {
             with_binop(BoolEQ, Expr::bool_lit,
                        |xn, yn| BoolLit(xn == yn),
                        normalize(x), normalize(y))
         }
-        BoolNE(ref x, ref y) => {
+        BinOp(BoolNE, ref x, ref y) => {
             with_binop(BoolNE, Expr::bool_lit,
                        |xn, yn| BoolLit(xn != yn),
                        normalize(x), normalize(y))
@@ -1023,12 +991,12 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
             b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
         },
         NaturalLit(n) => NaturalLit(n),
-        NaturalPlus(ref x, ref y) => {
+        BinOp(NaturalPlus, ref x, ref y) => {
             with_binop(NaturalPlus, Expr::natural_lit,
                        |xn, yn| NaturalLit(xn + yn),
                        normalize(x), normalize(y))
         }
-        NaturalTimes(ref x, ref y) => {
+        BinOp(NaturalTimes, ref x, ref y) => {
             with_binop(NaturalTimes, Expr::natural_lit,
                        |xn, yn| NaturalLit(xn * yn),
                        normalize(x), normalize(y))
@@ -1036,7 +1004,7 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         IntegerLit(n) => IntegerLit(n),
         DoubleLit(n) => DoubleLit(n),
         TextLit(ref t) => TextLit(t.clone()),
-        TextAppend(ref x, ref y) => {
+        BinOp(TextAppend, ref x, ref y) => {
             with_binop(TextAppend, Expr::text_lit,
                        |xt, yt| TextLit(xt + &yt),
                        normalize(x), normalize(y))
@@ -1055,7 +1023,6 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
         Union(ref kts) => Union(map_record_value(kts, normalize)),
         UnionLit(k, ref v, ref kvs) => UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize)),
-        Combine(ref _x0, ref _y0) => unimplemented!(),
         Merge(ref _x, ref _y, ref _t) => unimplemented!(),
         Field(ref r, x) => match normalize(r) {
             RecordLit(kvs) => match kvs.get(x) {
@@ -1066,18 +1033,17 @@ pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
         },
         Note(_, ref e) => normalize(e),
         Embed(ref a) => Embed(a.clone()),
-        _ => panic!(),
+        _ => unimplemented!(),
     }
 }
 
-fn with_binop<T, U, Get, Set, Op>(op: Op, get: Get, set: Set, x: T, y: T) -> T
-    where Get: Fn(&T) -> Option<U>,
-          Set: FnOnce(U, U) -> T,
-          Op: FnOnce(Box<T>, Box<T>) -> T,
+fn with_binop<'a, S, A, U, Get, Set>(op: BinOp, get: Get, set: Set, x: Expr<'a, S, A>, y: Expr<'a, S, A>) -> Expr<'a, S, A>
+    where Get: Fn(&Expr<'a, S, A>) -> Option<U>,
+          Set: FnOnce(U, U) -> Expr<'a, S, A>,
 {
     if let (Some(xv), Some(yv)) = (get(&x), get(&y)) {
         set(xv, yv)
     } else {
-        op(bx(x), bx(y))
+        Expr::BinOp(op, bx(x), bx(y))
     }
 }
