@@ -1078,8 +1078,10 @@ where
                 }
                 (App(box Builtin(OptionalBuild), a0), g) => {
                     let e2: Expr<_, _> = app(app(app(g,
-                            App(bx(Builtin(Optional)), a0.clone())),
-                            Lam("x", a0.clone(), bx(OptionalLit(Some(a0.clone()), vec![Var(V("x", 0))])))), OptionalLit(Some(a0), vec![]));
+                        App(bx(Builtin(Optional)), a0.clone())),
+                            Lam("x", a0.clone(),
+                                bx(OptionalLit(Some(a0.clone()), vec![Var(V("x", 0))])))),
+                            OptionalLit(Some(a0), vec![]));
                     normalize(&e2)
                 }
                 (f2, a2) => app(f2, a2),

@@ -1,8 +1,8 @@
 use nom::*;
 
-use crate::core::Const;
 use crate::core::Builtin;
 use crate::core::Builtin::*;
+use crate::core::Const;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
@@ -74,11 +74,13 @@ fn is_identifier_rest_char(c: char) -> bool {
 
 macro_rules! digits {
     ($i:expr, $t:tt, $radix:expr) => {{
-        let r: nom::IResult<&str, $t> =
-            map_res!($i, take_while1_s!(call!(|c: char| c.is_digit($radix))),
-                     |s| $t::from_str_radix(s, $radix));
+        let r: nom::IResult<&str, $t> = map_res!(
+            $i,
+            take_while1_s!(call!(|c: char| c.is_digit($radix))),
+            |s| $t::from_str_radix(s, $radix)
+        );
         r
-    }}
+    }};
 }
 
 named!(natural<&str, usize>, digits!(usize, 10));
@@ -105,29 +107,32 @@ macro_rules! ident_tag {
                 if s == $tag {
                     nom::IResult::Done(i, s)
                 } else {
-                    nom::IResult::Error(error_position!(nom::ErrorKind::Tag, $i))
+                    nom::IResult::Error(error_position!(
+                        nom::ErrorKind::Tag,
+                        $i
+                    ))
                 }
             }
             r => r,
         }
-    }
+    };
 }
 
 fn string_escape_single(c: char) -> Option<&'static str> {
     match c {
-        'n'  => Some("\n"),
-        'r'  => Some("\r"),
-        't'  => Some("\t"),
-        '"'  => Some("\""),
+        'n' => Some("\n"),
+        'r' => Some("\r"),
+        't' => Some("\t"),
+        '"' => Some("\""),
         '\'' => Some("'"),
         '\\' => Some("\\"),
-        '0'  => Some("\0"),
-        'a'  => Some("\x07"),
-        'b'  => Some("\x08"),
-        'f'  => Some("\x0c"),
-        'v'  => Some("\x0b"),
-        '&'  => Some(""),
-        _    => None,
+        '0' => Some("\0"),
+        'a' => Some("\x07"),
+        'b' => Some("\x08"),
+        'f' => Some("\x0c"),
+        'v' => Some("\x0b"),
+        '&' => Some(""),
+        _ => None,
     }
 }
 
@@ -138,41 +143,53 @@ named!(string_escape_numeric<&str, char>, map_opt!(alt!(
 ), ::std::char::from_u32));
 
 fn string_lit_inner(input: &str) -> nom::IResult<&str, String> {
-    use nom::IResult::*;;
     use nom::ErrorKind;
+    use nom::IResult::*; ;
     let mut s = String::new();
     let mut cs = input.char_indices().peekable();
-    while let Some((i, c)) = cs.next()  {
+    while let Some((i, c)) = cs.next() {
         match c {
             '"' => return nom::IResult::Done(&input[i..], s),
             '\\' => match cs.next() {
                 Some((_, s)) if s.is_whitespace() => {
-                    while cs.peek().map(|&(_, s)| s.is_whitespace()) == Some(true) {
+                    while cs.peek().map(|&(_, s)| s.is_whitespace())
+                        == Some(true)
+                    {
                         let _ = cs.next();
                     }
                     if cs.next().map(|p| p.1) != Some('\\') {
-                        return Error(error_position!(ErrorKind::Custom(4 /* FIXME */), input));
+                        return Error(error_position!(
+                            ErrorKind::Custom(4 /* FIXME */),
+                            input
+                        ));
                     }
                 }
                 Some((j, ec)) => {
                     if let Some(esc) = string_escape_single(ec) {
                         s.push_str(esc);
-                        // FIXME Named ASCII escapes and control character escapes
+                    // FIXME Named ASCII escapes and control character escapes
                     } else {
                         match string_escape_numeric(&input[j..]) {
                             Done(rest, esc) => {
                                 let &(k, _) = cs.peek().unwrap();
                                 // digits are always single byte ASCII characters
                                 let consumed = input[k..].len() - rest.len();
-                                for _ in 0..consumed { let _ = cs.next(); }
+                                for _ in 0..consumed {
+                                    let _ = cs.next();
+                                }
                                 s.push(esc);
                             }
                             Incomplete(s) => return Incomplete(s),
                             Error(e) => return Error(e),
                         }
                     }
-                },
-                _ => return Error(error_position!(ErrorKind::Custom(5 /* FIXME */), input)),
+                }
+                _ => {
+                    return Error(error_position!(
+                        ErrorKind::Custom(5 /* FIXME */),
+                        input
+                    ));
+                }
             },
             _ => s.push(c),
         }
@@ -303,7 +320,8 @@ impl<'input> Lexer<'input> {
             "{-" => find_end(input, "-}"),
             "--" => find_end(input, "\n"), // Also skips past \r\n (CRLF)
             _ => None,
-        }.unwrap_or(0);
+        }
+        .unwrap_or(0);
         // println!("skipped {} bytes of comment", skip);
         self.offset += skip;
         skip != 0
@@ -337,9 +355,7 @@ impl<'input> Iterator for Lexer<'input> {
                 self.offset = self.input.len();
                 Some(Err(LexicalError::Error(offset, e)))
             }
-            Incomplete(needed) => {
-                Some(Err(LexicalError::Incomplete(needed)))
-            }
+            Incomplete(needed) => Some(Err(LexicalError::Incomplete(needed))),
         }
     }
 }
@@ -348,23 +364,31 @@ impl<'input> Iterator for Lexer<'input> {
 fn test_lex() {
     use self::Tok::*;
     let s = "λ(b : Bool) → b == False";
-    let expected = [Lambda,
-                    ParenL,
-                    Identifier("b"),
-                    Ascription,
-                    Builtin(crate::core::Builtin::Bool),
-                    ParenR,
-                    Arrow,
-                    Identifier("b"),
-                    CompareEQ,
-                    Bool(false)];
+    let expected = [
+        Lambda,
+        ParenL,
+        Identifier("b"),
+        Ascription,
+        Builtin(crate::core::Builtin::Bool),
+        ParenR,
+        Arrow,
+        Identifier("b"),
+        CompareEQ,
+        Bool(false),
+    ];
     let lexer = Lexer::new(s);
     let tokens = lexer.map(|r| r.unwrap().1).collect::<Vec<_>>();
     assert_eq!(&tokens, &expected);
 
     assert_eq!(string_lit(r#""a\&b""#).to_result(), Ok("ab".to_owned()));
-    assert_eq!(string_lit(r#""a\     \b""#).to_result(), Ok("ab".to_owned()));
+    assert_eq!(
+        string_lit(r#""a\     \b""#).to_result(),
+        Ok("ab".to_owned())
+    );
     assert!(string_lit(r#""a\     b""#).is_err());
     assert_eq!(string_lit(r#""a\nb""#).to_result(), Ok("a\nb".to_owned()));
-    assert_eq!(string_lit(r#""\o141\x62\99""#).to_result(), Ok("abc".to_owned()));
+    assert_eq!(
+        string_lit(r#""\o141\x62\99""#).to_result(),
+        Ok("abc".to_owned())
+    );
 }

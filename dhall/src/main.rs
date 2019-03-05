@@ -1,5 +1,5 @@
-use std::io::{self, Read};
 use std::error::Error;
+use std::io::{self, Read};
 use term_painter::ToStyle;
 
 use dhall::*;
@@ -42,9 +42,13 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
     BOLD.with(|| {
         print!("{:w$} |", "", w = line_number_width);
         ERROR_STYLE.with(|| {
-            println!(" {:so$}{:^>ew$}", "", "",
-                     so = source[line_start..start].chars().count(),
-                     ew = ::std::cmp::max(1, source[start..end].chars().count()));
+            println!(
+                " {:so$}{:^>ew$}",
+                "",
+                "",
+                so = source[line_start..start].chars().count(),
+                ew = ::std::cmp::max(1, source[start..end].chars().count())
+            );
         });
     });
 }
@@ -54,12 +58,27 @@ fn main() {
     io::stdin().read_to_string(&mut buffer).unwrap();
     let expr = match parser::parse_expr_lalrpop(&buffer) {
         Ok(e) => e,
-        Err(lalrpop_util::ParseError::User { error: lexer::LexicalError::Error(pos, e) }) => {
-            print_error(&format!("Unexpected token {:?}", e), &buffer, pos, pos);
+        Err(lalrpop_util::ParseError::User {
+            error: lexer::LexicalError::Error(pos, e),
+        }) => {
+            print_error(
+                &format!("Unexpected token {:?}", e),
+                &buffer,
+                pos,
+                pos,
+            );
             return;
         }
-        Err(lalrpop_util::ParseError::UnrecognizedToken { token: Some((start, t, end)), expected: e }) => {
-            print_error(&format!("Unrecognized token {:?}", t), &buffer, start, end);
+        Err(lalrpop_util::ParseError::UnrecognizedToken {
+            token: Some((start, t, end)),
+            expected: e,
+        }) => {
+            print_error(
+                &format!("Unrecognized token {:?}", t),
+                &buffer,
+                start,
+                end,
+            );
             if !e.is_empty() {
                 println!("Expected {:?}", e);
             }

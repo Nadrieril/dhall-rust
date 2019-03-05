@@ -7,7 +7,7 @@ use pest::Parser;
 use dhall_parser::{DhallParser, Rule};
 
 use crate::core;
-use crate::core::{bx, Builtin, Const, Expr, BinOp, V};
+use crate::core::{bx, BinOp, Builtin, Const, Expr, V};
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
@@ -762,8 +762,8 @@ pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
 
 #[test]
 fn test_parse() {
-    use crate::core::Expr::*;
     use crate::core::BinOp::*;
+    use crate::core::Expr::*;
     // let expr = r#"{ x = "foo", y = 4 }.x"#;
     // let expr = r#"(1 + 2) * 3"#;
     let expr = r#"if True then 1 + 3 * 5 else 2"#;
@@ -790,9 +790,11 @@ fn test_parse() {
     assert!(parse_expr_lalrpop("(22)").is_ok());
     assert_eq!(
         parse_expr_lalrpop("3 + 5 * 10").ok(),
-        Some(Box::new(BinOp(NaturalPlus,
+        Some(Box::new(BinOp(
+            NaturalPlus,
             Box::new(NaturalLit(3)),
-            Box::new(BinOp(NaturalTimes,
+            Box::new(BinOp(
+                NaturalTimes,
                 Box::new(NaturalLit(5)),
                 Box::new(NaturalLit(10))
             ))
@@ -801,9 +803,11 @@ fn test_parse() {
     // The original parser is apparently right-associative
     assert_eq!(
         parse_expr_lalrpop("2 * 3 * 4").ok(),
-        Some(Box::new(BinOp(NaturalTimes,
+        Some(Box::new(BinOp(
+            NaturalTimes,
             Box::new(NaturalLit(2)),
-            Box::new(BinOp(NaturalTimes,
+            Box::new(BinOp(
+                NaturalTimes,
                 Box::new(NaturalLit(3)),
                 Box::new(NaturalLit(4))
             ))

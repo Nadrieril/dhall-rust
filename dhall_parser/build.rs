@@ -1,8 +1,8 @@
-use std::fs::File;
-use std::io::{Read,Write,BufReader,BufRead};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Write};
 
-use abnf_to_pest::{PestRuleSettings, abnf_to_pest};
+use abnf_to_pest::{abnf_to_pest, PestRuleSettings};
 
 fn main() -> std::io::Result<()> {
     // TODO: upstream changes to grammar
@@ -22,26 +22,47 @@ fn main() -> std::io::Result<()> {
     for line in BufReader::new(File::open(visibility_path)?).lines() {
         let line = line?;
         if line.len() >= 2 && &line[0..2] == "# " {
-            rule_settings.insert(line[2..].into(), PestRuleSettings { visible: false, ..Default::default() });
+            rule_settings.insert(
+                line[2..].into(),
+                PestRuleSettings {
+                    visible: false,
+                    ..Default::default()
+                },
+            );
         } else {
-            rule_settings.insert(line, PestRuleSettings { visible: true, ..Default::default() });
+            rule_settings.insert(
+                line,
+                PestRuleSettings {
+                    visible: true,
+                    ..Default::default()
+                },
+            );
         }
     }
-    rule_settings.insert("simple_label".to_owned(), PestRuleSettings {
-        visible: true,
-        replace: Some("
+    rule_settings.insert(
+        "simple_label".to_owned(),
+        PestRuleSettings {
+            visible: true,
+            replace: Some(
+                "
               keyword_raw ~ simple_label_next_char+
             | !keyword_raw ~ simple_label_first_char ~ simple_label_next_char*
-        ".to_owned()),
-    });
+        "
+                .to_owned(),
+            ),
+        },
+    );
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
     writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
-    writeln!(&mut file, "keyword_raw = _{{
+    writeln!(
+        &mut file,
+        "keyword_raw = _{{
         let_raw | in_raw | if_raw | then_raw
             | else_raw | Infinity_raw | NaN_raw
-    }}")?;
+    }}"
+    )?;
     writeln!(
         &mut file,
         "final_expression = {{ SOI ~ complete_expression ~ EOI }}"

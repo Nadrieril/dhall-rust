@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use itertools::Itertools;
+use std::collections::HashMap;
 
 pub struct PestRuleSettings {
     pub visible: bool,
@@ -8,14 +8,23 @@ pub struct PestRuleSettings {
 
 impl Default for PestRuleSettings {
     fn default() -> Self {
-        PestRuleSettings { visible: true, replace: None }
+        PestRuleSettings {
+            visible: true,
+            replace: None,
+        }
     }
 }
 
-pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSettings>) -> std::io::Result<String> {
+pub fn abnf_to_pest(
+    data: &Vec<u8>,
+    rule_settings: &HashMap<String, PestRuleSettings>,
+) -> std::io::Result<String> {
     use abnf::abnf::*;
-    use pretty::{Doc, BoxDoc};
-    fn format_rule(x: Rule, rule_settings: &HashMap<String, PestRuleSettings>) -> Doc<BoxDoc<()>> {
+    use pretty::{BoxDoc, Doc};
+    fn format_rule(
+        x: Rule,
+        rule_settings: &HashMap<String, PestRuleSettings>,
+    ) -> Doc<BoxDoc<()>> {
         let rulename = format_rulename(x.name);
         let default = Default::default();
         let setting = rule_settings.get(&rulename).unwrap_or(&default);
@@ -36,7 +45,13 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
     }
     fn format_rulename(x: String) -> String {
         let x = x.replace("-", "_");
-        if x == "if" || x == "else" || x == "as" || x == "let" || x == "in" || x == "fn" {
+        if x == "if"
+            || x == "else"
+            || x == "as"
+            || x == "let"
+            || x == "in"
+            || x == "fn"
+        {
             x + "_"
         } else {
             x
@@ -44,19 +59,27 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
     }
     fn format_alternation(x: Alternation) -> Doc<'static, BoxDoc<'static, ()>> {
         Doc::intersperse(
-            x.concatenations.into_iter().map(|x| format_concatenation(x).nest(2).group()),
-            Doc::space().append(Doc::text("| "))
+            x.concatenations
+                .into_iter()
+                .map(|x| format_concatenation(x).nest(2).group()),
+            Doc::space().append(Doc::text("| ")),
         )
     }
-    fn format_concatenation(x: Concatenation) -> Doc<'static, BoxDoc<'static, ()>> {
+    fn format_concatenation(
+        x: Concatenation,
+    ) -> Doc<'static, BoxDoc<'static, ()>> {
         Doc::intersperse(
             x.repetitions.into_iter().map(format_repetition),
-            Doc::space().append(Doc::text("~ "))
+            Doc::space().append(Doc::text("~ ")),
         )
     }
     fn format_repetition(x: Repetition) -> Doc<'static, BoxDoc<'static, ()>> {
-        format_element(x.element)
-            .append(x.repeat.map(format_repeat).map(Doc::text).unwrap_or(Doc::nil()))
+        format_element(x.element).append(
+            x.repeat
+                .map(format_repeat)
+                .map(Doc::text)
+                .unwrap_or(Doc::nil()),
+        )
     }
     fn format_repeat(x: Repeat) -> String {
         match (x.min.unwrap_or(0), x.max) {
@@ -72,15 +95,16 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
         use abnf::abnf::Element::*;
         match x {
             Rulename(s) => Doc::text(format_rulename(s)),
-            Group(g) =>
-                Doc::text("(")
-                    .append(format_alternation(g.alternation).nest(4).group())
-                    .append(Doc::text(")")),
-            Option(o) =>
-                Doc::text("(")
-                    .append(format_alternation(o.alternation).nest(4).group())
-                    .append(Doc::text(")?")),
-            CharVal(s) => Doc::text(format!("^\"{}\"", s.replace("\"", "\\\"").replace("\\", "\\\\"))),
+            Group(g) => Doc::text("(")
+                .append(format_alternation(g.alternation).nest(4).group())
+                .append(Doc::text(")")),
+            Option(o) => Doc::text("(")
+                .append(format_alternation(o.alternation).nest(4).group())
+                .append(Doc::text(")?")),
+            CharVal(s) => Doc::text(format!(
+                "^\"{}\"",
+                s.replace("\"", "\\\"").replace("\\", "\\\\")
+            )),
             NumVal(r) => Doc::text(format_range(r)),
             ProseVal(_) => unimplemented!(),
         }
@@ -88,8 +112,12 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
     fn format_range(x: Range) -> String {
         use abnf::abnf::Range::*;
         match x {
-            Range(x, y) => format!("'{}'..'{}'", format_char(x), format_char(y)),
-            OneOf(v) => format!("\"{}\"", v.into_iter().map(format_char).join("")),
+            Range(x, y) => {
+                format!("'{}'..'{}'", format_char(x), format_char(y))
+            }
+            OneOf(v) => {
+                format!("\"{}\"", v.into_iter().map(format_char).join(""))
+            }
         }
     }
     fn format_char(x: u64) -> String {
@@ -104,11 +132,12 @@ pub fn abnf_to_pest(data: &Vec<u8>, rule_settings: &HashMap<String, PestRuleSett
         }
         format!("\\u{{{:02X}}}", x)
     }
-    let make_err = |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
+    let make_err =
+        |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
 
     let rules = rulelist_comp(&data).map_err(make_err)?.1;
-    let formatted_rules = rules.into_iter().map(|x| format_rule(x, rule_settings));
+    let formatted_rules =
+        rules.into_iter().map(|x| format_rule(x, rule_settings));
     let doc: Doc<_> = Doc::intersperse(formatted_rules, Doc::newline());
     Ok(format!("{}", doc.pretty(80)))
 }
-

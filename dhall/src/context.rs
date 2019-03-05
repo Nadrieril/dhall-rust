@@ -34,7 +34,12 @@ impl<'i, T> Context<'i, T> {
     }
 
     pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<'i, U> {
-        Context(self.0.iter().map(|(k, v)| (*k, v.iter().map(&f).collect())).collect())
+        Context(
+            self.0
+                .iter()
+                .map(|(k, v)| (*k, v.iter().map(&f).collect()))
+                .collect(),
+        )
     }
 }
 
