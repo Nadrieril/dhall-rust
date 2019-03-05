@@ -175,19 +175,17 @@ macro_rules! match_iter {
  * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
  * If using the @get_err entrypoint, errors returned by the callback will get propagated
  * using IterMatchError::Other.
- * Allows multiple branches. The passed iterator must be Clone.
- * Will check the patterns in order, testing for matches using the callback macro provided.
  *
  * Example:
  * ```
  * macro_rules! callback {
- *     (positive, $x:expr) => {
+ *     (@type_callback, positive, $x:expr) => {
  *         if $x >= 0 { Ok($x) } else { Err(()) }
  *     };
- *     (negative, $x:expr) => {
+ *     (@type_callback, negative, $x:expr) => {
  *         if $x <= 0 { Ok($x) } else { Err(()) }
  *     };
- *     (any, $x:expr) => {
+ *     (@type_callback, any, $x:expr) => {
  *         Ok($x)
  *     };
  * }
@@ -196,7 +194,6 @@ macro_rules! match_iter {
  *
  * match_iter_typed!(callback; vec.into_iter();
  *     (x: positive, y?: negative, z: any) => { ... },
- *     (x: negative, y?: any, z: any) => { ... },
  * )
  * ```
  *
@@ -217,22 +214,15 @@ macro_rules! match_iter_typed {
         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
     };
     (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
-        let matched: Result<_, IterMatchError<ParseError>> =
-            match_iter!(@get_err, $iter; ($($acc)*) => {
-                match_iter_typed!(@callback, $callback, $iter, $($args)*);
-                Ok($body)
-            }
-        );
-        #[allow(unused_assignments)]
-        match matched {
-            Ok(v) => break v,
-            Err(e) => $error = e,
-        };
+        match_iter!(@get_err, $iter; ($($acc)*) => {
+            match_iter_typed!(@callback, $callback, $iter, $($args)*);
+            Ok($body)
+        })
     };
 
     // Pass the matches through the callback
     (@callback, $callback:ident, $iter:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = $callback!($ty, $x);
+        let $x = $callback!(@type_callback, $ty, $x);
         #[allow(unused_mut)]
         let mut $x = match $x {
             Ok(x) => x,
@@ -241,7 +231,7 @@ macro_rules! match_iter_typed {
         match_iter_typed!(@callback, $callback, $iter $($rest)*);
     };
     (@callback, $callback: ident, $iter:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map(|x| $callback!($ty, x));
+        let $x = $x.map(|x| $callback!(@type_callback, $ty, x));
         #[allow(unused_mut)]
         let mut $x = match $x {
             Some(Ok(x)) => Some(x),
@@ -251,7 +241,7 @@ macro_rules! match_iter_typed {
         match_iter_typed!(@callback, $callback, $iter $($rest)*);
     };
     (@callback, $callback: ident, $iter:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map(|x| $callback!($ty, x)).collect();
+        let $x = $x.map(|x| $callback!(@type_callback, $ty, x)).collect();
         let $x: Vec<_> = match $x {
             Ok(x) => x,
             Err(e) => break Err(IterMatchError::Other(e)),
@@ -262,7 +252,34 @@ macro_rules! match_iter_typed {
     };
     (@callback, $callback:ident, $iter:expr $(,)*) => {};
 
-    // Entrypoint
+    // Entrypoints
+    (@get_err, $callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
+        {
+            #[allow(unused_mut)]
+            let mut iter = $iter;
+            match_iter_typed!(@collect,
+                (iter, $body, $callback, last_error),
+                ($($args)*), (), ($($args)*,)
+            )
+        }
+    };
+    ($($args:tt)*) => {
+        {
+            let ret: Result<_, IterMatchError<()>> = match_iter_typed!(@get_err, $($args)*);
+            ret.unwrap()
+        }
+    };
+}
+
+/* Extends match_iter and match_iter_typed with branching.
+ * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
+ * If using the @get_err entrypoint, errors returned by the callback will get propagated
+ * using IterMatchError::Other.
+ * Allows multiple branches. The passed iterator must be Clone.
+ * Will check the branches in order, testing each branch using the callback macro provided.
+*/
+macro_rules! match_iter_branching {
+    // Entrypoints
     (@get_err, $callback:ident; $iter:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
             #[allow(unused_mut)]
@@ -274,10 +291,13 @@ macro_rules! match_iter_typed {
             #[allow(unreachable_code)]
             loop {
                 $(
-                    match_iter_typed!(@collect,
-                        (iter.clone(), $body, $callback, last_error),
-                        ($($args)*), (), ($($args)*,)
-                    );
+                    let matched: Result<_, IterMatchError<_>> =
+                        match_iter_typed!(@get_err, $callback; iter.clone(); ($($args)*) => $body);
+                    #[allow(unused_assignments)]
+                    match matched {
+                        Ok(v) => break v,
+                        Err(e) => last_error = e,
+                    };
                 )*
                 break Err(last_error);
             }
@@ -285,7 +305,7 @@ macro_rules! match_iter_typed {
     };
     ($($args:tt)*) => {
         {
-            let ret: Result<_, IterMatchError<()>> = match_iter!(@get_err, $($args)*);
+            let ret: Result<_, IterMatchError<()>> = match_iter_branching!(@get_err, $($args)*);
             ret.unwrap()
         }
     };
@@ -308,19 +328,17 @@ macro_rules! named_rule {
     );
 }
 
-macro_rules! match_children_callback {
-    ($ty:ident, $x:expr) => {
+macro_rules! match_children {
+    (@type_callback, $ty:ident, $x:expr) => {
         $ty($x)
     };
-}
 
-macro_rules! match_children {
     ($pair:expr; $($args:tt)*) => {
         {
             let pair = $pair;
             #[allow(unused_mut)]
             let mut pairs = pair.clone().into_inner();
-            let result = match_iter_typed!(@get_err, match_children_callback; pairs; $($args)*);
+            let result = match_iter_branching!(@get_err, match_children; pairs; $($args)*);
             result.map_err(|e| match e {
                 IterMatchError::Other(e) => e,
                 _ => custom_parse_error(&pair, "No match found".to_owned()),
