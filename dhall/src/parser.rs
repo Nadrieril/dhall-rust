@@ -181,28 +181,30 @@ macro_rules! named_rule {
 }
 
 macro_rules! match_children {
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x), ($($rest)*))
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
     };
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x?), ($($rest)*))
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x?), ($($rest)*))
     };
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*, $x??), ($($rest)*))
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
+        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x??), ($($rest)*))
     };
     // Catch extra comma if exists
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, (,$($acc:tt)*), ($(,)*)) => {
-        match_children!(@collect, $pairs, ($($args)*), $body, ($($acc)*), ())
+    (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
+        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
     };
-    (@collect, $pairs:expr, ($($args:tt)*), $body:expr, ($($acc:tt)*), ($(,)*)) => {
+    (@collect, ($pairs:expr, $body:expr, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
         let matched: Result<_, IterMatchError<ParseError>> =
             match_iter!(@get_err, $pairs; ($($acc)*) => {
                 match_children!(@parse, $pairs, $($args)*);
                 Ok($body)
-        });
+            }
+        );
+        #[allow(unused_assignments)]
         match matched {
             Ok(v) => break v,
-            Err(_) => {},
+            Err(e) => $error = Some(e),
         };
     };
 
@@ -239,15 +241,26 @@ macro_rules! match_children {
         {
             let pair = $pair;
             #[allow(unused_mut)]
+            #[allow(unused_assignments)]
+            let mut last_error = None;
+            #[allow(unused_mut)]
             let mut pairs = pair.clone().into_inner();
-            // Would use loop labels but they create warnings
             #[allow(unreachable_code)]
+            // Would use loop labels but they create warnings
             loop {
                 $(
-                    match_children!(@collect, pairs.clone(), ($($args)*), $body, (), ($($args)*,));
+                    match_children!(@collect, (pairs.clone(), $body, last_error), ($($args)*), (), ($($args)*,));
                 )*
-                // break Err(TODO);
-                panic!("No match found while matching on:\n{}", debug_pair(pair));
+                break Err(match last_error {
+                    Some(IterMatchError::Other(e)) => e,
+                    _ => custom_parse_error(
+                        &pair.clone(),
+                        format!(
+                            "No match found while matching on:\n{}",
+                            debug_pair(pair)
+                        )
+                    ),
+                });
             }
         }
     };
