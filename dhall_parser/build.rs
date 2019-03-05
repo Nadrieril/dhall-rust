@@ -38,8 +38,14 @@ fn main() -> std::io::Result<()> {
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
     writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
-    writeln!(&mut file, "keyword_raw = _{{ let_raw | in_raw | if_raw | then_raw | else_raw }}")?;
-    writeln!(&mut file, "final_expression = {{ SOI ~ complete_expression ~ EOI }}")?;
+    writeln!(&mut file, "keyword_raw = _{{
+        let_raw | in_raw | if_raw | then_raw
+            | else_raw | Infinity_raw | NaN_raw
+    }}")?;
+    writeln!(
+        &mut file,
+        "final_expression = {{ SOI ~ complete_expression ~ EOI }}"
+    )?;
 
     Ok(())
 }

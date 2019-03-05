@@ -562,6 +562,18 @@ rule!(single_quote_literal<String>;
     }
 );
 
+rule!(double_literal_raw<f64>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseFloatError| custom_parse_error(&pair, format!("{}", e)))?
+    }
+);
+
+rule!(minus_infinity_literal<()>; children!() => ());
+rule!(plus_infinity_literal<()>; children!() => ());
+rule!(NaN_raw<()>; children!() => ());
+
 rule!(natural_literal_raw<usize>;
     raw_pair!(pair) => {
         pair.as_str().trim()
@@ -677,6 +689,10 @@ rule!(selector_expression_raw<BoxExpr<'a>>;
 );
 
 rule!(literal_expression_raw<BoxExpr<'a>>;
+    children!(n: double_literal_raw) => bx(Expr::DoubleLit(n)),
+    children!(n: minus_infinity_literal) => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
+    children!(n: plus_infinity_literal) => bx(Expr::DoubleLit(std::f64::INFINITY)),
+    children!(n: NaN_raw) => bx(Expr::DoubleLit(std::f64::NAN)),
     children!(n: natural_literal_raw) => bx(Expr::NaturalLit(n)),
     children!(n: integer_literal_raw) => bx(Expr::IntegerLit(n)),
     children!(s: double_quote_literal) => bx(Expr::TextLit(s)),

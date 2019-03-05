@@ -37,7 +37,7 @@ single_quote_literal
 # Optional_raw
 # Text_raw
 # List_raw
-Infinity_raw
+# Infinity_raw
 # if_
 # then
 # else_
