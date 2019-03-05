@@ -151,10 +151,10 @@ make_spec_test!(normalization, spec_normalization_success_simple_multiLine, "nor
 // make_spec_test!(normalization, spec_normalization_success_simple_naturalBuild, "normalization/success/simple/naturalBuild");
 make_spec_test!(normalization, spec_normalization_success_simple_naturalPlus, "normalization/success/simple/naturalPlus");
 make_spec_test!(normalization, spec_normalization_success_simple_naturalShow, "normalization/success/simple/naturalShow");
-// make_spec_test!(normalization, spec_normalization_success_simple_naturalToInteger, "normalization/success/simple/naturalToInteger");
-// make_spec_test!(normalization, spec_normalization_success_simple_optionalBuild, "normalization/success/simple/optionalBuild");
-// make_spec_test!(normalization, spec_normalization_success_simple_optionalBuildFold, "normalization/success/simple/optionalBuildFold");
-// make_spec_test!(normalization, spec_normalization_success_simple_optionalFold, "normalization/success/simple/optionalFold");
+make_spec_test!(normalization, spec_normalization_success_simple_naturalToInteger, "normalization/success/simple/naturalToInteger");
+make_spec_test!(normalization, spec_normalization_success_simple_optionalBuild, "normalization/success/simple/optionalBuild");
+make_spec_test!(normalization, spec_normalization_success_simple_optionalBuildFold, "normalization/success/simple/optionalBuildFold");
+make_spec_test!(normalization, spec_normalization_success_simple_optionalFold, "normalization/success/simple/optionalFold");
 // make_spec_test!(normalization, spec_normalization_success_simple_sortOperator, "normalization/success/simple/sortOperator");
 // make_spec_test!(normalization, spec_normalization_success_simplifications_and, "normalization/success/simplifications/and");
 // make_spec_test!(normalization, spec_normalization_success_simplifications_eq, "normalization/success/simplifications/eq");

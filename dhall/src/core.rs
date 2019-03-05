@@ -997,6 +997,7 @@ where
                 (Builtin(NaturalIsZero), NaturalLit(n)) => BoolLit(n == 0),
                 (Builtin(NaturalEven), NaturalLit(n)) => BoolLit(n % 2 == 0),
                 (Builtin(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
+                (Builtin(NaturalToInteger), NaturalLit(n)) => IntegerLit(n as isize),
                 (Builtin(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
                 (App(f@box Builtin(ListBuild), box t), k) => {
                         let labeled =
@@ -1065,12 +1066,22 @@ where
                         kvs = [ ("index", NaturalLit (fromIntegral n))
                               , ("value", x)
                               ]
-                App (App (App (App (App OptionalFold _) (OptionalLit _ xs)) _) just) nothing ->
-                    normalize (maybe nothing just' (toMaybe xs))
-                  where
-                    just' y = App just y
-                    toMaybe = Data.Maybe.listToMaybe . Data.Vector.toList
             */
+                (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
+                    let e2: Expr<_, _> = xs.into_iter().fold(nothing, |y, _|
+                        App(just.clone(), bx(y))
+                    );
+                    normalize(&e2)
+                }
+                (App(box Builtin(OptionalBuild), _), App(box App(box Builtin(OptionalFold), _), b)) => {
+                    normalize(&b)
+                }
+                (App(box Builtin(OptionalBuild), a0), g) => {
+                    let e2: Expr<_, _> = app(app(app(g,
+                            App(bx(Builtin(Optional)), a0.clone())),
+                            Lam("x", a0.clone(), bx(OptionalLit(Some(a0.clone()), vec![Var(V("x", 0))])))), OptionalLit(Some(a0), vec![]));
+                    normalize(&e2)
+                }
                 (f2, a2) => app(f2, a2),
             },
         },

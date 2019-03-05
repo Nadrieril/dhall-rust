@@ -13,15 +13,45 @@ macro_rules! parse_str {
     ($str:expr) => {
         {
             let pest_expr = parser::parse_expr_pest(&$str).map_err(|e| println!("{}", e)).unwrap();
-            // Check with old parser
-            match parser::parse_expr_lalrpop(&$str) {
-                Ok(larlpop_expr) => assert_eq!(pest_expr, larlpop_expr),
-                Err(_) => {},
-            };
+            // // Check with old parser
+            // match parser::parse_expr_lalrpop(&$str) {
+            //     Ok(larlpop_expr) => assert_eq!(pest_expr, larlpop_expr),
+            //     Err(_) => {},
+            // };
             // panic!("{:?}", pest_expr);
             pest_expr
         }
     };
+}
+
+#[macro_export]
+macro_rules! assert_eq_ {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{}`,
+ right: `{}`"#, left_val, right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        assert_eq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{:?}`,
+ right: `{:?}`: {}"#, left_val, right_val,
+                           format_args!($($arg)+))
+                }
+            }
+        }
+    });
 }
 
 #[macro_export]
@@ -30,7 +60,7 @@ macro_rules! run_spec_test {
         let (expr_str, expected_str) = include_test_strs_ab!($path);
         let expr = parse_str!(expr_str);
         let expected = parse_str!(expected_str);
-        assert_eq!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
+        assert_eq_!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
     };
     (parser, $path:expr) => {
         let expr_str = include_test_str!(concat!($path, "A"));
