@@ -277,10 +277,39 @@ macro_rules! match_iter_typed {
  * using IterMatchError::Other.
  * Allows multiple branches. The passed iterator must be Clone.
  * Will check the branches in order, testing each branch using the callback macro provided.
+ *
+ * Example:
+ * ```
+ * macro_rules! callback {
+ *     (@type_callback, positive, $x:expr) => {
+ *         if $x >= 0 { Ok($x) } else { Err(()) }
+ *     };
+ *     (@type_callback, negative, $x:expr) => {
+ *         if $x <= 0 { Ok($x) } else { Err(()) }
+ *     };
+ *     (@type_callback, any, $x:expr) => {
+ *         Ok($x)
+ *     };
+ *     (@branch_callback, typed, $($args:tt)*) => {
+ *         match_iter_typed!(@get_err, callback; $($args)*)
+ *     };
+ *     (@branch_callback, untyped, $($args:tt)*) => {
+ *         match_iter!(@get_err, $($args)*)
+ *     };
+ * }
+ *
+ * let vec = vec![-1, 2, 3];
+ *
+ * match_iter_branching!(branch_callback; vec.into_iter();
+ *     typed!(x: positive, y?: negative, z: any) => { ... },
+ *     untyped!(x, y, z) => { ... },
+ * )
+ * ```
+ *
 */
 macro_rules! match_iter_branching {
     // Entrypoints
-    (@get_err, $callback:ident; $iter:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
+    (@get_err, $callback:ident; $iter:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
@@ -291,8 +320,7 @@ macro_rules! match_iter_branching {
             #[allow(unreachable_code)]
             loop {
                 $(
-                    let matched: Result<_, IterMatchError<_>> =
-                        match_iter_typed!(@get_err, $callback; iter.clone(); ($($args)*) => $body);
+                    let matched: Result<_, IterMatchError<_>> = $callback!(@branch_callback, $submac, iter.clone(); ($($args)*) => $body);
                     #[allow(unused_assignments)]
                     match matched {
                         Ok(v) => break v,
@@ -328,9 +356,12 @@ macro_rules! named_rule {
     );
 }
 
-macro_rules! match_children {
+macro_rules! match_pest {
     (@type_callback, $ty:ident, $x:expr) => {
         $ty($x)
+    };
+    (@branch_callback, children, $($args:tt)*) => {
+        match_iter_typed!(@get_err, match_pest; $($args)*)
     };
 
     ($pair:expr; $($args:tt)*) => {
@@ -338,12 +369,18 @@ macro_rules! match_children {
             let pair = $pair;
             #[allow(unused_mut)]
             let mut pairs = pair.clone().into_inner();
-            let result = match_iter_branching!(@get_err, match_children; pairs; $($args)*);
+            let result = match_iter_branching!(@get_err, match_pest; pairs; $($args)*);
             result.map_err(|e| match e {
                 IterMatchError::Other(e) => e,
                 _ => custom_parse_error(&pair, "No match found".to_owned()),
             })
         }
+    };
+}
+
+macro_rules! match_children {
+    ($pairs:expr; ($($args:tt)*) => $body:expr) => {
+        match_pest!($pairs; children!($($args)*) => $body)
     };
 }
 
@@ -420,22 +457,22 @@ named!(raw_str<&'a str>; with_captured_str!(s; s));
 named_rule!(escaped_quote_pair<&'a str>; plain_value!("''"));
 named_rule!(escaped_interpolation<&'a str>; plain_value!("${"));
 
-named_rule!(single_quote_continue<Vec<&'a str>>; match_children!(
+named_rule!(single_quote_continue<Vec<&'a str>>; match_pest!(
     // TODO: handle interpolation
-    // (c: expression, rest: single_quote_continue) => {
+    // children!(c: expression, rest: single_quote_continue) => {
     //     rest.push(c); rest
     // },
-    (c: escaped_quote_pair, rest: single_quote_continue) => {
+    children!(c: escaped_quote_pair, rest: single_quote_continue) => {
         rest.push(c); rest
     },
-    (c: escaped_interpolation, rest: single_quote_continue) => {
+    children!(c: escaped_interpolation, rest: single_quote_continue) => {
         rest.push(c); rest
     },
     // capture interpolation as string
-    (c: raw_str, rest: single_quote_continue) => {
+    children!(c: raw_str, rest: single_quote_continue) => {
         rest.push(c); rest
     },
-    () => {
+    children!() => {
         vec![]
     },
 ));
@@ -488,16 +525,16 @@ named_rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
 
 named_rule!(non_empty_union_type_or_literal
         <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    match_children!(
-        (label: str, e: expression, entries: union_type_entries) => {
+    match_pest!(
+        children!(label: str, e: expression, entries: union_type_entries) => {
             (Some((label, e)), entries)
         },
-        (l: str, e: expression, rest: non_empty_union_type_or_literal) => {
+        children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
             let (x, mut entries) = rest;
             entries.insert(l, *e);
             (x, entries)
         },
-        (l: str, e: expression) => {
+        children!(l: str, e: expression) => {
             let mut entries = BTreeMap::new();
             entries.insert(l, *e);
             (None, entries)
@@ -505,7 +542,9 @@ named_rule!(non_empty_union_type_or_literal
     )
 );
 
-named_rule!(empty_union_type<()>; plain_value!(()));
+named_rule!(empty_union_type<()>; match_children!(() => {
+    ()
+}));
 
 named!(expression<BoxExpr<'a>>; match_rule!(
     // TODO: parse escapes and interpolation
@@ -614,11 +653,11 @@ named!(expression<BoxExpr<'a>>; match_rule!(
         }),
 
     Rule::union_type_or_literal =>
-        match_children!(
-            (_e: empty_union_type) => {
+        match_pest!(
+            children!(_e: empty_union_type) => {
                 bx(Expr::Union(BTreeMap::new()))
             },
-            (x: non_empty_union_type_or_literal) => {
+            children!(x: non_empty_union_type_or_literal) => {
                 match x {
                     (Some((l, e)), entries) => bx(Expr::UnionLit(l, e, entries)),
                     (None, entries) => bx(Expr::Union(entries)),
