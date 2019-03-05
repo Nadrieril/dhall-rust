@@ -328,23 +328,6 @@ macro_rules! match_iter_branching {
     };
 }
 
-macro_rules! named {
-    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
-        #[allow(unused_variables)]
-        fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<$o> {
-            $submac!(pair; $($args)*)
-        }
-    );
-}
-
-macro_rules! rule {
-    ($name:ident<$o:ty>; $($args:tt)*) => (
-        named!($name<$o>; match_rule!(
-            Rule::$name => match_pest!( $($args)* ),
-        ));
-    );
-}
-
 macro_rules! match_pest {
     (@type_callback, $ty:ident, $x:expr) => {
         $ty($x)
@@ -390,21 +373,32 @@ macro_rules! match_pest {
     };
 }
 
-macro_rules! match_children {
-    ($pairs:expr; ($($args:tt)*) => $body:expr) => {
-        match_pest!($pairs; children!($($args)*) => $body)
-    };
+macro_rules! named {
+    ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
+        #[allow(unused_variables)]
+        #[allow(non_snake_case)]
+        fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<$o> {
+            $submac!(pair; $($args)*)
+        }
+    );
 }
 
-macro_rules! binop {
-    ($pair:expr; $f:expr) => {
-        {
-            let f = $f;
-            match_children!($pair; (first: expression, rest*: expression) => {
-                rest.fold(first, |acc, e| bx(f(acc, e)))
-            })
-        }
-    };
+macro_rules! rule {
+    ($name:ident<$o:ty>; $($args:tt)*) => (
+        named!($name<$o>; match_rule!(
+            Rule::$name => match_pest!( $($args)* ),
+        ));
+    );
+}
+
+macro_rules! rule_group {
+    ($name:ident<$o:ty>; $($ty:ident),*) => (
+        named!($name<$o>; match_rule!(
+            $(
+                Rule::$ty => match_pest!(raw_pair!(p) => $ty(p)?),
+            )*
+        ));
+    );
 }
 
 macro_rules! match_rule {
@@ -421,9 +415,7 @@ macro_rules! match_rule {
     };
 }
 
-named!(eoi<()>; match_pest!(
-    children!() => ()
-));
+rule!(EOI<()>; children!() => ());
 
 named!(str<&'a str>; match_pest!(
     captured_str!(s) => s.trim()
@@ -480,19 +472,19 @@ rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
 );
 
-named!(record_entry<(&'a str, BoxExpr<'a>)>;
-    match_children!((name: str, expr: expression) => (name, expr))
-);
+named!(record_entry<(&'a str, BoxExpr<'a>)>; match_pest!(
+    children!(name: str, expr: expression) => (name, expr)
+));
 
-named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    match_children!((expr: expression, entries*: record_entry) => {
+named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>; match_pest!(
+    children!(expr: expression, entries*: record_entry) => {
         let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
         for (n, e) in entries {
             map.insert(n, *e);
         }
         (expr, map)
-    })
-);
+    }
+));
 
 rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     self!(x: partial_record_entries) => x
@@ -535,148 +527,207 @@ rule!(non_empty_union_type_or_literal
 
 rule!(empty_union_type<()>; children!() => ());
 
-named!(expression<BoxExpr<'a>>; match_rule!(
-    // TODO: parse escapes and interpolation
-    Rule::double_quote_literal =>
-        match_children!((strs*: raw_str) => {
-            bx(Expr::TextLit(strs.collect()))
-        }),
-    Rule::single_quote_literal =>
-        match_children!((eol: raw_str, contents: single_quote_continue) => {
-            contents.push(eol);
-            bx(Expr::TextLit(contents.into_iter().rev().collect()))
-        }),
+rule_group!(expression<BoxExpr<'a>>;
+    double_quote_literal,
+    single_quote_literal,
+    natural_literal_raw,
+    integer_literal_raw,
+    identifier_raw,
+    lambda_expression,
+    ifthenelse_expression,
+    let_expression,
+    forall_expression,
+    arrow_expression,
+    merge_expression,
+    empty_collection,
+    non_empty_optional,
 
-    Rule::natural_literal_raw => match_pest!(
-        self!(n: natural) => bx(Expr::NaturalLit(n))
-    ),
-    Rule::integer_literal_raw => match_pest!(
-        self!(n: integer) => bx(Expr::IntegerLit(n))
-    ),
+    annotated_expression,
+    import_alt_expression,
+    or_expression,
+    plus_expression,
+    text_append_expression,
+    list_append_expression,
+    and_expression,
+    combine_expression,
+    prefer_expression,
+    combine_types_expression,
+    times_expression,
+    equal_expression,
+    not_equal_expression,
+    application_expression,
 
-    Rule::identifier_raw =>
-        match_children!((name: str, idx?: natural) => {
-            match Builtin::parse(name) {
-                Some(b) => bx(Expr::Builtin(b)),
-                None => match name {
-                    "True" => bx(Expr::BoolLit(true)),
-                    "False" => bx(Expr::BoolLit(false)),
-                    "Type" => bx(Expr::Const(Const::Type)),
-                    "Kind" => bx(Expr::Const(Const::Kind)),
-                    name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
-                }
+    selector_expression_raw,
+    empty_record_type,
+    empty_record_literal,
+    non_empty_record_type_or_literal,
+    union_type_or_literal,
+    non_empty_list_literal_raw,
+    final_expression
+);
+
+// TODO: parse escapes and interpolation
+rule!(double_quote_literal<BoxExpr<'a>>;
+    children!(strs*: raw_str) => {
+        bx(Expr::TextLit(strs.collect()))
+    }
+);
+rule!(single_quote_literal<BoxExpr<'a>>;
+    children!(eol: raw_str, contents: single_quote_continue) => {
+        contents.push(eol);
+        bx(Expr::TextLit(contents.into_iter().rev().collect()))
+    }
+);
+
+rule!(natural_literal_raw<BoxExpr<'a>>;
+    self!(n: natural) => bx(Expr::NaturalLit(n))
+);
+rule!(integer_literal_raw<BoxExpr<'a>>;
+    self!(n: integer) => bx(Expr::IntegerLit(n))
+);
+
+rule!(identifier_raw<BoxExpr<'a>>;
+    children!(name: str, idx?: natural) => {
+        match Builtin::parse(name) {
+            Some(b) => bx(Expr::Builtin(b)),
+            None => match name {
+                "True" => bx(Expr::BoolLit(true)),
+                "False" => bx(Expr::BoolLit(false)),
+                "Type" => bx(Expr::Const(Const::Type)),
+                "Kind" => bx(Expr::Const(Const::Kind)),
+                name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
             }
-        }),
+        }
+    }
+);
 
-    Rule::lambda_expression =>
-        match_children!((label: str, typ: expression, body: expression) => {
-            bx(Expr::Lam(label, typ, body))
-        }),
+rule!(lambda_expression<BoxExpr<'a>>;
+    children!(label: str, typ: expression, body: expression) => {
+        bx(Expr::Lam(label, typ, body))
+    }
+);
 
-    Rule::ifthenelse_expression =>
-        match_children!((cond: expression, left: expression, right: expression) => {
-            bx(Expr::BoolIf(cond, left, right))
-        }),
+rule!(ifthenelse_expression<BoxExpr<'a>>;
+    children!(cond: expression, left: expression, right: expression) => {
+        bx(Expr::BoolIf(cond, left, right))
+    }
+);
 
-    Rule::let_expression =>
-        match_children!((bindings*: let_binding, final_expr: expression) => {
-            bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
-        }),
+rule!(let_expression<BoxExpr<'a>>;
+    children!(bindings*: let_binding, final_expr: expression) => {
+        bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
+    }
+);
 
-    Rule::forall_expression =>
-        match_children!((label: str, typ: expression, body: expression) => {
-            bx(Expr::Pi(label, typ, body))
-        }),
+rule!(forall_expression<BoxExpr<'a>>;
+    children!(label: str, typ: expression, body: expression) => {
+        bx(Expr::Pi(label, typ, body))
+    }
+);
 
-    Rule::arrow_expression =>
-        match_children!((typ: expression, body: expression) => {
-            bx(Expr::Pi("_", typ, body))
-        }),
+rule!(arrow_expression<BoxExpr<'a>>;
+    children!(typ: expression, body: expression) => {
+        bx(Expr::Pi("_", typ, body))
+    }
+);
 
-    Rule::merge_expression =>
-        match_children!((x: expression, y: expression, z?: expression) => {
-            bx(Expr::Merge(x, y, z))
-        }),
+rule!(merge_expression<BoxExpr<'a>>;
+    children!(x: expression, y: expression, z?: expression) => {
+        bx(Expr::Merge(x, y, z))
+    }
+);
 
-    Rule::empty_collection =>
-        match_children!((x: str, y: expression) => {
-           match x {
-              "Optional" => bx(Expr::OptionalLit(Some(y), vec![])),
-              "List" => bx(Expr::ListLit(Some(y), vec![])),
-              _ => unreachable!(),
-           }
-        }),
+rule!(empty_collection<BoxExpr<'a>>;
+    children!(x: str, y: expression) => {
+       match x {
+          "Optional" => bx(Expr::OptionalLit(Some(y), vec![])),
+          "List" => bx(Expr::ListLit(Some(y), vec![])),
+          _ => unreachable!(),
+       }
+    }
+);
 
-    Rule::non_empty_optional =>
-        match_children!((x: expression, _y: str, z: expression) => {
-            bx(Expr::OptionalLit(Some(z), vec![*x]))
-        }),
+rule!(non_empty_optional<BoxExpr<'a>>;
+    children!(x: expression, _y: str, z: expression) => {
+        bx(Expr::OptionalLit(Some(z), vec![*x]))
+    }
+);
 
-    Rule::annotated_expression => binop!(Expr::Annot),
-    Rule::import_alt_expression => binop!(Expr::ImportAlt),
-    Rule::or_expression => binop!(Expr::BoolOr),
-    Rule::plus_expression => binop!(Expr::NaturalPlus),
-    Rule::text_append_expression => binop!(Expr::TextAppend),
-    Rule::list_append_expression => binop!(Expr::ListAppend),
-    Rule::and_expression => binop!(Expr::BoolAnd),
-    Rule::combine_expression => binop!(Expr::Combine),
-    Rule::prefer_expression => binop!(Expr::Prefer),
-    Rule::combine_types_expression => binop!(Expr::CombineTypes),
-    Rule::times_expression => binop!(Expr::NaturalTimes),
-    Rule::equal_expression => binop!(Expr::BoolEQ),
-    Rule::not_equal_expression => binop!(Expr::BoolNE),
-    Rule::application_expression => binop!(Expr::App),
+macro_rules! binop {
+    ($rule:ident, $f:expr) => {
+        rule!($rule<BoxExpr<'a>>;
+            children!(first: expression, rest*: expression) => {
+                rest.fold(first, |acc, e| bx($f(acc, e)))
+            }
+        );
+    };
+}
 
-    Rule::selector_expression_raw =>
-        match_children!((first: expression, rest*: str) => {
-            rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
-        }),
+binop!(annotated_expression, Expr::Annot);
+binop!(import_alt_expression, Expr::ImportAlt);
+binop!(or_expression, Expr::BoolOr);
+binop!(plus_expression, Expr::NaturalPlus);
+binop!(text_append_expression, Expr::TextAppend);
+binop!(list_append_expression, Expr::ListAppend);
+binop!(and_expression, Expr::BoolAnd);
+binop!(combine_expression, Expr::Combine);
+binop!(prefer_expression, Expr::Prefer);
+binop!(combine_types_expression, Expr::CombineTypes);
+binop!(times_expression, Expr::NaturalTimes);
+binop!(equal_expression, Expr::BoolEQ);
+binop!(not_equal_expression, Expr::BoolNE);
+binop!(application_expression, Expr::App);
 
-    Rule::empty_record_type => match_pest!(
-        children!() => bx(Expr::Record(BTreeMap::new()))
-    ),
-    Rule::empty_record_literal => match_pest!(
-        children!() => bx(Expr::RecordLit(BTreeMap::new()))
-    ),
-    Rule::non_empty_record_type_or_literal => match_pest!(
-        children!(first_label: str, rest: non_empty_record_type) => {
-            let (first_expr, mut map) = rest;
-            map.insert(first_label, *first_expr);
-            bx(Expr::Record(map))
-        },
-        children!(first_label: str, rest: non_empty_record_literal) => {
-            let (first_expr, mut map) = rest;
-            map.insert(first_label, *first_expr);
-            bx(Expr::RecordLit(map))
-        },
-    ),
+rule!(selector_expression_raw<BoxExpr<'a>>;
+    children!(first: expression, rest*: str) => {
+        rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
+    }
+);
 
-    Rule::union_type_or_literal =>
-        match_pest!(
-            children!(_e: empty_union_type) => {
-                bx(Expr::Union(BTreeMap::new()))
-            },
-            children!(x: non_empty_union_type_or_literal) => {
-                match x {
-                    (Some((l, e)), entries) => bx(Expr::UnionLit(l, e, entries)),
-                    (None, entries) => bx(Expr::Union(entries)),
-                }
-            },
-        ),
-    Rule::non_empty_list_literal_raw =>
-        match_children!((items*: expression) => {
-            bx(Expr::ListLit(None, items.map(|x| *x).collect()))
-        }),
-));
+rule!(empty_record_type<BoxExpr<'a>>;
+    children!() => bx(Expr::Record(BTreeMap::new()))
+);
+rule!(empty_record_literal<BoxExpr<'a>>;
+    children!() => bx(Expr::RecordLit(BTreeMap::new()))
+);
+rule!(non_empty_record_type_or_literal<BoxExpr<'a>>;
+    children!(first_label: str, rest: non_empty_record_type) => {
+        let (first_expr, mut map) = rest;
+        map.insert(first_label, *first_expr);
+        bx(Expr::Record(map))
+    },
+    children!(first_label: str, rest: non_empty_record_literal) => {
+        let (first_expr, mut map) = rest;
+        map.insert(first_label, *first_expr);
+        bx(Expr::RecordLit(map))
+    },
+);
+
+rule!(union_type_or_literal<BoxExpr<'a>>;
+    children!(_e: empty_union_type) => {
+        bx(Expr::Union(BTreeMap::new()))
+    },
+    children!(x: non_empty_union_type_or_literal) => {
+        match x {
+            (Some((l, e)), entries) => bx(Expr::UnionLit(l, e, entries)),
+            (None, entries) => bx(Expr::Union(entries)),
+        }
+    },
+);
+rule!(non_empty_list_literal_raw<BoxExpr<'a>>;
+    children!(items*: expression) => {
+        bx(Expr::ListLit(None, items.map(|x| *x).collect()))
+    }
+);
 
 rule!(final_expression<BoxExpr<'a>>;
-    children!(e: expression, _eoi: eoi) => e
+    children!(e: expression, _eoi: EOI) => e
 );
 
 pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     // Match the only item in the pairs iterator
-    match_iter!(@panic; pairs; (p) => final_expression(p))
+    match_iter!(@panic; pairs; (p) => expression(p))
     // Ok(bx(Expr::BoolLit(false)))
 }
 
