@@ -30,7 +30,7 @@ macro_rules! run_spec_test {
         let (expr_str, expected_str) = include_test_strs_ab!($path);
         let expr = parse_str!(expr_str);
         let expected = parse_str!(expected_str);
-        // assert_eq!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
+        assert_eq!(normalize::<_, X, _>(&expr), normalize::<_, X, _>(&expected));
     };
     (parser, $path:expr) => {
         let expr_str = include_test_str!(concat!($path, "A"));
