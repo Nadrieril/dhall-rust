@@ -298,10 +298,8 @@ macro_rules! match_iter_typed {
  *
 */
 macro_rules! match_iter_branching {
-    ($callback:ident; $iter:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
+    (@noclone, $callback:ident; $arg:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
-            #[allow(unused_mut)]
-            let mut iter = $iter;
             #[allow(unused_assignments)]
             let mut last_error = IterMatchError::NoMatchFound;
             // Not a real loop; used for error handling
@@ -309,7 +307,8 @@ macro_rules! match_iter_branching {
             #[allow(unreachable_code)]
             loop {
                 $(
-                    let matched: Result<_, IterMatchError<_>> = $callback!(@branch_callback, $submac, iter.clone(); ($($args)*) => $body);
+                    let matched: Result<_, IterMatchError<_>> =
+                        $callback!(@branch_callback, $submac, $arg; ($($args)*) => $body);
                     #[allow(unused_assignments)]
                     match matched {
                         Ok(v) => break Ok(v),
@@ -318,6 +317,13 @@ macro_rules! match_iter_branching {
                 )*
                 break Err(last_error);
             }
+        }
+    };
+    ($callback:ident; $iter:expr; $($args:tt)*) => {
+        {
+            #[allow(unused_mut)]
+            let mut iter = $iter;
+            match_iter_branching!(@noclone, $callback; iter.clone(); $($args)*)
         }
     };
 }
@@ -343,16 +349,39 @@ macro_rules! match_pest {
     (@type_callback, $ty:ident, $x:expr) => {
         $ty($x)
     };
-    (@branch_callback, children, $($args:tt)*) => {
-        match_iter_typed!(match_pest; $($args)*)
+    (@branch_callback, children, $pair:expr; $($args:tt)*) => {
+        {
+            #[allow(unused_mut)]
+            let mut pairs = $pair.clone().into_inner();
+            match_iter_typed!(match_pest; pairs; $($args)*)
+        }
+    };
+    (@branch_callback, self, $pair:expr; ($x:ident : $ty:ident) => $body:expr) => {
+        {
+            let $x = match_pest!(@type_callback, $ty, $pair.clone());
+            match $x {
+                Ok($x) => Ok($body),
+                Err(e) => Err(IterMatchError::Other(e)),
+            }
+        }
+    };
+    (@branch_callback, raw_pair, $pair:expr; ($x:ident) => $body:expr) => {
+        {
+            let $x = $pair.clone();
+            Ok($body)
+        }
+    };
+    (@branch_callback, captured_str, $pair:expr; ($x:ident) => $body:expr) => {
+        {
+            let $x = $pair.as_str();
+            Ok($body)
+        }
     };
 
     ($pair:expr; $($args:tt)*) => {
         {
             let pair = $pair;
-            #[allow(unused_mut)]
-            let mut pairs = pair.clone().into_inner();
-            let result = match_iter_branching!(match_pest; pairs; $($args)*);
+            let result = match_iter_branching!(@noclone, match_pest; pair; $($args)*);
             result.map_err(|e| match e {
                 IterMatchError::Other(e) => e,
                 _ => custom_parse_error(&pair, "No match found".to_owned()),
@@ -367,35 +396,6 @@ macro_rules! match_children {
     };
 }
 
-macro_rules! with_captured_str {
-    ($pair:expr; $x:ident; $body:expr) => {{
-        #[allow(unused_mut)]
-        let mut $x = $pair.as_str();
-        Ok($body)
-    }};
-}
-
-macro_rules! with_raw_pair {
-    ($pair:expr; $x:ident; $body:expr) => {{
-        #[allow(unused_mut)]
-        let mut $x = $pair;
-        Ok($body)
-    }};
-}
-
-macro_rules! map {
-    ($pair:expr; $ty:ident; $f:expr) => {{
-        let x = $ty($pair)?;
-        Ok($f(x))
-    }};
-}
-
-macro_rules! plain_value {
-    ($_pair:expr; $body:expr) => {
-        Ok($body)
-    };
-}
-
 macro_rules! binop {
     ($pair:expr; $f:expr) => {
         {
@@ -403,16 +403,6 @@ macro_rules! binop {
             match_children!($pair; (first: expression, rest*: expression) => {
                 rest.fold(first, |acc, e| bx(f(acc, e)))
             })
-        }
-    };
-}
-
-macro_rules! with_rule {
-    ($pair:expr; $x:ident; $submac:ident!( $($args:tt)* )) => {
-        {
-            #[allow(unused_mut)]
-            let mut $x = $pair.as_rule();
-            $submac!($pair; $($args)*)
         }
     };
 }
@@ -431,14 +421,24 @@ macro_rules! match_rule {
     };
 }
 
-named!(eoi<()>; plain_value!(()));
+named!(eoi<()>; match_pest!(
+    children!() => ()
+));
 
-named!(str<&'a str>; with_captured_str!(s; { s.trim() }));
+named!(str<&'a str>; match_pest!(
+    captured_str!(s) => s.trim()
+));
 
-named!(raw_str<&'a str>; with_captured_str!(s; s));
+named!(raw_str<&'a str>; match_pest!(
+    captured_str!(s) => s
+));
 
-named_rule!(escaped_quote_pair<&'a str>; plain_value!("''"));
-named_rule!(escaped_interpolation<&'a str>; plain_value!("${"));
+named_rule!(escaped_quote_pair<&'a str>; match_pest!(
+    children!() => "''"
+));
+named_rule!(escaped_interpolation<&'a str>; match_pest!(
+    children!() => "${"
+));
 
 named_rule!(single_quote_continue<Vec<&'a str>>; match_pest!(
     // TODO: handle interpolation
@@ -460,17 +460,21 @@ named_rule!(single_quote_continue<Vec<&'a str>>; match_pest!(
     },
 ));
 
-named!(natural<usize>; with_raw_pair!(pair; {
-    pair.as_str().trim()
-        .parse()
-        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-}));
+named!(natural<usize>; match_pest!(
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+    }
+));
 
-named!(integer<isize>; with_raw_pair!(pair; {
-    pair.as_str().trim()
-        .parse()
-        .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-}));
+named!(integer<isize>; match_pest!(
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+    }
+));
 
 named_rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
     match_children!((name: str, annot?: expression, expr: expression) => (name, annot, expr))
@@ -480,16 +484,22 @@ named!(record_entry<(&'a str, BoxExpr<'a>)>;
     match_children!((name: str, expr: expression) => (name, expr))
 );
 
-named!(partial_record_entries<(Rule, BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    with_rule!(rule;
-        match_children!((expr: expression, entries*: record_entry) => {
-            let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
-            for (n, e) in entries {
-                map.insert(n, *e);
-            }
-            (rule, expr, map)
-        })
-    )
+named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    match_children!((expr: expression, entries*: record_entry) => {
+        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+        for (n, e) in entries {
+            map.insert(n, *e);
+        }
+        (expr, map)
+    })
+);
+
+named_rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    match_pest!(self!(x: partial_record_entries) => x)
+);
+
+named_rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    match_pest!(self!(x: partial_record_entries) => x)
 );
 
 named_rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
@@ -541,8 +551,12 @@ named!(expression<BoxExpr<'a>>; match_rule!(
             bx(Expr::TextLit(contents.into_iter().rev().collect()))
         }),
 
-    Rule::natural_literal_raw => map!(natural; |n| bx(Expr::NaturalLit(n))),
-    Rule::integer_literal_raw => map!(integer; |n| bx(Expr::IntegerLit(n))),
+    Rule::natural_literal_raw => match_pest!(
+        self!(n: natural) => bx(Expr::NaturalLit(n))
+    ),
+    Rule::integer_literal_raw => match_pest!(
+        self!(n: integer) => bx(Expr::IntegerLit(n))
+    ),
 
     Rule::identifier_raw =>
         match_children!((name: str, idx?: natural) => {
@@ -622,18 +636,24 @@ named!(expression<BoxExpr<'a>>; match_rule!(
             rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
         }),
 
-    Rule::empty_record_type => plain_value!(bx(Expr::Record(BTreeMap::new()))),
-    Rule::empty_record_literal => plain_value!(bx(Expr::RecordLit(BTreeMap::new()))),
-    Rule::non_empty_record_type_or_literal =>
-        match_children!((first_label: str, rest: partial_record_entries) => {
-            let (rule, first_expr, mut map) = rest;
+    Rule::empty_record_type => match_pest!(
+        children!() => bx(Expr::Record(BTreeMap::new()))
+    ),
+    Rule::empty_record_literal => match_pest!(
+        children!() => bx(Expr::RecordLit(BTreeMap::new()))
+    ),
+    Rule::non_empty_record_type_or_literal => match_pest!(
+        children!(first_label: str, rest: non_empty_record_type) => {
+            let (first_expr, mut map) = rest;
             map.insert(first_label, *first_expr);
-            match rule {
-                Rule::non_empty_record_type => bx(Expr::Record(map)),
-                Rule::non_empty_record_literal => bx(Expr::RecordLit(map)),
-                _ => unreachable!()
-            }
-        }),
+            bx(Expr::Record(map))
+        },
+        children!(first_label: str, rest: non_empty_record_literal) => {
+            let (first_expr, mut map) = rest;
+            map.insert(first_label, *first_expr);
+            bx(Expr::RecordLit(map))
+        },
+    ),
 
     Rule::union_type_or_literal =>
         match_pest!(
@@ -651,15 +671,6 @@ named!(expression<BoxExpr<'a>>; match_rule!(
         match_children!((items*: expression) => {
             bx(Expr::ListLit(None, items.map(|x| *x).collect()))
         }),
-
-
-    // _ => with_rule!(rule;
-    //     match_children!((exprs*: expression) => {
-    //         let rulename = format!("{:?}", rule);
-    //         // panic!(rulename);
-    //         bx(Expr::FailedParse(rulename, exprs.map(|x| *x).collect()))
-    //     })
-    // ),
 ));
 
 named!(final_expression<BoxExpr<'a>>;
