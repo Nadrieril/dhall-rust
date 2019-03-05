@@ -23,6 +23,8 @@ pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
 
 pub fn custom_parse_error(pair: &Pair<Rule>, msg: String) -> ParseError {
+    let msg =
+        format!("{} while matching on:\n{}", msg, debug_pair(pair.clone()));
     let e = pest::error::ErrorVariant::CustomError { message: msg };
     pest::error::Error::new_from_span(e, pair.as_span())
 }
@@ -69,7 +71,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 /* Macro to pattern-match iterators.
- * Panics if the sequence doesn't match;
+ * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
  *
  * Example:
  * ```
@@ -93,7 +95,8 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 enum IterMatchError<T> {
     NotEnoughItems,
     TooManyItems,
-    Other(T), // Allow other macros to inkect their own errors
+    NoMatchFound,
+    Other(T), // Allow other macros to inject their own errors
 }
 macro_rules! match_iter {
     // Everything else pattern
@@ -111,7 +114,8 @@ macro_rules! match_iter {
     // Optional pattern
     (@match 0, $iter:expr, $x:ident? $($rest:tt)*) => {
         match_iter!(@match 1, $iter $($rest)*);
-        let $x = $iter.next();
+        #[allow(unused_mut)]
+        let mut $x = $iter.next();
         match $iter.next() {
             Some(_) => break Err(IterMatchError::TooManyItems),
             None => {},
@@ -119,7 +123,8 @@ macro_rules! match_iter {
     };
     // Normal pattern
     (@match 0, $iter:expr, $x:ident $($rest:tt)*) => {
-        let $x = match $iter.next() {
+        #[allow(unused_mut)]
+        let mut $x = match $iter.next() {
             Some(x) => x,
             None => break Err(IterMatchError::NotEnoughItems),
         };
@@ -128,7 +133,8 @@ macro_rules! match_iter {
     // Normal pattern after a variable length one: declare reversed and take from the end
     (@match $w:expr, $iter:expr, $x:ident $($rest:tt)*) => {
         match_iter!(@match $w, $iter $($rest)*);
-        let $x = match $iter.next_back() {
+        #[allow(unused_mut)]
+        let mut $x = match $iter.next_back() {
             Some(x) => x,
             None => break Err(IterMatchError::NotEnoughItems),
         };
@@ -148,11 +154,133 @@ macro_rules! match_iter {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
+            // Not a real loop; used for error handling
             let ret: Result<_, IterMatchError<_>> = loop {
                 match_iter!(@match 0, iter, $($args)*);
                 break Ok($body);
             };
             ret
+        }
+    };
+    ($($args:tt)*) => {
+        {
+            let ret: Result<_, IterMatchError<()>> = match_iter!(@get_err, $($args)*);
+            ret.unwrap()
+        }
+    };
+}
+
+/* Extends match_iter with typed matches. Takes a callback that determines
+ * when a capture matches.
+ * Panics if the sequence doesn't match, unless you use the @get_err entrypoint.
+ * If using the @get_err entrypoint, errors returned by the callback will get propagated
+ * using IterMatchError::Other.
+ * Allows multiple branches. The passed iterator must be Clone.
+ * Will check the patterns in order, testing for matches using the callback macro provided.
+ *
+ * Example:
+ * ```
+ * macro_rules! callback {
+ *     (positive, $x:expr) => {
+ *         if $x >= 0 { Ok($x) } else { Err(()) }
+ *     };
+ *     (negative, $x:expr) => {
+ *         if $x <= 0 { Ok($x) } else { Err(()) }
+ *     };
+ *     (any, $x:expr) => {
+ *         Ok($x)
+ *     };
+ * }
+ *
+ * let vec = vec![-1, 2, 3];
+ *
+ * match_iter_typed!(callback; vec.into_iter();
+ *     (x: positive, y?: negative, z: any) => { ... },
+ *     (x: negative, y?: any, z: any) => { ... },
+ * )
+ * ```
+ *
+*/
+macro_rules! match_iter_typed {
+    // Collect untyped arguments to pass to match_iter!
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
+        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
+    };
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
+        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x?), ($($rest)*))
+    };
+    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
+        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x??), ($($rest)*))
+    };
+    // Catch extra comma if exists
+    (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
+        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
+    };
+    (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
+        let matched: Result<_, IterMatchError<ParseError>> =
+            match_iter!(@get_err, $iter; ($($acc)*) => {
+                match_iter_typed!(@callback, $callback, $iter, $($args)*);
+                Ok($body)
+            }
+        );
+        #[allow(unused_assignments)]
+        match matched {
+            Ok(v) => break v,
+            Err(e) => $error = e,
+        };
+    };
+
+    // Pass the matches through the callback
+    (@callback, $callback:ident, $iter:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+        let $x = $callback!($ty, $x);
+        #[allow(unused_mut)]
+        let mut $x = match $x {
+            Ok(x) => x,
+            Err(e) => break Err(IterMatchError::Other(e)),
+        };
+        match_iter_typed!(@callback, $callback, $iter $($rest)*);
+    };
+    (@callback, $callback: ident, $iter:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
+        let $x = $x.map(|x| $callback!($ty, x));
+        #[allow(unused_mut)]
+        let mut $x = match $x {
+            Some(Ok(x)) => Some(x),
+            Some(Err(e)) => break Err(IterMatchError::Other(e)),
+            None => None,
+        };
+        match_iter_typed!(@callback, $callback, $iter $($rest)*);
+    };
+    (@callback, $callback: ident, $iter:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
+        let $x = $x.map(|x| $callback!($ty, x)).collect();
+        let $x: Vec<_> = match $x {
+            Ok(x) => x,
+            Err(e) => break Err(IterMatchError::Other(e)),
+        };
+        #[allow(unused_mut)]
+        let mut $x = $x.into_iter();
+        match_iter_typed!(@callback, $callback, $iter $($rest)*);
+    };
+    (@callback, $callback:ident, $iter:expr $(,)*) => {};
+
+    // Entrypoint
+    (@get_err, $callback:ident; $iter:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
+        {
+            #[allow(unused_mut)]
+            let mut iter = $iter;
+            #[allow(unused_assignments)]
+            let mut last_error = IterMatchError::NoMatchFound;
+            // Not a real loop; used for error handling
+            // Would use loop labels but they create warnings
+            #[allow(unreachable_code)]
+            loop {
+                $(
+                    match_iter_typed!(@collect,
+                        (iter.clone(), $body, $callback, last_error),
+                        ($($args)*), (), ($($args)*,)
+                    );
+                )*
+                break Err(last_error);
+            }
         }
     };
     ($($args:tt)*) => {
@@ -180,88 +308,23 @@ macro_rules! named_rule {
     );
 }
 
+macro_rules! match_children_callback {
+    ($ty:ident, $x:expr) => {
+        $ty($x)
+    };
+}
+
 macro_rules! match_children {
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
-    };
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x?), ($($rest)*))
-    };
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
-        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x??), ($($rest)*))
-    };
-    // Catch extra comma if exists
-    (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
-        match_children!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
-    };
-    (@collect, ($pairs:expr, $body:expr, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
-        let matched: Result<_, IterMatchError<ParseError>> =
-            match_iter!(@get_err, $pairs; ($($acc)*) => {
-                match_children!(@parse, $pairs, $($args)*);
-                Ok($body)
-            }
-        );
-        #[allow(unused_assignments)]
-        match matched {
-            Ok(v) => break v,
-            Err(e) => $error = Some(e),
-        };
-    };
-
-    (@parse, $pairs:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = $ty($x);
-        let $x = match $x {
-            Ok(x) => x,
-            Err(e) => break Err(IterMatchError::Other(e)),
-        };
-        match_children!(@parse, $pairs $($rest)*);
-    };
-    (@parse, $pairs:expr, $x:ident? : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map($ty);
-        let $x = match $x {
-            Some(Ok(x)) => Some(x),
-            Some(Err(e)) => break Err(IterMatchError::Other(e)),
-            None => None,
-        };
-        match_children!(@parse, $pairs $($rest)*);
-    };
-    (@parse, $pairs:expr, $x:ident* : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map($ty).collect::<ParseResult<Vec<_>>>();
-        #[allow(unused_mut)]
-        let mut $x = match $x {
-            Ok(x) => x.into_iter(),
-            Err(e) => break Err(IterMatchError::Other(e)),
-        };
-        match_children!(@parse, $pairs $($rest)*);
-    };
-    (@parse, $pairs:expr $(,)*) => {};
-
-    // Entrypoint
-    ($pair:expr; $( ($($args:tt)*) => $body:expr ),* $(,)*) => {
+    ($pair:expr; $($args:tt)*) => {
         {
             let pair = $pair;
             #[allow(unused_mut)]
-            #[allow(unused_assignments)]
-            let mut last_error = None;
-            #[allow(unused_mut)]
             let mut pairs = pair.clone().into_inner();
-            #[allow(unreachable_code)]
-            // Would use loop labels but they create warnings
-            loop {
-                $(
-                    match_children!(@collect, (pairs.clone(), $body, last_error), ($($args)*), (), ($($args)*,));
-                )*
-                break Err(match last_error {
-                    Some(IterMatchError::Other(e)) => e,
-                    _ => custom_parse_error(
-                        &pair.clone(),
-                        format!(
-                            "No match found while matching on:\n{}",
-                            debug_pair(pair)
-                        )
-                    ),
-                });
-            }
+            let result = match_iter_typed!(@get_err, match_children_callback; pairs; $($args)*);
+            result.map_err(|e| match e {
+                IterMatchError::Other(e) => e,
+                _ => custom_parse_error(&pair, "No match found".to_owned()),
+            })
         }
     };
 }
