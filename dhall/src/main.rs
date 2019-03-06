@@ -3,6 +3,7 @@ use std::io::{self, Read};
 use term_painter::ToStyle;
 
 use dhall::*;
+use dhall_core::*;
 
 const ERROR_STYLE: term_painter::Color = term_painter::Color::Red;
 const BOLD: term_painter::Attr = term_painter::Attr::Bold;

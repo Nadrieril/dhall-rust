@@ -91,6 +91,7 @@ macro_rules! make_spec_test {
         #[allow(unused_imports)]
         fn $name() {
             use dhall::*;
+            use dhall_core::*;
             use std::thread;
 
             thread::Builder::new()

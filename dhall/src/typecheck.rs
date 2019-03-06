@@ -4,12 +4,12 @@ use std::collections::HashSet;
 use std::fmt;
 
 use crate::context::Context;
-use crate::core;
-use crate::core::Builtin::*;
-use crate::core::Const::*;
-use crate::core::Expr::*;
-use crate::core::{app, pi};
-use crate::core::{bx, normalize, shift, subst, Expr, V, X};
+use dhall_core::core;
+use dhall_core::core::Builtin::*;
+use dhall_core::core::Const::*;
+use dhall_core::core::Expr::*;
+use dhall_core::core::{app, pi};
+use dhall_core::core::{bx, normalize, shift, subst, Expr, V, X};
 
 use self::TypeMessage::*;
 
@@ -184,7 +184,7 @@ pub fn type_with<'i, S>(
 where
     S: Clone + ::std::fmt::Debug + 'i,
 {
-    use crate::BinOp::*;
+    use dhall_core::BinOp::*;
     match *e {
         Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
         Var(V(x, n)) => {
