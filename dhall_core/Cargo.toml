@@ -5,6 +5,9 @@ authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.n
 edition = "2018"
 build = "build.rs"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 lalrpop = "0.16.3"
 

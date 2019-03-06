@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 edition = "2018"
 
+[lib]
+doctest = false
+
 [dependencies]
 abnf = { git = "https://github.com/Nadrieril/abnf" }
 itertools = "0.8.0"
