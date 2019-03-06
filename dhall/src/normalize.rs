@@ -145,37 +145,47 @@ where
         },
 
         // Normalize everything else before matching
-        e => match e.map_shallow(normalize, |_| unreachable!(), |x| x.clone()) {
-            BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => BoolLit(x && y),
-            BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => BoolLit(x || y),
-            BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => BoolLit(x == y),
-            BinOp(BoolNE, box BoolLit(x), box BoolLit(y)) => BoolLit(x != y),
-            BinOp(NaturalPlus, box NaturalLit(x), box NaturalLit(y)) => {
-                NaturalLit(x + y)
+        e => {
+            match e.map_shallow(normalize, |_| unreachable!(), |x| x.clone()) {
+                BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => {
+                    BoolLit(x && y)
+                }
+                BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => {
+                    BoolLit(x || y)
+                }
+                BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => {
+                    BoolLit(x == y)
+                }
+                BinOp(BoolNE, box BoolLit(x), box BoolLit(y)) => {
+                    BoolLit(x != y)
+                }
+                BinOp(NaturalPlus, box NaturalLit(x), box NaturalLit(y)) => {
+                    NaturalLit(x + y)
+                }
+                BinOp(NaturalTimes, box NaturalLit(x), box NaturalLit(y)) => {
+                    NaturalLit(x * y)
+                }
+                BinOp(TextAppend, box TextLit(x), box TextLit(y)) => {
+                    TextLit(x + &y)
+                }
+                BinOp(ListAppend, box ListLit(t1, xs), box ListLit(t2, ys)) => {
+                    // Drop type annotation if the result is nonempty
+                    let t = if xs.len() == 0 && ys.len() == 0 {
+                        t1.or(t2)
+                    } else {
+                        None
+                    };
+                    let xs = xs.into_iter();
+                    let ys = ys.into_iter();
+                    ListLit(t, xs.chain(ys).collect())
+                }
+                Merge(_x, _y, _t) => unimplemented!(),
+                Field(box RecordLit(kvs), x) => match kvs.get(x) {
+                    Some(r) => r.clone(),
+                    None => Field(bx(RecordLit(kvs)), x),
+                },
+                e => e,
             }
-            BinOp(NaturalTimes, box NaturalLit(x), box NaturalLit(y)) => {
-                NaturalLit(x * y)
-            }
-            BinOp(TextAppend, box TextLit(x), box TextLit(y)) => {
-                TextLit(x + &y)
-            }
-            BinOp(ListAppend, box ListLit(t1, xs), box ListLit(t2, ys)) => {
-                // Drop type annotation if the result is nonempty
-                let t = if xs.len() == 0 && ys.len() == 0 {
-                    t1.or(t2)
-                } else {
-                    None
-                };
-                let xs = xs.into_iter();
-                let ys = ys.into_iter();
-                ListLit(t, xs.chain(ys).collect())
-            }
-            Merge(_x, _y, _t) => unimplemented!(),
-            Field(box RecordLit(kvs), x) => match kvs.get(x) {
-                Some(r) => r.clone(),
-                None => Field(bx(RecordLit(kvs)), x),
-            },
-            e => e,
-        },
+        }
     }
 }

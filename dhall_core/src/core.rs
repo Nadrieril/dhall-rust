@@ -278,16 +278,14 @@ impl<'i, S, A> Expr<'i, S, A> {
         map_shallow(self, map_expr, map_note, map_embed)
     }
 
-    pub fn map_embed<B, F>(
-        &self,
-        map_embed: &F,
-    ) -> Expr<'i, S, B>
+    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<'i, S, B>
     where
         A: Clone,
         S: Clone,
         F: Fn(&A) -> B,
     {
-        let recurse = |e: &Expr<'i, S, A>| -> Expr<'i, S, B> { e.map_embed(map_embed) };
+        let recurse =
+            |e: &Expr<'i, S, A>| -> Expr<'i, S, B> { e.map_embed(map_embed) };
         map_shallow(self, recurse, |x| x.clone(), map_embed)
     }
 

@@ -4,5 +4,5 @@
 
 mod normalize;
 pub use crate::normalize::*;
-pub mod typecheck;
 pub mod imports;
+pub mod typecheck;
