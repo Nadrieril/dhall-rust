@@ -48,6 +48,10 @@ where
                 (App(box Builtin(ListBuild), _), App(box App(box Builtin(ListFold), _), box e2)) |
                 (App(box Builtin(ListFold), _), App(box App(box Builtin(ListBuild), _), box e2)) |
 
+                // fold/build fusion for `Optional`
+                (App(box Builtin(OptionalBuild), _), App(box App(box Builtin(OptionalFold), _), box e2)) |
+                (App(box Builtin(OptionalFold), _), App(box App(box Builtin(OptionalBuild), _), box e2)) |
+
                 // fold/build fusion for `Natural`
                 (Builtin(NaturalBuild), App(box Builtin(NaturalFold), box e2)) |
                 (Builtin(NaturalFold), App(box Builtin(NaturalBuild), box e2)) => normalize(&e2),
@@ -81,43 +85,19 @@ where
                 (Builtin(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
                 (Builtin(NaturalToInteger), NaturalLit(n)) => IntegerLit(n as isize),
                 (Builtin(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
-                (App(f@box Builtin(ListBuild), box t), k) => {
-                        let labeled =
-                            normalize::<_, T, _>(&app(app(app(k.clone(), app(
-                                Builtin(self::Builtin::List), t.clone())), "Cons"), "Nil"));
-
-                        fn list_to_vector<'i, S, A>(v: &mut Vec<Expr<'i, S, A>>, e: Expr<'i, S, A>)
-                            where S: Clone, A: Clone
-                        {
-                            match e {
-                                App(box App(box Var(V("Cons", _)), box x), box e2) => {
-                                    v.push(x);
-                                    list_to_vector(v, e2)
-                                }
-                                Var(V("Nil", _)) => {}
-                                _ => panic!("internalError list_to_vector"),
-                            }
-                        }
-                        fn check<S, A>(e: &Expr<S, A>) -> bool {
-                            match *e {
-                                App(box App(box Var(V("Cons", _)), _), ref e2) => check(e2),
-                                Var(V("Nil", _)) => true,
-                                _ => false,
-                            }
-                        }
-
-                        if check(&labeled) {
-                            let mut v = vec![];
-                            list_to_vector(&mut v, labeled);
-                            ListLit(Some(bx(t)), v)
-                        } else {
-                            app(App(f, bx(t)), k)
-                        }
-                    }
+                (App(box Builtin(ListBuild), a0), k) => {
+                    let k = bx(k);
+                    let a1 = bx(shift(1, V("a", 0), &a0));
+                    let a = bx(Var(V("a", 0)));
+                    let as_ = bx(Var(V("as_", 0)));
+                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as_ : List a1) -> [ a ] # as_) ([] : List a0)))
+                }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
-                    let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| // foldr
-                        App(bx(App(cons.clone(), bx(y))), bx(ys))
-                    );
+                    let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| {
+                        let y = bx(y);
+                        let ys = bx(ys);
+                        dhall!(cons y ys)
+                    });
                     normalize(&e2)
                 }
                 (App(f, x_), ListLit(t, ys)) => match *f {
@@ -150,20 +130,16 @@ where
                               ]
             */
                 (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
-                    let e2: Expr<_, _> = xs.into_iter().fold(nothing, |y, _|
-                        App(just.clone(), bx(y))
-                    );
+                    let e2: Expr<_, _> = xs.into_iter().fold(nothing, |y, _| {
+                        let y = bx(y);
+                        dhall!(just y)
+                    });
                     normalize(&e2)
-                }
-                (App(box Builtin(OptionalBuild), _), App(box App(box Builtin(OptionalFold), _), b)) => {
-                    normalize(&b)
                 }
                 (App(box Builtin(OptionalBuild), a0), g) => {
                     let x = bx(Var(V("x", 0)));
                     let g = bx(g);
-                    let e2: Expr<_, _> =
-                        dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
-                    normalize(&e2)
+                    normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
                 }
                 (f2, a2) => app(f2, a2),
             },
@@ -235,6 +211,22 @@ where
             normalize(x),
             normalize(y),
         ),
+        BinOp(ListAppend, ref x, ref y) => {
+            match (normalize(x), normalize(y)) {
+                (ListLit(t1, xs), ListLit(t2, ys)) => {
+                    // Drop type annotation if the result is not empty
+                    let t = if xs.len() == 0 && ys.len() == 0 {
+                        t1.or(t2)
+                    } else {
+                        None
+                    };
+                    let xs = xs.into_iter();
+                    let ys = ys.into_iter();
+                    ListLit(t, xs.chain(ys).collect())
+                }
+                (x, y) => BinOp(ListAppend, bx(x), bx(y)),
+            }
+        },
         ListLit(ref t, ref es) => {
             let t2 = t.as_ref().map(|x| x.as_ref()).map(normalize).map(bx);
             let es2 = es.iter().map(normalize).collect();
@@ -263,7 +255,7 @@ where
         },
         Note(_, ref e) => normalize(e),
         Embed(ref a) => Embed(a.clone()),
-        _ => unimplemented!(),
+        ref e => unimplemented!("{:?}", e),
     }
 }
 

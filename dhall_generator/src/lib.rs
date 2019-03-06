@@ -19,7 +19,10 @@ fn dhall_to_tokenstream(expr: &Expr<X, X>) -> TokenStream {
     match expr {
         Var(V(s, _)) => {
             let v: TokenStream = s.parse().unwrap();
-            quote!{ (*#v).clone() }
+            quote!{ {
+                let x: Expr<_, _> = (*#v).clone();
+                x
+            } }
         },
         Lam(x, ref t, ref b) => {
             let x = Literal::string(x);
@@ -36,10 +39,21 @@ fn dhall_to_tokenstream(expr: &Expr<X, X>) -> TokenStream {
             let b = builtin_to_tokenstream(b);
             quote!{ Builtin(#b) }
         },
+        BinOp(ref o, ref a, ref b) => {
+            let o = binop_to_tokenstream(o);
+            let a = dhall_to_tokenstream_bx(a);
+            let b = dhall_to_tokenstream_bx(b);
+            quote!{ BinOp(#o, #a, #b) }
+        }
         OptionalLit(ref t, ref es) => {
             let t = option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
             let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
             quote!{ OptionalLit(#t, #es) }
+        }
+        ListLit(ref t, ref es) => {
+            let t = option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
+            let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
+            quote!{ ListLit(#t, #es) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -51,18 +65,21 @@ fn dhall_to_tokenstream_bx(expr: &Expr<X, X>) -> TokenStream {
     match expr {
         Var(V(s, _)) => {
             let v: TokenStream = s.parse().unwrap();
-            quote!{ #v.clone() }
+            quote!{ {
+                let x: Box<Expr<_, _>> = #v.clone();
+                x
+            } }
         },
         e => bx(dhall_to_tokenstream(e)),
     }
 }
 
 fn builtin_to_tokenstream(b: &Builtin) -> TokenStream {
-    use dhall_core::Builtin::*;
-    match b {
-        Optional => quote!{ Optional },
-        b => unimplemented!("{:?}", b),
-    }
+    format!("{:?}", b).parse().unwrap()
+}
+
+fn binop_to_tokenstream(b: &BinOp) -> TokenStream {
+    format!("{:?}", b).parse().unwrap()
 }
 
 fn deref<T>(x: &Box<T>) -> &T {

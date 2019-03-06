@@ -146,7 +146,7 @@ make_spec_test!(normalization, spec_normalization_success_haskell_tutorial_acces
 // make_spec_test!(normalization, spec_normalization_success_simple_integerShow, "normalization/success/simple/integerShow");
 // make_spec_test!(normalization, spec_normalization_success_simple_integerToDouble, "normalization/success/simple/integerToDouble");
 // make_spec_test!(normalization, spec_normalization_success_simple_letlet, "normalization/success/simple/letlet");
-// make_spec_test!(normalization, spec_normalization_success_simple_listBuild, "normalization/success/simple/listBuild");
+make_spec_test!(normalization, spec_normalization_success_simple_listBuild, "normalization/success/simple/listBuild");
 make_spec_test!(normalization, spec_normalization_success_simple_multiLine, "normalization/success/simple/multiLine");
 // make_spec_test!(normalization, spec_normalization_success_simple_naturalBuild, "normalization/success/simple/naturalBuild");
 make_spec_test!(normalization, spec_normalization_success_simple_naturalPlus, "normalization/success/simple/naturalPlus");
