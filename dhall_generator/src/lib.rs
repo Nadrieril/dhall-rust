@@ -1,8 +1,8 @@
 extern crate proc_macro;
-use proc_macro2::TokenStream;
-use proc_macro2::Literal;
-use quote::quote;
 use dhall_core::*;
+use proc_macro2::Literal;
+use proc_macro2::TokenStream;
+use quote::quote;
 
 #[proc_macro]
 pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -19,41 +19,43 @@ fn dhall_to_tokenstream(expr: &Expr<X, X>) -> TokenStream {
     match expr {
         Var(V(s, _)) => {
             let v: TokenStream = s.parse().unwrap();
-            quote!{ {
+            quote! { {
                 let x: Expr<_, _> = (*#v).clone();
                 x
             } }
-        },
+        }
         Lam(x, ref t, ref b) => {
             let x = Literal::string(x);
             let t = dhall_to_tokenstream_bx(t);
             let b = dhall_to_tokenstream_bx(b);
-            quote!{ Lam(#x, #t, #b) }
+            quote! { Lam(#x, #t, #b) }
         }
         App(ref f, ref a) => {
             let f = dhall_to_tokenstream_bx(f);
             let a = dhall_to_tokenstream_bx(a);
-            quote!{ App(#f, #a) }
+            quote! { App(#f, #a) }
         }
         Builtin(ref b) => {
             let b = builtin_to_tokenstream(b);
-            quote!{ Builtin(#b) }
-        },
+            quote! { Builtin(#b) }
+        }
         BinOp(ref o, ref a, ref b) => {
             let o = binop_to_tokenstream(o);
             let a = dhall_to_tokenstream_bx(a);
             let b = dhall_to_tokenstream_bx(b);
-            quote!{ BinOp(#o, #a, #b) }
+            quote! { BinOp(#o, #a, #b) }
         }
         OptionalLit(ref t, ref es) => {
-            let t = option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
+            let t =
+                option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
             let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
-            quote!{ OptionalLit(#t, #es) }
+            quote! { OptionalLit(#t, #es) }
         }
         ListLit(ref t, ref es) => {
-            let t = option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
+            let t =
+                option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
             let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
-            quote!{ ListLit(#t, #es) }
+            quote! { ListLit(#t, #es) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -65,11 +67,11 @@ fn dhall_to_tokenstream_bx(expr: &Expr<X, X>) -> TokenStream {
     match expr {
         Var(V(s, _)) => {
             let v: TokenStream = s.parse().unwrap();
-            quote!{ {
+            quote! { {
                 let x: Box<Expr<_, _>> = #v.clone();
                 x
             } }
-        },
+        }
         e => bx(dhall_to_tokenstream(e)),
     }
 }
@@ -87,18 +89,19 @@ fn deref<T>(x: &Box<T>) -> &T {
 }
 
 fn bx(x: TokenStream) -> TokenStream {
-    quote!{ bx(#x) }
+    quote! { bx(#x) }
 }
 
 fn option_tks(x: Option<TokenStream>) -> TokenStream {
     match x {
-        Some(x) => quote!{ Some(#x) },
-        None => quote!{ None },
+        Some(x) => quote! { Some(#x) },
+        None => quote! { None },
     }
 }
 
 fn vec_tks<T>(x: T) -> TokenStream
-where T: Iterator<Item=TokenStream>
+where
+    T: Iterator<Item = TokenStream>,
 {
-    quote!{ vec![ #(#x),* ] }
+    quote! { vec![ #(#x),* ] }
 }

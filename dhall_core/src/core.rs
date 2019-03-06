@@ -231,7 +231,11 @@ impl<'i, S, A> From<Builtin> for Expr<'i, S, A> {
 }
 
 impl<'i, S, A> Expr<'i, S, A> {
-    pub fn map_shallow<T, F1, F2>(&self, map_expr: F1, map_note: F2) -> Expr<'i, T, A>
+    pub fn map_shallow<T, F1, F2>(
+        &self,
+        map_expr: F1,
+        map_note: F2,
+    ) -> Expr<'i, T, A>
     where
         A: Clone,
         T: Clone,
@@ -639,7 +643,11 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-pub fn map_shallow<'i, S, T, A, F1, F2>(e: &Expr<'i, S, A>, map: F1, map_note: F2) -> Expr<'i, T, A>
+pub fn map_shallow<'i, S, T, A, F1, F2>(
+    e: &Expr<'i, S, A>,
+    map: F1,
+    map_note: F2,
+) -> Expr<'i, T, A>
 where
     A: Clone,
     S: Clone,

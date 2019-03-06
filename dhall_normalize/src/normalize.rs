@@ -153,9 +153,15 @@ where
             BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => BoolLit(x || y),
             BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => BoolLit(x == y),
             BinOp(BoolNE, box BoolLit(x), box BoolLit(y)) => BoolLit(x != y),
-            BinOp(NaturalPlus, box NaturalLit(x), box NaturalLit(y)) => NaturalLit(x + y),
-            BinOp(NaturalTimes, box NaturalLit(x), box NaturalLit(y)) => NaturalLit(x * y),
-            BinOp(TextAppend, box TextLit(x), box TextLit(y)) => TextLit(x + &y),
+            BinOp(NaturalPlus, box NaturalLit(x), box NaturalLit(y)) => {
+                NaturalLit(x + y)
+            }
+            BinOp(NaturalTimes, box NaturalLit(x), box NaturalLit(y)) => {
+                NaturalLit(x * y)
+            }
+            BinOp(TextAppend, box TextLit(x), box TextLit(y)) => {
+                TextLit(x + &y)
+            }
             BinOp(ListAppend, box ListLit(t1, xs), box ListLit(t2, ys)) => {
                 // Drop type annotation if the result is nonempty
                 let t = if xs.len() == 0 && ys.len() == 0 {
