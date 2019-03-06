@@ -46,7 +46,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
                     .unwrap();
                 }
             }
-            aux(s, indent + 1, "".into(), p);
+            aux(s, indent + 1, "".to_owned(), p);
         }
         if first {
             writeln!(
@@ -57,7 +57,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
             .unwrap();
         }
     }
-    aux(&mut s, 0, "".into(), pair);
+    aux(&mut s, 0, "".to_owned(), pair);
     s
 }
 
@@ -416,6 +416,8 @@ rule!(EOI<()>; children!() => ());
 
 named!(str<&'a str>; captured_str!(s) => s.trim());
 
+named!(string<String>; captured_str!(s) => s.trim().to_owned());
+
 named!(raw_str<&'a str>; captured_str!(s) => s);
 
 // TODO: parse escapes and interpolation
@@ -535,7 +537,7 @@ rule!(import_hashed_raw<(ImportLocation, Option<()>)>;
     }
 );
 
-rule!(import_raw<BoxExpr<'a>>;
+rule!(import_raw<BoxExpr>;
     // TODO: handle "as Text"
     children!(import: import_hashed_raw) => {
         let (location, hash) = import;
@@ -547,7 +549,7 @@ rule!(import_raw<BoxExpr<'a>>;
     }
 );
 
-rule_group!(expression<BoxExpr<'a>>;
+rule_group!(expression<BoxExpr>;
     identifier_raw,
     lambda_expression,
     ifthenelse_expression,
@@ -584,47 +586,47 @@ rule_group!(expression<BoxExpr<'a>>;
     final_expression
 );
 
-rule!(lambda_expression<BoxExpr<'a>>;
-    children!(label: str, typ: expression, body: expression) => {
+rule!(lambda_expression<BoxExpr>;
+    children!(label: string, typ: expression, body: expression) => {
         bx(Expr::Lam(label, typ, body))
     }
 );
 
-rule!(ifthenelse_expression<BoxExpr<'a>>;
+rule!(ifthenelse_expression<BoxExpr>;
     children!(cond: expression, left: expression, right: expression) => {
         bx(Expr::BoolIf(cond, left, right))
     }
 );
 
-rule!(let_expression<BoxExpr<'a>>;
+rule!(let_expression<BoxExpr>;
     children!(bindings*: let_binding, final_expr: expression) => {
         bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
     }
 );
 
-rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
-    children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
+rule!(let_binding<(String, Option<BoxExpr>, BoxExpr)>;
+    children!(name: string, annot?: expression, expr: expression) => (name, annot, expr)
 );
 
-rule!(forall_expression<BoxExpr<'a>>;
-    children!(label: str, typ: expression, body: expression) => {
+rule!(forall_expression<BoxExpr>;
+    children!(label: string, typ: expression, body: expression) => {
         bx(Expr::Pi(label, typ, body))
     }
 );
 
-rule!(arrow_expression<BoxExpr<'a>>;
+rule!(arrow_expression<BoxExpr>;
     children!(typ: expression, body: expression) => {
-        bx(Expr::Pi("_", typ, body))
+        bx(Expr::Pi("_".to_owned(), typ, body))
     }
 );
 
-rule!(merge_expression<BoxExpr<'a>>;
+rule!(merge_expression<BoxExpr>;
     children!(x: expression, y: expression, z?: expression) => {
         bx(Expr::Merge(x, y, z))
     }
 );
 
-rule!(empty_collection<BoxExpr<'a>>;
+rule!(empty_collection<BoxExpr>;
     children!(x: str, y: expression) => {
        match x {
           "Optional" => bx(Expr::OptionalLit(Some(y), vec![])),
@@ -634,7 +636,7 @@ rule!(empty_collection<BoxExpr<'a>>;
     }
 );
 
-rule!(non_empty_optional<BoxExpr<'a>>;
+rule!(non_empty_optional<BoxExpr>;
     children!(x: expression, _y: str, z: expression) => {
         bx(Expr::OptionalLit(Some(z), vec![*x]))
     }
@@ -642,7 +644,7 @@ rule!(non_empty_optional<BoxExpr<'a>>;
 
 macro_rules! binop {
     ($rule:ident, $op:ident) => {
-        rule!($rule<BoxExpr<'a>>;
+        rule!($rule<BoxExpr>;
             children!(first: expression, rest*: expression) => {
                 rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
             }
@@ -650,7 +652,7 @@ macro_rules! binop {
     };
 }
 
-rule!(annotated_expression<BoxExpr<'a>>;
+rule!(annotated_expression<BoxExpr>;
     children!(e: expression, annot: expression) => {
         bx(Expr::Annot(e, annot))
     },
@@ -670,19 +672,19 @@ binop!(times_expression, NaturalTimes);
 binop!(equal_expression, BoolEQ);
 binop!(not_equal_expression, BoolNE);
 
-rule!(application_expression<BoxExpr<'a>>;
+rule!(application_expression<BoxExpr>;
     children!(first: expression, rest*: expression) => {
         rest.fold(first, |acc, e| bx(Expr::App(acc, e)))
     }
 );
 
-rule!(selector_expression_raw<BoxExpr<'a>>;
-    children!(first: expression, rest*: str) => {
+rule!(selector_expression_raw<BoxExpr>;
+    children!(first: expression, rest*: string) => {
         rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
     }
 );
 
-rule!(literal_expression_raw<BoxExpr<'a>>;
+rule!(literal_expression_raw<BoxExpr>;
     children!(n: double_literal_raw) => bx(Expr::DoubleLit(n)),
     children!(n: minus_infinity_literal) => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
     children!(n: plus_infinity_literal) => bx(Expr::DoubleLit(std::f64::INFINITY)),
@@ -694,7 +696,7 @@ rule!(literal_expression_raw<BoxExpr<'a>>;
     children!(e: expression) => e,
 );
 
-rule!(identifier_raw<BoxExpr<'a>>;
+rule!(identifier_raw<BoxExpr>;
     children!(name: str, idx?: natural_literal_raw) => {
         match Builtin::parse(name) {
             Some(b) => bx(Expr::Builtin(b)),
@@ -703,40 +705,40 @@ rule!(identifier_raw<BoxExpr<'a>>;
                 "False" => bx(Expr::BoolLit(false)),
                 "Type" => bx(Expr::Const(Const::Type)),
                 "Kind" => bx(Expr::Const(Const::Kind)),
-                name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
+                name => bx(Expr::Var(V(name.to_owned(), idx.unwrap_or(0)))),
             }
         }
     }
 );
 
-rule!(empty_record_literal<BoxExpr<'a>>;
+rule!(empty_record_literal<BoxExpr>;
     children!() => bx(Expr::RecordLit(BTreeMap::new()))
 );
 
-rule!(empty_record_type<BoxExpr<'a>>;
+rule!(empty_record_type<BoxExpr>;
     children!() => bx(Expr::Record(BTreeMap::new()))
 );
 
-rule!(non_empty_record_type_or_literal<BoxExpr<'a>>;
-    children!(first_label: str, rest: non_empty_record_type) => {
+rule!(non_empty_record_type_or_literal<BoxExpr>;
+    children!(first_label: string, rest: non_empty_record_type) => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, *first_expr);
         bx(Expr::Record(map))
     },
-    children!(first_label: str, rest: non_empty_record_literal) => {
+    children!(first_label: string, rest: non_empty_record_literal) => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, *first_expr);
         bx(Expr::RecordLit(map))
     },
 );
 
-rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+rule!(non_empty_record_type<(BoxExpr, BTreeMap<String, ParsedExpr>)>;
     self!(x: partial_record_entries) => x
 );
 
-named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+named!(partial_record_entries<(BoxExpr, BTreeMap<String, ParsedExpr>)>;
     children!(expr: expression, entries*: record_entry) => {
-        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+        let mut map: BTreeMap<String, ParsedExpr> = BTreeMap::new();
         for (n, e) in entries {
             map.insert(n, *e);
         }
@@ -744,15 +746,15 @@ named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
     }
 );
 
-named!(record_entry<(&'a str, BoxExpr<'a>)>;
-    children!(name: str, expr: expression) => (name, expr)
+named!(record_entry<(String, BoxExpr)>;
+    children!(name: string, expr: expression) => (name, expr)
 );
 
-rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+rule!(non_empty_record_literal<(BoxExpr, BTreeMap<String, ParsedExpr>)>;
     self!(x: partial_record_entries) => x
 );
 
-rule!(union_type_or_literal<BoxExpr<'a>>;
+rule!(union_type_or_literal<BoxExpr>;
     children!(_e: empty_union_type) => {
         bx(Expr::Union(BTreeMap::new()))
     },
@@ -767,25 +769,25 @@ rule!(union_type_or_literal<BoxExpr<'a>>;
 rule!(empty_union_type<()>; children!() => ());
 
 rule!(non_empty_union_type_or_literal
-      <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    children!(label: str, e: expression, entries: union_type_entries) => {
+      <(Option<(String, BoxExpr)>, BTreeMap<String, ParsedExpr>)>;
+    children!(label: string, e: expression, entries: union_type_entries) => {
         (Some((label, e)), entries)
     },
-    children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
+    children!(l: string, e: expression, rest: non_empty_union_type_or_literal) => {
         let (x, mut entries) = rest;
         entries.insert(l, *e);
         (x, entries)
     },
-    children!(l: str, e: expression) => {
+    children!(l: string, e: expression) => {
         let mut entries = BTreeMap::new();
         entries.insert(l, *e);
         (None, entries)
     },
 );
 
-rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
+rule!(union_type_entries<BTreeMap<String, ParsedExpr>>;
     children!(entries*: union_type_entry) => {
-        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+        let mut map: BTreeMap<String, ParsedExpr> = BTreeMap::new();
         for (n, e) in entries {
             map.insert(n, *e);
         }
@@ -793,17 +795,17 @@ rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
     }
 );
 
-rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
-    children!(name: str, expr: expression) => (name, expr)
+rule!(union_type_entry<(String, BoxExpr)>;
+    children!(name: string, expr: expression) => (name, expr)
 );
 
-rule!(non_empty_list_literal_raw<BoxExpr<'a>>;
+rule!(non_empty_list_literal_raw<BoxExpr>;
     children!(items*: expression) => {
         bx(Expr::ListLit(None, items.map(|x| *x).collect()))
     }
 );
 
-rule!(final_expression<BoxExpr<'a>>;
+rule!(final_expression<BoxExpr>;
     children!(e: expression, _eoi: EOI) => e
 );
 
