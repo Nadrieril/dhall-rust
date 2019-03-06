@@ -384,15 +384,20 @@ path-component = "/" ( 1*path-character / %x22 1*quoted-path-character %x22 )
 path = 1*path-component
 
 local-raw =
-      ".." path  ; Relative path
-    / "."  path  ; Relative path
-    / "~"  path  ; Home-anchored path
+    parent-path
+    / here-path
+    / home-path
     ; NOTE: Backtrack if parsing this alternative fails
     ;
     ; This is because the first character of this alternative will be "/", but
     ; if the second character is "/" or "\" then this should have been parsed
     ; as an operator instead of a path
-    / path  ; Absolute path
+    / absolute-path
+
+parent-path = ".." path  ; Relative path
+here-path = "."  path  ; Relative path
+home-path = "~"  path  ; Home-anchored path
+absolute-path = path  ; Absolute path
 
 ; `http[s]` URI grammar based on RFC7230 and RFC 3986 with some differences
 ; noted below

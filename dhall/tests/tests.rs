@@ -14,7 +14,7 @@ make_spec_test!(normalization, spec_normalization_success_haskell_tutorial_acces
 // make_spec_test!(normalization, spec_normalization_success_multiline_preserveComment, "normalization/success/multiline/preserveComment");
 // make_spec_test!(normalization, spec_normalization_success_multiline_singleLine, "normalization/success/multiline/singleLine");
 // make_spec_test!(normalization, spec_normalization_success_multiline_twoLines, "normalization/success/multiline/twoLines");
-// make_spec_test!(normalization, spec_normalization_success_prelude_Bool_and_0, "normalization/success/prelude/Bool/and/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_Bool_and_0, "normalization/success/prelude/Bool/and/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Bool_and_1, "normalization/success/prelude/Bool/and/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Bool_build_0, "normalization/success/prelude/Bool/build/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Bool_build_1, "normalization/success/prelude/Bool/build/1");

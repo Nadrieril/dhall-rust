@@ -145,7 +145,7 @@ where
         },
 
         // Normalize everything else before matching
-        e => match e.map_shallow(normalize, |_| unreachable!()) {
+        e => match e.map_shallow(normalize, |_| unreachable!(), |x| x.clone()) {
             BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => BoolLit(x && y),
             BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => BoolLit(x || y),
             BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => BoolLit(x == y),

@@ -91,9 +91,7 @@ fn main() {
         }
     };
 
-    /*
-    expr' <- load expr
-    */
+    let expr = imports::resolve_imports(&expr);
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {

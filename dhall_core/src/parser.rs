@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use lalrpop_util;
 use pest::iterators::Pair;
 use pest::Parser;
+use std::path::PathBuf;
 
 use dhall_parser::{DhallParser, Rule};
 
 use crate::core;
-use crate::core::{bx, BinOp, Builtin, Const, Expr, V};
+use crate::core::*;
 use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
 use crate::lexer::{Lexer, LexicalError, Tok};
@@ -496,6 +497,67 @@ rule!(integer_literal_raw<core::Integer>;
     }
 );
 
+rule!(path<PathBuf>; captured_str!(s) => s.into());
+
+rule!(parent_path<(FilePrefix, PathBuf)>;
+    children!(p: path) => (FilePrefix::Parent, p)
+);
+
+rule!(here_path<(FilePrefix, PathBuf)>;
+    children!(p: path) => (FilePrefix::Here, p)
+);
+
+rule!(home_path<(FilePrefix, PathBuf)>;
+    children!(p: path) => (FilePrefix::Home, p)
+);
+
+rule!(absolute_path<(FilePrefix, PathBuf)>;
+    children!(p: path) => (FilePrefix::Absolute, p)
+);
+
+rule_group!(local_raw<(FilePrefix, PathBuf)>;
+    parent_path,
+    here_path,
+    home_path,
+    absolute_path
+);
+
+// TODO: other import types
+rule!(import_type_raw<ImportLocation>;
+    // children!(_e: missing_raw) => {
+    //     ImportLocation::Missing
+    // }
+    // children!(e: env_raw) => {
+    //     ImportLocation::Env(e)
+    // }
+    // children!(url: http) => {
+    //     ImportLocation::Remote(url)
+    // }
+    children!(import: local_raw) => {
+        let (prefix, path) = import;
+        ImportLocation::Local(prefix, path)
+    }
+);
+
+rule!(import_hashed_raw<(ImportLocation, Option<()>)>;
+    // TODO: handle hash
+    children!(import: import_type_raw) => {
+        (import, None)
+    }
+);
+
+rule!(import_raw<BoxExpr<'a>>;
+    // TODO: handle "as Text"
+    children!(import: import_hashed_raw) => {
+        let (location, hash) = import;
+        bx(Expr::Embed(Import {
+            mode: ImportMode::Code,
+            hash,
+            location,
+        }))
+    }
+);
+
 rule_group!(expression<BoxExpr<'a>>;
     identifier_raw,
     lambda_expression,
@@ -522,6 +584,7 @@ rule_group!(expression<BoxExpr<'a>>;
     not_equal_expression,
     application_expression,
 
+    import_raw,
     selector_expression_raw,
     literal_expression_raw,
     empty_record_type,

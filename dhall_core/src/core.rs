@@ -24,17 +24,47 @@ use std::path::PathBuf;
 /// Note that Dhall does not support functions from terms to types and therefore
 /// Dhall is not a dependently typed language
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq)] // (Show, Bounded, Enum)
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Const {
     Type,
     Kind,
 }
 
-/// Path to an external resource
-#[derive(Debug, Clone, PartialEq, Eq)] // (Eq, Ord, Show)
-pub enum Path {
-    File(PathBuf),
-    URL(String),
+/// The beginning of a file path which anchors subsequent path components
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilePrefix {
+    /// Absolute path
+    Absolute,
+    /// Path relative to .
+    Here,
+    /// Path relative to ..
+    Parent,
+    /// Path relative to ~
+    Home,
+}
+
+/// The location of import (i.e. local vs. remote vs. environment)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportLocation {
+    Local(FilePrefix, PathBuf),
+    // TODO: other import types
+}
+
+/// How to interpret the import's contents (i.e. as Dhall code or raw text)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportMode {
+    Code,
+    // TODO
+    // RawText,
+}
+
+/// Reference to an external resource
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Import {
+    pub mode: ImportMode,
+    pub location: ImportLocation,
+    // TODO
+    pub hash: Option<()>,
 }
 
 /// Label for a bound variable
@@ -231,19 +261,34 @@ impl<'i, S, A> From<Builtin> for Expr<'i, S, A> {
 }
 
 impl<'i, S, A> Expr<'i, S, A> {
-    pub fn map_shallow<T, F1, F2>(
+    pub fn map_shallow<T, B, F1, F2, F3>(
         &self,
         map_expr: F1,
         map_note: F2,
-    ) -> Expr<'i, T, A>
+        map_embed: F3,
+    ) -> Expr<'i, T, B>
     where
         A: Clone,
         T: Clone,
         S: Clone,
-        F1: Fn(&Self) -> Expr<'i, T, A>,
+        F1: Fn(&Self) -> Expr<'i, T, B>,
         F2: FnOnce(&S) -> T,
+        F3: FnOnce(&A) -> B,
     {
-        map_shallow(self, map_expr, map_note)
+        map_shallow(self, map_expr, map_note, map_embed)
+    }
+
+    pub fn map_embed<B, F>(
+        &self,
+        map_embed: &F,
+    ) -> Expr<'i, S, B>
+    where
+        A: Clone,
+        S: Clone,
+        F: Fn(&A) -> B,
+    {
+        let recurse = |e: &Expr<'i, S, A>| -> Expr<'i, S, B> { e.map_embed(map_embed) };
+        map_shallow(self, recurse, |x| x.clone(), map_embed)
     }
 
     pub fn bool_lit(&self) -> Option<bool> {
@@ -512,6 +557,12 @@ impl Display for Const {
     }
 }
 
+impl Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        <Self as fmt::Debug>::fmt(self, f)
+    }
+}
+
 impl Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::Builtin::*;
@@ -643,20 +694,22 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-pub fn map_shallow<'i, S, T, A, F1, F2>(
+pub fn map_shallow<'i, S, T, A, B, F1, F2, F3>(
     e: &Expr<'i, S, A>,
     map: F1,
     map_note: F2,
-) -> Expr<'i, T, A>
+    map_embed: F3,
+) -> Expr<'i, T, B>
 where
     A: Clone,
     S: Clone,
     T: Clone,
-    F1: Fn(&Expr<'i, S, A>) -> Expr<'i, T, A>,
+    F1: Fn(&Expr<'i, S, A>) -> Expr<'i, T, B>,
     F2: FnOnce(&S) -> T,
+    F3: FnOnce(&A) -> B,
 {
     use crate::Expr::*;
-    let bxmap = |x: &Expr<'i, S, A>| -> Box<Expr<'i, T, A>> { bx(map(x)) };
+    let bxmap = |x: &Expr<'i, S, A>| -> Box<Expr<'i, T, B>> { bx(map(x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -691,7 +744,7 @@ where
         Merge(ref x, ref y, ref t) => Merge(bxmap(x), bxmap(y), opt(t)),
         Field(ref r, x) => Field(bxmap(r), x),
         Note(ref n, ref e) => Note(map_note(n), bxmap(e)),
-        Embed(ref a) => Embed(a.clone()),
+        Embed(ref a) => Embed(map_embed(a)),
     }
 }
 

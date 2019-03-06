@@ -92,7 +92,7 @@ identifier
 # quoted_path_character
 # path_component
 path
-local_raw
+# local_raw
 scheme
 http_raw
 authority
