@@ -1,4 +1,4 @@
 use crate::core::{Expr, Import, X};
 
-pub type ParsedExpr = Expr<X, Import>;
-pub type BoxExpr = Box<ParsedExpr>;
+pub type ParsedExpr<'i> = Expr<'i, X, Import>;
+pub type BoxExpr<'i> = Box<ParsedExpr<'i>>;
