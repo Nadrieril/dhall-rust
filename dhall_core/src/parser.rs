@@ -1,24 +1,13 @@
-use std::collections::BTreeMap;
-// use itertools::*;
-use lalrpop_util;
 use pest::iterators::Pair;
 use pest::Parser;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use dhall_parser::{DhallParser, Rule};
 
 use crate::core;
 use crate::core::*;
-use crate::grammar;
 use crate::grammar_util::{BoxExpr, ParsedExpr};
-use crate::lexer::{Lexer, LexicalError, Tok};
-
-pub fn parse_expr_lalrpop(
-    s: &str,
-) -> Result<BoxExpr, lalrpop_util::ParseError<usize, Tok, LexicalError>> {
-    grammar::ExprParser::new().parse(Lexer::new(s))
-    // Ok(bx(Expr::BoolLit(false)))
-}
 
 pub type ParseError = pest::error::Error<Rule>;
 
@@ -818,7 +807,7 @@ rule!(final_expression<BoxExpr<'a>>;
     children!(e: expression, _eoi: EOI) => e
 );
 
-pub fn parse_expr_pest(s: &str) -> ParseResult<BoxExpr> {
+pub fn parse_expr(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     // Match the only item in the pairs iterator
     match_iter!(@panic; pairs; (p) => expression(p))
@@ -832,12 +821,12 @@ fn test_parse() {
     // let expr = r#"{ x = "foo", y = 4 }.x"#;
     // let expr = r#"(1 + 2) * 3"#;
     let expr = r#"if True then 1 + 3 * 5 else 2"#;
-    println!("{:?}", parse_expr_lalrpop(expr));
+    println!("{:?}", parse_expr(expr));
     use std::thread;
     // I don't understand why it stack overflows even on tiny expressions...
     thread::Builder::new()
         .stack_size(3 * 1024 * 1024)
-        .spawn(move || match parse_expr_pest(expr) {
+        .spawn(move || match parse_expr(expr) {
             Err(e) => {
                 println!("{:?}", e);
                 println!("{}", e);
@@ -847,14 +836,14 @@ fn test_parse() {
         .unwrap()
         .join()
         .unwrap();
-    // assert_eq!(parse_expr_pest(expr).unwrap(), parse_expr_lalrpop(expr).unwrap());
+    // assert_eq!(parse_expr(expr).unwrap(), parse_expr(expr).unwrap());
     // assert!(false);
 
-    println!("test {:?}", parse_expr_lalrpop("3 + 5 * 10"));
-    assert!(parse_expr_lalrpop("22").is_ok());
-    assert!(parse_expr_lalrpop("(22)").is_ok());
+    println!("test {:?}", parse_expr("3 + 5 * 10"));
+    assert!(parse_expr("22").is_ok());
+    assert!(parse_expr("(22)").is_ok());
     assert_eq!(
-        parse_expr_lalrpop("3 + 5 * 10").ok(),
+        parse_expr("3 + 5 * 10").ok(),
         Some(Box::new(BinOp(
             NaturalPlus,
             Box::new(NaturalLit(3)),
@@ -867,7 +856,7 @@ fn test_parse() {
     );
     // The original parser is apparently right-associative
     assert_eq!(
-        parse_expr_lalrpop("2 * 3 * 4").ok(),
+        parse_expr("2 * 3 * 4").ok(),
         Some(Box::new(BinOp(
             NaturalTimes,
             Box::new(NaturalLit(2)),
@@ -878,15 +867,15 @@ fn test_parse() {
             ))
         )))
     );
-    assert!(parse_expr_lalrpop("((((22))))").is_ok());
-    assert!(parse_expr_lalrpop("((22)").is_err());
-    println!("{:?}", parse_expr_lalrpop("\\(b : Bool) -> b == False"));
-    assert!(parse_expr_lalrpop("\\(b : Bool) -> b == False").is_ok());
-    println!("{:?}", parse_expr_lalrpop("foo.bar"));
-    assert!(parse_expr_lalrpop("foo.bar").is_ok());
-    assert!(parse_expr_lalrpop("[] : List Bool").is_ok());
+    assert!(parse_expr("((((22))))").is_ok());
+    assert!(parse_expr("((22)").is_err());
+    println!("{:?}", parse_expr("\\(b : Bool) -> b == False"));
+    assert!(parse_expr("\\(b : Bool) -> b == False").is_ok());
+    println!("{:?}", parse_expr("foo.bar"));
+    assert!(parse_expr("foo.bar").is_ok());
+    assert!(parse_expr("[] : List Bool").is_ok());
 
-    // println!("{:?}", parse_expr_lalrpop("< Left = True | Right : Natural >"));
-    // println!("{:?}", parse_expr_lalrpop(r#""bl${42}ah""#));
-    // assert!(parse_expr_lalrpop("< Left = True | Right : Natural >").is_ok());
+    // println!("{:?}", parse_expr("< Left = True | Right : Natural >"));
+    // println!("{:?}", parse_expr(r#""bl${42}ah""#));
+    // assert!(parse_expr("< Left = True | Right : Natural >").is_ok());
 }

@@ -57,36 +57,10 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
-    let expr = match parser::parse_expr_lalrpop(&buffer) {
+    let expr = match parser::parse_expr(&buffer) {
         Ok(e) => e,
-        Err(lalrpop_util::ParseError::User {
-            error: lexer::LexicalError::Error(pos, e),
-        }) => {
-            print_error(
-                &format!("Unexpected token {:?}", e),
-                &buffer,
-                pos,
-                pos,
-            );
-            return;
-        }
-        Err(lalrpop_util::ParseError::UnrecognizedToken {
-            token: Some((start, t, end)),
-            expected: e,
-        }) => {
-            print_error(
-                &format!("Unrecognized token {:?}", t),
-                &buffer,
-                start,
-                end,
-            );
-            if !e.is_empty() {
-                println!("Expected {:?}", e);
-            }
-            return;
-        }
         Err(e) => {
-            print_error(&format!("Parser error {:?}", e), &buffer, 0, 0);
+            print_error(&format!("Parse error {}", e), &buffer, 0, 0);
             return;
         }
     };

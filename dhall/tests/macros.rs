@@ -18,14 +18,9 @@ macro_rules! include_test_strs_ab {
 #[macro_export]
 macro_rules! parse_str {
     ($str:expr) => {{
-        let pest_expr = parser::parse_expr_pest(&$str)
+        let pest_expr = parser::parse_expr(&$str)
             .map_err(|e| println!("{}", e))
             .unwrap();
-        // // Check with old parser
-        // match parser::parse_expr_lalrpop(&$str) {
-        //     Ok(larlpop_expr) => assert_eq!(pest_expr, larlpop_expr),
-        //     Err(_) => {},
-        // };
         // panic!("{:?}", pest_expr);
         pest_expr
     }};
@@ -78,7 +73,7 @@ macro_rules! run_spec_test {
     };
     (parser_failure, $path:expr) => {
         let expr_str = include_test_str!($path);
-        parser::parse_expr_pest(&expr_str).unwrap_err();
+        parser::parse_expr(&expr_str).unwrap_err();
     };
 }
 
