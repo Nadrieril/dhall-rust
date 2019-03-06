@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
-use std::fmt;
 use dhall_core::core::*;
 use dhall_generator::dhall;
+use std::fmt;
 
 /// Reduce an expression to its normal form, performing beta reduction
 ///
@@ -22,18 +22,20 @@ where
     use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
     match *e {
-        Const(k) => Const(k),
-        Var(v) => Var(v),
-        Lam(x, ref tA, ref b) => {
-            let tA2 = normalize(tA);
-            let b2 = normalize(b);
-            Lam(x, bx(tA2), bx(b2))
+        // Matches that don't normalize everything right away
+        Let(f, _, ref r, ref b) => {
+            let r2 = shift::<_, S, _>(1, V(f, 0), r);
+            let b2 = subst(V(f, 0), &r2, b);
+            let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
+            normalize(&b3)
         }
-        Pi(x, ref tA, ref tB) => {
-            let tA2 = normalize(tA);
-            let tB2 = normalize(tB);
-            pi(x, tA2, tB2)
-        }
+        BoolIf(ref b, ref t, ref f) => match normalize(b) {
+            BoolLit(true) => normalize(t),
+            BoolLit(false) => normalize(f),
+            b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
+        },
+        Annot(ref x, _) => normalize(x),
+        Note(_, ref e) => normalize(e),
         App(ref f, ref a) => match normalize::<S, T, A>(f) {
             Lam(x, _A, b) => {
                 // Beta reduce
@@ -144,135 +146,33 @@ where
                 (f2, a2) => app(f2, a2),
             },
         },
-        Let(f, _, ref r, ref b) => {
-            let r2 = shift::<_, S, _>(1, V(f, 0), r);
-            let b2 = subst(V(f, 0), &r2, b);
-            let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
-            normalize(&b3)
-        }
-        Annot(ref x, _) => normalize(x),
-        Builtin(v) => Builtin(v),
-        BoolLit(b) => BoolLit(b),
-        BinOp(BoolAnd, ref x, ref y) => with_binop(
-            BoolAnd,
-            Expr::bool_lit,
-            |xn, yn| BoolLit(xn && yn),
-            normalize(x),
-            normalize(y),
-        ),
-        BinOp(BoolOr, ref x, ref y) => with_binop(
-            BoolOr,
-            Expr::bool_lit,
-            |xn, yn| BoolLit(xn || yn),
-            normalize(x),
-            normalize(y),
-        ),
-        BinOp(BoolEQ, ref x, ref y) => with_binop(
-            BoolEQ,
-            Expr::bool_lit,
-            |xn, yn| BoolLit(xn == yn),
-            normalize(x),
-            normalize(y),
-        ),
-        BinOp(BoolNE, ref x, ref y) => with_binop(
-            BoolNE,
-            Expr::bool_lit,
-            |xn, yn| BoolLit(xn != yn),
-            normalize(x),
-            normalize(y),
-        ),
-        BoolIf(ref b, ref t, ref f) => match normalize(b) {
-            BoolLit(true) => normalize(t),
-            BoolLit(false) => normalize(f),
-            b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
-        },
-        NaturalLit(n) => NaturalLit(n),
-        BinOp(NaturalPlus, ref x, ref y) => with_binop(
-            NaturalPlus,
-            Expr::natural_lit,
-            |xn, yn| NaturalLit(xn + yn),
-            normalize(x),
-            normalize(y),
-        ),
-        BinOp(NaturalTimes, ref x, ref y) => with_binop(
-            NaturalTimes,
-            Expr::natural_lit,
-            |xn, yn| NaturalLit(xn * yn),
-            normalize(x),
-            normalize(y),
-        ),
-        IntegerLit(n) => IntegerLit(n),
-        DoubleLit(n) => DoubleLit(n),
-        TextLit(ref t) => TextLit(t.clone()),
-        BinOp(TextAppend, ref x, ref y) => with_binop(
-            TextAppend,
-            Expr::text_lit,
-            |xt, yt| TextLit(xt + &yt),
-            normalize(x),
-            normalize(y),
-        ),
-        BinOp(ListAppend, ref x, ref y) => {
-            match (normalize(x), normalize(y)) {
-                (ListLit(t1, xs), ListLit(t2, ys)) => {
-                    // Drop type annotation if the result is not empty
-                    let t = if xs.len() == 0 && ys.len() == 0 {
-                        t1.or(t2)
-                    } else {
-                        None
-                    };
-                    let xs = xs.into_iter();
-                    let ys = ys.into_iter();
-                    ListLit(t, xs.chain(ys).collect())
-                }
-                (x, y) => BinOp(ListAppend, bx(x), bx(y)),
-            }
-        },
-        ListLit(ref t, ref es) => {
-            let t2 = t.as_ref().map(|x| x.as_ref()).map(normalize).map(bx);
-            let es2 = es.iter().map(normalize).collect();
-            ListLit(t2, es2)
-        }
-        OptionalLit(ref t, ref es) => {
-            let t2 = t.as_ref().map(|x| x.as_ref()).map(normalize).map(bx);
-            let es2 = es.iter().map(normalize).collect();
-            OptionalLit(t2, es2)
-        }
-        Record(ref kts) => Record(map_record_value(kts, normalize)),
-        RecordLit(ref kvs) => RecordLit(map_record_value(kvs, normalize)),
-        Union(ref kts) => Union(map_record_value(kts, normalize)),
-        UnionLit(k, ref v, ref kvs) => {
-            UnionLit(k, bx(normalize(v)), map_record_value(kvs, normalize))
-        }
-        Merge(ref _x, ref _y, ref _t) => unimplemented!(),
-        Field(ref r, x) => match normalize(r) {
-            RecordLit(kvs) => match kvs.get(x) {
-                Some(r2) => normalize(r2),
-                None => {
-                    Field(bx(RecordLit(map_record_value(&kvs, normalize))), x)
-                }
-            },
-            r2 => Field(bx(r2), x),
-        },
-        Note(_, ref e) => normalize(e),
-        Embed(ref a) => Embed(a.clone()),
-        ref e => unimplemented!("{:?}", e),
-    }
-}
 
-fn with_binop<'a, S, A, U, Get, Set>(
-    op: BinOp,
-    get: Get,
-    set: Set,
-    x: Expr<'a, S, A>,
-    y: Expr<'a, S, A>,
-) -> Expr<'a, S, A>
-where
-    Get: Fn(&Expr<'a, S, A>) -> Option<U>,
-    Set: FnOnce(U, U) -> Expr<'a, S, A>,
-{
-    if let (Some(xv), Some(yv)) = (get(&x), get(&y)) {
-        set(xv, yv)
-    } else {
-        Expr::BinOp(op, bx(x), bx(y))
+        // Normalize everything else before matching
+        ref e => match e.map_shallow(normalize, |_| unreachable!()) {
+            BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => BoolLit(x && y),
+            BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => BoolLit(x || y),
+            BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => BoolLit(x == y),
+            BinOp(BoolNE, box BoolLit(x), box BoolLit(y)) => BoolLit(x != y),
+            BinOp(NaturalPlus, box NaturalLit(x), box NaturalLit(y)) => NaturalLit(x + y),
+            BinOp(NaturalTimes, box NaturalLit(x), box NaturalLit(y)) => NaturalLit(x * y),
+            BinOp(TextAppend, box TextLit(x), box TextLit(y)) => TextLit(x + &y),
+            BinOp(ListAppend, box ListLit(t1, xs), box ListLit(t2, ys)) => {
+                // Drop type annotation if the result is nonempty
+                let t = if xs.len() == 0 && ys.len() == 0 {
+                    t1.or(t2)
+                } else {
+                    None
+                };
+                let xs = xs.into_iter();
+                let ys = ys.into_iter();
+                ListLit(t, xs.chain(ys).collect())
+            }
+            Merge(_x, _y, _t) => unimplemented!(),
+            Field(box RecordLit(kvs), x) => match kvs.get(x) {
+                Some(r) => r.clone(),
+                None => Field(bx(RecordLit(kvs)), x),
+            },
+            e => e,
+        },
     }
 }

@@ -231,6 +231,17 @@ impl<'i, S, A> From<Builtin> for Expr<'i, S, A> {
 }
 
 impl<'i, S, A> Expr<'i, S, A> {
+    pub fn map_shallow<T, F1, F2>(&self, map_expr: F1, map_note: F2) -> Expr<'i, T, A>
+    where
+        A: Clone,
+        T: Clone,
+        S: Clone,
+        F1: Fn(&Self) -> Expr<'i, T, A>,
+        F2: FnOnce(&S) -> T,
+    {
+        map_shallow(self, map_expr, map_note)
+    }
+
     pub fn bool_lit(&self) -> Option<bool> {
         match *self {
             Expr::BoolLit(v) => Some(v),
@@ -628,14 +639,69 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-pub fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
+pub fn map_shallow<'i, S, T, A, F1, F2>(e: &Expr<'i, S, A>, map: F1, map_note: F2) -> Expr<'i, T, A>
+where
+    A: Clone,
+    S: Clone,
+    T: Clone,
+    F1: Fn(&Expr<'i, S, A>) -> Expr<'i, T, A>,
+    F2: FnOnce(&S) -> T,
+{
+    use crate::Expr::*;
+    let bxmap = |x: &Expr<'i, S, A>| -> Box<Expr<'i, T, A>> { bx(map(x)) };
+    let opt = |x| map_opt_box(x, &map);
+    match *e {
+        Const(k) => Const(k),
+        Var(v) => Var(v),
+        Lam(x, ref t, ref b) => Lam(x, bxmap(t), bxmap(b)),
+        Pi(x, ref t, ref b) => Pi(x, bxmap(t), bxmap(b)),
+        App(ref f, ref a) => App(bxmap(f), bxmap(a)),
+        Let(l, ref t, ref a, ref b) => Let(l, opt(t), bxmap(a), bxmap(b)),
+        Annot(ref x, ref t) => Annot(bxmap(x), bxmap(t)),
+        Builtin(v) => Builtin(v),
+        BoolLit(b) => BoolLit(b),
+        BoolIf(ref b, ref t, ref f) => BoolIf(bxmap(b), bxmap(t), bxmap(f)),
+        NaturalLit(n) => NaturalLit(n),
+        IntegerLit(n) => IntegerLit(n),
+        DoubleLit(n) => DoubleLit(n),
+        TextLit(ref t) => TextLit(t.clone()),
+        BinOp(o, ref x, ref y) => BinOp(o, bxmap(x), bxmap(y)),
+        ListLit(ref t, ref es) => {
+            let es = es.iter().map(&map).collect();
+            ListLit(opt(t), es)
+        }
+        OptionalLit(ref t, ref es) => {
+            let es = es.iter().map(&map).collect();
+            OptionalLit(opt(t), es)
+        }
+        Record(ref kts) => Record(map_record_value(kts, map)),
+        RecordLit(ref kvs) => RecordLit(map_record_value(kvs, map)),
+        Union(ref kts) => Union(map_record_value(kts, map)),
+        UnionLit(k, ref v, ref kvs) => {
+            UnionLit(k, bxmap(v), map_record_value(kvs, map))
+        }
+        Merge(ref x, ref y, ref t) => Merge(bxmap(x), bxmap(y), opt(t)),
+        Field(ref r, x) => Field(bxmap(r), x),
+        Note(ref n, ref e) => Note(map_note(n), bxmap(e)),
+        Embed(ref a) => Embed(a.clone()),
+    }
+}
+
+pub fn map_record_value<'a, I, K, V, U, F>(it: I, mut f: F) -> BTreeMap<K, U>
 where
     I: IntoIterator<Item = (&'a K, &'a V)>,
     K: Eq + Ord + Copy + 'a,
     V: 'a,
-    F: Fn(&V) -> U,
+    F: FnMut(&V) -> U,
 {
     it.into_iter().map(|(&k, v)| (k, f(v))).collect()
+}
+
+pub fn map_opt_box<T, U, F>(x: &Option<Box<T>>, f: F) -> Option<Box<U>>
+where
+    F: FnOnce(&T) -> U,
+{
+    x.as_ref().map(|x| x.as_ref()).map(f).map(bx)
 }
 
 fn map_op2<T, U, V, F, G>(f: F, g: G, a: T, b: T) -> V
@@ -916,4 +982,3 @@ where
 {
     map_op2(f, |x| bx(subst(v, e, x)), a, b)
 }
-
