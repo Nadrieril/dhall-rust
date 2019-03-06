@@ -428,6 +428,19 @@ named!(str<&'a str>; captured_str!(s) => s.trim());
 
 named!(raw_str<&'a str>; captured_str!(s) => s);
 
+// TODO: parse escapes and interpolation
+rule!(double_quote_literal<String>;
+    children!(strs*: raw_str) => {
+        strs.collect()
+    }
+);
+
+rule!(single_quote_literal<String>;
+    children!(eol: raw_str, contents: single_quote_continue) => {
+        contents.push(eol);
+        contents.into_iter().rev().collect()
+    }
+);
 rule!(escaped_quote_pair<&'a str>;
     children!() => "''"
 );
@@ -455,64 +468,33 @@ rule!(single_quote_continue<Vec<&'a str>>;
     },
 );
 
-rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
-    children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
-);
+rule!(NaN_raw<()>; children!() => ());
+rule!(minus_infinity_literal<()>; children!() => ());
+rule!(plus_infinity_literal<()>; children!() => ());
 
-named!(record_entry<(&'a str, BoxExpr<'a>)>;
-    children!(name: str, expr: expression) => (name, expr)
-);
-
-named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    children!(expr: expression, entries*: record_entry) => {
-        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
-        for (n, e) in entries {
-            map.insert(n, *e);
-        }
-        (expr, map)
+rule!(double_literal_raw<core::Double>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseFloatError| custom_parse_error(&pair, format!("{}", e)))?
     }
 );
 
-rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    self!(x: partial_record_entries) => x
-);
-
-rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    self!(x: partial_record_entries) => x
-);
-
-rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
-    children!(name: str, expr: expression) => (name, expr)
-);
-
-rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
-    children!(entries*: union_type_entry) => {
-        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
-        for (n, e) in entries {
-            map.insert(n, *e);
-        }
-        map
+rule!(natural_literal_raw<core::Natural>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
     }
 );
 
-rule!(non_empty_union_type_or_literal
-      <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
-    children!(label: str, e: expression, entries: union_type_entries) => {
-        (Some((label, e)), entries)
-    },
-    children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
-        let (x, mut entries) = rest;
-        entries.insert(l, *e);
-        (x, entries)
-    },
-    children!(l: str, e: expression) => {
-        let mut entries = BTreeMap::new();
-        entries.insert(l, *e);
-        (None, entries)
-    },
+rule!(integer_literal_raw<core::Integer>;
+    raw_pair!(pair) => {
+        pair.as_str().trim()
+            .parse()
+            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+    }
 );
-
-rule!(empty_union_type<()>; children!() => ());
 
 rule_group!(expression<BoxExpr<'a>>;
     identifier_raw,
@@ -550,62 +532,6 @@ rule_group!(expression<BoxExpr<'a>>;
     final_expression
 );
 
-// TODO: parse escapes and interpolation
-rule!(double_quote_literal<String>;
-    children!(strs*: raw_str) => {
-        strs.collect()
-    }
-);
-rule!(single_quote_literal<String>;
-    children!(eol: raw_str, contents: single_quote_continue) => {
-        contents.push(eol);
-        contents.into_iter().rev().collect()
-    }
-);
-
-rule!(double_literal_raw<core::Double>;
-    raw_pair!(pair) => {
-        pair.as_str().trim()
-            .parse()
-            .map_err(|e: std::num::ParseFloatError| custom_parse_error(&pair, format!("{}", e)))?
-    }
-);
-
-rule!(minus_infinity_literal<()>; children!() => ());
-rule!(plus_infinity_literal<()>; children!() => ());
-rule!(NaN_raw<()>; children!() => ());
-
-rule!(natural_literal_raw<core::Natural>;
-    raw_pair!(pair) => {
-        pair.as_str().trim()
-            .parse()
-            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-    }
-);
-
-rule!(integer_literal_raw<core::Integer>;
-    raw_pair!(pair) => {
-        pair.as_str().trim()
-            .parse()
-            .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
-    }
-);
-
-rule!(identifier_raw<BoxExpr<'a>>;
-    children!(name: str, idx?: natural_literal_raw) => {
-        match Builtin::parse(name) {
-            Some(b) => bx(Expr::Builtin(b)),
-            None => match name {
-                "True" => bx(Expr::BoolLit(true)),
-                "False" => bx(Expr::BoolLit(false)),
-                "Type" => bx(Expr::Const(Const::Type)),
-                "Kind" => bx(Expr::Const(Const::Kind)),
-                name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
-            }
-        }
-    }
-);
-
 rule!(lambda_expression<BoxExpr<'a>>;
     children!(label: str, typ: expression, body: expression) => {
         bx(Expr::Lam(label, typ, body))
@@ -622,6 +548,10 @@ rule!(let_expression<BoxExpr<'a>>;
     children!(bindings*: let_binding, final_expr: expression) => {
         bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
     }
+);
+
+rule!(let_binding<(&'a str, Option<BoxExpr<'a>>, BoxExpr<'a>)>;
+    children!(name: str, annot?: expression, expr: expression) => (name, annot, expr)
 );
 
 rule!(forall_expression<BoxExpr<'a>>;
@@ -712,12 +642,29 @@ rule!(literal_expression_raw<BoxExpr<'a>>;
     children!(e: expression) => e,
 );
 
-rule!(empty_record_type<BoxExpr<'a>>;
-    children!() => bx(Expr::Record(BTreeMap::new()))
+rule!(identifier_raw<BoxExpr<'a>>;
+    children!(name: str, idx?: natural_literal_raw) => {
+        match Builtin::parse(name) {
+            Some(b) => bx(Expr::Builtin(b)),
+            None => match name {
+                "True" => bx(Expr::BoolLit(true)),
+                "False" => bx(Expr::BoolLit(false)),
+                "Type" => bx(Expr::Const(Const::Type)),
+                "Kind" => bx(Expr::Const(Const::Kind)),
+                name => bx(Expr::Var(V(name, idx.unwrap_or(0)))),
+            }
+        }
+    }
 );
+
 rule!(empty_record_literal<BoxExpr<'a>>;
     children!() => bx(Expr::RecordLit(BTreeMap::new()))
 );
+
+rule!(empty_record_type<BoxExpr<'a>>;
+    children!() => bx(Expr::Record(BTreeMap::new()))
+);
+
 rule!(non_empty_record_type_or_literal<BoxExpr<'a>>;
     children!(first_label: str, rest: non_empty_record_type) => {
         let (first_expr, mut map) = rest;
@@ -731,6 +678,28 @@ rule!(non_empty_record_type_or_literal<BoxExpr<'a>>;
     },
 );
 
+rule!(non_empty_record_type<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    self!(x: partial_record_entries) => x
+);
+
+named!(partial_record_entries<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    children!(expr: expression, entries*: record_entry) => {
+        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+        for (n, e) in entries {
+            map.insert(n, *e);
+        }
+        (expr, map)
+    }
+);
+
+named!(record_entry<(&'a str, BoxExpr<'a>)>;
+    children!(name: str, expr: expression) => (name, expr)
+);
+
+rule!(non_empty_record_literal<(BoxExpr<'a>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    self!(x: partial_record_entries) => x
+);
+
 rule!(union_type_or_literal<BoxExpr<'a>>;
     children!(_e: empty_union_type) => {
         bx(Expr::Union(BTreeMap::new()))
@@ -741,6 +710,39 @@ rule!(union_type_or_literal<BoxExpr<'a>>;
             (None, entries) => bx(Expr::Union(entries)),
         }
     },
+);
+
+rule!(empty_union_type<()>; children!() => ());
+
+rule!(non_empty_union_type_or_literal
+      <(Option<(&'a str, BoxExpr<'a>)>, BTreeMap<&'a str, ParsedExpr<'a>>)>;
+    children!(label: str, e: expression, entries: union_type_entries) => {
+        (Some((label, e)), entries)
+    },
+    children!(l: str, e: expression, rest: non_empty_union_type_or_literal) => {
+        let (x, mut entries) = rest;
+        entries.insert(l, *e);
+        (x, entries)
+    },
+    children!(l: str, e: expression) => {
+        let mut entries = BTreeMap::new();
+        entries.insert(l, *e);
+        (None, entries)
+    },
+);
+
+rule!(union_type_entries<BTreeMap<&'a str, ParsedExpr<'a>>>;
+    children!(entries*: union_type_entry) => {
+        let mut map: BTreeMap<&str, ParsedExpr> = BTreeMap::new();
+        for (n, e) in entries {
+            map.insert(n, *e);
+        }
+        map
+    }
+);
+
+rule!(union_type_entry<(&'a str, BoxExpr<'a>)>;
+    children!(name: str, expr: expression) => (name, expr)
 );
 
 rule!(non_empty_list_literal_raw<BoxExpr<'a>>;
