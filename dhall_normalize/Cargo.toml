@@ -1,5 +1,5 @@
 [package]
-name = "dhall"
+name = "dhall_normalize"
 version = "0.1.0"
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 edition = "2018"
@@ -8,6 +8,7 @@ edition = "2018"
 bytecount = "0.5.1"
 itertools = "0.8.0"
 lalrpop-util = "0.16.3"
+nom = "3.0.0"
 term-painter = "0.2.3"
+pest = { git = "https://github.com/pest-parser/pest" }
 dhall_core = { path = "../dhall_core" }
-dhall_normalize = { path = "../dhall_normalize" }

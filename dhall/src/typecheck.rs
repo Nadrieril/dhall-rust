@@ -9,7 +9,8 @@ use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr::*;
 use dhall_core::core::{app, pi};
-use dhall_core::core::{bx, normalize, shift, subst, Expr, V, X};
+use dhall_core::core::{bx, shift, subst, Expr, V, X};
+use dhall_normalize::{normalize};
 
 use self::TypeMessage::*;
 

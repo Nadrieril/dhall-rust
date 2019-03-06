@@ -92,6 +92,7 @@ macro_rules! make_spec_test {
         fn $name() {
             use dhall::*;
             use dhall_core::*;
+            use dhall_normalize::*;
             use std::thread;
 
             thread::Builder::new()
