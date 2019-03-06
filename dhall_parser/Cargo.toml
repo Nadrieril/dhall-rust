@@ -14,4 +14,4 @@ abnf_to_pest = { path = "../abnf_to_pest" }
 
 [dependencies]
 pest = { git = "https://github.com/pest-parser/pest" }
-pest_derive = { version = "2.1", path = "../../pest/derive" }
+pest_derive = "2.1"

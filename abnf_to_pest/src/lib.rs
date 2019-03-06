@@ -51,6 +51,8 @@ pub fn abnf_to_pest(
             || x == "let"
             || x == "in"
             || x == "fn"
+            // TODO: remove when https://github.com/pest-parser/pest/pull/375 gets into a release
+            || x == "whitespace"
         {
             x + "_"
         } else {

@@ -8,6 +8,7 @@ end_of_line
 # line_comment
 # whitespace_chunk
 # whitespace
+# whitespace_
 # nonempty_whitespace
 # ALPHA
 # DIGIT
