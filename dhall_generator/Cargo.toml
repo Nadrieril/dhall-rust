@@ -1,0 +1,15 @@
+[package]
+name = "dhall_generator"
+version = "0.1.0"
+authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+doctest = false
+
+[dependencies]
+itertools = "0.8.0"
+quote = "0.6.11"
+proc-macro2 = "0.4.27"
+dhall_core = { path = "../dhall_core" }

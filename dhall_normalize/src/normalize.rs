@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use std::fmt;
 use dhall_core::core::*;
+use dhall_generator::dhall;
 
 /// Reduce an expression to its normal form, performing beta reduction
 ///
@@ -158,11 +159,10 @@ where
                     normalize(&b)
                 }
                 (App(box Builtin(OptionalBuild), a0), g) => {
-                    let e2: Expr<_, _> = app(app(app(g,
-                        App(bx(Builtin(Optional)), a0.clone())),
-                            Lam("x", a0.clone(),
-                                bx(OptionalLit(Some(a0.clone()), vec![Var(V("x", 0))])))),
-                            OptionalLit(Some(a0), vec![]));
+                    let x = bx(Var(V("x", 0)));
+                    let g = bx(g);
+                    let e2: Expr<_, _> =
+                        dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
                     normalize(&e2)
                 }
                 (f2, a2) => app(f2, a2),

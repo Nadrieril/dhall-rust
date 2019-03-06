@@ -15,3 +15,4 @@ nom = "3.0.0"
 term-painter = "0.2.3"
 pest = { git = "https://github.com/pest-parser/pest" }
 dhall_core = { path = "../dhall_core" }
+dhall_generator = { path = "../dhall_generator" }
