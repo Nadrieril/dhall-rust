@@ -21,22 +21,22 @@ where
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
-    match *e {
+    match e {
         // Matches that don't normalize everything right away
-        Let(f, _, ref r, ref b) => {
+        Let(f, _, r, b) => {
             let r2 = shift::<_, S, _>(1, V(f, 0), r);
             let b2 = subst(V(f, 0), &r2, b);
             let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
             normalize(&b3)
         }
-        BoolIf(ref b, ref t, ref f) => match normalize(b) {
+        BoolIf(b, t, f) => match normalize(b) {
             BoolLit(true) => normalize(t),
             BoolLit(false) => normalize(f),
             b2 => BoolIf(bx(b2), bx(normalize(t)), bx(normalize(f))),
         },
-        Annot(ref x, _) => normalize(x),
-        Note(_, ref e) => normalize(e),
-        App(ref f, ref a) => match normalize::<S, T, A>(f) {
+        Annot(x, _) => normalize(x),
+        Note(_, e) => normalize(e),
+        App(f, a) => match normalize::<S, T, A>(f) {
             Lam(x, _A, b) => {
                 // Beta reduce
                 let vx0 = V(x, 0);
@@ -148,7 +148,7 @@ where
         },
 
         // Normalize everything else before matching
-        ref e => match e.map_shallow(normalize, |_| unreachable!()) {
+        e => match e.map_shallow(normalize, |_| unreachable!()) {
             BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => BoolLit(x && y),
             BinOp(BoolOr, box BoolLit(x), box BoolLit(y)) => BoolLit(x || y),
             BinOp(BoolEQ, box BoolLit(x), box BoolLit(y)) => BoolLit(x == y),
