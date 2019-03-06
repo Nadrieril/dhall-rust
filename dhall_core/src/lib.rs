@@ -8,3 +8,4 @@ lalrpop_mod!(pub grammar);
 mod grammar_util;
 pub mod lexer;
 pub mod parser;
+pub mod context;

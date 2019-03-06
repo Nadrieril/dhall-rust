@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt;
 
-use crate::context::Context;
+use dhall_core::context::Context;
 use dhall_core::core;
 use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
