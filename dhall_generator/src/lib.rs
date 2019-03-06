@@ -1,4 +1,5 @@
 extern crate proc_macro;
+use dhall_core::context::Context;
 use dhall_core::*;
 use proc_macro2::Literal;
 use proc_macro2::TokenStream;
@@ -8,53 +9,61 @@ use quote::quote;
 pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
     let expr = parser::parse_expr_pest(&input_str).unwrap();
-    let output = dhall_to_tokenstream(&expr);
+    let output = dhall_to_tokenstream(&expr, &Context::new());
     output.into()
 }
 
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
-fn dhall_to_tokenstream(expr: &Expr<X, X>) -> TokenStream {
+fn dhall_to_tokenstream<'i>(
+    expr: &Expr<'i, X, X>,
+    ctx: &Context<'i, ()>,
+) -> TokenStream {
     use dhall_core::Expr::*;
     match expr {
-        Var(V(s, _)) => {
-            let v: TokenStream = s.parse().unwrap();
-            quote! { {
-                let x: Expr<_, _> = (*#v).clone();
-                x
-            } }
+        e @ Var(_) => {
+            let v = dhall_to_tokenstream_bx(e, ctx);
+            quote! { *#v }
         }
-        Lam(x, ref t, ref b) => {
+        Lam(x, t, b) => {
+            let t = dhall_to_tokenstream_bx(t, ctx);
+            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x, ()));
             let x = Literal::string(x);
-            let t = dhall_to_tokenstream_bx(t);
-            let b = dhall_to_tokenstream_bx(b);
             quote! { Lam(#x, #t, #b) }
         }
-        App(ref f, ref a) => {
-            let f = dhall_to_tokenstream_bx(f);
-            let a = dhall_to_tokenstream_bx(a);
+        App(f, a) => {
+            let f = dhall_to_tokenstream_bx(f, ctx);
+            let a = dhall_to_tokenstream_bx(a, ctx);
             quote! { App(#f, #a) }
         }
-        Builtin(ref b) => {
+        Builtin(b) => {
             let b = builtin_to_tokenstream(b);
             quote! { Builtin(#b) }
         }
-        BinOp(ref o, ref a, ref b) => {
+        BinOp(o, a, b) => {
             let o = binop_to_tokenstream(o);
-            let a = dhall_to_tokenstream_bx(a);
-            let b = dhall_to_tokenstream_bx(b);
+            let a = dhall_to_tokenstream_bx(a, ctx);
+            let b = dhall_to_tokenstream_bx(b, ctx);
             quote! { BinOp(#o, #a, #b) }
         }
-        OptionalLit(ref t, ref es) => {
-            let t =
-                option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
-            let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
+        OptionalLit(t, es) => {
+            let t = option_tks(
+                t.as_ref()
+                    .map(deref)
+                    .map(|x| dhall_to_tokenstream_bx(x, ctx)),
+            );
+            let es =
+                vec_tks(es.into_iter().map(|x| dhall_to_tokenstream(x, ctx)));
             quote! { OptionalLit(#t, #es) }
         }
-        ListLit(ref t, ref es) => {
-            let t =
-                option_tks(t.as_ref().map(deref).map(dhall_to_tokenstream_bx));
-            let es = vec_tks(es.into_iter().map(dhall_to_tokenstream));
+        ListLit(t, es) => {
+            let t = option_tks(
+                t.as_ref()
+                    .map(deref)
+                    .map(|x| dhall_to_tokenstream_bx(x, ctx)),
+            );
+            let es =
+                vec_tks(es.into_iter().map(|x| dhall_to_tokenstream(x, ctx)));
             quote! { ListLit(#t, #es) }
         }
         e => unimplemented!("{:?}", e),
@@ -62,17 +71,30 @@ fn dhall_to_tokenstream(expr: &Expr<X, X>) -> TokenStream {
 }
 
 // Returns an expression of type Box<Expr<_, _>>
-fn dhall_to_tokenstream_bx(expr: &Expr<X, X>) -> TokenStream {
+fn dhall_to_tokenstream_bx<'i>(
+    expr: &Expr<'i, X, X>,
+    ctx: &Context<'i, ()>,
+) -> TokenStream {
     use dhall_core::Expr::*;
     match expr {
-        Var(V(s, _)) => {
-            let v: TokenStream = s.parse().unwrap();
-            quote! { {
-                let x: Box<Expr<_, _>> = #v.clone();
-                x
-            } }
+        Var(V(s, n)) => {
+            match ctx.lookup(s, *n) {
+                // Non-free variable; interpolates as itself
+                Some(()) => {
+                    quote! { bx(Var(V(#s, #n))) }
+                }
+                // Free variable; interpolates as a rust variable
+                None => {
+                    // TODO: insert appropriate shifts ?
+                    let v: TokenStream = s.parse().unwrap();
+                    quote! { {
+                        let x: Box<Expr<_, _>> = #v.clone();
+                        x
+                    } }
+                }
+            }
         }
-        e => bx(dhall_to_tokenstream(e)),
+        e => bx(dhall_to_tokenstream(e, ctx)),
     }
 }
 

@@ -90,9 +90,7 @@ where
                 (App(box Builtin(ListBuild), a0), k) => {
                     let k = bx(k);
                     let a1 = bx(shift(1, V("a", 0), &a0));
-                    let a = bx(Var(V("a", 0)));
-                    let as_ = bx(Var(V("as_", 0)));
-                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as_ : List a1) -> [ a ] # as_) ([] : List a0)))
+                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
                 }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
                     let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| {
@@ -139,7 +137,6 @@ where
                     normalize(&e2)
                 }
                 (App(box Builtin(OptionalBuild), a0), g) => {
-                    let x = bx(Var(V("x", 0)));
                     let g = bx(g);
                     normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
                 }
