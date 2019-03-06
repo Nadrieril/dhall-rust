@@ -5,6 +5,10 @@ authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 edition = "2018"
 build = "build.rs"
 
+[lib]
+test = false
+doctest = false
+
 [build-dependencies]
 abnf_to_pest = { path = "../abnf_to_pest" }
 
