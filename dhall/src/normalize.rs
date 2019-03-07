@@ -20,7 +20,7 @@ where
 {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
-    use dhall_core::Expr::*;
+    use dhall_core::Expr_::*;
     match e {
         // Matches that don't normalize everything right away
         Let(f, _, r, b) => {

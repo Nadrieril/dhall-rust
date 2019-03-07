@@ -104,7 +104,7 @@ pub struct Import {
 /// appear as a numeric suffix.
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct V<'i>(pub &'i str, pub usize);
+pub struct V<Label>(pub Label, pub usize);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinOp {
@@ -135,41 +135,42 @@ pub enum BinOp {
 }
 
 /// Syntax tree for expressions
+pub type Expr<'i, S, A> = Expr_<&'i str, S, A>;
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<'i, S, A> {
+pub enum Expr_<Label, Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
     ///  `Var (V x n)                              ~  x@n`
-    Var(V<'i>),
+    Var(V<Label>),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(&'i str, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Lam(Label, Box<Expr_<Label, Note, Embed>>, Box<Expr_<Label, Note, Embed>>),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(&'i str, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Pi(Label, Box<Expr_<Label, Note, Embed>>, Box<Expr_<Label, Note, Embed>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    App(Box<Expr_<Label, Note, Embed>>, Box<Expr_<Label, Note, Embed>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
-        &'i str,
-        Option<Box<Expr<'i, S, A>>>,
-        Box<Expr<'i, S, A>>,
-        Box<Expr<'i, S, A>>,
+        Label,
+        Option<Box<Expr_<Label, Note, Embed>>>,
+        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr_<Label, Note, Embed>>,
     ),
     ///  `Annot x t                                ~  x : t`
-    Annot(Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    Annot(Box<Expr_<Label, Note, Embed>>, Box<Expr_<Label, Note, Embed>>),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
-    BinOp(BinOp, Box<Expr<'i, S, A>>, Box<Expr<'i, S, A>>),
+    BinOp(BinOp, Box<Expr_<Label, Note, Embed>>, Box<Expr_<Label, Note, Embed>>),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(
-        Box<Expr<'i, S, A>>,
-        Box<Expr<'i, S, A>>,
-        Box<Expr<'i, S, A>>,
+        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr_<Label, Note, Embed>>,
     ),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
@@ -180,34 +181,34 @@ pub enum Expr<'i, S, A> {
     ///  `TextLit t                                ~  t`
     TextLit(Builder),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Option<Box<Expr<'i, S, A>>>, Vec<Expr<'i, S, A>>),
+    ListLit(Option<Box<Expr_<Label, Note, Embed>>>, Vec<Expr_<Label, Note, Embed>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(Option<Box<Expr<'i, S, A>>>, Vec<Expr<'i, S, A>>),
+    OptionalLit(Option<Box<Expr_<Label, Note, Embed>>>, Vec<Expr_<Label, Note, Embed>>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<&'i str, Expr<'i, S, A>>),
+    Record(BTreeMap<Label, Expr_<Label, Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<&'i str, Expr<'i, S, A>>),
+    RecordLit(BTreeMap<Label, Expr_<Label, Note, Embed>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<&'i str, Expr<'i, S, A>>),
+    Union(BTreeMap<Label, Expr_<Label, Note, Embed>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
-        &'i str,
-        Box<Expr<'i, S, A>>,
-        BTreeMap<&'i str, Expr<'i, S, A>>,
+        Label,
+        Box<Expr_<Label, Note, Embed>>,
+        BTreeMap<Label, Expr_<Label, Note, Embed>>,
     ),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(
-        Box<Expr<'i, S, A>>,
-        Box<Expr<'i, S, A>>,
-        Option<Box<Expr<'i, S, A>>>,
+        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr_<Label, Note, Embed>>,
+        Option<Box<Expr_<Label, Note, Embed>>>,
     ),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr<'i, S, A>>, &'i str),
-    ///  `Note S x                                 ~  e`
-    Note(S, Box<Expr<'i, S, A>>),
-    ///  `Embed path                               ~  path`
-    Embed(A),
+    Field(Box<Expr_<Label, Note, Embed>>, Label),
+    /// Annotation on the AST. Unused for now but could hold e.g. file location information
+    Note(Note, Box<Expr_<Label, Note, Embed>>),
+    /// Embeds an import or the result of resolving the import
+    Embed(Embed),
 }
 
 /// Built-ins
@@ -242,7 +243,7 @@ pub enum Builtin {
     TextShow,
 }
 
-impl<'i> From<&'i str> for V<'i> {
+impl<'i> From<&'i str> for V<&'i str> {
     fn from(s: &'i str) -> Self {
         V(s, 0)
     }
@@ -250,13 +251,13 @@ impl<'i> From<&'i str> for V<'i> {
 
 impl<'i, S, A> From<&'i str> for Expr<'i, S, A> {
     fn from(s: &'i str) -> Self {
-        Expr::Var(s.into())
+        Expr_::Var(s.into())
     }
 }
 
 impl<'i, S, A> From<Builtin> for Expr<'i, S, A> {
     fn from(t: Builtin) -> Self {
-        Expr::Builtin(t)
+        Expr_::Builtin(t)
     }
 }
 
@@ -291,21 +292,21 @@ impl<'i, S, A> Expr<'i, S, A> {
 
     pub fn bool_lit(&self) -> Option<bool> {
         match *self {
-            Expr::BoolLit(v) => Some(v),
+            Expr_::BoolLit(v) => Some(v),
             _ => None,
         }
     }
 
     pub fn natural_lit(&self) -> Option<usize> {
         match *self {
-            Expr::NaturalLit(v) => Some(v),
+            Expr_::NaturalLit(v) => Some(v),
             _ => None,
         }
     }
 
     pub fn text_lit(&self) -> Option<String> {
         match *self {
-            Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
+            Expr_::TextLit(ref t) => Some(t.clone()), // FIXME?
             _ => None,
         }
     }
@@ -324,7 +325,7 @@ impl<'i, S, A> Expr<'i, S, A> {
 impl<'i, S, A: Display> Display for Expr<'i, S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         // buildExprA
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             &Annot(ref a, ref b) => {
                 a.fmt_b(f)?;
@@ -339,7 +340,7 @@ impl<'i, S, A: Display> Display for Expr<'i, S, A> {
 
 impl<'i, S, A: Display> Expr<'i, S, A> {
     fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             &Lam(a, ref b, ref c) => {
                 write!(f, "λ({} : ", a)?;
@@ -423,7 +424,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
 
     fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::BinOp::*;
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             // FIXME precedence
             &BinOp(BoolOr, ref a, ref b) => {
@@ -472,7 +473,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             &App(ref a, ref b) => {
                 a.fmt_d(f)?;
@@ -485,7 +486,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_e(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             &Field(ref a, b) => {
                 a.fmt_e(f)?;
@@ -497,7 +498,7 @@ impl<'i, S, A: Display> Expr<'i, S, A> {
     }
 
     fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
+        use crate::Expr_::*;
         match self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
@@ -632,7 +633,7 @@ impl Builtin {
     }
 }
 
-impl<'i> Display for V<'i> {
+impl<'i> Display for V<&'i str> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let V(x, n) = *self;
         f.write_str(x)?;
@@ -653,7 +654,7 @@ where
     Et: Into<Expr<'i, S, A>>,
     Ev: Into<Expr<'i, S, A>>,
 {
-    Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
+    Expr_::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
 pub fn app<'i, S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr<'i, S, A>
@@ -661,7 +662,7 @@ where
     Ef: Into<Expr<'i, S, A>>,
     Ex: Into<Expr<'i, S, A>>,
 {
-    Expr::App(bx(f.into()), bx(x.into()))
+    Expr_::App(bx(f.into()), bx(x.into()))
 }
 
 pub type Builder = String;
@@ -706,7 +707,7 @@ where
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
 {
-    use crate::Expr::*;
+    use crate::Expr_::*;
     let bxmap = |x: &Expr<'i, S, A>| -> Box<Expr<'i, T, B>> { bx(map(x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
@@ -844,10 +845,10 @@ where
 ///
 pub fn shift<'i, S, T, A: Clone>(
     d: isize,
-    v: V,
+    v: V<&'i str>,
     e: &Expr<'i, S, A>,
 ) -> Expr<'i, T, A> {
-    use crate::Expr::*;
+    use crate::Expr_::*;
     let V(x, n) = v;
     match *e {
         Const(a) => Const(a),
@@ -924,7 +925,7 @@ pub fn shift<'i, S, T, A: Clone>(
 fn shift_op2<'i, S, T, A, F>(
     f: F,
     d: isize,
-    v: V,
+    v: V<&'i str>,
     a: &Expr<'i, S, A>,
     b: &Expr<'i, S, A>,
 ) -> Expr<'i, T, A>
@@ -942,7 +943,7 @@ where
 /// ```
 ///
 pub fn subst<'i, S, T, A>(
-    v: V<'i>,
+    v: V<&'i str>,
     e: &Expr<'i, S, A>,
     b: &Expr<'i, T, A>,
 ) -> Expr<'i, S, A>
@@ -950,7 +951,7 @@ where
     S: Clone,
     A: Clone,
 {
-    use crate::Expr::*;
+    use crate::Expr_::*;
     let V(x, n) = v;
     match *b {
         Const(a) => Const(a),
@@ -1029,7 +1030,7 @@ where
 
 fn subst_op2<'i, S, T, A, F>(
     f: F,
-    v: V<'i>,
+    v: V<&'i str>,
     e: &Expr<'i, S, A>,
     a: &Expr<'i, T, A>,
     b: &Expr<'i, T, A>,

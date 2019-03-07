@@ -8,7 +8,7 @@ use dhall_core::context::Context;
 use dhall_core::core;
 use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
-use dhall_core::core::Expr::*;
+use dhall_core::core::Expr_::*;
 use dhall_core::core::{app, pi};
 use dhall_core::core::{bx, shift, subst, Expr, V, X};
 
@@ -31,7 +31,7 @@ fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
     }
 }
 
-fn match_vars(vl: &V, vr: &V, ctx: &[(&str, &str)]) -> bool {
+fn match_vars(vl: &V<&str>, vr: &V<&str>, ctx: &[(&str, &str)]) -> bool {
     let xxs = ctx.get(0).map(|x| (x, ctx.split_at(1).1));
     match (vl, vr, xxs) {
         (&V(xL, nL), &V(xR, nR), None) => xL == xR && nL == nR,
@@ -186,6 +186,7 @@ where
     S: Clone + ::std::fmt::Debug + 'i,
 {
     use dhall_core::BinOp::*;
+    use dhall_core::Expr_;
     match *e {
         Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
         Var(V(x, n)) => {
@@ -489,7 +490,7 @@ where
         Builtin(ListIndexed) => {
             let mut m = BTreeMap::new();
             m.insert("index", Builtin(Natural));
-            m.insert("value", Expr::from("a"));
+            m.insert("value", Expr_::from("a"));
             Ok(pi(
                 "a",
                 Const(Type),

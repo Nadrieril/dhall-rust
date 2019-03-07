@@ -22,7 +22,7 @@ fn dhall_to_tokenstream<'i>(
     expr: &Expr<'i, X, X>,
     ctx: &Context<'i, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr::*;
+    use dhall_core::Expr_::*;
     match expr {
         e @ Var(_) => {
             let v = dhall_to_tokenstream_bx(e, ctx);
@@ -78,7 +78,7 @@ fn dhall_to_tokenstream_bx<'i>(
     expr: &Expr<'i, X, X>,
     ctx: &Context<'i, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr::*;
+    use dhall_core::Expr_::*;
     match expr {
         Var(V(s, n)) => {
             match ctx.lookup(s, *n) {
