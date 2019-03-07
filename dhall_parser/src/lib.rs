@@ -1,6 +1,1 @@
-#[allow(unused_imports)]
-use pest_derive::*;
-
-#[derive(Parser)]
-#[grammar = "dhall.pest"]
-pub struct DhallParser;
+include!(concat!(env!("OUT_DIR"), "/grammar.rs"));

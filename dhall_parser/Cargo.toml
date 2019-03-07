@@ -11,7 +11,8 @@ doctest = false
 
 [build-dependencies]
 abnf_to_pest = { path = "../abnf_to_pest" }
+pest_generator = "2.1"
+quote = "0.6.11"
 
 [dependencies]
 pest = { git = "https://github.com/pest-parser/pest" }
-pest_derive = "2.1"
