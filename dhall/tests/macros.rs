@@ -1,79 +1,34 @@
 #[macro_export]
-macro_rules! include_test_str {
-    ($x:expr) => {
-        include_str!(concat!("../../dhall-lang/tests/", $x, ".dhall"))
-    };
-}
-
-#[macro_export]
-macro_rules! include_test_strs_ab {
-    ($x:expr) => {
-        (
-            include_test_str!(concat!($x, "A")),
-            include_test_str!(concat!($x, "B")),
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! parse_str {
-    ($str:expr) => {{
-        let pest_expr = parser::parse_expr(&$str)
-            .map_err(|e| println!("{}", e))
-            .unwrap();
-        // panic!("{:?}", pest_expr);
-        pest_expr
-    }};
-}
-
-#[macro_export]
 macro_rules! assert_eq_ {
-    ($left:expr, $right:expr) => ({
+    ($left:expr, $right:expr) => {{
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    panic!(r#"assertion failed: `(left == right)`
-  left: `{}`,
- right: `{}`"#, left_val, right_val)
+                    panic!(
+                        r#"assertion failed: `(left == right)`
+ left: `{}`,
+right: `{}`"#,
+                        left_val, right_val
+                    )
                 }
             }
         }
-    });
-    ($left:expr, $right:expr,) => ({
-        assert_eq!($left, $right)
-    });
-    ($left:expr, $right:expr, $($arg:tt)+) => ({
-        match (&($left), &($right)) {
-            (left_val, right_val) => {
-                if !(*left_val == *right_val) {
-                    panic!(r#"assertion failed: `(left == right)`
-  left: `{:?}`,
- right: `{:?}`: {}"#, left_val, right_val,
-                           format_args!($($arg)+))
-                }
-            }
-        }
-    });
+    }};
 }
 
 #[macro_export]
 macro_rules! run_spec_test {
     (normalization, $path:expr) => {
-        let (expr_str, expected_str) = include_test_strs_ab!($path);
-        let expr = parse_str!(expr_str);
-        let expected = parse_str!(expected_str);
-        assert_eq_!(
-            normalize::<_, X, _>(&expr),
-            normalize::<_, X, _>(&expected)
-        );
+        let base_path = concat!("../dhall-lang/tests/", $path);
+        run_test(base_path, Feature::Normalization, ExpectedResult::Success);
     };
     (parser, $path:expr) => {
-        let expr_str = include_test_str!(concat!($path, "A"));
-        parse_str!(expr_str);
+        let base_path = concat!("../dhall-lang/tests/", $path);
+        run_test(base_path, Feature::Parser, ExpectedResult::Success);
     };
     (parser_failure, $path:expr) => {
-        let expr_str = include_test_str!($path);
-        parser::parse_expr(&expr_str).unwrap_err();
+        let base_path = concat!("../dhall-lang/tests/", $path);
+        run_test(base_path, Feature::Parser, ExpectedResult::Failure);
     };
 }
 
@@ -85,10 +40,14 @@ macro_rules! make_spec_test {
         #[allow(unused_variables)]
         #[allow(unused_imports)]
         fn $name() {
+            use crate::macros::*;
+            use dhall::imports::resolve_imports;
             use dhall::*;
             use dhall_core::*;
             use std::thread;
 
+            // The parser stack overflows even on small files
+            // when compiled without optimizations
             thread::Builder::new()
                 .stack_size(16 * 1024 * 1024)
                 .spawn(move || {
@@ -99,4 +58,66 @@ macro_rules! make_spec_test {
                 .unwrap();
         }
     };
+}
+
+use dhall::*;
+use dhall_core::*;
+use dhall_core::parser::*;
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+
+pub enum Feature {
+    Parser,
+    Normalization,
+}
+
+pub enum ExpectedResult {
+    Success,
+    Failure,
+}
+
+pub fn read_dhall_file<'i>(
+    file_path: &str,
+    mut buffer: &'i mut String,
+) -> Result<Box<Expr<'i, X, Import>>, ParseError> {
+    let mut file = File::open(&file_path).unwrap();
+    file.read_to_string(&mut buffer).unwrap();
+    parser::parse_expr(&*buffer)
+}
+
+pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
+    use self::{ExpectedResult, Feature};
+    let mut source_pool = Vec::new();
+    match (feature, expected) {
+        (Feature::Parser, ExpectedResult::Success) => {
+            let file_path: PathBuf = (base_path.to_owned() + "A.dhall").into();
+            let _expr = load_dhall_file(&file_path, &mut source_pool, true)
+                .map_err(|e| println!("{}", e))
+                .unwrap();
+            // panic!("{:?}", _expr);
+        }
+        (Feature::Parser, ExpectedResult::Failure) => {
+            let file_path: PathBuf = (base_path.to_owned() + ".dhall").into();
+            let err = load_dhall_file(&file_path, &mut source_pool, true).unwrap_err();
+            match err {
+                DhallError::ParseError(_) => {},
+                e => panic!("Expected parse error, got: {:?}", e),
+            }
+        }
+        (Feature::Normalization, ExpectedResult::Success) => {
+            let expr_file_path = base_path.to_owned() + "A.dhall";
+            let mut expr_buffer = String::new();
+            let expr = read_dhall_file(&expr_file_path, &mut expr_buffer).unwrap();
+            let expected_file_path = base_path.to_owned() + "B.dhall";
+            let mut expected_buffer = String::new();
+            let expected = read_dhall_file(&expected_file_path, &mut expected_buffer).unwrap();
+
+            assert_eq_!(
+                normalize::<_, X, _>(&expr),
+                normalize::<_, X, _>(&expected)
+            );
+        }
+        _ => unimplemented!(),
+    }
 }
