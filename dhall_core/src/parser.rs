@@ -486,7 +486,9 @@ rule!(integer_literal_raw<core::Integer>;
     }
 );
 
-rule!(path<PathBuf>; captured_str!(s) => s.into());
+rule!(path<PathBuf>;
+    captured_str!(s) => (".".to_owned() + s).into()
+);
 
 rule!(parent_path<(FilePrefix, PathBuf)>;
     children!(p: path) => (FilePrefix::Parent, p)

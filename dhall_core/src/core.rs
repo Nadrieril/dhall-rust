@@ -376,6 +376,16 @@ impl<'i, S: Clone, A: Clone> Expr<&'i str, S, A> {
     }
 }
 
+impl<L: StringLike, S: Clone, A: Clone> Expr<L, S, Expr<L, S, A>> {
+    pub fn squash_embed(&self) -> Expr<L, S, A>
+    {
+        match self {
+            Expr::Embed(e) => e.clone(),
+            e => e.map_shallow(|e| e.squash_embed(), |x| x.clone(), |_| unreachable!(), |x| x.clone())
+        }
+    }
+}
+
 //  There is a one-to-one correspondence between the formatters in this section
 //  and the grammar in grammar.lalrpop.  Each formatter is named after the
 //  corresponding grammar rule and the relationship between formatters exactly matches

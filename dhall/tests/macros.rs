@@ -41,7 +41,6 @@ macro_rules! make_spec_test {
         #[allow(unused_imports)]
         fn $name() {
             use crate::macros::*;
-            use dhall::imports::resolve_imports;
             use dhall::*;
             use dhall_core::*;
             use std::thread;
@@ -61,10 +60,7 @@ macro_rules! make_spec_test {
 }
 
 use dhall::*;
-use dhall_core::parser::*;
 use dhall_core::*;
-use std::fs::File;
-use std::io::Read;
 use std::path::PathBuf;
 
 pub enum Feature {
@@ -79,29 +75,23 @@ pub enum ExpectedResult {
 
 pub fn read_dhall_file<'i>(
     file_path: &str,
-    mut buffer: &'i mut String,
-) -> Result<Box<Expr<String, X, Import>>, ParseError> {
-    let mut file = File::open(&file_path).unwrap();
-    file.read_to_string(&mut buffer).unwrap();
-    let expr = parser::parse_expr(&*buffer)?;
-    Ok(Box::new(expr.take_ownership_of_labels()))
+) -> Result<Expr<String, X, X>, DhallError> {
+    load_dhall_file(&PathBuf::from(file_path), true)
 }
 
 pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
     use self::{ExpectedResult, Feature};
-    let mut source_pool = Vec::new();
     match (feature, expected) {
         (Feature::Parser, ExpectedResult::Success) => {
-            let file_path: PathBuf = (base_path.to_owned() + "A.dhall").into();
-            let _expr = load_dhall_file(&file_path, &mut source_pool, true)
+            let file_path = base_path.to_owned() + "A.dhall";
+            let _expr = read_dhall_file(&file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
             // panic!("{:?}", _expr);
         }
         (Feature::Parser, ExpectedResult::Failure) => {
-            let file_path: PathBuf = (base_path.to_owned() + ".dhall").into();
-            let err = load_dhall_file(&file_path, &mut source_pool, true)
-                .unwrap_err();
+            let file_path = base_path.to_owned() + ".dhall";
+            let err = read_dhall_file(&file_path).unwrap_err();
             match err {
                 DhallError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
@@ -109,14 +99,9 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
         }
         (Feature::Normalization, ExpectedResult::Success) => {
             let expr_file_path = base_path.to_owned() + "A.dhall";
-            let mut expr_buffer = String::new();
-            let expr =
-                read_dhall_file(&expr_file_path, &mut expr_buffer).unwrap();
             let expected_file_path = base_path.to_owned() + "B.dhall";
-            let mut expected_buffer = String::new();
-            let expected =
-                read_dhall_file(&expected_file_path, &mut expected_buffer)
-                    .unwrap();
+            let expr = read_dhall_file(&expr_file_path).unwrap();
+            let expected = read_dhall_file(&expected_file_path).unwrap();
 
             assert_eq_!(
                 normalize::<_, _, X, _>(&expr),
