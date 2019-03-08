@@ -1,7 +1,7 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::env;
 use std::path::Path;
 
 use abnf_to_pest::{abnf_to_pest, PestRuleSettings};
@@ -69,7 +69,6 @@ fn main() -> std::io::Result<()> {
         &mut file,
         "final_expression = {{ SOI ~ complete_expression ~ EOI }}"
     )?;
-
 
     // Generate pest parser manually to avoid spurious recompilations
     let derived = {

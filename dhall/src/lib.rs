@@ -8,10 +8,10 @@ pub mod imports;
 pub mod typecheck;
 
 use dhall_core::*;
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use std::fmt;
 
 #[derive(Debug)]
 pub enum DhallError {

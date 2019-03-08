@@ -99,19 +99,23 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
         }
         (Feature::Parser, ExpectedResult::Failure) => {
             let file_path: PathBuf = (base_path.to_owned() + ".dhall").into();
-            let err = load_dhall_file(&file_path, &mut source_pool, true).unwrap_err();
+            let err = load_dhall_file(&file_path, &mut source_pool, true)
+                .unwrap_err();
             match err {
-                DhallError::ParseError(_) => {},
+                DhallError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
         (Feature::Normalization, ExpectedResult::Success) => {
             let expr_file_path = base_path.to_owned() + "A.dhall";
             let mut expr_buffer = String::new();
-            let expr = read_dhall_file(&expr_file_path, &mut expr_buffer).unwrap();
+            let expr =
+                read_dhall_file(&expr_file_path, &mut expr_buffer).unwrap();
             let expected_file_path = base_path.to_owned() + "B.dhall";
             let mut expected_buffer = String::new();
-            let expected = read_dhall_file(&expected_file_path, &mut expected_buffer).unwrap();
+            let expected =
+                read_dhall_file(&expected_file_path, &mut expected_buffer)
+                    .unwrap();
 
             assert_eq_!(
                 normalize::<_, _, X, _>(&expr),
