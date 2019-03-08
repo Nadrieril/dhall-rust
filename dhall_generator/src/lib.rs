@@ -32,7 +32,7 @@ fn dhall_to_tokenstream<L: StringLike>(
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = Literal::string(&x.clone().into());
-            quote! { Lam(#x.to_owned().into(), #t, #b) }
+            quote! { Lam(#x.into(), #t, #b) }
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
@@ -85,7 +85,7 @@ fn dhall_to_tokenstream_bx<L: StringLike>(
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.clone().into();
-                    quote! { bx(Var(V(#s.to_owned().into(), #n))) }
+                    quote! { bx(Var(V(#s.into(), #n))) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {

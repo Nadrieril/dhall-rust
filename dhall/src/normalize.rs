@@ -89,12 +89,11 @@ where
                 (Builtin(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
                 (Builtin(NaturalToInteger), NaturalLit(n)) => IntegerLit(n as isize),
                 (Builtin(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
-                // TODO: restore when handling variables generically fixed
-                // (App(box Builtin(ListBuild), a0), k) => {
-                //     let k = bx(k);
-                //     let a1 = bx(shift(1, &V("a", 0), &a0));
-                //     normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
-                // }
+                (App(box Builtin(ListBuild), a0), k) => {
+                    let k = bx(k);
+                    let a1 = bx(shift(1, &V("a".into(), 0), &a0));
+                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
+                }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
                     let e2: Expr<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
                         let y = bx(y);
@@ -139,11 +138,10 @@ where
                     });
                     normalize(&e2)
                 }
-                // TODO: restore when handling variables generically fixed
-                // (App(box Builtin(OptionalBuild), a0), g) => {
-                //     let g = bx(g);
-                //     normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
-                // }
+                (App(box Builtin(OptionalBuild), a0), g) => {
+                    let g = bx(g);
+                    normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
+                }
                 (f2, a2) => app(f2, a2),
             },
         },

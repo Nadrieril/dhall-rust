@@ -268,7 +268,16 @@ pub enum Builtin {
 }
 
 pub trait StringLike:
-    Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default + From<String>
+    Display
+    + fmt::Debug
+    + Clone
+    + Hash
+    + Ord
+    + Eq
+    + Default
+    + Into<String>
+    + From<String>
+    + From<&'static str>
 {
 }
 
@@ -279,8 +288,10 @@ impl<T> StringLike for T where
         + Hash
         + Ord
         + Eq
+        + Default
         + Into<String>
-        + Default + From<String>
+        + From<String>
+        + From<&'static str>
 {
 }
 

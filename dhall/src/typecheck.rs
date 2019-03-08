@@ -145,7 +145,7 @@ where
     go::<L, S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
 }
 
-fn op2_type<Label: StringLike + From<String>, S, EF>(
+fn op2_type<Label: StringLike, S, EF>(
     ctx: &Context<Label, Expr<Label, S, X>>,
     e: &Expr<Label, S, X>,
     t: core::Builtin,
@@ -178,7 +178,7 @@ where
 /// `type_with` does not necessarily normalize the type since full normalization
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
-pub fn type_with<Label: StringLike + From<String>, S>(
+pub fn type_with<Label: StringLike, S>(
     ctx: &Context<Label, Expr<Label, S, X>>,
     e: &Expr<Label, S, X>,
 ) -> Result<Expr<Label, S, X>, TypeError<Label, S>>
@@ -489,17 +489,12 @@ where
         ).take_ownership_of_labels()),
         Builtin(ListIndexed) => {
             let mut m: BTreeMap<Label, Expr<Label, _, _>> = BTreeMap::new();
-            m.insert("index".to_owned().into(), Builtin(Natural));
-            let var: Expr<Label, _, _> = Var(V(Label::from("a".to_owned()), 0));
-            m.insert("value".to_owned().into(), var.clone());
-            let underscore: Label = Label::from("_".to_owned());
-            let innerinner: Expr<Label, _, _> = app(List, Record(m));
-            let innerinner2: Expr<Label, _, _> = app(List, var);
-            let inner: Expr<Label, _, _> = Pi(underscore, bx(innerinner2), bx(innerinner));
-            Ok(Pi(
-                Label::from("a".to_owned()),
-                bx(Const(Type)),
-                bx(inner),
+            m.insert("index".into(), Builtin(Natural));
+            m.insert("value".into(), Var(V("a".into(), 0)));
+            Ok(pi(
+                "a",
+                Const(Type),
+                pi("_", app(List, Var(V("a".into(), 0))), app(List, Record(m))),
             ))
         }
         Builtin(ListReverse) => Ok(pi(
