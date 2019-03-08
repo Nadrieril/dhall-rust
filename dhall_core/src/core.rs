@@ -269,7 +269,7 @@ pub enum Builtin {
 }
 
 pub trait StringLike:
-    Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default
+    Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default + From<String>
 {
 }
 
@@ -281,7 +281,7 @@ impl<T> StringLike for T where
         + Ord
         + Eq
         + Into<String>
-        + Default
+        + Default + From<String>
 {
 }
 
@@ -358,13 +358,13 @@ impl<Label: StringLike, S, A> Expr_<Label, S, A> {
     }
 }
 
-// impl<'i, S: Clone, A: Clone> Expr_<&'i str, S, A> {
-//     pub fn to_owned(&self) -> Expr_<String, S, A> {
-//         let recurse =
-//             |e: &Expr_<&'i str, S, A>| -> Expr_<String, S, A> { e.to_owned() };
-//         self.map_shallow(recurse, |x| x.clone(), |x| x.clone(), |x| x.to_owned())
-//     }
-// }
+impl<'i, S: Clone, A: Clone> Expr_<&'i str, S, A> {
+    pub fn take_ownership_of_labels<L: StringLike + From<String>>(&self) -> Expr_<L, S, A> {
+        let recurse =
+            |e: &Expr_<&'i str, S, A>| -> Expr_<L, S, A> { e.take_ownership_of_labels() };
+        map_shallow(self, recurse, |x| x.clone(), |x| x.clone(), |x: &&str| -> L { (*x).to_owned().into() })
+    }
+}
 
 //  There is a one-to-one correspondence between the formatters in this section
 //  and the grammar in grammar.lalrpop.  Each formatter is named after the
@@ -759,7 +759,7 @@ where
     A: Clone,
     S: Clone,
     T: Clone,
-    Label1: StringLike,
+    Label1: Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default,
     Label2: StringLike,
     F1: Fn(&Expr_<Label1, S, A>) -> Expr_<Label2, T, B>,
     F2: FnOnce(&S) -> T,

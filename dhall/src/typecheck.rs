@@ -10,13 +10,13 @@ use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr_::*;
 use dhall_core::core::{app, pi};
-use dhall_core::core::{bx, shift, subst, Expr, Expr_, V, X};
+use dhall_core::core::{bx, shift, subst, Expr, Expr_, V, X, StringLike};
 
 use self::TypeMessage::*;
 
-fn axiom<'i, S: Clone>(
+fn axiom<Label: StringLike, S: Clone>(
     c: core::Const,
-) -> Result<core::Const, TypeError<'i, S>> {
+) -> Result<core::Const, TypeError<Label, S>> {
     match c {
         Type => Ok(Kind),
         Kind => Err(TypeError::new(&Context::new(), &Const(Kind), Untyped)),
@@ -31,32 +31,32 @@ fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
     }
 }
 
-fn match_vars(vl: &V<&str>, vr: &V<&str>, ctx: &[(&str, &str)]) -> bool {
-    let xxs = ctx.get(0).map(|x| (x, ctx.split_at(1).1));
+fn match_vars<L: Clone + Eq>(vl: &V<L>, vr: &V<L>, ctx: &[(L, L)]) -> bool {
+    let xxs: Option<(&(L, L), &[(L, L)])> = ctx.split_first();
     match (vl, vr, xxs) {
-        (&V(xL, nL), &V(xR, nR), None) => xL == xR && nL == nR,
-        (&V(xL, 0), &V(xR, 0), Some((&(xL2, xR2), _)))
+        (V(xL, nL), V(xR, nR), None) => xL == xR && nL == nR,
+        (V(xL, 0), V(xR, 0), Some(((xL2, xR2), _)))
             if xL == xL2 && xR == xR2 =>
         {
             true
         }
-        (&V(xL, nL), &V(xR, nR), Some((&(xL2, xR2), xs))) => {
-            let nL2 = if xL == xL2 { nL - 1 } else { nL };
-            let nR2 = if xR == xR2 { nR - 1 } else { nR };
-            match_vars(&V(xL, nL2), &V(xR, nR2), xs)
+        (V(xL, nL), V(xR, nR), Some(((xL2, xR2), xs))) => {
+            let nL2 = if xL == xL2 { nL - 1 } else { *nL };
+            let nR2 = if xR == xR2 { nR - 1 } else { *nR };
+            match_vars(&V(xL.clone(), nL2), &V(xR.clone(), nR2), xs)
         }
     }
 }
 
-fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
+fn prop_equal<L: StringLike, S, T>(eL0: &Expr_<L, S, X>, eR0: &Expr_<L, T, X>) -> bool
 where
     S: Clone + ::std::fmt::Debug,
     T: Clone + ::std::fmt::Debug,
 {
-    fn go<'i, S, T>(
-        ctx: &mut Vec<(&'i str, &'i str)>,
-        el: &'i Expr<'i, S, X>,
-        er: &'i Expr<'i, T, X>,
+    fn go<L: StringLike, S, T>(
+        ctx: &mut Vec<(L, L)>,
+        el: &Expr_<L, S, X>,
+        er: &Expr_<L, T, X>,
     ) -> bool
     where
         S: Clone + ::std::fmt::Debug,
@@ -65,12 +65,12 @@ where
         match (el, er) {
             (&Const(Type), &Const(Type)) | (&Const(Kind), &Const(Kind)) => true,
             (&Var(ref vL), &Var(ref vR)) => match_vars(vL, vR, &*ctx),
-            (&Pi(xL, ref tL, ref bL), &Pi(xR, ref tR, ref bR)) => {
+            (&Pi(ref xL, ref tL, ref bL), &Pi(ref xR, ref tR, ref bR)) => {
                 //ctx <- State.get
                 let eq1 = go(ctx, tL, tR);
                 if eq1 {
                     //State.put ((xL, xR):ctx)
-                    ctx.push((xL, xR));
+                    ctx.push((xL.clone(), xR.clone()));
                     let eq2 = go(ctx, bL, bR);
                     //State.put ctx
                     let _ = ctx.pop();
@@ -142,20 +142,20 @@ where
         }
     }
     let mut ctx = vec![];
-    go::<S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
+    go::<L, S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
 }
 
-fn op2_type<'i, S, EF>(
-    ctx: &Context<&'i str, Expr<'i, S, X>>,
-    e: &Expr<'i, S, X>,
+fn op2_type<Label: StringLike + From<String>, S, EF>(
+    ctx: &Context<Label, Expr_<Label, S, X>>,
+    e: &Expr_<Label, S, X>,
     t: core::Builtin,
     ef: EF,
-    l: &Expr<'i, S, X>,
-    r: &Expr<'i, S, X>,
-) -> Result<Expr<'i, S, X>, TypeError<'i, S>>
+    l: &Expr_<Label, S, X>,
+    r: &Expr_<Label, S, X>,
+) -> Result<Expr_<Label, S, X>, TypeError<Label, S>>
 where
-    S: Clone + ::std::fmt::Debug + 'i,
-    EF: FnOnce(Expr<'i, S, X>, Expr<'i, S, X>) -> TypeMessage<&'i str, S>,
+    S: Clone + ::std::fmt::Debug,
+    EF: FnOnce(Expr_<Label, S, X>, Expr_<Label, S, X>) -> TypeMessage<Label, S>,
 {
     let tl = normalize(&type_with(ctx, l)?);
     match tl {
@@ -178,12 +178,12 @@ where
 /// `type_with` does not necessarily normalize the type since full normalization
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
-pub fn type_with<'i, S>(
-    ctx: &Context<&'i str, Expr<'i, S, X>>,
-    e: &Expr<'i, S, X>,
-) -> Result<Expr<'i, S, X>, TypeError<'i, S>>
+pub fn type_with<Label: StringLike + From<String>, S>(
+    ctx: &Context<Label, Expr_<Label, S, X>>,
+    e: &Expr_<Label, S, X>,
+) -> Result<Expr_<Label, S, X>, TypeError<Label, S>>
 where
-    S: Clone + ::std::fmt::Debug + 'i,
+    S: Clone + ::std::fmt::Debug,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Expr_;
@@ -195,17 +195,17 @@ where
                 //.map(Cow::Borrowed)
                 .ok_or_else(|| TypeError::new(ctx, e, UnboundVariable))
         }
-        Lam(x, ref tA, ref b) => {
+        Lam(ref x, ref tA, ref b) => {
             let ctx2 = ctx
-                .insert(x, (**tA).clone())
-                .map(|e| core::shift(1, &V(x, 0), e));
+                .insert(x.clone(), (**tA).clone())
+                .map(|e| core::shift(1, &V(x.clone(), 0), e));
             let tB = type_with(&ctx2, b)?;
-            let p = Pi(x, tA.clone(), bx(tB));
+            let p = Pi(x.clone(), tA.clone(), bx(tB));
             let _ = type_with(ctx, &p)?;
             //Ok(Cow::Owned(p))
             Ok(p)
         }
-        Pi(x, ref tA, ref tB) => {
+        Pi(ref x, ref tA, ref tB) => {
             let tA2 = normalize::<_, S, S, X>(&type_with(ctx, tA)?);
             let kA = match tA2 {
                 Const(k) => k,
@@ -219,8 +219,8 @@ where
             };
 
             let ctx2 = ctx
-                .insert(x, (**tA).clone())
-                .map(|e| core::shift(1, &V(x, 0), e));
+                .insert(x.clone(), (**tA).clone())
+                .map(|e| core::shift(1, &V(x.clone(), 0), e));
             let tB = normalize(&type_with(&ctx2, tB)?);
             let kB = match tB {
                 Const(k) => k,
@@ -253,9 +253,9 @@ where
             let tA2 = type_with(ctx, a)?;
             if prop_equal(&tA, &tA2) {
                 let vx0 = &V(x, 0);
-                let a2 = shift::<&str, S, S, X>(1, vx0, a);
+                let a2 = shift::<Label, S, S, X>(1, vx0, a);
                 let tB2 = subst(vx0, &a2, &tB);
-                let tB3 = shift::<&str, S, S, X>(-1, vx0, &tB2);
+                let tB3 = shift::<Label, S, S, X>(-1, vx0, &tB2);
                 Ok(tB3)
             } else {
                 let nf_A = normalize(&tA);
@@ -267,7 +267,7 @@ where
                 ))
             }
         }
-        Let(f, ref mt, ref r, ref b) => {
+        Let(ref f, ref mt, ref r, ref b) => {
             let tR = type_with(ctx, r)?;
             let ttR = normalize::<_, S, S, X>(&type_with(ctx, &tR)?);
             let kR = match ttR {
@@ -277,7 +277,7 @@ where
                 _ => return Err(TypeError::new(ctx, e, InvalidInputType(tR))),
             };
 
-            let ctx2 = ctx.insert(f, tR.clone());
+            let ctx2 = ctx.insert(f.clone(), tR.clone());
             let tB = type_with(&ctx2, b)?;
             let ttB = normalize::<_, S, S, X>(&type_with(ctx, &tB)?);
             let kB = match ttB {
@@ -387,7 +387,7 @@ where
                     pi("zero", "natural", "natural"),
                 ),
             ),
-        )),
+        ).take_ownership_of_labels()),
         Builtin(NaturalBuild) => Ok(pi(
             "_",
             pi(
@@ -400,9 +400,9 @@ where
                 ),
             ),
             Natural,
-        )),
+        ).take_ownership_of_labels()),
         Builtin(NaturalIsZero) | Builtin(NaturalEven) | Builtin(NaturalOdd) => {
-            Ok(pi("_", Natural, Bool))
+            Ok(Pi("_".to_owned().into(), bx(Natural.into()), bx(Bool.into())))
         }
         BinOp(NaturalPlus, ref l, ref r) => {
             op2_type(ctx, e, Natural, CantAdd, l, r)
@@ -418,7 +418,7 @@ where
         }
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
-            let t: Box<Expr<_, _>> = match t {
+            let t: Box<Expr_<_, _, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let (_, first_x) = iter.next().unwrap();
@@ -461,7 +461,7 @@ where
                 ),
                 app(List, "a"),
             ),
-        )),
+        ).take_ownership_of_labels()),
         Builtin(ListFold) => Ok(pi(
             "a",
             Const(Type),
@@ -478,33 +478,38 @@ where
                     ),
                 ),
             ),
-        )),
+        ).take_ownership_of_labels()),
         Builtin(ListLength) => {
-            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural)))
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural)).take_ownership_of_labels())
         }
         Builtin(ListHead) | Builtin(ListLast) => Ok(pi(
             "a",
             Const(Type),
             pi("_", app(List, "a"), app(Optional, "a")),
-        )),
+        ).take_ownership_of_labels()),
         Builtin(ListIndexed) => {
-            let mut m = BTreeMap::new();
-            m.insert("index", Builtin(Natural));
-            m.insert("value", Expr_::from("a"));
-            Ok(pi(
-                "a",
-                Const(Type),
-                pi("_", app(List, "a"), app(List, Record(m))),
+            let mut m: BTreeMap<Label, Expr_<Label, _, _>> = BTreeMap::new();
+            m.insert("index".to_owned().into(), Builtin(Natural));
+            let var: Expr_<Label, _, _> = Var(V(Label::from("a".to_owned()), 0));
+            m.insert("value".to_owned().into(), var.clone());
+            let underscore: Label = Label::from("_".to_owned());
+            let innerinner: Expr_<Label, _, _> = app(List, Record(m));
+            let innerinner2: Expr_<Label, _, _> = app(List, var);
+            let inner: Expr_<Label, _, _> = Pi(underscore, bx(innerinner2), bx(innerinner));
+            Ok(Pi(
+                Label::from("a".to_owned()),
+                bx(Const(Type)),
+                bx(inner),
             ))
         }
         Builtin(ListReverse) => Ok(pi(
             "a",
             Const(Type),
             pi("_", app(List, "a"), app(List, "a")),
-        )),
+        ).take_ownership_of_labels()),
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
-            let t: Box<Expr<_, _>> = match t {
+            let t: Box<Expr_<_, _, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let first_x = iter.next().unwrap();
@@ -553,9 +558,9 @@ where
                     ),
                 ),
             ),
-        )),
+        ).take_ownership_of_labels()),
         Builtin(List) | Builtin(Optional) => {
-            Ok(pi("_", Const(Type), Const(Type)))
+            Ok(pi("_", Const(Type), Const(Type)).take_ownership_of_labels())
         }
         Builtin(Bool) | Builtin(Natural) | Builtin(Integer)
         | Builtin(Double) | Builtin(Text) => Ok(Const(Type)),
@@ -568,7 +573,7 @@ where
                         return Err(TypeError::new(
                             ctx,
                             e,
-                            InvalidFieldType((*k).to_owned(), (*t).clone()),
+                            InvalidFieldType((*k).clone(), (*t).clone()),
                         ));
                     }
                 }
@@ -578,7 +583,7 @@ where
         RecordLit(ref kvs) => {
             let kts = kvs
                 .iter()
-                .map(|(&k, v)| {
+                .map(|(k, v)| {
                     let t = type_with(ctx, v)?;
                     let s = normalize::<_, S, S, X>(&type_with(ctx, &t)?);
                     match s {
@@ -587,11 +592,11 @@ where
                             return Err(TypeError::new(
                                 ctx,
                                 e,
-                                InvalidField((*k).to_owned(), (*v).clone()),
+                                InvalidField((*k).clone(), (*v).clone()),
                             ));
                         }
                     }
-                    Ok((k, t))
+                    Ok(((*k).clone(), t))
                 })
                 .collect::<Result<_, _>>()?;
             Ok(Record(kts))
@@ -677,20 +682,20 @@ where
             mapM_ process (Data.Map.toList ktsY)
             return t
             */
-        Field(ref r, x) => {
+        Field(ref r, ref x) => {
             let t = normalize(&type_with(ctx, r)?);
             match t {
                 Record(ref kts) => kts.get(x).cloned().ok_or_else(|| {
                     TypeError::new(
                         ctx,
                         e,
-                        MissingField(x.to_owned(), t.clone()),
+                        MissingField((*x).clone(), t.clone()),
                     )
                 }),
                 _ => Err(TypeError::new(
                     ctx,
                     e,
-                    NotARecord(x.to_owned(), (**r).clone(), t.clone()),
+                    NotARecord((*x).clone(), (**r).clone(), t.clone()),
                 )),
             }
         }
@@ -708,16 +713,16 @@ where
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of<'i, S: Clone + ::std::fmt::Debug + 'i>(
-    e: &Expr<'i, S, X>,
-) -> Result<Expr<'i, S, X>, TypeError<'i, S>> {
+pub fn type_of<Label: StringLike + From<String>, S: Clone + ::std::fmt::Debug>(
+    e: &Expr_<Label, S, X>,
+) -> Result<Expr_<Label, S, X>, TypeError<Label, S>> {
     let ctx = Context::new();
     type_with(&ctx, e) //.map(|e| e.into_owned())
 }
 
 /// The specific type error
 #[derive(Debug)]
-pub enum TypeMessage<Label, S> {
+pub enum TypeMessage<Label: std::hash::Hash + Eq, S> {
     UnboundVariable,
     InvalidInputType(Expr_<Label, S, X>),
     InvalidOutputType(Expr_<Label, S, X>),
@@ -757,22 +762,22 @@ pub enum TypeMessage<Label, S> {
         Expr_<Label, S, X>,
         Expr_<Label, S, X>,
     ),
-    InvalidField(String, Expr_<Label, S, X>),
-    InvalidFieldType(String, Expr_<Label, S, X>),
-    InvalidAlternative(String, Expr_<Label, S, X>),
-    InvalidAlternativeType(String, Expr_<Label, S, X>),
-    DuplicateAlternative(String),
+    InvalidField(Label, Expr_<Label, S, X>),
+    InvalidFieldType(Label, Expr_<Label, S, X>),
+    InvalidAlternative(Label, Expr_<Label, S, X>),
+    InvalidAlternativeType(Label, Expr_<Label, S, X>),
+    DuplicateAlternative(Label),
     MustCombineARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    FieldCollision(String),
+    FieldCollision(Label),
     MustMergeARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
     MustMergeUnion(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    UnusedHandler(HashSet<String>),
-    MissingHandler(HashSet<String>),
-    HandlerInputTypeMismatch(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    HandlerOutputTypeMismatch(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    HandlerNotAFunction(String, Expr_<Label, S, X>),
-    NotARecord(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    MissingField(String, Expr_<Label, S, X>),
+    UnusedHandler(HashSet<Label>),
+    MissingHandler(HashSet<Label>),
+    HandlerInputTypeMismatch(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    HandlerOutputTypeMismatch(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    HandlerNotAFunction(Label, Expr_<Label, S, X>),
+    NotARecord(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    MissingField(Label, Expr_<Label, S, X>),
     CantAnd(Expr_<Label, S, X>, Expr_<Label, S, X>),
     CantOr(Expr_<Label, S, X>, Expr_<Label, S, X>),
     CantEQ(Expr_<Label, S, X>, Expr_<Label, S, X>),
@@ -786,17 +791,17 @@ pub enum TypeMessage<Label, S> {
 
 /// A structured type error that includes context
 #[derive(Debug)]
-pub struct TypeError<'i, S> {
-    pub context: Context<&'i str, Expr<'i, S, X>>,
-    pub current: Expr<'i, S, X>,
-    pub type_message: TypeMessage<&'i str, S>,
+pub struct TypeError<Label: std::hash::Hash + Eq, S> {
+    pub context: Context<Label, Expr_<Label, S, X>>,
+    pub current: Expr_<Label, S, X>,
+    pub type_message: TypeMessage<Label, S>,
 }
 
-impl<'i, S: Clone> TypeError<'i, S> {
+impl<Label: StringLike, S: Clone> TypeError<Label, S> {
     pub fn new(
-        context: &Context<&'i str, Expr<'i, S, X>>,
-        current: &Expr<'i, S, X>,
-        type_message: TypeMessage<&'i str, S>,
+        context: &Context<Label, Expr_<Label, S, X>>,
+        current: &Expr_<Label, S, X>,
+        type_message: TypeMessage<Label, S>,
     ) -> Self {
         TypeError {
             context: context.clone(),
@@ -806,7 +811,7 @@ impl<'i, S: Clone> TypeError<'i, S> {
     }
 }
 
-impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<&'i str, S> {
+impl<L: StringLike, S: fmt::Debug> ::std::error::Error for TypeMessage<L, S> {
     fn description(&self) -> &str {
         match *self {
             UnboundVariable => "Unbound variable",
@@ -819,7 +824,7 @@ impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<&'i str, S> {
     }
 }
 
-impl<'i, S> fmt::Display for TypeMessage<&'i str, S> {
+impl<L: StringLike, S> fmt::Display for TypeMessage<L, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             UnboundVariable => {

@@ -44,11 +44,12 @@ pub fn load_dhall_file<'i, 'a: 'i>(
     f: &Path,
     source_pool: &'a mut Vec<String>,
     _resolve_imports: bool,
-) -> Result<Expr<'i, X, X>, DhallError> {
+) -> Result<Expr_<String, X, X>, DhallError> {
     source_pool.push(String::new());
     let mut buffer = source_pool.last_mut().unwrap();
     File::open(f)?.read_to_string(&mut buffer)?;
     let expr = parser::parse_expr(&*buffer)?;
+    let expr = expr.take_ownership_of_labels();
     let expr = imports::resolve_imports(&expr);
     Ok(expr)
 }
