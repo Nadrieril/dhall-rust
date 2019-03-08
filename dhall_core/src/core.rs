@@ -157,10 +157,7 @@ pub enum Expr<Label, Note, Embed> {
         Box<Expr<Label, Note, Embed>>,
     ),
     ///  `App f A                                  ~  f A`
-    App(
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-    ),
+    App(Box<Expr<Label, Note, Embed>>, Box<Expr<Label, Note, Embed>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
@@ -170,10 +167,7 @@ pub enum Expr<Label, Note, Embed> {
         Box<Expr<Label, Note, Embed>>,
     ),
     ///  `Annot x t                                ~  x : t`
-    Annot(
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-    ),
+    Annot(Box<Expr<Label, Note, Embed>>, Box<Expr<Label, Note, Embed>>),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
@@ -369,19 +363,32 @@ impl<Label: StringLike, S, A> Expr<Label, S, A> {
 }
 
 impl<'i, S: Clone, A: Clone> Expr<&'i str, S, A> {
-    pub fn take_ownership_of_labels<L: StringLike + From<String>>(&self) -> Expr<L, S, A> {
-        let recurse =
-            |e: &Expr<&'i str, S, A>| -> Expr<L, S, A> { e.take_ownership_of_labels() };
-        map_shallow(self, recurse, |x| x.clone(), |x| x.clone(), |x: &&str| -> L { (*x).to_owned().into() })
+    pub fn take_ownership_of_labels<L: StringLike + From<String>>(
+        &self,
+    ) -> Expr<L, S, A> {
+        let recurse = |e: &Expr<&'i str, S, A>| -> Expr<L, S, A> {
+            e.take_ownership_of_labels()
+        };
+        map_shallow(
+            self,
+            recurse,
+            |x| x.clone(),
+            |x| x.clone(),
+            |x: &&str| -> L { (*x).to_owned().into() },
+        )
     }
 }
 
 impl<L: StringLike, S: Clone, A: Clone> Expr<L, S, Expr<L, S, A>> {
-    pub fn squash_embed(&self) -> Expr<L, S, A>
-    {
+    pub fn squash_embed(&self) -> Expr<L, S, A> {
         match self {
             Expr::Embed(e) => e.clone(),
-            e => e.map_shallow(|e| e.squash_embed(), |x| x.clone(), |_| unreachable!(), |x| x.clone())
+            e => e.map_shallow(
+                |e| e.squash_embed(),
+                |x| x.clone(),
+                |_| unreachable!(),
+                |x| x.clone(),
+            ),
         }
     }
 }
@@ -779,7 +786,8 @@ where
     A: Clone,
     S: Clone,
     T: Clone,
-    Label1: Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default,
+    Label1:
+        Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default,
     Label2: StringLike,
     F1: Fn(&Expr<Label1, S, A>) -> Expr<Label2, T, B>,
     F2: FnOnce(&S) -> T,
@@ -1007,9 +1015,7 @@ where
             es.iter().map(|e| shift(d, v, e)).collect(),
         ),
         Record(a) => Record(map_record_value(a, |val| shift(d, v, val))),
-        RecordLit(a) => {
-            RecordLit(map_record_value(a, |val| shift(d, v, val)))
-        }
+        RecordLit(a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
         Union(a) => Union(map_record_value(a, |val| shift(d, v, val))),
         UnionLit(k, uv, a) => UnionLit(
             k.clone(),
@@ -1068,13 +1074,15 @@ where
         Const(a) => Const(*a),
         Lam(y, tA, b) => {
             let n2 = if x == y { n + 1 } else { *n };
-            let b2 = subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), b);
+            let b2 =
+                subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), b);
             let tA2 = subst(v, e, tA);
             Lam(y.clone(), bx(tA2), bx(b2))
         }
         Pi(y, tA, tB) => {
             let n2 = if x == y { n + 1 } else { *n };
-            let tB2 = subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), tB);
+            let tB2 =
+                subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), tB);
             let tA2 = subst(v, e, tA);
             Pi(y.clone(), bx(tA2), bx(tB2))
         }
@@ -1092,7 +1100,8 @@ where
         }
         Let(f, mt, r, b) => {
             let n2 = if x == f { n + 1 } else { *n };
-            let b2 = subst(&V(x.clone(), n2), &shift(1, &V(f.clone(), 0), e), b);
+            let b2 =
+                subst(&V(x.clone(), n2), &shift(1, &V(f.clone(), 0), e), b);
             let mt2 = mt.as_ref().map(|t| bx(subst(v, e, t)));
             let r2 = subst(v, e, r);
             Let(f.clone(), mt2, bx(r2), bx(b2))

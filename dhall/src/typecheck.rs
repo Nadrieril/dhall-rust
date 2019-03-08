@@ -10,7 +10,7 @@ use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr::*;
 use dhall_core::core::{app, pi};
-use dhall_core::core::{bx, shift, subst, Expr, V, X, StringLike};
+use dhall_core::core::{bx, shift, subst, Expr, StringLike, V, X};
 
 use self::TypeMessage::*;
 
@@ -48,7 +48,10 @@ fn match_vars<L: Clone + Eq>(vl: &V<L>, vr: &V<L>, ctx: &[(L, L)]) -> bool {
     }
 }
 
-fn prop_equal<L: StringLike, S, T>(eL0: &Expr<L, S, X>, eR0: &Expr<L, T, X>) -> bool
+fn prop_equal<L: StringLike, S, T>(
+    eL0: &Expr<L, S, X>,
+    eR0: &Expr<L, T, X>,
+) -> bool
 where
     S: Clone + ::std::fmt::Debug,
     T: Clone + ::std::fmt::Debug,
@@ -387,7 +390,8 @@ where
                     pi("zero", "natural", "natural"),
                 ),
             ),
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(NaturalBuild) => Ok(pi(
             "_",
             pi(
@@ -400,9 +404,14 @@ where
                 ),
             ),
             Natural,
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(NaturalIsZero) | Builtin(NaturalEven) | Builtin(NaturalOdd) => {
-            Ok(Pi("_".to_owned().into(), bx(Natural.into()), bx(Bool.into())))
+            Ok(Pi(
+                "_".to_owned().into(),
+                bx(Natural.into()),
+                bx(Bool.into()),
+            ))
         }
         BinOp(NaturalPlus, ref l, ref r) => {
             op2_type(ctx, e, Natural, CantAdd, l, r)
@@ -461,7 +470,8 @@ where
                 ),
                 app(List, "a"),
             ),
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(ListFold) => Ok(pi(
             "a",
             Const(Type),
@@ -478,15 +488,18 @@ where
                     ),
                 ),
             ),
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(ListLength) => {
-            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural)).take_ownership_of_labels())
+            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural))
+                .take_ownership_of_labels())
         }
         Builtin(ListHead) | Builtin(ListLast) => Ok(pi(
             "a",
             Const(Type),
             pi("_", app(List, "a"), app(Optional, "a")),
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(ListIndexed) => {
             let mut m: BTreeMap<Label, Expr<Label, _, _>> = BTreeMap::new();
             m.insert("index".into(), Builtin(Natural));
@@ -497,11 +510,12 @@ where
                 pi("_", app(List, Var(V("a".into(), 0))), app(List, Record(m))),
             ))
         }
-        Builtin(ListReverse) => Ok(pi(
-            "a",
-            Const(Type),
-            pi("_", app(List, "a"), app(List, "a")),
-        ).take_ownership_of_labels()),
+        Builtin(ListReverse) => {
+            Ok(
+                pi("a", Const(Type), pi("_", app(List, "a"), app(List, "a")))
+                    .take_ownership_of_labels(),
+            )
+        }
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
             let t: Box<Expr<_, _, _>> = match t {
@@ -553,7 +567,8 @@ where
                     ),
                 ),
             ),
-        ).take_ownership_of_labels()),
+        )
+        .take_ownership_of_labels()),
         Builtin(List) | Builtin(Optional) => {
             Ok(pi("_", Const(Type), Const(Type)).take_ownership_of_labels())
         }
@@ -708,7 +723,10 @@ where
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of<Label: StringLike + From<String>, S: Clone + ::std::fmt::Debug>(
+pub fn type_of<
+    Label: StringLike + From<String>,
+    S: Clone + ::std::fmt::Debug,
+>(
     e: &Expr<Label, S, X>,
 ) -> Result<Expr<Label, S, X>, TypeError<Label, S>> {
     let ctx = Context::new();
