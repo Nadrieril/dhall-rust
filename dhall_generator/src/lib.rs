@@ -4,6 +4,8 @@ use dhall_core::*;
 use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 #[proc_macro]
 pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -12,15 +14,15 @@ pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.map_embed(&no_import);
-    let output = dhall_to_tokenstream(&expr, &Context::new());
+    let output = dhall_to_tokenstream::<&str>(&expr, &Context::new());
     output.into()
 }
 
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
-fn dhall_to_tokenstream<'i>(
-    expr: &Expr<'i, X, X>,
-    ctx: &Context<'i, ()>,
+fn dhall_to_tokenstream<L: Eq + Hash + Clone + Debug + Into<String>>(
+    expr: &Expr_<L, X, X>,
+    ctx: &Context<L, ()>,
 ) -> TokenStream {
     use dhall_core::Expr_::*;
     match expr {
@@ -30,8 +32,8 @@ fn dhall_to_tokenstream<'i>(
         }
         Lam(x, t, b) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
-            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x, ()));
-            let x = Literal::string(x);
+            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
+            let x = Literal::string(&x.clone().into());
             quote! { Lam(#x, #t, #b) }
         }
         App(f, a) => {
@@ -74,20 +76,22 @@ fn dhall_to_tokenstream<'i>(
 }
 
 // Returns an expression of type Box<Expr<_, _>>
-fn dhall_to_tokenstream_bx<'i>(
-    expr: &Expr<'i, X, X>,
-    ctx: &Context<'i, ()>,
+fn dhall_to_tokenstream_bx<L: Eq + Hash + Clone + Debug + Into<String>>(
+    expr: &Expr_<L, X, X>,
+    ctx: &Context<L, ()>,
 ) -> TokenStream {
     use dhall_core::Expr_::*;
     match expr {
         Var(V(s, n)) => {
-            match ctx.lookup(s, *n) {
+            match ctx.lookup(s.clone(), *n) {
                 // Non-free variable; interpolates as itself
                 Some(()) => {
+                    let s: String = s.clone().into();
                     quote! { bx(Var(V(#s, #n))) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
+                    let s: String = s.clone().into();
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {

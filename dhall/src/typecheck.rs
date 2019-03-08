@@ -146,7 +146,7 @@ where
 }
 
 fn op2_type<'i, S, EF>(
-    ctx: &Context<'i, Expr<'i, S, X>>,
+    ctx: &Context<&'i str, Expr<'i, S, X>>,
     e: &Expr<'i, S, X>,
     t: core::Builtin,
     ef: EF,
@@ -179,7 +179,7 @@ where
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
 pub fn type_with<'i, S>(
-    ctx: &Context<'i, Expr<'i, S, X>>,
+    ctx: &Context<&'i str, Expr<'i, S, X>>,
     e: &Expr<'i, S, X>,
 ) -> Result<Expr<'i, S, X>, TypeError<'i, S>>
 where
@@ -773,14 +773,14 @@ pub enum TypeMessage<'i, S> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<'i, S> {
-    pub context: Context<'i, Expr<'i, S, X>>,
+    pub context: Context<&'i str, Expr<'i, S, X>>,
     pub current: Expr<'i, S, X>,
     pub type_message: TypeMessage<'i, S>,
 }
 
 impl<'i, S: Clone> TypeError<'i, S> {
     pub fn new(
-        context: &Context<'i, Expr<'i, S, X>>,
+        context: &Context<&'i str, Expr<'i, S, X>>,
         current: &Expr<'i, S, X>,
         type_message: TypeMessage<'i, S>,
     ) -> Self {

@@ -1,4 +1,6 @@
+use std::cmp::Eq;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 /// A `(Context a)` associates `Text` labels with values of type `a`
 ///
@@ -13,9 +15,9 @@ use std::collections::HashMap;
 /// `n`th occurrence of a given key.
 ///
 #[derive(Debug, Clone)]
-pub struct Context<'i, T>(HashMap<&'i str, Vec<T>>);
+pub struct Context<K: Eq + Hash, T>(HashMap<K, Vec<T>>);
 
-impl<'i, T> Context<'i, T> {
+impl<K: Hash + Eq + Clone, T> Context<K, T> {
     /// An empty context with no key-value pairs
     pub fn new() -> Self {
         Context(HashMap::new())
@@ -29,23 +31,23 @@ impl<'i, T> Context<'i, T> {
     /// lookup k n (insert k v c) = lookup k (n - 1) c  -- 1 <= n
     /// lookup k n (insert j v c) = lookup k  n      c  -- k /= j
     /// ```
-    pub fn lookup<'a>(&'a self, k: &str, n: usize) -> Option<&'a T> {
-        self.0.get(k).and_then(|v| v.get(v.len() - 1 - n))
+    pub fn lookup<'a>(&'a self, k: K, n: usize) -> Option<&'a T> {
+        self.0.get(&k).and_then(|v| v.get(v.len() - 1 - n))
     }
 
-    pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<'i, U> {
+    pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<K, U> {
         Context(
             self.0
                 .iter()
-                .map(|(k, v)| (*k, v.iter().map(&f).collect()))
+                .map(|(k, v)| ((*k).clone(), v.iter().map(&f).collect()))
                 .collect(),
         )
     }
 }
 
-impl<'i, T: Clone> Context<'i, T> {
+impl<K: Hash + Eq + Clone, T: Clone> Context<K, T> {
     /// Add a key-value pair to the `Context`
-    pub fn insert(&self, k: &'i str, v: T) -> Self {
+    pub fn insert(&self, k: K, v: T) -> Self {
         let mut ctx = (*self).clone();
         {
             let m = ctx.0.entry(k).or_insert_with(Vec::new);
