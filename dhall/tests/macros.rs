@@ -61,8 +61,8 @@ macro_rules! make_spec_test {
 }
 
 use dhall::*;
-use dhall_core::*;
 use dhall_core::parser::*;
+use dhall_core::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -114,8 +114,8 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
             let expected = read_dhall_file(&expected_file_path, &mut expected_buffer).unwrap();
 
             assert_eq_!(
-                normalize::<_, X, _>(&expr),
-                normalize::<_, X, _>(&expected)
+                normalize::<_, _, X, _>(&expr),
+                normalize::<_, _, X, _>(&expected)
             );
         }
         _ => unimplemented!(),

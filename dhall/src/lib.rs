@@ -43,7 +43,7 @@ impl fmt::Display for DhallError {
 pub fn load_dhall_file<'i, 'a: 'i>(
     f: &Path,
     source_pool: &'a mut Vec<String>,
-    resolve_imports: bool,
+    _resolve_imports: bool,
 ) -> Result<Expr<'i, X, X>, DhallError> {
     source_pool.push(String::new());
     let mut buffer = source_pool.last_mut().unwrap();

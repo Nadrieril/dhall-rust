@@ -31,8 +31,8 @@ impl<K: Hash + Eq + Clone, T> Context<K, T> {
     /// lookup k n (insert k v c) = lookup k (n - 1) c  -- 1 <= n
     /// lookup k n (insert j v c) = lookup k  n      c  -- k /= j
     /// ```
-    pub fn lookup<'a>(&'a self, k: K, n: usize) -> Option<&'a T> {
-        self.0.get(&k).and_then(|v| v.get(v.len() - 1 - n))
+    pub fn lookup<'a>(&'a self, k: &K, n: usize) -> Option<&'a T> {
+        self.0.get(k).and_then(|v| v.get(v.len() - 1 - n))
     }
 
     pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<K, U> {

@@ -4,8 +4,6 @@ use dhall_core::*;
 use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::fmt::Debug;
-use std::hash::Hash;
 
 #[proc_macro]
 pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -20,7 +18,7 @@ pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
-fn dhall_to_tokenstream<L: Eq + Hash + Clone + Debug + Into<String>>(
+fn dhall_to_tokenstream<L: StringLike>(
     expr: &Expr_<L, X, X>,
     ctx: &Context<L, ()>,
 ) -> TokenStream {
@@ -34,7 +32,7 @@ fn dhall_to_tokenstream<L: Eq + Hash + Clone + Debug + Into<String>>(
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = Literal::string(&x.clone().into());
-            quote! { Lam(#x, #t, #b) }
+            quote! { Lam(#x.to_owned().into(), #t, #b) }
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
@@ -76,18 +74,18 @@ fn dhall_to_tokenstream<L: Eq + Hash + Clone + Debug + Into<String>>(
 }
 
 // Returns an expression of type Box<Expr<_, _>>
-fn dhall_to_tokenstream_bx<L: Eq + Hash + Clone + Debug + Into<String>>(
+fn dhall_to_tokenstream_bx<L: StringLike>(
     expr: &Expr_<L, X, X>,
     ctx: &Context<L, ()>,
 ) -> TokenStream {
     use dhall_core::Expr_::*;
     match expr {
         Var(V(s, n)) => {
-            match ctx.lookup(s.clone(), *n) {
+            match ctx.lookup(&s, *n) {
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.clone().into();
-                    quote! { bx(Var(V(#s, #n))) }
+                    quote! { bx(Var(V(#s.to_owned().into(), #n))) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
@@ -95,7 +93,7 @@ fn dhall_to_tokenstream_bx<L: Eq + Hash + Clone + Debug + Into<String>>(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: Box<Expr<_, _>> = #v.clone();
+                        let x: Box<Expr_<_, _, _>> = #v.clone();
                         x
                     } }
                 }

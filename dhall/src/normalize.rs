@@ -12,7 +12,9 @@ use std::fmt;
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<'i, S, T, A>(e: &Expr<'i, S, A>) -> Expr<'i, T, A>
+pub fn normalize<Label: StringLike, S, T, A>(
+    e: &Expr_<Label, S, A>,
+) -> Expr_<Label, T, A>
 where
     S: Clone + fmt::Debug,
     T: Clone + fmt::Debug,
@@ -24,9 +26,9 @@ where
     match e {
         // Matches that don't normalize everything right away
         Let(f, _, r, b) => {
-            let r2 = shift::<_, S, _>(1, V(f, 0), r);
-            let b2 = subst(V(f, 0), &r2, b);
-            let b3 = shift::<_, T, _>(-1, V(f, 0), &b2);
+            let r2 = shift::<Label, _, S, _>(1, V(f.clone(), 0), r);
+            let b2 = subst::<Label, _, S, _>(V(f.clone(), 0), &r2, b);
+            let b3 = shift::<Label, _, T, _>(-1, V(f.clone(), 0), &b2);
             normalize(&b3)
         }
         BoolIf(b, t, f) => match normalize(b) {
@@ -36,16 +38,16 @@ where
         },
         Annot(x, _) => normalize(x),
         Note(_, e) => normalize(e),
-        App(f, a) => match normalize::<S, T, A>(f) {
+        App(f, a) => match normalize::<Label, S, T, A>(f) {
             Lam(x, _A, b) => {
                 // Beta reduce
                 let vx0 = V(x, 0);
-                let a2 = shift::<S, S, A>(1, vx0, a);
-                let b2 = subst::<S, T, A>(vx0, &a2, &b);
-                let b3 = shift::<S, T, A>(-1, vx0, &b2);
+                let a2 = shift::<Label, S, S, A>(1, vx0, a);
+                let b2 = subst::<Label, S, T, A>(vx0, &a2, &b);
+                let b3 = shift::<Label, S, T, A>(-1, vx0, &b2);
                 normalize(&b3)
             }
-            f2 => match (f2, normalize::<S, T, A>(a)) {
+            f2 => match (f2, normalize::<Label, S, T, A>(a)) {
                 // fold/build fusion for `List`
                 (App(box Builtin(ListBuild), _), App(box App(box Builtin(ListFold), _), box e2)) |
                 (App(box Builtin(ListFold), _), App(box App(box Builtin(ListBuild), _), box e2)) |
@@ -87,13 +89,14 @@ where
                 (Builtin(NaturalOdd), NaturalLit(n)) => BoolLit(n % 2 != 0),
                 (Builtin(NaturalToInteger), NaturalLit(n)) => IntegerLit(n as isize),
                 (Builtin(NaturalShow), NaturalLit(n)) => TextLit(n.to_string()),
-                (App(box Builtin(ListBuild), a0), k) => {
-                    let k = bx(k);
-                    let a1 = bx(shift(1, V("a", 0), &a0));
-                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
-                }
+                // TODO: restore when handling variables generically fixed
+                // (App(box Builtin(ListBuild), a0), k) => {
+                //     let k = bx(k);
+                //     let a1 = bx(shift(1, V("a", 0), &a0));
+                //     normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
+                // }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
-                    let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| {
+                    let e2: Expr_<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
                         let y = bx(y);
                         let ys = bx(ys);
                         dhall!(cons y ys)
@@ -130,23 +133,29 @@ where
                               ]
             */
                 (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
-                    let e2: Expr<_, _> = xs.into_iter().fold(nothing, |y, _| {
+                    let e2: Expr_<_, _, _> = xs.into_iter().fold(nothing, |y, _| {
                         let y = bx(y);
                         dhall!(just y)
                     });
                     normalize(&e2)
                 }
-                (App(box Builtin(OptionalBuild), a0), g) => {
-                    let g = bx(g);
-                    normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
-                }
+                // TODO: restore when handling variables generically fixed
+                // (App(box Builtin(OptionalBuild), a0), g) => {
+                //     let g = bx(g);
+                //     normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
+                // }
                 (f2, a2) => app(f2, a2),
             },
         },
 
         // Normalize everything else before matching
         e => {
-            match e.map_shallow(normalize, |_| unreachable!(), |x| x.clone()) {
+            match e.map_shallow(
+                normalize,
+                |_| unreachable!(),
+                |x| x.clone(),
+                |x| x.clone(),
+            ) {
                 BinOp(BoolAnd, box BoolLit(x), box BoolLit(y)) => {
                     BoolLit(x && y)
                 }
@@ -180,7 +189,7 @@ where
                     ListLit(t, xs.chain(ys).collect())
                 }
                 Merge(_x, _y, _t) => unimplemented!(),
-                Field(box RecordLit(kvs), x) => match kvs.get(x) {
+                Field(box RecordLit(kvs), x) => match kvs.get(&x) {
                     Some(r) => r.clone(),
                     None => Field(bx(RecordLit(kvs)), x),
                 },

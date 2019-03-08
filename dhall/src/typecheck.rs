@@ -10,7 +10,7 @@ use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr_::*;
 use dhall_core::core::{app, pi};
-use dhall_core::core::{bx, shift, subst, Expr, V, X};
+use dhall_core::core::{bx, shift, subst, Expr, Expr_, V, X};
 
 use self::TypeMessage::*;
 
@@ -155,7 +155,7 @@ fn op2_type<'i, S, EF>(
 ) -> Result<Expr<'i, S, X>, TypeError<'i, S>>
 where
     S: Clone + ::std::fmt::Debug + 'i,
-    EF: FnOnce(Expr<'i, S, X>, Expr<'i, S, X>) -> TypeMessage<'i, S>,
+    EF: FnOnce(Expr<'i, S, X>, Expr<'i, S, X>) -> TypeMessage<&'i str, S>,
 {
     let tl = normalize(&type_with(ctx, l)?);
     match tl {
@@ -189,7 +189,7 @@ where
     use dhall_core::Expr_;
     match *e {
         Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
-        Var(V(x, n)) => {
+        Var(V(ref x, n)) => {
             ctx.lookup(x, n)
                 .cloned()
                 //.map(Cow::Borrowed)
@@ -206,7 +206,7 @@ where
             Ok(p)
         }
         Pi(x, ref tA, ref tB) => {
-            let tA2 = normalize::<S, S, X>(&type_with(ctx, tA)?);
+            let tA2 = normalize::<_, S, S, X>(&type_with(ctx, tA)?);
             let kA = match tA2 {
                 Const(k) => k,
                 _ => {
@@ -253,9 +253,9 @@ where
             let tA2 = type_with(ctx, a)?;
             if prop_equal(&tA, &tA2) {
                 let vx0 = V(x, 0);
-                let a2 = shift::<S, S, X>(1, vx0, a);
+                let a2 = shift::<&str, S, S, X>(1, vx0, a);
                 let tB2 = subst(vx0, &a2, &tB);
-                let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
+                let tB3 = shift::<&str, S, S, X>(-1, vx0, &tB2);
                 Ok(tB3)
             } else {
                 let nf_A = normalize(&tA);
@@ -269,7 +269,7 @@ where
         }
         Let(f, ref mt, ref r, ref b) => {
             let tR = type_with(ctx, r)?;
-            let ttR = normalize::<S, S, X>(&type_with(ctx, &tR)?);
+            let ttR = normalize::<_, S, S, X>(&type_with(ctx, &tR)?);
             let kR = match ttR {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
@@ -279,7 +279,7 @@ where
 
             let ctx2 = ctx.insert(f, tR.clone());
             let tB = type_with(&ctx2, b)?;
-            let ttB = normalize::<S, S, X>(&type_with(ctx, &tB)?);
+            let ttB = normalize::<_, S, S, X>(&type_with(ctx, &tB)?);
             let kB = match ttB {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
@@ -426,7 +426,7 @@ where
                 }
             };
 
-            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
+            let s = normalize::<_, _, S, _>(&type_with(ctx, &t)?);
             match s {
                 Const(Type) => {}
                 _ => return Err(TypeError::new(ctx, e, InvalidListType(*t))),
@@ -512,7 +512,7 @@ where
                 }
             };
 
-            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
+            let s = normalize::<_, _, S, _>(&type_with(ctx, &t)?);
             match s {
                 Const(Type) => {}
                 _ => {
@@ -561,7 +561,7 @@ where
         | Builtin(Double) | Builtin(Text) => Ok(Const(Type)),
         Record(ref kts) => {
             for (k, t) in kts {
-                let s = normalize::<S, S, X>(&type_with(ctx, t)?);
+                let s = normalize::<_, S, S, X>(&type_with(ctx, t)?);
                 match s {
                     Const(Type) => {}
                     _ => {
@@ -580,7 +580,7 @@ where
                 .iter()
                 .map(|(&k, v)| {
                     let t = type_with(ctx, v)?;
-                    let s = normalize::<S, S, X>(&type_with(ctx, &t)?);
+                    let s = normalize::<_, S, S, X>(&type_with(ctx, &t)?);
                     match s {
                         Const(Type) => {}
                         _ => {
@@ -717,57 +717,71 @@ pub fn type_of<'i, S: Clone + ::std::fmt::Debug + 'i>(
 
 /// The specific type error
 #[derive(Debug)]
-pub enum TypeMessage<'i, S> {
+pub enum TypeMessage<Label, S> {
     UnboundVariable,
-    InvalidInputType(Expr<'i, S, X>),
-    InvalidOutputType(Expr<'i, S, X>),
-    NotAFunction(Expr<'i, S, X>, Expr<'i, S, X>),
+    InvalidInputType(Expr_<Label, S, X>),
+    InvalidOutputType(Expr_<Label, S, X>),
+    NotAFunction(Expr_<Label, S, X>, Expr_<Label, S, X>),
     TypeMismatch(
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
     ),
-    AnnotMismatch(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
+    AnnotMismatch(Expr_<Label, S, X>, Expr_<Label, S, X>, Expr_<Label, S, X>),
     Untyped,
-    InvalidListElement(usize, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
-    InvalidListType(Expr<'i, S, X>),
-    InvalidOptionalElement(Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
-    InvalidOptionalLiteral(usize),
-    InvalidOptionalType(Expr<'i, S, X>),
-    InvalidPredicate(Expr<'i, S, X>, Expr<'i, S, X>),
-    IfBranchMismatch(
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
-        Expr<'i, S, X>,
+    InvalidListElement(
+        usize,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
     ),
-    IfBranchMustBeTerm(bool, Expr<'i, S, X>, Expr<'i, S, X>, Expr<'i, S, X>),
-    InvalidField(String, Expr<'i, S, X>),
-    InvalidFieldType(String, Expr<'i, S, X>),
-    InvalidAlternative(String, Expr<'i, S, X>),
-    InvalidAlternativeType(String, Expr<'i, S, X>),
+    InvalidListType(Expr_<Label, S, X>),
+    InvalidOptionalElement(
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+    ),
+    InvalidOptionalLiteral(usize),
+    InvalidOptionalType(Expr_<Label, S, X>),
+    InvalidPredicate(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    IfBranchMismatch(
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+    ),
+    IfBranchMustBeTerm(
+        bool,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+        Expr_<Label, S, X>,
+    ),
+    InvalidField(String, Expr_<Label, S, X>),
+    InvalidFieldType(String, Expr_<Label, S, X>),
+    InvalidAlternative(String, Expr_<Label, S, X>),
+    InvalidAlternativeType(String, Expr_<Label, S, X>),
     DuplicateAlternative(String),
-    MustCombineARecord(Expr<'i, S, X>, Expr<'i, S, X>),
+    MustCombineARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
     FieldCollision(String),
-    MustMergeARecord(Expr<'i, S, X>, Expr<'i, S, X>),
-    MustMergeUnion(Expr<'i, S, X>, Expr<'i, S, X>),
+    MustMergeARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    MustMergeUnion(Expr_<Label, S, X>, Expr_<Label, S, X>),
     UnusedHandler(HashSet<String>),
     MissingHandler(HashSet<String>),
-    HandlerInputTypeMismatch(String, Expr<'i, S, X>, Expr<'i, S, X>),
-    HandlerOutputTypeMismatch(String, Expr<'i, S, X>, Expr<'i, S, X>),
-    HandlerNotAFunction(String, Expr<'i, S, X>),
-    NotARecord(String, Expr<'i, S, X>, Expr<'i, S, X>),
-    MissingField(String, Expr<'i, S, X>),
-    CantAnd(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantOr(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantEQ(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantNE(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantTextAppend(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantAdd(Expr<'i, S, X>, Expr<'i, S, X>),
-    CantMultiply(Expr<'i, S, X>, Expr<'i, S, X>),
-    NoDependentLet(Expr<'i, S, X>, Expr<'i, S, X>),
-    NoDependentTypes(Expr<'i, S, X>, Expr<'i, S, X>),
+    HandlerInputTypeMismatch(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    HandlerOutputTypeMismatch(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    HandlerNotAFunction(String, Expr_<Label, S, X>),
+    NotARecord(String, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    MissingField(String, Expr_<Label, S, X>),
+    CantAnd(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantOr(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantEQ(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantNE(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantTextAppend(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantAdd(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    CantMultiply(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    NoDependentLet(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    NoDependentTypes(Expr_<Label, S, X>, Expr_<Label, S, X>),
 }
 
 /// A structured type error that includes context
@@ -775,14 +789,14 @@ pub enum TypeMessage<'i, S> {
 pub struct TypeError<'i, S> {
     pub context: Context<&'i str, Expr<'i, S, X>>,
     pub current: Expr<'i, S, X>,
-    pub type_message: TypeMessage<'i, S>,
+    pub type_message: TypeMessage<&'i str, S>,
 }
 
 impl<'i, S: Clone> TypeError<'i, S> {
     pub fn new(
         context: &Context<&'i str, Expr<'i, S, X>>,
         current: &Expr<'i, S, X>,
-        type_message: TypeMessage<'i, S>,
+        type_message: TypeMessage<&'i str, S>,
     ) -> Self {
         TypeError {
             context: context.clone(),
@@ -792,7 +806,7 @@ impl<'i, S: Clone> TypeError<'i, S> {
     }
 }
 
-impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<'i, S> {
+impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<&'i str, S> {
     fn description(&self) -> &str {
         match *self {
             UnboundVariable => "Unbound variable",
@@ -805,7 +819,7 @@ impl<'i, S: fmt::Debug> ::std::error::Error for TypeMessage<'i, S> {
     }
 }
 
-impl<'i, S> fmt::Display for TypeMessage<'i, S> {
+impl<'i, S> fmt::Display for TypeMessage<&'i str, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             UnboundVariable => {
