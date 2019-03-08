@@ -26,9 +26,9 @@ where
     match e {
         // Matches that don't normalize everything right away
         Let(f, _, r, b) => {
-            let r2 = shift::<Label, _, S, _>(1, V(f.clone(), 0), r);
-            let b2 = subst::<Label, _, S, _>(V(f.clone(), 0), &r2, b);
-            let b3 = shift::<Label, _, T, _>(-1, V(f.clone(), 0), &b2);
+            let r2 = shift::<Label, _, S, _>(1, &V(f.clone(), 0), r);
+            let b2 = subst::<Label, _, S, _>(&V(f.clone(), 0), &r2, b);
+            let b3 = shift::<Label, _, T, _>(-1, &V(f.clone(), 0), &b2);
             normalize(&b3)
         }
         BoolIf(b, t, f) => match normalize(b) {
@@ -41,7 +41,7 @@ where
         App(f, a) => match normalize::<Label, S, T, A>(f) {
             Lam(x, _A, b) => {
                 // Beta reduce
-                let vx0 = V(x, 0);
+                let vx0 = &V(x, 0);
                 let a2 = shift::<Label, S, S, A>(1, vx0, a);
                 let b2 = subst::<Label, S, T, A>(vx0, &a2, &b);
                 let b3 = shift::<Label, S, T, A>(-1, vx0, &b2);
@@ -92,7 +92,7 @@ where
                 // TODO: restore when handling variables generically fixed
                 // (App(box Builtin(ListBuild), a0), k) => {
                 //     let k = bx(k);
-                //     let a1 = bx(shift(1, V("a", 0), &a0));
+                //     let a1 = bx(shift(1, &V("a", 0), &a0));
                 //     normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
                 // }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {

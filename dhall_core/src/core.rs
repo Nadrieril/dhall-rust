@@ -269,7 +269,7 @@ pub enum Builtin {
 }
 
 pub trait StringLike:
-    Display + fmt::Debug + Clone + Copy + Hash + Ord + Eq + Into<String> + Default
+    Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default
 {
 }
 
@@ -277,7 +277,6 @@ impl<T> StringLike for T where
     T: Display
         + fmt::Debug
         + Clone
-        + Copy
         + Hash
         + Ord
         + Eq
@@ -819,11 +818,11 @@ where
 pub fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
 where
     I: IntoIterator<Item = (&'a K, &'a V)>,
-    K: Eq + Ord + Copy + 'a,
+    K: Eq + Ord + Clone + 'a,
     V: 'a,
     F: FnMut(&V) -> U,
 {
-    map_record_value_and_keys(it, f, |&x| x)
+    map_record_value_and_keys(it, f, |x| x.clone())
 }
 
 pub fn map_record_value_and_keys<'a, I, K, L, V, U, F, G>(
@@ -930,92 +929,90 @@ where
 ///
 pub fn shift<Label, S, T, A: Clone>(
     d: isize,
-    v: V<Label>,
+    v: &V<Label>,
     e: &Expr_<Label, S, A>,
 ) -> Expr_<Label, T, A>
 where
-    Label: Copy,
-    Label: Ord,
-    Label: PartialEq,
+    Label: StringLike,
 {
     use crate::Expr_::*;
     let V(x, n) = v;
-    match *e {
-        Const(a) => Const(a),
+    match e {
+        Const(a) => Const(*a),
         Var(V(x2, n2)) => {
             let n3 = if x == x2 && n <= n2 {
-                add_ui(n2, d)
+                add_ui(*n2, d)
             } else {
-                n2
+                *n2
             };
-            Var(V(x2, n3))
+            Var(V(x2.clone(), n3))
         }
-        Lam(x2, ref tA, ref b) => {
-            let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x, n), tA);
-            let b2 = shift(d, V(x, n2), b);
-            Lam(x2, bx(tA2), bx(b2))
+        Lam(x2, tA, b) => {
+            let n2 = if x == x2 { n + 1 } else { *n };
+            let tA2 = shift(d, v, tA);
+            let b2 = shift(d, &V(x.clone(), n2), b);
+            Lam(x2.clone(), bx(tA2), bx(b2))
         }
-        Pi(x2, ref tA, ref tB) => {
-            let n2 = if x == x2 { n + 1 } else { n };
-            let tA2 = shift(d, V(x, n), tA);
-            let tB2 = shift(d, V(x, n2), tB);
-            pi(x2, tA2, tB2)
+        Pi(x2, tA, tB) => {
+            let n2 = if x == x2 { n + 1 } else { *n };
+            let tA2 = shift(d, v, tA);
+            let tB2 = shift(d, &V(x.clone(), n2), tB);
+            Pi(x2.clone(), bx(tA2), bx(tB2))
         }
-        App(ref f, ref a) => app(shift(d, v, f), shift(d, v, a)),
-        Let(f, ref mt, ref r, ref e) => {
-            let n2 = if x == f { n + 1 } else { n };
-            let e2 = shift(d, V(x, n2), e);
-            let mt2 = mt.as_ref().map(|t| bx(shift(d, V(x, n), t)));
-            let r2 = shift(d, V(x, n), r);
-            Let(f, mt2, bx(r2), bx(e2))
+        App(f, a) => app(shift(d, v, f), shift(d, v, a)),
+        Let(f, mt, r, e) => {
+            let n2 = if x == f { n + 1 } else { *n };
+            let e2 = shift(d, &V(x.clone(), n2), e);
+            let mt2 = mt.as_ref().map(|t| bx(shift(d, v, t)));
+            let r2 = shift(d, v, r);
+            Let(f.clone(), mt2, bx(r2), bx(e2))
         }
-        Annot(ref a, ref b) => shift_op2(Annot, d, v, a, b),
-        Builtin(v) => Builtin(v),
-        BoolLit(a) => BoolLit(a),
-        BinOp(o, ref a, ref b) => shift_op2(|x, y| BinOp(o, x, y), d, v, a, b),
-        BoolIf(ref a, ref b, ref c) => {
+        Annot(a, b) => shift_op2(Annot, d, v, a, b),
+        Builtin(v) => Builtin(*v),
+        BoolLit(a) => BoolLit(*a),
+        BinOp(o, a, b) => shift_op2(|x, y| BinOp(*o, x, y), d, v, a, b),
+        BoolIf(a, b, c) => {
             BoolIf(bx(shift(d, v, a)), bx(shift(d, v, b)), bx(shift(d, v, c)))
         }
-        NaturalLit(a) => NaturalLit(a),
-        IntegerLit(a) => IntegerLit(a),
-        DoubleLit(a) => DoubleLit(a),
-        TextLit(ref a) => TextLit(a.clone()),
-        ListLit(ref t, ref es) => ListLit(
+        NaturalLit(a) => NaturalLit(*a),
+        IntegerLit(a) => IntegerLit(*a),
+        DoubleLit(a) => DoubleLit(*a),
+        TextLit(a) => TextLit(a.clone()),
+        ListLit(t, es) => ListLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
             es.iter().map(|e| shift(d, v, e)).collect(),
         ),
-        OptionalLit(ref t, ref es) => OptionalLit(
+        OptionalLit(t, es) => OptionalLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
             es.iter().map(|e| shift(d, v, e)).collect(),
         ),
-        Record(ref a) => Record(map_record_value(a, |val| shift(d, v, val))),
-        RecordLit(ref a) => {
+        Record(a) => Record(map_record_value(a, |val| shift(d, v, val))),
+        RecordLit(a) => {
             RecordLit(map_record_value(a, |val| shift(d, v, val)))
         }
-        Union(ref a) => Union(map_record_value(a, |val| shift(d, v, val))),
-        UnionLit(k, ref uv, ref a) => UnionLit(
-            k,
+        Union(a) => Union(map_record_value(a, |val| shift(d, v, val))),
+        UnionLit(k, uv, a) => UnionLit(
+            k.clone(),
             bx(shift(d, v, uv)),
             map_record_value(a, |val| shift(d, v, val)),
         ),
-        Merge(ref a, ref b, ref c) => Merge(
+        Merge(a, b, c) => Merge(
             bx(shift(d, v, a)),
             bx(shift(d, v, b)),
             c.as_ref().map(|c| bx(shift(d, v, c))),
         ),
-        Field(ref a, b) => Field(bx(shift(d, v, a)), b),
-        Note(_, ref b) => shift(d, v, b),
+        Field(a, b) => Field(bx(shift(d, v, a)), b.clone()),
+        Note(_, b) => shift(d, v, b),
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
-        Embed(ref p) => Embed(p.clone()),
+        Embed(p) => Embed(p.clone()),
     }
 }
 
 fn shift_op2<Label, S, T, A, F>(
     f: F,
     d: isize,
-    v: V<Label>,
+    v: &V<Label>,
     a: &Expr_<Label, S, A>,
     b: &Expr_<Label, S, A>,
 ) -> Expr_<Label, T, A>
@@ -1025,9 +1022,7 @@ where
         Box<Expr_<Label, T, A>>,
     ) -> Expr_<Label, T, A>,
     A: Clone,
-    Label: Copy,
-    Label: Ord,
-    Label: PartialEq,
+    Label: StringLike,
 {
     map_op2(f, |x| bx(shift(d, v, x)), a, b)
 }
@@ -1039,7 +1034,7 @@ where
 /// ```
 ///
 pub fn subst<Label: StringLike, S, T, A>(
-    v: V<Label>,
+    v: &V<Label>,
     e: &Expr_<Label, S, A>,
     b: &Expr_<Label, T, A>,
 ) -> Expr_<Label, S, A>
@@ -1049,21 +1044,21 @@ where
 {
     use crate::Expr_::*;
     let V(x, n) = v;
-    match *b {
-        Const(a) => Const(a),
-        Lam(y, ref tA, ref b) => {
-            let n2 = if x == y { n + 1 } else { n };
-            let b2 = subst(V(x, n2), &shift(1, V(y, 0), e), b);
-            let tA2 = subst(V(x, n), e, tA);
-            Lam(y, bx(tA2), bx(b2))
+    match b {
+        Const(a) => Const(*a),
+        Lam(y, tA, b) => {
+            let n2 = if x == y { n + 1 } else { *n };
+            let b2 = subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), b);
+            let tA2 = subst(v, e, tA);
+            Lam(y.clone(), bx(tA2), bx(b2))
         }
-        Pi(y, ref tA, ref tB) => {
-            let n2 = if x == y { n + 1 } else { n };
-            let tB2 = subst(V(x, n2), &shift(1, V(y, 0), e), tB);
-            let tA2 = subst(V(x, n), e, tA);
-            Pi(y, bx(tA2), bx(tB2))
+        Pi(y, tA, tB) => {
+            let n2 = if x == y { n + 1 } else { *n };
+            let tB2 = subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), tB);
+            let tA2 = subst(v, e, tA);
+            Pi(y.clone(), bx(tA2), bx(tB2))
         }
-        App(ref f, ref a) => {
+        App(f, a) => {
             let f2 = subst(v, e, f);
             let a2 = subst(v, e, a);
             app(f2, a2)
@@ -1072,61 +1067,61 @@ where
             if v == v2 {
                 e.clone()
             } else {
-                Var(v2)
+                Var(v2.clone())
             }
         }
-        Let(f, ref mt, ref r, ref b) => {
-            let n2 = if x == f { n + 1 } else { n };
-            let b2 = subst(V(x, n2), &shift(1, V(f, 0), e), b);
-            let mt2 = mt.as_ref().map(|t| bx(subst(V(x, n), e, t)));
-            let r2 = subst(V(x, n), e, r);
-            Let(f, mt2, bx(r2), bx(b2))
+        Let(f, mt, r, b) => {
+            let n2 = if x == f { n + 1 } else { *n };
+            let b2 = subst(&V(x.clone(), n2), &shift(1, &V(f.clone(), 0), e), b);
+            let mt2 = mt.as_ref().map(|t| bx(subst(v, e, t)));
+            let r2 = subst(v, e, r);
+            Let(f.clone(), mt2, bx(r2), bx(b2))
         }
-        Annot(ref a, ref b) => subst_op2(Annot, v, e, a, b),
-        Builtin(v) => Builtin(v),
-        BoolLit(a) => BoolLit(a),
-        BinOp(o, ref a, ref b) => subst_op2(|x, y| BinOp(o, x, y), v, e, a, b),
-        BoolIf(ref a, ref b, ref c) => {
+        Annot(a, b) => subst_op2(Annot, v, e, a, b),
+        Builtin(v) => Builtin(*v),
+        BoolLit(a) => BoolLit(*a),
+        BinOp(o, a, b) => subst_op2(|x, y| BinOp(*o, x, y), v, e, a, b),
+        BoolIf(a, b, c) => {
             BoolIf(bx(subst(v, e, a)), bx(subst(v, e, b)), bx(subst(v, e, c)))
         }
-        NaturalLit(a) => NaturalLit(a),
-        IntegerLit(a) => IntegerLit(a),
-        DoubleLit(a) => DoubleLit(a),
-        TextLit(ref a) => TextLit(a.clone()),
-        ListLit(ref a, ref b) => {
+        NaturalLit(a) => NaturalLit(*a),
+        IntegerLit(a) => IntegerLit(*a),
+        DoubleLit(a) => DoubleLit(*a),
+        TextLit(a) => TextLit(a.clone()),
+        ListLit(a, b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             ListLit(a2, b2)
         }
-        OptionalLit(ref a, ref b) => {
+        OptionalLit(a, b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();
             OptionalLit(a2, b2)
         }
-        Record(ref kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
-        RecordLit(ref kvs) => {
+        Record(kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
+        RecordLit(kvs) => {
             RecordLit(map_record_value(kvs, |val| subst(v, e, val)))
         }
-        Union(ref kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
-        UnionLit(k, ref uv, ref kvs) => UnionLit(
-            k,
+        Union(kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
+        UnionLit(k, uv, kvs) => UnionLit(
+            k.clone(),
             bx(subst(v, e, uv)),
             map_record_value(kvs, |val| subst(v, e, val)),
         ),
-        Merge(ref a, ref b, ref c) => Merge(
+        Merge(a, b, c) => Merge(
             bx(subst(v, e, a)),
             bx(subst(v, e, b)),
             c.as_ref().map(|c| bx(subst(v, e, c))),
         ),
-        Field(ref a, b) => Field(bx(subst(v, e, a)), b),
-        Note(_, ref b) => subst(v, e, b),
-        Embed(ref p) => Embed(p.clone()),
+        Field(a, b) => Field(bx(subst(v, e, a)), b.clone()),
+        Note(_, b) => subst(v, e, b),
+        Embed(p) => Embed(p.clone()),
     }
 }
 
 fn subst_op2<Label: StringLike, S, T, A, F>(
     f: F,
-    v: V<Label>,
+    v: &V<Label>,
     e: &Expr_<Label, S, A>,
     a: &Expr_<Label, T, A>,
     b: &Expr_<Label, T, A>,
