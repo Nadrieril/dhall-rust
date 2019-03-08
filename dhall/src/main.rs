@@ -65,7 +65,7 @@ fn main() {
         }
     };
 
-    let expr: Expr_<String, _, _> = imports::resolve_imports(&expr.take_ownership_of_labels());
+    let expr: Expr<String, _, _> = imports::resolve_imports(&expr.take_ownership_of_labels());
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {

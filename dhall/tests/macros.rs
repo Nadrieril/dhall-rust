@@ -80,7 +80,7 @@ pub enum ExpectedResult {
 pub fn read_dhall_file<'i>(
     file_path: &str,
     mut buffer: &'i mut String,
-) -> Result<Box<Expr_<String, X, Import>>, ParseError> {
+) -> Result<Box<Expr<String, X, Import>>, ParseError> {
     let mut file = File::open(&file_path).unwrap();
     file.read_to_string(&mut buffer).unwrap();
     let expr = parser::parse_expr(&*buffer)?;

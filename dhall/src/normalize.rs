@@ -13,8 +13,8 @@ use std::fmt;
 /// leave ill-typed sub-expressions unevaluated.
 ///
 pub fn normalize<Label: StringLike, S, T, A>(
-    e: &Expr_<Label, S, A>,
-) -> Expr_<Label, T, A>
+    e: &Expr<Label, S, A>,
+) -> Expr<Label, T, A>
 where
     S: Clone + fmt::Debug,
     T: Clone + fmt::Debug,
@@ -22,7 +22,7 @@ where
 {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
-    use dhall_core::Expr_::*;
+    use dhall_core::Expr::*;
     match e {
         // Matches that don't normalize everything right away
         Let(f, _, r, b) => {
@@ -96,7 +96,7 @@ where
                 //     normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
                 // }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
-                    let e2: Expr_<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
+                    let e2: Expr<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
                         let y = bx(y);
                         let ys = bx(ys);
                         dhall!(cons y ys)
@@ -133,7 +133,7 @@ where
                               ]
             */
                 (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
-                    let e2: Expr_<_, _, _> = xs.into_iter().fold(nothing, |y, _| {
+                    let e2: Expr<_, _, _> = xs.into_iter().fold(nothing, |y, _| {
                         let y = bx(y);
                         dhall!(just y)
                     });

@@ -8,9 +8,9 @@ use dhall_core::context::Context;
 use dhall_core::core;
 use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
-use dhall_core::core::Expr_::*;
+use dhall_core::core::Expr::*;
 use dhall_core::core::{app, pi};
-use dhall_core::core::{bx, shift, subst, Expr, Expr_, V, X, StringLike};
+use dhall_core::core::{bx, shift, subst, Expr, V, X, StringLike};
 
 use self::TypeMessage::*;
 
@@ -48,15 +48,15 @@ fn match_vars<L: Clone + Eq>(vl: &V<L>, vr: &V<L>, ctx: &[(L, L)]) -> bool {
     }
 }
 
-fn prop_equal<L: StringLike, S, T>(eL0: &Expr_<L, S, X>, eR0: &Expr_<L, T, X>) -> bool
+fn prop_equal<L: StringLike, S, T>(eL0: &Expr<L, S, X>, eR0: &Expr<L, T, X>) -> bool
 where
     S: Clone + ::std::fmt::Debug,
     T: Clone + ::std::fmt::Debug,
 {
     fn go<L: StringLike, S, T>(
         ctx: &mut Vec<(L, L)>,
-        el: &Expr_<L, S, X>,
-        er: &Expr_<L, T, X>,
+        el: &Expr<L, S, X>,
+        er: &Expr<L, T, X>,
     ) -> bool
     where
         S: Clone + ::std::fmt::Debug,
@@ -146,16 +146,16 @@ where
 }
 
 fn op2_type<Label: StringLike + From<String>, S, EF>(
-    ctx: &Context<Label, Expr_<Label, S, X>>,
-    e: &Expr_<Label, S, X>,
+    ctx: &Context<Label, Expr<Label, S, X>>,
+    e: &Expr<Label, S, X>,
     t: core::Builtin,
     ef: EF,
-    l: &Expr_<Label, S, X>,
-    r: &Expr_<Label, S, X>,
-) -> Result<Expr_<Label, S, X>, TypeError<Label, S>>
+    l: &Expr<Label, S, X>,
+    r: &Expr<Label, S, X>,
+) -> Result<Expr<Label, S, X>, TypeError<Label, S>>
 where
     S: Clone + ::std::fmt::Debug,
-    EF: FnOnce(Expr_<Label, S, X>, Expr_<Label, S, X>) -> TypeMessage<Label, S>,
+    EF: FnOnce(Expr<Label, S, X>, Expr<Label, S, X>) -> TypeMessage<Label, S>,
 {
     let tl = normalize(&type_with(ctx, l)?);
     match tl {
@@ -179,14 +179,14 @@ where
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
 pub fn type_with<Label: StringLike + From<String>, S>(
-    ctx: &Context<Label, Expr_<Label, S, X>>,
-    e: &Expr_<Label, S, X>,
-) -> Result<Expr_<Label, S, X>, TypeError<Label, S>>
+    ctx: &Context<Label, Expr<Label, S, X>>,
+    e: &Expr<Label, S, X>,
+) -> Result<Expr<Label, S, X>, TypeError<Label, S>>
 where
     S: Clone + ::std::fmt::Debug,
 {
     use dhall_core::BinOp::*;
-    use dhall_core::Expr_;
+    use dhall_core::Expr;
     match *e {
         Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
         Var(V(ref x, n)) => {
@@ -418,7 +418,7 @@ where
         }
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
-            let t: Box<Expr_<_, _, _>> = match t {
+            let t: Box<Expr<_, _, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let (_, first_x) = iter.next().unwrap();
@@ -488,14 +488,14 @@ where
             pi("_", app(List, "a"), app(Optional, "a")),
         ).take_ownership_of_labels()),
         Builtin(ListIndexed) => {
-            let mut m: BTreeMap<Label, Expr_<Label, _, _>> = BTreeMap::new();
+            let mut m: BTreeMap<Label, Expr<Label, _, _>> = BTreeMap::new();
             m.insert("index".to_owned().into(), Builtin(Natural));
-            let var: Expr_<Label, _, _> = Var(V(Label::from("a".to_owned()), 0));
+            let var: Expr<Label, _, _> = Var(V(Label::from("a".to_owned()), 0));
             m.insert("value".to_owned().into(), var.clone());
             let underscore: Label = Label::from("_".to_owned());
-            let innerinner: Expr_<Label, _, _> = app(List, Record(m));
-            let innerinner2: Expr_<Label, _, _> = app(List, var);
-            let inner: Expr_<Label, _, _> = Pi(underscore, bx(innerinner2), bx(innerinner));
+            let innerinner: Expr<Label, _, _> = app(List, Record(m));
+            let innerinner2: Expr<Label, _, _> = app(List, var);
+            let inner: Expr<Label, _, _> = Pi(underscore, bx(innerinner2), bx(innerinner));
             Ok(Pi(
                 Label::from("a".to_owned()),
                 bx(Const(Type)),
@@ -509,7 +509,7 @@ where
         ).take_ownership_of_labels()),
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
-            let t: Box<Expr_<_, _, _>> = match t {
+            let t: Box<Expr<_, _, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let first_x = iter.next().unwrap();
@@ -714,8 +714,8 @@ where
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
 pub fn type_of<Label: StringLike + From<String>, S: Clone + ::std::fmt::Debug>(
-    e: &Expr_<Label, S, X>,
-) -> Result<Expr_<Label, S, X>, TypeError<Label, S>> {
+    e: &Expr<Label, S, X>,
+) -> Result<Expr<Label, S, X>, TypeError<Label, S>> {
     let ctx = Context::new();
     type_with(&ctx, e) //.map(|e| e.into_owned())
 }
@@ -724,83 +724,83 @@ pub fn type_of<Label: StringLike + From<String>, S: Clone + ::std::fmt::Debug>(
 #[derive(Debug)]
 pub enum TypeMessage<Label: std::hash::Hash + Eq, S> {
     UnboundVariable,
-    InvalidInputType(Expr_<Label, S, X>),
-    InvalidOutputType(Expr_<Label, S, X>),
-    NotAFunction(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    InvalidInputType(Expr<Label, S, X>),
+    InvalidOutputType(Expr<Label, S, X>),
+    NotAFunction(Expr<Label, S, X>, Expr<Label, S, X>),
     TypeMismatch(
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
     ),
-    AnnotMismatch(Expr_<Label, S, X>, Expr_<Label, S, X>, Expr_<Label, S, X>),
+    AnnotMismatch(Expr<Label, S, X>, Expr<Label, S, X>, Expr<Label, S, X>),
     Untyped,
     InvalidListElement(
         usize,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
     ),
-    InvalidListType(Expr_<Label, S, X>),
+    InvalidListType(Expr<Label, S, X>),
     InvalidOptionalElement(
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
     ),
     InvalidOptionalLiteral(usize),
-    InvalidOptionalType(Expr_<Label, S, X>),
-    InvalidPredicate(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    InvalidOptionalType(Expr<Label, S, X>),
+    InvalidPredicate(Expr<Label, S, X>, Expr<Label, S, X>),
     IfBranchMismatch(
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
     ),
     IfBranchMustBeTerm(
         bool,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
-        Expr_<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
+        Expr<Label, S, X>,
     ),
-    InvalidField(Label, Expr_<Label, S, X>),
-    InvalidFieldType(Label, Expr_<Label, S, X>),
-    InvalidAlternative(Label, Expr_<Label, S, X>),
-    InvalidAlternativeType(Label, Expr_<Label, S, X>),
+    InvalidField(Label, Expr<Label, S, X>),
+    InvalidFieldType(Label, Expr<Label, S, X>),
+    InvalidAlternative(Label, Expr<Label, S, X>),
+    InvalidAlternativeType(Label, Expr<Label, S, X>),
     DuplicateAlternative(Label),
-    MustCombineARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    MustCombineARecord(Expr<Label, S, X>, Expr<Label, S, X>),
     FieldCollision(Label),
-    MustMergeARecord(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    MustMergeUnion(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    MustMergeARecord(Expr<Label, S, X>, Expr<Label, S, X>),
+    MustMergeUnion(Expr<Label, S, X>, Expr<Label, S, X>),
     UnusedHandler(HashSet<Label>),
     MissingHandler(HashSet<Label>),
-    HandlerInputTypeMismatch(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    HandlerOutputTypeMismatch(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    HandlerNotAFunction(Label, Expr_<Label, S, X>),
-    NotARecord(Label, Expr_<Label, S, X>, Expr_<Label, S, X>),
-    MissingField(Label, Expr_<Label, S, X>),
-    CantAnd(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantOr(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantEQ(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantNE(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantTextAppend(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantAdd(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    CantMultiply(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    NoDependentLet(Expr_<Label, S, X>, Expr_<Label, S, X>),
-    NoDependentTypes(Expr_<Label, S, X>, Expr_<Label, S, X>),
+    HandlerInputTypeMismatch(Label, Expr<Label, S, X>, Expr<Label, S, X>),
+    HandlerOutputTypeMismatch(Label, Expr<Label, S, X>, Expr<Label, S, X>),
+    HandlerNotAFunction(Label, Expr<Label, S, X>),
+    NotARecord(Label, Expr<Label, S, X>, Expr<Label, S, X>),
+    MissingField(Label, Expr<Label, S, X>),
+    CantAnd(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantOr(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantEQ(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantNE(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantTextAppend(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantAdd(Expr<Label, S, X>, Expr<Label, S, X>),
+    CantMultiply(Expr<Label, S, X>, Expr<Label, S, X>),
+    NoDependentLet(Expr<Label, S, X>, Expr<Label, S, X>),
+    NoDependentTypes(Expr<Label, S, X>, Expr<Label, S, X>),
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<Label: std::hash::Hash + Eq, S> {
-    pub context: Context<Label, Expr_<Label, S, X>>,
-    pub current: Expr_<Label, S, X>,
+    pub context: Context<Label, Expr<Label, S, X>>,
+    pub current: Expr<Label, S, X>,
     pub type_message: TypeMessage<Label, S>,
 }
 
 impl<Label: StringLike, S: Clone> TypeError<Label, S> {
     pub fn new(
-        context: &Context<Label, Expr_<Label, S, X>>,
-        current: &Expr_<Label, S, X>,
+        context: &Context<Label, Expr<Label, S, X>>,
+        current: &Expr<Label, S, X>,
         type_message: TypeMessage<Label, S>,
     ) -> Self {
         TypeError {

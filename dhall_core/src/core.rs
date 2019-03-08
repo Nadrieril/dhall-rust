@@ -136,9 +136,8 @@ pub enum BinOp {
 }
 
 /// Syntax tree for expressions
-pub type Expr<'i, S, A> = Expr_<&'i str, S, A>;
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr_<Label, Note, Embed> {
+pub enum Expr<Label, Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
@@ -147,49 +146,49 @@ pub enum Expr_<Label, Note, Embed> {
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
     Lam(
         Label,
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
     Pi(
         Label,
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `App f A                                  ~  f A`
     App(
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
         Label,
-        Option<Box<Expr_<Label, Note, Embed>>>,
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Option<Box<Expr<Label, Note, Embed>>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `Annot x t                                ~  x : t`
     Annot(
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
     BinOp(
         BinOp,
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
     ),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
@@ -201,37 +200,37 @@ pub enum Expr_<Label, Note, Embed> {
     TextLit(Builder),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
     ListLit(
-        Option<Box<Expr_<Label, Note, Embed>>>,
-        Vec<Expr_<Label, Note, Embed>>,
+        Option<Box<Expr<Label, Note, Embed>>>,
+        Vec<Expr<Label, Note, Embed>>,
     ),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(
-        Option<Box<Expr_<Label, Note, Embed>>>,
-        Vec<Expr_<Label, Note, Embed>>,
+        Option<Box<Expr<Label, Note, Embed>>>,
+        Vec<Expr<Label, Note, Embed>>,
     ),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<Label, Expr_<Label, Note, Embed>>),
+    Record(BTreeMap<Label, Expr<Label, Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, Expr_<Label, Note, Embed>>),
+    RecordLit(BTreeMap<Label, Expr<Label, Note, Embed>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<Label, Expr_<Label, Note, Embed>>),
+    Union(BTreeMap<Label, Expr<Label, Note, Embed>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
         Label,
-        Box<Expr_<Label, Note, Embed>>,
-        BTreeMap<Label, Expr_<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        BTreeMap<Label, Expr<Label, Note, Embed>>,
     ),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(
-        Box<Expr_<Label, Note, Embed>>,
-        Box<Expr_<Label, Note, Embed>>,
-        Option<Box<Expr_<Label, Note, Embed>>>,
+        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Label, Note, Embed>>,
+        Option<Box<Expr<Label, Note, Embed>>>,
     ),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr_<Label, Note, Embed>>, Label),
+    Field(Box<Expr<Label, Note, Embed>>, Label),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
-    Note(Note, Box<Expr_<Label, Note, Embed>>),
+    Note(Note, Box<Expr<Label, Note, Embed>>),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }
@@ -291,32 +290,32 @@ impl<Label> From<Label> for V<Label> {
     }
 }
 
-impl<'i, S, A> From<&'i str> for Expr<'i, S, A> {
+impl<'i, S, A> From<&'i str> for Expr<&'i str, S, A> {
     fn from(s: &'i str) -> Self {
-        Expr_::Var(s.into())
+        Expr::Var(s.into())
     }
 }
 
-impl<L, S, A> From<Builtin> for Expr_<L, S, A> {
+impl<L, S, A> From<Builtin> for Expr<L, S, A> {
     fn from(t: Builtin) -> Self {
-        Expr_::Builtin(t)
+        Expr::Builtin(t)
     }
 }
 
-impl<Label: StringLike, S, A> Expr_<Label, S, A> {
+impl<Label: StringLike, S, A> Expr<Label, S, A> {
     pub fn map_shallow<T, B, Label2, F1, F2, F3, F4>(
         &self,
         map_expr: F1,
         map_note: F2,
         map_embed: F3,
         map_label: F4,
-    ) -> Expr_<Label2, T, B>
+    ) -> Expr<Label2, T, B>
     where
         A: Clone,
         T: Clone,
         S: Clone,
         Label2: StringLike,
-        F1: Fn(&Self) -> Expr_<Label2, T, B>,
+        F1: Fn(&Self) -> Expr<Label2, T, B>,
         F2: FnOnce(&S) -> T,
         F3: FnOnce(&A) -> B,
         F4: Fn(&Label) -> Label2,
@@ -324,13 +323,13 @@ impl<Label: StringLike, S, A> Expr_<Label, S, A> {
         map_shallow(self, map_expr, map_note, map_embed, map_label)
     }
 
-    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr_<Label, S, B>
+    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<Label, S, B>
     where
         A: Clone,
         S: Clone,
         F: Fn(&A) -> B,
     {
-        let recurse = |e: &Expr_<Label, S, A>| -> Expr_<Label, S, B> {
+        let recurse = |e: &Expr<Label, S, A>| -> Expr<Label, S, B> {
             e.map_embed(map_embed)
         };
         self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
@@ -338,30 +337,30 @@ impl<Label: StringLike, S, A> Expr_<Label, S, A> {
 
     pub fn bool_lit(&self) -> Option<bool> {
         match *self {
-            Expr_::BoolLit(v) => Some(v),
+            Expr::BoolLit(v) => Some(v),
             _ => None,
         }
     }
 
     pub fn natural_lit(&self) -> Option<usize> {
         match *self {
-            Expr_::NaturalLit(v) => Some(v),
+            Expr::NaturalLit(v) => Some(v),
             _ => None,
         }
     }
 
     pub fn text_lit(&self) -> Option<String> {
         match *self {
-            Expr_::TextLit(ref t) => Some(t.clone()), // FIXME?
+            Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
             _ => None,
         }
     }
 }
 
-impl<'i, S: Clone, A: Clone> Expr_<&'i str, S, A> {
-    pub fn take_ownership_of_labels<L: StringLike + From<String>>(&self) -> Expr_<L, S, A> {
+impl<'i, S: Clone, A: Clone> Expr<&'i str, S, A> {
+    pub fn take_ownership_of_labels<L: StringLike + From<String>>(&self) -> Expr<L, S, A> {
         let recurse =
-            |e: &Expr_<&'i str, S, A>| -> Expr_<L, S, A> { e.take_ownership_of_labels() };
+            |e: &Expr<&'i str, S, A>| -> Expr<L, S, A> { e.take_ownership_of_labels() };
         map_shallow(self, recurse, |x| x.clone(), |x| x.clone(), |x: &&str| -> L { (*x).to_owned().into() })
     }
 }
@@ -376,10 +375,10 @@ impl<'i, S: Clone, A: Clone> Expr_<&'i str, S, A> {
 //  you add a new constructor to the syntax tree without adding a matching
 //  case the corresponding builder.
 
-impl<Label: Display, S, A: Display> Display for Expr_<Label, S, A> {
+impl<Label: Display, S, A: Display> Display for Expr<Label, S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         // buildExprA
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match self {
             &Annot(ref a, ref b) => {
                 a.fmt_b(f)?;
@@ -392,9 +391,9 @@ impl<Label: Display, S, A: Display> Display for Expr_<Label, S, A> {
     }
 }
 
-impl<Label: Display, S, A: Display> Expr_<Label, S, A> {
+impl<Label: Display, S, A: Display> Expr<Label, S, A> {
     fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match self {
             &Lam(ref a, ref b, ref c) => {
                 write!(f, "λ({} : ", a)?;
@@ -479,7 +478,7 @@ impl<Label: Display, S, A: Display> Expr_<Label, S, A> {
 
     fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::BinOp::*;
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match self {
             // FIXME precedence
             &BinOp(BoolOr, ref a, ref b) => {
@@ -528,7 +527,7 @@ impl<Label: Display, S, A: Display> Expr_<Label, S, A> {
     }
 
     fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match self {
             &App(ref a, ref b) => {
                 a.fmt_d(f)?;
@@ -541,7 +540,7 @@ impl<Label: Display, S, A: Display> Expr_<Label, S, A> {
     }
 
     fn fmt_e(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match self {
             &Field(ref a, ref b) => {
                 a.fmt_e(f)?;
@@ -553,7 +552,7 @@ impl<Label: Display, S, A: Display> Expr_<Label, S, A> {
     }
 
     fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr_::*;
+        use crate::Expr::*;
         match &self {
             &Var(a) => a.fmt(f),
             &Const(k) => k.fmt(f),
@@ -703,21 +702,21 @@ pub fn pi<Label, S, A, Name, Et, Ev>(
     var: Name,
     ty: Et,
     value: Ev,
-) -> Expr_<Label, S, A>
+) -> Expr<Label, S, A>
 where
     Name: Into<Label>,
-    Et: Into<Expr_<Label, S, A>>,
-    Ev: Into<Expr_<Label, S, A>>,
+    Et: Into<Expr<Label, S, A>>,
+    Ev: Into<Expr<Label, S, A>>,
 {
-    Expr_::Pi(var.into(), bx(ty.into()), bx(value.into()))
+    Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
-pub fn app<Label, S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr_<Label, S, A>
+pub fn app<Label, S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr<Label, S, A>
 where
-    Ef: Into<Expr_<Label, S, A>>,
-    Ex: Into<Expr_<Label, S, A>>,
+    Ef: Into<Expr<Label, S, A>>,
+    Ex: Into<Expr<Label, S, A>>,
 {
-    Expr_::App(bx(f.into()), bx(x.into()))
+    Expr::App(bx(f.into()), bx(x.into()))
 }
 
 pub type Builder = String;
@@ -749,26 +748,26 @@ fn add_ui(u: usize, i: isize) -> usize {
 }
 
 pub fn map_shallow<Label1, Label2, S, T, A, B, F1, F2, F3, F4>(
-    e: &Expr_<Label1, S, A>,
+    e: &Expr<Label1, S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
-) -> Expr_<Label2, T, B>
+) -> Expr<Label2, T, B>
 where
     A: Clone,
     S: Clone,
     T: Clone,
     Label1: Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default,
     Label2: StringLike,
-    F1: Fn(&Expr_<Label1, S, A>) -> Expr_<Label2, T, B>,
+    F1: Fn(&Expr<Label1, S, A>) -> Expr<Label2, T, B>,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
     F4: Fn(&Label1) -> Label2,
 {
-    use crate::Expr_::*;
+    use crate::Expr::*;
     let bxmap =
-        |x: &Expr_<Label1, S, A>| -> Box<Expr_<Label2, T, B>> { bx(map(x)) };
+        |x: &Expr<Label1, S, A>| -> Box<Expr<Label2, T, B>> { bx(map(x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -930,12 +929,12 @@ where
 pub fn shift<Label, S, T, A: Clone>(
     d: isize,
     v: &V<Label>,
-    e: &Expr_<Label, S, A>,
-) -> Expr_<Label, T, A>
+    e: &Expr<Label, S, A>,
+) -> Expr<Label, T, A>
 where
     Label: StringLike,
 {
-    use crate::Expr_::*;
+    use crate::Expr::*;
     let V(x, n) = v;
     match e {
         Const(a) => Const(*a),
@@ -1013,14 +1012,14 @@ fn shift_op2<Label, S, T, A, F>(
     f: F,
     d: isize,
     v: &V<Label>,
-    a: &Expr_<Label, S, A>,
-    b: &Expr_<Label, S, A>,
-) -> Expr_<Label, T, A>
+    a: &Expr<Label, S, A>,
+    b: &Expr<Label, S, A>,
+) -> Expr<Label, T, A>
 where
     F: FnOnce(
-        Box<Expr_<Label, T, A>>,
-        Box<Expr_<Label, T, A>>,
-    ) -> Expr_<Label, T, A>,
+        Box<Expr<Label, T, A>>,
+        Box<Expr<Label, T, A>>,
+    ) -> Expr<Label, T, A>,
     A: Clone,
     Label: StringLike,
 {
@@ -1035,14 +1034,14 @@ where
 ///
 pub fn subst<Label: StringLike, S, T, A>(
     v: &V<Label>,
-    e: &Expr_<Label, S, A>,
-    b: &Expr_<Label, T, A>,
-) -> Expr_<Label, S, A>
+    e: &Expr<Label, S, A>,
+    b: &Expr<Label, T, A>,
+) -> Expr<Label, S, A>
 where
     S: Clone,
     A: Clone,
 {
-    use crate::Expr_::*;
+    use crate::Expr::*;
     let V(x, n) = v;
     match b {
         Const(a) => Const(*a),
@@ -1122,15 +1121,15 @@ where
 fn subst_op2<Label: StringLike, S, T, A, F>(
     f: F,
     v: &V<Label>,
-    e: &Expr_<Label, S, A>,
-    a: &Expr_<Label, T, A>,
-    b: &Expr_<Label, T, A>,
-) -> Expr_<Label, S, A>
+    e: &Expr<Label, S, A>,
+    a: &Expr<Label, T, A>,
+    b: &Expr<Label, T, A>,
+) -> Expr<Label, S, A>
 where
     F: FnOnce(
-        Box<Expr_<Label, S, A>>,
-        Box<Expr_<Label, S, A>>,
-    ) -> Expr_<Label, S, A>,
+        Box<Expr<Label, S, A>>,
+        Box<Expr<Label, S, A>>,
+    ) -> Expr<Label, S, A>,
     S: Clone,
     A: Clone,
 {

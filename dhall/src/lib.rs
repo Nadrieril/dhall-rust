@@ -44,7 +44,7 @@ pub fn load_dhall_file<'i, 'a: 'i>(
     f: &Path,
     source_pool: &'a mut Vec<String>,
     _resolve_imports: bool,
-) -> Result<Expr_<String, X, X>, DhallError> {
+) -> Result<Expr<String, X, X>, DhallError> {
     source_pool.push(String::new());
     let mut buffer = source_pool.last_mut().unwrap();
     File::open(f)?.read_to_string(&mut buffer)?;

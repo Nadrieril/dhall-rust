@@ -8,7 +8,7 @@ use quote::quote;
 #[proc_macro]
 pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: Box<Expr<X, Import>> = parser::parse_expr(&input_str).unwrap();
+    let expr: Box<Expr<_, X, Import>> = parser::parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.take_ownership_of_labels().map_embed(&no_import);
@@ -19,10 +19,10 @@ pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
 fn dhall_to_tokenstream<L: StringLike>(
-    expr: &Expr_<L, X, X>,
+    expr: &Expr<L, X, X>,
     ctx: &Context<L, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr_::*;
+    use dhall_core::Expr::*;
     match expr {
         e @ Var(_) => {
             let v = dhall_to_tokenstream_bx(e, ctx);
@@ -75,10 +75,10 @@ fn dhall_to_tokenstream<L: StringLike>(
 
 // Returns an expression of type Box<Expr<_, _>>
 fn dhall_to_tokenstream_bx<L: StringLike>(
-    expr: &Expr_<L, X, X>,
+    expr: &Expr<L, X, X>,
     ctx: &Context<L, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr_::*;
+    use dhall_core::Expr::*;
     match expr {
         Var(V(s, n)) => {
             match ctx.lookup(&s, *n) {
@@ -93,7 +93,7 @@ fn dhall_to_tokenstream_bx<L: StringLike>(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: Box<Expr_<_, _, _>> = #v.clone();
+                        let x: Box<Expr<_, _, _>> = #v.clone();
                         x
                     } }
                 }
