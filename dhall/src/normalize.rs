@@ -175,7 +175,7 @@ where
                 }
                 BinOp(ListAppend, box ListLit(t1, xs), box ListLit(t2, ys)) => {
                     // Drop type annotation if the result is nonempty
-                    let t = if xs.len() == 0 && ys.len() == 0 {
+                    let t = if xs.is_empty() && ys.is_empty() {
                         t1.or(t2)
                     } else {
                         None

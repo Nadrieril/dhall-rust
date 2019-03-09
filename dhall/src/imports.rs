@@ -78,8 +78,7 @@ pub fn load_dhall_file(
         let resolve = |import: &Import| -> Expr<X, X> {
             resolve_import(import, &root).unwrap()
         };
-        let expr = expr.map_embed(&resolve).squash_embed();
-        expr
+        expr.map_embed(&resolve).squash_embed()
     } else {
         panic_imports(&expr)
     };

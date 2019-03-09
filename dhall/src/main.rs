@@ -28,7 +28,7 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
     BOLD.with(|| {
         print!("  -->");
     });
-    println!(" {}:{}:0", "(stdin)", line_number);
+    println!(" (stdin):{}:0", line_number);
     BOLD.with(|| {
         println!("{:w$} |", "", w = line_number_width);
         print!("{} |", line_number_str);
@@ -88,6 +88,6 @@ fn main() {
     };
 
     println!("{}", type_expr);
-    println!("");
+    println!();
     println!("{}", normalize::<_, X, _>(&expr));
 }

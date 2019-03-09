@@ -40,11 +40,11 @@ fn dhall_to_tokenstream(
             quote! { App(#f, #a) }
         }
         Builtin(b) => {
-            let b = builtin_to_tokenstream(b);
+            let b = builtin_to_tokenstream(*b);
             quote! { Builtin(#b) }
         }
         BinOp(o, a, b) => {
-            let o = binop_to_tokenstream(o);
+            let o = binop_to_tokenstream(*o);
             let a = dhall_to_tokenstream_bx(a, ctx);
             let b = dhall_to_tokenstream_bx(b, ctx);
             quote! { BinOp(#o, #a, #b) }
@@ -55,8 +55,7 @@ fn dhall_to_tokenstream(
                     .map(deref)
                     .map(|x| dhall_to_tokenstream_bx(x, ctx)),
             );
-            let es =
-                vec_tks(es.into_iter().map(|x| dhall_to_tokenstream(x, ctx)));
+            let es = vec_tks(es.iter().map(|x| dhall_to_tokenstream(x, ctx)));
             quote! { OptionalLit(#t, #es) }
         }
         ListLit(t, es) => {
@@ -65,8 +64,7 @@ fn dhall_to_tokenstream(
                     .map(deref)
                     .map(|x| dhall_to_tokenstream_bx(x, ctx)),
             );
-            let es =
-                vec_tks(es.into_iter().map(|x| dhall_to_tokenstream(x, ctx)));
+            let es = vec_tks(es.iter().map(|x| dhall_to_tokenstream(x, ctx)));
             quote! { ListLit(#t, #es) }
         }
         e => unimplemented!("{:?}", e),
@@ -103,14 +101,15 @@ fn dhall_to_tokenstream_bx(
     }
 }
 
-fn builtin_to_tokenstream(b: &Builtin) -> TokenStream {
+fn builtin_to_tokenstream(b: Builtin) -> TokenStream {
     format!("{:?}", b).parse().unwrap()
 }
 
-fn binop_to_tokenstream(b: &BinOp) -> TokenStream {
+fn binop_to_tokenstream(b: BinOp) -> TokenStream {
     format!("{:?}", b).parse().unwrap()
 }
 
+#[allow(clippy::borrowed_box)]
 fn deref<T>(x: &Box<T>) -> &T {
     &*x
 }

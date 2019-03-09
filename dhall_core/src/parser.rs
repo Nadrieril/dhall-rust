@@ -28,7 +28,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     fn aux(s: &mut String, indent: usize, prefix: String, pair: Pair<Rule>) {
         let indent_str = "| ".repeat(indent);
         let rule = pair.as_rule();
-        let contents = pair.as_str().clone();
+        let contents = pair.as_str();
         let mut inner = pair.into_inner();
         let mut first = true;
         while let Some(p) = inner.next() {
@@ -109,10 +109,9 @@ macro_rules! match_iter {
         match_iter!(@match 1, $iter $($rest)*);
         #[allow(unused_mut)]
         let mut $x = $iter.next();
-        match $iter.next() {
-            Some(_) => break Err(IterMatchError::TooManyItems),
-            None => {},
-        };
+        if $iter.next().is_some() {
+            break Err(IterMatchError::TooManyItems);
+        }
     };
     // Normal pattern
     (@match 0, $iter:expr, $x:ident $($rest:tt)*) => {
@@ -135,10 +134,9 @@ macro_rules! match_iter {
 
     // Check no elements remain
     (@match 0, $iter:expr $(,)*) => {
-        match $iter.next() {
-            Some(_) => break Err(IterMatchError::TooManyItems),
-            None => {},
-        };
+        if $iter.next().is_some() {
+            break Err(IterMatchError::TooManyItems);
+        }
     };
     (@match $_:expr, $iter:expr) => {};
 
@@ -370,6 +368,7 @@ macro_rules! make_pest_parse_function {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
         #[allow(unused_variables)]
         #[allow(non_snake_case)]
+        #[allow(clippy::all)]
         fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<$o> {
             $submac!(pair; $($args)*)
         }
@@ -813,7 +812,7 @@ rule!(final_expression<BoxExpr>;
     children!(e: expression, _eoi: EOI) => e
 );
 
-pub fn parse_expr<'i>(s: &'i str) -> ParseResult<BoxExpr> {
+pub fn parse_expr(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     // Match the only item in the pairs iterator
     match_iter!(@panic; pairs; (p) => expression(p))

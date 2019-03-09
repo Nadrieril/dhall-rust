@@ -97,7 +97,7 @@ impl Display for Label {
 }
 
 impl Label {
-    pub fn from_str<'a>(s: &'a str) -> Label {
+    pub fn from_str(s: &str) -> Label {
         s.to_owned().into()
     }
 }

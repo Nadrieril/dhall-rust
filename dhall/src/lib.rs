@@ -1,6 +1,11 @@
 #![feature(box_patterns)]
 #![feature(trace_macros)]
 #![feature(proc_macro_hygiene)]
+#![allow(
+    clippy::type_complexity,
+    clippy::infallible_destructuring_match,
+    clippy::many_single_char_names
+)]
 
 mod normalize;
 pub use crate::normalize::*;

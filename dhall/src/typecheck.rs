@@ -775,7 +775,7 @@ impl<S: Clone> TypeError<S> {
         TypeError {
             context: context.clone(),
             current: current.clone(),
-            type_message: type_message,
+            type_message,
         }
     }
 }

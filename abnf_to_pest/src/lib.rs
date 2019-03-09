@@ -1,3 +1,4 @@
+#![allow(clippy::implicit_hasher, clippy::or_fun_call)]
 use itertools::Itertools;
 use std::collections::HashMap;
 
@@ -16,7 +17,7 @@ impl Default for PestRuleSettings {
 }
 
 pub fn abnf_to_pest(
-    data: &Vec<u8>,
+    data: &[u8],
     rule_settings: &HashMap<String, PestRuleSettings>,
 ) -> std::io::Result<String> {
     use abnf::abnf::*;
@@ -123,7 +124,7 @@ pub fn abnf_to_pest(
         }
     }
     fn format_char(x: u64) -> String {
-        if x <= (u8::max_value() as u64) {
+        if x <= u64::from(u8::max_value()) {
             let x: u8 = x as u8;
             if x.is_ascii_graphic() {
                 let x: char = x as char;
