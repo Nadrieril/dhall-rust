@@ -296,67 +296,52 @@ pub enum Builtin {
     TextShow,
 }
 
-pub trait StringLike:
-    Display
-    + fmt::Debug
-    + Clone
-    + Hash
-    + Ord
-    + Eq
-    + Into<String>
-    + From<String>
-    + From<&'static str>
-{
-}
-
-impl<T> StringLike for T where
-    T: Display
-        + fmt::Debug
-        + Clone
-        + Hash
-        + Ord
-        + Eq
-        + Into<String>
-        + From<String>
-        + From<&'static str>
-{
-}
-
-impl<Label> From<Label> for V<Label> {
+impl From<Label> for V<Label> {
     fn from(s: Label) -> Self {
         V(s, 0)
     }
 }
 
-impl<'i, S, A> From<&'i str> for Expr<&'i str, S, A> {
-    fn from(s: &'i str) -> Self {
-        Expr::Var(s.into())
+impl From<&'static str> for V<Label> {
+    fn from(s: &'static str) -> Self {
+        V(s.into(), 0)
     }
 }
 
-impl<L, S, A> From<Builtin> for Expr<L, S, A> {
+impl<'i, S, A> From<&'i str> for Expr<&'i str, S, A> {
+    fn from(s: &'i str) -> Self {
+        Expr::Var(V(s, 0))
+    }
+}
+
+impl<S, A> From<&'static str> for Expr<Label, S, A> {
+    fn from(s: &'static str) -> Self {
+        Expr::Var(V(s.into(), 0))
+    }
+}
+
+impl<Label, S, A> From<Builtin> for Expr<Label, S, A> {
     fn from(t: Builtin) -> Self {
         Expr::Builtin(t)
     }
 }
 
-impl<Label: StringLike, S, A> Expr<Label, S, A> {
-    pub fn map_shallow<T, B, Label2, F1, F2, F3, F4>(
+impl<S, A> Expr<Label, S, A> {
+    pub fn map_shallow<T, B, F1, F2, F3, F4>(
         &self,
         map_expr: F1,
         map_note: F2,
         map_embed: F3,
         map_label: F4,
-    ) -> Expr<Label2, T, B>
+    ) -> Expr<Label, T, B>
     where
         A: Clone,
         T: Clone,
         S: Clone,
-        Label2: StringLike,
-        F1: Fn(&Self) -> Expr<Label2, T, B>,
+        F1: Fn(&Self) -> Expr<Label, T, B>,
         F2: FnOnce(&S) -> T,
         F3: FnOnce(&A) -> B,
-        F4: Fn(&Label) -> Label2,
+        F4: Fn(&Label) -> Label,
     {
         map_shallow(self, map_expr, map_note, map_embed, map_label)
     }
@@ -373,15 +358,13 @@ impl<Label: StringLike, S, A> Expr<Label, S, A> {
         self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
     }
 
-    pub fn map_label<L2: StringLike, F>(&self, map_label: &F) -> Expr<L2, S, A>
+    pub fn map_label<F>(&self, map_label: &F) -> Self
     where
         A: Clone,
         S: Clone,
-        F: Fn(&Label) -> L2,
+        F: Fn(&Label) -> Label,
     {
-        let recurse = |e: &Expr<Label, S, A>| -> Expr<L2, S, A> {
-            e.map_label(map_label)
-        };
+        let recurse = |e: &Self| -> Self { e.map_label(map_label) };
         self.map_shallow(recurse, |x| x.clone(), |x| x.clone(), map_label)
     }
 
@@ -407,25 +390,8 @@ impl<Label: StringLike, S, A> Expr<Label, S, A> {
     }
 }
 
-impl<S: Clone, A: Clone> Expr<&'static str, S, A> {
-    pub fn take_ownership_of_labels<L: StringLike>(
-        &self,
-    ) -> Expr<L, S, A> {
-        let recurse = |e: &Expr<&'static str, S, A>| -> Expr<L, S, A> {
-            e.take_ownership_of_labels()
-        };
-        map_shallow(
-            self,
-            recurse,
-            |x| x.clone(),
-            |x| x.clone(),
-            |x: &&str| -> L { (*x).to_owned().into() },
-        )
-    }
-}
-
-impl<L: StringLike, S: Clone, A: Clone> Expr<L, S, Expr<L, S, A>> {
-    pub fn squash_embed(&self) -> Expr<L, S, A> {
+impl<S: Clone, A: Clone> Expr<Label, S, Expr<Label, S, A>> {
+    pub fn squash_embed(&self) -> Expr<Label, S, A> {
         match self {
             Expr::Embed(e) => e.clone(),
             e => e.map_shallow(
@@ -771,11 +737,7 @@ impl<Label: Display> Display for V<Label> {
     }
 }
 
-pub fn pi<Label, S, A, Name, Et, Ev>(
-    var: Name,
-    ty: Et,
-    value: Ev,
-) -> Expr<Label, S, A>
+pub fn pi<S, A, Name, Et, Ev>(var: Name, ty: Et, value: Ev) -> Expr<Label, S, A>
 where
     Name: Into<Label>,
     Et: Into<Expr<Label, S, A>>,
@@ -820,28 +782,25 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-pub fn map_shallow<Label1, Label2, S, T, A, B, F1, F2, F3, F4>(
-    e: &Expr<Label1, S, A>,
+pub fn map_shallow<S, T, A, B, F1, F2, F3, F4>(
+    e: &Expr<Label, S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
-) -> Expr<Label2, T, B>
+) -> Expr<Label, T, B>
 where
     A: Clone,
     S: Clone,
     T: Clone,
-    Label1:
-        Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String>,
-    Label2: StringLike,
-    F1: Fn(&Expr<Label1, S, A>) -> Expr<Label2, T, B>,
+    F1: Fn(&Expr<Label, S, A>) -> Expr<Label, T, B>,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
-    F4: Fn(&Label1) -> Label2,
+    F4: Fn(&Label) -> Label,
 {
     use crate::Expr::*;
     let bxmap =
-        |x: &Expr<Label1, S, A>| -> Box<Expr<Label2, T, B>> { bx(map(x)) };
+        |x: &Expr<Label, S, A>| -> Box<Expr<Label, T, B>> { bx(map(x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -1000,14 +959,11 @@ where
 /// descend into a lambda or let expression that binds a variable of the same
 /// name in order to avoid shifting the bound variables by mistake.
 ///
-pub fn shift<Label, S, T, A: Clone>(
+pub fn shift<S, T, A: Clone>(
     d: isize,
     v: &V<Label>,
     e: &Expr<Label, S, A>,
-) -> Expr<Label, T, A>
-where
-    Label: StringLike,
-{
+) -> Expr<Label, T, A> {
     use crate::Expr::*;
     let V(x, n) = v;
     match e {
@@ -1080,7 +1036,7 @@ where
     }
 }
 
-fn shift_op2<Label, S, T, A, F>(
+fn shift_op2<S, T, A, F>(
     f: F,
     d: isize,
     v: &V<Label>,
@@ -1093,7 +1049,6 @@ where
         Box<Expr<Label, T, A>>,
     ) -> Expr<Label, T, A>,
     A: Clone,
-    Label: StringLike,
 {
     map_op2(f, |x| bx(shift(d, v, x)), a, b)
 }
@@ -1104,7 +1059,7 @@ where
 /// subst x C B  ~  B[x := C]
 /// ```
 ///
-pub fn subst<Label: StringLike, S, T, A>(
+pub fn subst<S, T, A>(
     v: &V<Label>,
     e: &Expr<Label, S, A>,
     b: &Expr<Label, T, A>,
@@ -1193,7 +1148,7 @@ where
     }
 }
 
-fn subst_op2<Label: StringLike, S, T, A, F>(
+fn subst_op2<S, T, A, F>(
     f: F,
     v: &V<Label>,
     e: &Expr<Label, S, A>,

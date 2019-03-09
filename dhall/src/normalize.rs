@@ -12,9 +12,7 @@ use std::fmt;
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<Label: StringLike, S, T, A>(
-    e: &Expr<Label, S, A>,
-) -> Expr<Label, T, A>
+pub fn normalize<S, T, A>(e: &Expr<Label, S, A>) -> Expr<Label, T, A>
 where
     S: Clone + fmt::Debug,
     T: Clone + fmt::Debug,
@@ -26,9 +24,9 @@ where
     match e {
         // Matches that don't normalize everything right away
         Let(f, _, r, b) => {
-            let r2 = shift::<Label, _, S, _>(1, &V(f.clone(), 0), r);
-            let b2 = subst::<Label, _, S, _>(&V(f.clone(), 0), &r2, b);
-            let b3 = shift::<Label, _, T, _>(-1, &V(f.clone(), 0), &b2);
+            let r2 = shift::<_, S, _>(1, &V(f.clone(), 0), r);
+            let b2 = subst::<_, S, _>(&V(f.clone(), 0), &r2, b);
+            let b3 = shift::<_, T, _>(-1, &V(f.clone(), 0), &b2);
             normalize(&b3)
         }
         BoolIf(b, t, f) => match normalize(b) {
@@ -38,16 +36,16 @@ where
         },
         Annot(x, _) => normalize(x),
         Note(_, e) => normalize(e),
-        App(f, a) => match normalize::<Label, S, T, A>(f) {
+        App(f, a) => match normalize::<S, T, A>(f) {
             Lam(x, _A, b) => {
                 // Beta reduce
                 let vx0 = &V(x, 0);
-                let a2 = shift::<Label, S, S, A>(1, vx0, a);
-                let b2 = subst::<Label, S, T, A>(vx0, &a2, &b);
-                let b3 = shift::<Label, S, T, A>(-1, vx0, &b2);
+                let a2 = shift::<S, S, A>(1, vx0, a);
+                let b2 = subst::<S, T, A>(vx0, &a2, &b);
+                let b3 = shift::<S, T, A>(-1, vx0, &b2);
                 normalize(&b3)
             }
-            f2 => match (f2, normalize::<Label, S, T, A>(a)) {
+            f2 => match (f2, normalize::<S, T, A>(a)) {
                 // fold/build fusion for `List`
                 (App(box Builtin(ListBuild), _), App(box App(box Builtin(ListFold), _), box e2)) |
                 (App(box Builtin(ListFold), _), App(box App(box Builtin(ListBuild), _), box e2)) |

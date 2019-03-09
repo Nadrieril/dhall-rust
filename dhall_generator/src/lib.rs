@@ -12,15 +12,15 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.map_embed(&no_import);
-    let output = dhall_to_tokenstream::<Label>(&expr, &Context::new());
+    let output = dhall_to_tokenstream(&expr, &Context::new());
     output.into()
 }
 
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
-fn dhall_to_tokenstream<L: StringLike>(
-    expr: &Expr<L, X, X>,
-    ctx: &Context<L, ()>,
+fn dhall_to_tokenstream(
+    expr: &Expr<Label, X, X>,
+    ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
     match expr {
@@ -31,7 +31,7 @@ fn dhall_to_tokenstream<L: StringLike>(
         Lam(x, t, b) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
-            let x = Literal::string(&x.clone().into());
+            let x = Literal::string(&String::from(x.clone()));
             quote! { Lam(#x.into(), #t, #b) }
         }
         App(f, a) => {
@@ -74,9 +74,9 @@ fn dhall_to_tokenstream<L: StringLike>(
 }
 
 // Returns an expression of type Box<Expr<_, _>>
-fn dhall_to_tokenstream_bx<L: StringLike>(
-    expr: &Expr<L, X, X>,
-    ctx: &Context<L, ()>,
+fn dhall_to_tokenstream_bx(
+    expr: &Expr<Label, X, X>,
+    ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
     match expr {

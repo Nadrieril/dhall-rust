@@ -75,7 +75,7 @@ pub enum ExpectedResult {
 
 pub fn read_dhall_file<'i>(
     file_path: &str,
-) -> Result<Expr<String, X, X>, DhallError> {
+) -> Result<Expr<Label, X, X>, DhallError> {
     load_dhall_file(&PathBuf::from(file_path), true)
 }
 
@@ -104,8 +104,8 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
             let expected = read_dhall_file(&expected_file_path).unwrap();
 
             assert_eq_!(
-                normalize::<_, _, X, _>(&expr),
-                normalize::<_, _, X, _>(&expected)
+                normalize::<_, X, _>(&expr),
+                normalize::<_, X, _>(&expected)
             );
         }
         _ => unimplemented!(),
