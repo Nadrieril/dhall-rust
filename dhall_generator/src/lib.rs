@@ -1,9 +1,9 @@
 extern crate proc_macro;
 use dhall_core::context::Context;
 use dhall_core::*;
-use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::collections::BTreeMap;
 
 #[proc_macro]
 pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -28,16 +28,26 @@ fn dhall_to_tokenstream(
             let v = dhall_to_tokenstream_bx(e, ctx);
             quote! { *#v }
         }
+        Pi(x, t, b) => {
+            let t = dhall_to_tokenstream_bx(t, ctx);
+            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
+            let x = label_to_tokenstream(x);
+            quote! { Pi(#x, #t, #b) }
+        }
         Lam(x, t, b) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
-            let x = Literal::string(&String::from(x.clone()));
-            quote! { Lam(#x.into(), #t, #b) }
+            let x = label_to_tokenstream(x);
+            quote! { Lam(#x, #t, #b) }
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
             let a = dhall_to_tokenstream_bx(a, ctx);
             quote! { App(#f, #a) }
+        }
+        Const(c) => {
+            let c = const_to_tokenstream(*c);
+            quote! { Const(#c) }
         }
         Builtin(b) => {
             let b = builtin_to_tokenstream(*b);
@@ -50,22 +60,18 @@ fn dhall_to_tokenstream(
             quote! { BinOp(#o, #a, #b) }
         }
         OptionalLit(t, es) => {
-            let t = option_tks(
-                t.as_ref()
-                    .map(deref)
-                    .map(|x| dhall_to_tokenstream_bx(x, ctx)),
-            );
-            let es = vec_tks(es.iter().map(|x| dhall_to_tokenstream(x, ctx)));
+            let t = option_to_tokenstream(t, ctx);
+            let es = vec_to_tokenstream(es, ctx);
             quote! { OptionalLit(#t, #es) }
         }
         ListLit(t, es) => {
-            let t = option_tks(
-                t.as_ref()
-                    .map(deref)
-                    .map(|x| dhall_to_tokenstream_bx(x, ctx)),
-            );
-            let es = vec_tks(es.iter().map(|x| dhall_to_tokenstream(x, ctx)));
+            let t = option_to_tokenstream(t, ctx);
+            let es = vec_to_tokenstream(es, ctx);
             quote! { ListLit(#t, #es) }
+        }
+        Record(m) => {
+            let m = map_to_tokenstream(m, ctx);
+            quote! { Record(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -105,29 +111,53 @@ fn builtin_to_tokenstream(b: Builtin) -> TokenStream {
     format!("{:?}", b).parse().unwrap()
 }
 
+fn const_to_tokenstream(c: Const) -> TokenStream {
+    format!("{:?}", c).parse().unwrap()
+}
+
 fn binop_to_tokenstream(b: BinOp) -> TokenStream {
     format!("{:?}", b).parse().unwrap()
 }
 
-#[allow(clippy::borrowed_box)]
-fn deref<T>(x: &Box<T>) -> &T {
-    &*x
+fn label_to_tokenstream(l: &Label) -> TokenStream {
+    let l = String::from(l.clone());
+    quote! { #l.into() }
 }
 
-fn bx(x: TokenStream) -> TokenStream {
-    quote! { bx(#x) }
+fn map_to_tokenstream(
+    m: &BTreeMap<Label, Expr<X, X>>,
+    ctx: &Context<Label, ()>,
+) -> TokenStream {
+    let (keys, values): (Vec<TokenStream>, Vec<TokenStream>) = m
+        .iter()
+        .map(|(k, v)| (label_to_tokenstream(k), dhall_to_tokenstream(v, ctx)))
+        .unzip();
+    quote! { {
+        let mut m = BTreeMap::new();
+        #( m.insert(#keys, #values); )*
+        m
+    } }
 }
 
-fn option_tks(x: Option<TokenStream>) -> TokenStream {
-    match x {
+fn option_to_tokenstream(
+    e: &Option<Box<Expr<X, X>>>,
+    ctx: &Context<Label, ()>,
+) -> TokenStream {
+    let e = e.as_ref().map(|x| dhall_to_tokenstream_bx(x, ctx));
+    match e {
         Some(x) => quote! { Some(#x) },
         None => quote! { None },
     }
 }
 
-fn vec_tks<T>(x: T) -> TokenStream
-where
-    T: Iterator<Item = TokenStream>,
-{
-    quote! { vec![ #(#x),* ] }
+fn vec_to_tokenstream(
+    e: &Vec<Expr<X, X>>,
+    ctx: &Context<Label, ()>,
+) -> TokenStream {
+    let e = e.iter().map(|x| dhall_to_tokenstream(x, ctx));
+    quote! { vec![ #(#e),* ] }
+}
+
+fn bx(x: TokenStream) -> TokenStream {
+    quote! { bx(#x) }
 }

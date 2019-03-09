@@ -9,8 +9,8 @@ use dhall_core::core;
 use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr::*;
-use dhall_core::core::{app, pi};
 use dhall_core::core::{bx, shift, subst, Expr, Label, V, X};
+use dhall_generator::dhall_expr;
 
 use self::TypeMessage::*;
 
@@ -373,34 +373,24 @@ where
             Ok(ty)
         }
         NaturalLit(_) => Ok(Builtin(Natural)),
-        Builtin(NaturalFold) => Ok(pi(
-            "_",
-            Natural,
-            pi(
-                "natural",
-                Const(Type),
-                pi(
-                    "succ",
-                    pi("_", "natural", "natural"),
-                    pi("zero", "natural", "natural"),
-                ),
-            ),
+        Builtin(NaturalFold) => Ok(dhall_expr!(
+            Natural ->
+            forall (natural: Type) ->
+            forall (succ: natural -> natural) ->
+            forall (zero: natural) ->
+            natural
         )),
-        Builtin(NaturalBuild) => Ok(pi(
-            "_",
-            pi(
-                "natural",
-                Const(Type),
-                pi(
-                    "succ",
-                    pi("_", "natural", "natural"),
-                    pi("zero", "natural", "natural"),
-                ),
-            ),
-            Natural,
+        Builtin(NaturalBuild) => Ok(dhall_expr!(
+            (forall (natural: Type) ->
+                forall (succ: natural -> natural) ->
+                forall (zero: natural) ->
+                natural) ->
+            Natural
         )),
         Builtin(NaturalIsZero) | Builtin(NaturalEven) | Builtin(NaturalOdd) => {
-            Ok(pi("_", Natural, Bool))
+            Ok(dhall_expr!(
+                Natural -> Bool
+            ))
         }
         BinOp(NaturalPlus, ref l, ref r) => {
             op2_type(ctx, e, Natural, CantAdd, l, r)
@@ -443,62 +433,35 @@ where
             }
             Ok(App(bx(Builtin(List)), t))
         }
-        Builtin(ListBuild) => Ok(pi(
-            "a",
-            Const(Type),
-            pi(
-                "_",
-                pi(
-                    "list",
-                    Const(Type),
-                    pi(
-                        "cons",
-                        pi("_", "a", pi("_", "list", "list")),
-                        pi("nil", "list", "list"),
-                    ),
-                ),
-                app(List, "a"),
-            ),
+        Builtin(ListBuild) => Ok(dhall_expr!(
+            forall (a: Type) ->
+            (forall (list: Type) ->
+                forall (cons: a -> list -> list) ->
+                forall (nil: list) ->
+                list) ->
+            List a
         )),
-        Builtin(ListFold) => Ok(pi(
-            "a",
-            Const(Type),
-            pi(
-                "_",
-                app(List, "a"),
-                pi(
-                    "list",
-                    Const(Type),
-                    pi(
-                        "cons",
-                        pi("_", "a", pi("_", "list", "list")),
-                        pi("nil", "list", "list"),
-                    ),
-                ),
-            ),
+        Builtin(ListFold) => Ok(dhall_expr!(
+            forall (a: Type) ->
+            List a ->
+            forall (list: Type) ->
+            forall (cons: a -> list -> list) ->
+            forall (nil: list) ->
+            list
         )),
         Builtin(ListLength) => {
-            Ok(pi("a", Const(Type), pi("_", app(List, "a"), Natural)))
+            Ok(dhall_expr!(forall (a: Type) -> List a -> Natural))
         }
-        Builtin(ListHead) | Builtin(ListLast) => Ok(pi(
-            "a",
-            Const(Type),
-            pi("_", app(List, "a"), app(Optional, "a")),
+        Builtin(ListHead) | Builtin(ListLast) => {
+            Ok(dhall_expr!(forall (a: Type) -> List a -> Optional a))
+        }
+        Builtin(ListIndexed) => Ok(dhall_expr!(
+            forall (a: Type) ->
+            List a ->
+            List { index: Natural, value: a }
         )),
-        Builtin(ListIndexed) => {
-            let mut m: BTreeMap<Label, Expr<_, _>> = BTreeMap::new();
-            m.insert("index".into(), Builtin(Natural));
-            m.insert("value".into(), Var(V("a".into(), 0)));
-            Ok(pi(
-                "a",
-                Const(Type),
-                pi("_", app(List, Var(V("a".into(), 0))), app(List, Record(m))),
-            ))
-        }
-        Builtin(ListReverse) => Ok(pi(
-            "a",
-            Const(Type),
-            pi("_", app(List, "a"), app(List, "a")),
+        Builtin(ListReverse) => Ok(dhall_expr!(
+            forall (a: Type) -> List a -> List a
         )),
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
@@ -535,26 +498,17 @@ where
             }
             Ok(App(bx(Builtin(Optional)), t))
         }
-        Builtin(OptionalFold) => Ok(pi(
-            "a",
-            Const(Type),
-            pi(
-                "_",
-                app(Optional, "a"),
-                pi(
-                    "optional",
-                    Const(Type),
-                    pi(
-                        "just",
-                        pi("_", "a", "optional"),
-                        pi("nothing", "optional", "optional"),
-                    ),
-                ),
-            ),
+        Builtin(OptionalFold) => Ok(dhall_expr!(
+            forall (a: Type) ->
+            Optional a ->
+            forall (optional: Type) ->
+            forall (just: a -> optional) ->
+            forall (nothing: optional) ->
+            optional
         )),
-        Builtin(List) | Builtin(Optional) => {
-            Ok(pi("_", Const(Type), Const(Type)))
-        }
+        Builtin(List) | Builtin(Optional) => Ok(dhall_expr!(
+            Type -> Type
+        )),
         Builtin(Bool) | Builtin(Natural) | Builtin(Integer)
         | Builtin(Double) | Builtin(Text) => Ok(Const(Type)),
         Record(ref kts) => {
