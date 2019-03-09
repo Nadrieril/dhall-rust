@@ -1,10 +1,11 @@
 #![allow(clippy::implicit_hasher, clippy::or_fun_call)]
-use itertools::Itertools;
-use std::collections::HashMap;
-use pretty::{BoxDoc, Doc};
-pub use abnf::abnf::{Alternation, Concatenation, Repetition, Repeat, Range, Element};
 use abnf::abnf::Rule;
-
+pub use abnf::abnf::{
+    Alternation, Concatenation, Element, Range, Repeat, Repetition,
+};
+use itertools::Itertools;
+use pretty::{BoxDoc, Doc};
+use std::collections::HashMap;
 
 trait Pretty {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>>;
@@ -82,9 +83,7 @@ impl Pretty for Range {
             Range(x, y) => {
                 format!("'{}'..'{}'", format_char(x), format_char(y))
             }
-            OneOf(v) => {
-                format!("\"{}\"", v.iter().map(format_char).join(""))
-            }
+            OneOf(v) => format!("\"{}\"", v.iter().map(format_char).join("")),
         })
     }
 }
@@ -139,23 +138,34 @@ impl Pretty for (String, PestyRule) {
     }
 }
 
-
 /// Parse an abnf file. Returns a map of rules.
-pub fn parse_abnf(data: &[u8]) -> Result<HashMap<String, PestyRule>, std::io::Error> {
+pub fn parse_abnf(
+    data: &[u8],
+) -> Result<HashMap<String, PestyRule>, std::io::Error> {
     let make_err =
         |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
-    let rules: Vec<Rule> = abnf::abnf::rulelist_comp(&data).map_err(make_err)?.1;
-    Ok(rules.into_iter().map(|rule| {
-        let name = escape_rulename(&rule.name);
-        (name.clone(), PestyRule {
-            silent: false,
-            elements: rule.elements.clone(),
+    let rules: Vec<Rule> =
+        abnf::abnf::rulelist_comp(&data).map_err(make_err)?.1;
+    Ok(rules
+        .into_iter()
+        .map(|rule| {
+            let name = escape_rulename(&rule.name);
+            (
+                name.clone(),
+                PestyRule {
+                    silent: false,
+                    elements: rule.elements.clone(),
+                },
+            )
         })
-    }).collect())
+        .collect())
 }
 
-pub fn render_rules_to_pest<I>(rules: I) -> Doc<'static, BoxDoc<'static, ()>, ()>
-where I: IntoIterator<Item=(String, PestyRule)>,
+pub fn render_rules_to_pest<I>(
+    rules: I,
+) -> Doc<'static, BoxDoc<'static, ()>, ()>
+where
+    I: IntoIterator<Item = (String, PestyRule)>,
 {
     let pretty_rules = rules.into_iter().map(|x| x.pretty());
     let doc: Doc<_> = Doc::intersperse(pretty_rules, Doc::newline());
