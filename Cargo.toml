@@ -7,7 +7,7 @@ members = [
     "dhall_parser",
 ]
 
-# Prelude tests are too slow when not optimized
-[profile.dev]
-opt-level = 2
+# # Prelude tests are too slow when not optimized
+# [profile.dev]
+# opt-level = 2
 
