@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Constants for a pure type system
 ///
@@ -70,35 +71,36 @@ pub struct Import {
 // The type for labels throughout the AST
 // It owns the data because otherwise lifetimes would make recursive imports impossible
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Label(String);
+pub struct Label(Rc<str>);
 
 impl From<String> for Label {
     fn from(s: String) -> Self {
-        Label(s)
+        let s: &str = &s;
+        Label(s.into())
     }
 }
 
 impl From<&'static str> for Label {
     fn from(s: &'static str) -> Self {
-        Label(s.to_owned())
+        Label(s.into())
     }
 }
 
 impl From<Label> for String {
     fn from(x: Label) -> String {
-        x.0
+        x.0.as_ref().to_owned()
     }
 }
 
 impl Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.0.fmt(f)
+        self.0.as_ref().fmt(f)
     }
 }
 
 impl Label {
     pub fn from_str(s: &str) -> Label {
-        s.to_owned().into()
+        Label(s.into())
     }
 }
 
