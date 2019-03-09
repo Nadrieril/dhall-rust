@@ -65,8 +65,8 @@ fn main() {
         }
     };
 
-    let expr: Expr<String, _, _> =
-        imports::panic_imports(&expr.take_ownership_of_labels());
+    let expr: Expr<Label, _, _> =
+        imports::panic_imports(&expr);
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {

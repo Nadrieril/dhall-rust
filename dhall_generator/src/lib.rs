@@ -11,8 +11,8 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let expr: Box<Expr<_, X, Import>> = parser::parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
-    let expr = expr.take_ownership_of_labels().map_embed(&no_import);
-    let output = dhall_to_tokenstream::<String>(&expr, &Context::new());
+    let expr = expr.map_embed(&no_import);
+    let output = dhall_to_tokenstream::<Label>(&expr, &Context::new());
     output.into()
 }
 

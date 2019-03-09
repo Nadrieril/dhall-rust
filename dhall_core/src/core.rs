@@ -68,6 +68,41 @@ pub struct Import {
     pub hash: Option<()>,
 }
 
+// The type for labels throughout the AST
+// It owns the data because otherwise lifetimes would make recursive imports impossible
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Label(String);
+
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        Label(s)
+    }
+}
+
+impl From<&'static str> for Label {
+    fn from(s: &'static str) -> Self {
+        Label(s.to_owned())
+    }
+}
+
+impl From<Label> for String {
+    fn from(x: Label) -> String {
+        x.0
+    }
+}
+
+impl Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
+}
+
+impl Label {
+    pub fn from_str<'a>(s: &'a str) -> Label {
+        s.to_owned().into()
+    }
+}
+
 /// Label for a bound variable
 ///
 /// The `String` field is the variable's name (i.e. \"`x`\").
@@ -268,7 +303,6 @@ pub trait StringLike:
     + Hash
     + Ord
     + Eq
-    + Default
     + Into<String>
     + From<String>
     + From<&'static str>
@@ -282,7 +316,6 @@ impl<T> StringLike for T where
         + Hash
         + Ord
         + Eq
-        + Default
         + Into<String>
         + From<String>
         + From<&'static str>
@@ -340,6 +373,18 @@ impl<Label: StringLike, S, A> Expr<Label, S, A> {
         self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
     }
 
+    pub fn map_label<L2: StringLike, F>(&self, map_label: &F) -> Expr<L2, S, A>
+    where
+        A: Clone,
+        S: Clone,
+        F: Fn(&Label) -> L2,
+    {
+        let recurse = |e: &Expr<Label, S, A>| -> Expr<L2, S, A> {
+            e.map_label(map_label)
+        };
+        self.map_shallow(recurse, |x| x.clone(), |x| x.clone(), map_label)
+    }
+
     pub fn bool_lit(&self) -> Option<bool> {
         match *self {
             Expr::BoolLit(v) => Some(v),
@@ -362,11 +407,11 @@ impl<Label: StringLike, S, A> Expr<Label, S, A> {
     }
 }
 
-impl<'i, S: Clone, A: Clone> Expr<&'i str, S, A> {
-    pub fn take_ownership_of_labels<L: StringLike + From<String>>(
+impl<S: Clone, A: Clone> Expr<&'static str, S, A> {
+    pub fn take_ownership_of_labels<L: StringLike>(
         &self,
     ) -> Expr<L, S, A> {
-        let recurse = |e: &Expr<&'i str, S, A>| -> Expr<L, S, A> {
+        let recurse = |e: &Expr<&'static str, S, A>| -> Expr<L, S, A> {
             e.take_ownership_of_labels()
         };
         map_shallow(
@@ -787,7 +832,7 @@ where
     S: Clone,
     T: Clone,
     Label1:
-        Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String> + Default,
+        Display + fmt::Debug + Clone + Hash + Ord + Eq + Into<String>,
     Label2: StringLike,
     F1: Fn(&Expr<Label1, S, A>) -> Expr<Label2, T, B>,
     F2: FnOnce(&S) -> T,

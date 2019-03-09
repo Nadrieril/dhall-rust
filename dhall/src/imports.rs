@@ -75,7 +75,7 @@ pub fn load_dhall_file(
     let mut buffer = String::new();
     File::open(f)?.read_to_string(&mut buffer)?;
     let expr = parser::parse_expr(&*buffer)?;
-    let expr = expr.take_ownership_of_labels();
+    let expr = expr.map_label(&|l| String::from(l.clone()));
     let expr = if resolve_imports {
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
         let resolve = |import: &Import| -> Expr<String, X, X> {
