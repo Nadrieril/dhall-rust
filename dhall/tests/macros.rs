@@ -30,6 +30,14 @@ macro_rules! run_spec_test {
         let base_path = concat!("../dhall-lang/tests/", $path);
         run_test(base_path, Feature::Parser, ExpectedResult::Failure);
     };
+    (typecheck_success, $path:expr) => {
+        let base_path = concat!("../dhall-lang/tests/", $path);
+        run_test(base_path, Feature::Typecheck, ExpectedResult::Success);
+    };
+    (typecheck_failure, $path:expr) => {
+        let base_path = concat!("../dhall-lang/tests/", $path);
+        run_test(base_path, Feature::Typecheck, ExpectedResult::Failure);
+    };
 }
 
 #[macro_export]
@@ -66,6 +74,7 @@ use std::path::PathBuf;
 pub enum Feature {
     Parser,
     Normalization,
+    Typecheck,
 }
 
 pub enum ExpectedResult {
@@ -105,6 +114,18 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
                 normalize::<_, X, _>(&expr),
                 normalize::<_, X, _>(&expected)
             );
+        }
+        (Feature::Typecheck, ExpectedResult::Failure) => {
+            let file_path = base_path.to_owned() + ".dhall";
+            let expr = read_dhall_file(&file_path).unwrap();
+            typecheck::type_of(&expr).unwrap_err();
+        }
+        (Feature::Typecheck, ExpectedResult::Success) => {
+            let expr_file_path = base_path.to_owned() + "A.dhall";
+            let expected_file_path = base_path.to_owned() + "B.dhall";
+            let expr = read_dhall_file(&expr_file_path).unwrap();
+            let expected = read_dhall_file(&expected_file_path).unwrap();
+            typecheck::type_of(&Expr::Annot(bx(expr), bx(expected))).unwrap();
         }
         _ => unimplemented!(),
     }
