@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 
-use abnf_to_pest::{abnf_to_pest, PestRuleSettings};
+use abnf_to_pest::render_rules_to_pest;
 
 fn main() -> std::io::Result<()> {
     // TODO: upstream changes to grammar
@@ -20,49 +19,32 @@ fn main() -> std::io::Result<()> {
     file.read_to_end(&mut data)?;
     data.push('\n' as u8);
 
-    let mut rule_settings: HashMap<String, PestRuleSettings> = HashMap::new();
+    let mut rules = abnf_to_pest::parse_abnf(&data)?;
     for line in BufReader::new(File::open(visibility_path)?).lines() {
         let line = line?;
         if line.len() >= 2 && &line[0..2] == "# " {
-            rule_settings.insert(
-                line[2..].into(),
-                PestRuleSettings {
-                    visible: false,
-                    ..Default::default()
-                },
-            );
-        } else {
-            rule_settings.insert(
-                line,
-                PestRuleSettings {
-                    visible: true,
-                    ..Default::default()
-                },
-            );
+            rules.get_mut(&line[2..]).map(|x| x.silent = true);
         }
     }
-    rule_settings.insert(
-        "simple_label".to_owned(),
-        PestRuleSettings {
-            visible: true,
-            replace: Some(
-                "
-              keyword_raw ~ simple_label_next_char+
-            | !keyword_raw ~ simple_label_first_char ~ simple_label_next_char*
-        "
-                .to_owned(),
-            ),
-        },
-    );
+    rules.remove("simple_label");
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
-    writeln!(&mut file, "{}", abnf_to_pest(&data, &rule_settings)?)?;
+    writeln!(&mut file, "{}", render_rules_to_pest(rules).pretty(80))?;
+
+    writeln!(&mut file)?;
+    writeln!(
+        &mut file,
+        "simple_label = _{{
+              keyword_raw ~ simple_label_next_char+
+            | !keyword_raw ~ simple_label_first_char ~ simple_label_next_char*
+    }}"
+    )?;
     writeln!(
         &mut file,
         "keyword_raw = _{{
-        let_raw | in_raw | if_raw | then_raw
-            | else_raw | Infinity_raw | NaN_raw
+            let_raw | in_raw | if_raw | then_raw
+                | else_raw | Infinity_raw | NaN_raw
     }}"
     )?;
     writeln!(
