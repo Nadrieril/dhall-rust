@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use dhall_core::core::*;
-use dhall_generator::dhall;
+use dhall_generator::dhall_expr;
 use std::fmt;
 
 /// Reduce an expression to its normal form, performing beta reduction
@@ -92,13 +92,13 @@ where
                 (App(box Builtin(ListBuild), a0), k) => {
                     let k = bx(k);
                     let a1 = bx(shift(1, &V("a".into(), 0), &a0));
-                    normalize(&dhall!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
+                    normalize(&dhall_expr!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
                 }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
                     let e2: Expr<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
                         let y = bx(y);
                         let ys = bx(ys);
-                        dhall!(cons y ys)
+                        dhall_expr!(cons y ys)
                     });
                     normalize(&e2)
                 }
@@ -134,13 +134,13 @@ where
                 (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
                     let e2: Expr<_, _, _> = xs.into_iter().fold(nothing, |y, _| {
                         let y = bx(y);
-                        dhall!(just y)
+                        dhall_expr!(just y)
                     });
                     normalize(&e2)
                 }
                 (App(box Builtin(OptionalBuild), a0), g) => {
                     let g = bx(g);
-                    normalize(&dhall!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
+                    normalize(&dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)))
                 }
                 (f2, a2) => app(f2, a2),
             },

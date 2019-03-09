@@ -6,7 +6,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 #[proc_macro]
-pub fn dhall(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
     let expr: Box<Expr<_, X, Import>> = parser::parse_expr(&input_str).unwrap();
     let no_import =
