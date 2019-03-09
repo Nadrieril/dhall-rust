@@ -8,9 +8,7 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub fn panic_imports<S: Clone>(
-    expr: &Expr<Label, S, Import>,
-) -> Expr<Label, S, X> {
+pub fn panic_imports<S: Clone>(expr: &Expr<S, Import>) -> Expr<S, X> {
     let no_import = |i: &Import| -> X { panic!("ahhh import: {:?}", i) };
     expr.map_embed(&no_import)
 }
@@ -24,7 +22,7 @@ pub enum ImportRoot {
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
-) -> Result<Expr<Label, X, X>, DhallError> {
+) -> Result<Expr<X, X>, DhallError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
     use dhall_core::ImportLocation::*;
@@ -71,13 +69,13 @@ impl fmt::Display for DhallError {
 pub fn load_dhall_file(
     f: &Path,
     resolve_imports: bool,
-) -> Result<Expr<Label, X, X>, DhallError> {
+) -> Result<Expr<X, X>, DhallError> {
     let mut buffer = String::new();
     File::open(f)?.read_to_string(&mut buffer)?;
     let expr = parser::parse_expr(&*buffer)?;
     let expr = if resolve_imports {
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        let resolve = |import: &Import| -> Expr<Label, X, X> {
+        let resolve = |import: &Import| -> Expr<X, X> {
             resolve_import(import, &root).unwrap()
         };
         let expr = expr.map_embed(&resolve).squash_embed();

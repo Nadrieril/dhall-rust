@@ -73,9 +73,7 @@ pub enum ExpectedResult {
     Failure,
 }
 
-pub fn read_dhall_file<'i>(
-    file_path: &str,
-) -> Result<Expr<Label, X, X>, DhallError> {
+pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, DhallError> {
     load_dhall_file(&PathBuf::from(file_path), true)
 }
 

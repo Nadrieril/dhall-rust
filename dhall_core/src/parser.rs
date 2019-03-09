@@ -8,7 +8,7 @@ use dhall_parser::{DhallParser, Rule};
 use crate::core;
 use crate::core::*;
 
-pub type ParsedExpr = Expr<Label, X, Import>;
+pub type ParsedExpr = Expr<X, Import>;
 pub type BoxExpr = Box<ParsedExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;

@@ -65,7 +65,7 @@ fn main() {
         }
     };
 
-    let expr: Expr<Label, _, _> = imports::panic_imports(&expr);
+    let expr: Expr<_, _> = imports::panic_imports(&expr);
 
     let type_expr = match typecheck::type_of(&expr) {
         Err(e) => {

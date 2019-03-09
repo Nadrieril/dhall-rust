@@ -8,7 +8,7 @@ use quote::quote;
 #[proc_macro]
 pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: Box<Expr<_, X, Import>> = parser::parse_expr(&input_str).unwrap();
+    let expr: Box<Expr<X, Import>> = parser::parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.map_embed(&no_import);
@@ -19,7 +19,7 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 // Returns an expression of type Expr<_, _>. Expects input variables
 // to be of type Box<Expr<_, _>> (future-proof for structural sharing).
 fn dhall_to_tokenstream(
-    expr: &Expr<Label, X, X>,
+    expr: &Expr<X, X>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
@@ -75,7 +75,7 @@ fn dhall_to_tokenstream(
 
 // Returns an expression of type Box<Expr<_, _>>
 fn dhall_to_tokenstream_bx(
-    expr: &Expr<Label, X, X>,
+    expr: &Expr<X, X>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
@@ -93,7 +93,7 @@ fn dhall_to_tokenstream_bx(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: Box<Expr<_, _, _>> = #v.clone();
+                        let x: Box<Expr<_, _>> = #v.clone();
                         x
                     } }
                 }

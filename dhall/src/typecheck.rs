@@ -29,8 +29,8 @@ fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
     }
 }
 
-fn match_vars<L: Clone + Eq>(vl: &V<L>, vr: &V<L>, ctx: &[(L, L)]) -> bool {
-    let xxs: Option<(&(L, L), &[(L, L)])> = ctx.split_first();
+fn match_vars(vl: &V, vr: &V, ctx: &[(Label, Label)]) -> bool {
+    let xxs: Option<(&(Label, Label), &[(Label, Label)])> = ctx.split_first();
     match (vl, vr, xxs) {
         (V(xL, nL), V(xR, nR), None) => xL == xR && nL == nR,
         (V(xL, 0), V(xR, 0), Some(((xL2, xR2), _)))
@@ -46,15 +46,15 @@ fn match_vars<L: Clone + Eq>(vl: &V<L>, vr: &V<L>, ctx: &[(L, L)]) -> bool {
     }
 }
 
-fn prop_equal<S, T>(eL0: &Expr<Label, S, X>, eR0: &Expr<Label, T, X>) -> bool
+fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
 where
     S: Clone + ::std::fmt::Debug,
     T: Clone + ::std::fmt::Debug,
 {
     fn go<S, T>(
         ctx: &mut Vec<(Label, Label)>,
-        el: &Expr<Label, S, X>,
-        er: &Expr<Label, T, X>,
+        el: &Expr<S, X>,
+        er: &Expr<T, X>,
     ) -> bool
     where
         S: Clone + ::std::fmt::Debug,
@@ -144,16 +144,16 @@ where
 }
 
 fn op2_type<S, EF>(
-    ctx: &Context<Label, Expr<Label, S, X>>,
-    e: &Expr<Label, S, X>,
+    ctx: &Context<Label, Expr<S, X>>,
+    e: &Expr<S, X>,
     t: core::Builtin,
     ef: EF,
-    l: &Expr<Label, S, X>,
-    r: &Expr<Label, S, X>,
-) -> Result<Expr<Label, S, X>, TypeError<S>>
+    l: &Expr<S, X>,
+    r: &Expr<S, X>,
+) -> Result<Expr<S, X>, TypeError<S>>
 where
     S: Clone + ::std::fmt::Debug,
-    EF: FnOnce(Expr<Label, S, X>, Expr<Label, S, X>) -> TypeMessage<S>,
+    EF: FnOnce(Expr<S, X>, Expr<S, X>) -> TypeMessage<S>,
 {
     let tl = normalize(&type_with(ctx, l)?);
     match tl {
@@ -177,9 +177,9 @@ where
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
 pub fn type_with<S>(
-    ctx: &Context<Label, Expr<Label, S, X>>,
-    e: &Expr<Label, S, X>,
-) -> Result<Expr<Label, S, X>, TypeError<S>>
+    ctx: &Context<Label, Expr<S, X>>,
+    e: &Expr<S, X>,
+) -> Result<Expr<S, X>, TypeError<S>>
 where
     S: Clone + ::std::fmt::Debug,
 {
@@ -416,7 +416,7 @@ where
         }
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
-            let t: Box<Expr<_, _, _>> = match t {
+            let t: Box<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let (_, first_x) = iter.next().unwrap();
@@ -486,7 +486,7 @@ where
             pi("_", app(List, "a"), app(Optional, "a")),
         )),
         Builtin(ListIndexed) => {
-            let mut m: BTreeMap<Label, Expr<Label, _, _>> = BTreeMap::new();
+            let mut m: BTreeMap<Label, Expr<_, _>> = BTreeMap::new();
             m.insert("index".into(), Builtin(Natural));
             m.insert("value".into(), Var(V("a".into(), 0)));
             Ok(pi(
@@ -502,7 +502,7 @@ where
         )),
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
-            let t: Box<Expr<_, _, _>> = match t {
+            let t: Box<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let first_x = iter.next().unwrap();
@@ -707,8 +707,8 @@ where
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
 pub fn type_of<S: Clone + ::std::fmt::Debug>(
-    e: &Expr<Label, S, X>,
-) -> Result<Expr<Label, S, X>, TypeError<S>> {
+    e: &Expr<S, X>,
+) -> Result<Expr<S, X>, TypeError<S>> {
     let ctx = Context::new();
     type_with(&ctx, e) //.map(|e| e.into_owned())
 }
@@ -717,83 +717,59 @@ pub fn type_of<S: Clone + ::std::fmt::Debug>(
 #[derive(Debug)]
 pub enum TypeMessage<S> {
     UnboundVariable,
-    InvalidInputType(Expr<Label, S, X>),
-    InvalidOutputType(Expr<Label, S, X>),
-    NotAFunction(Expr<Label, S, X>, Expr<Label, S, X>),
-    TypeMismatch(
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-    ),
-    AnnotMismatch(Expr<Label, S, X>, Expr<Label, S, X>, Expr<Label, S, X>),
+    InvalidInputType(Expr<S, X>),
+    InvalidOutputType(Expr<S, X>),
+    NotAFunction(Expr<S, X>, Expr<S, X>),
+    TypeMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    AnnotMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>),
     Untyped,
-    InvalidListElement(
-        usize,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-    ),
-    InvalidListType(Expr<Label, S, X>),
-    InvalidOptionalElement(
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-    ),
+    InvalidListElement(usize, Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    InvalidListType(Expr<S, X>),
+    InvalidOptionalElement(Expr<S, X>, Expr<S, X>, Expr<S, X>),
     InvalidOptionalLiteral(usize),
-    InvalidOptionalType(Expr<Label, S, X>),
-    InvalidPredicate(Expr<Label, S, X>, Expr<Label, S, X>),
-    IfBranchMismatch(
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-    ),
-    IfBranchMustBeTerm(
-        bool,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-        Expr<Label, S, X>,
-    ),
-    InvalidField(Label, Expr<Label, S, X>),
-    InvalidFieldType(Label, Expr<Label, S, X>),
-    InvalidAlternative(Label, Expr<Label, S, X>),
-    InvalidAlternativeType(Label, Expr<Label, S, X>),
+    InvalidOptionalType(Expr<S, X>),
+    InvalidPredicate(Expr<S, X>, Expr<S, X>),
+    IfBranchMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    IfBranchMustBeTerm(bool, Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    InvalidField(Label, Expr<S, X>),
+    InvalidFieldType(Label, Expr<S, X>),
+    InvalidAlternative(Label, Expr<S, X>),
+    InvalidAlternativeType(Label, Expr<S, X>),
     DuplicateAlternative(Label),
-    MustCombineARecord(Expr<Label, S, X>, Expr<Label, S, X>),
+    MustCombineARecord(Expr<S, X>, Expr<S, X>),
     FieldCollision(Label),
-    MustMergeARecord(Expr<Label, S, X>, Expr<Label, S, X>),
-    MustMergeUnion(Expr<Label, S, X>, Expr<Label, S, X>),
+    MustMergeARecord(Expr<S, X>, Expr<S, X>),
+    MustMergeUnion(Expr<S, X>, Expr<S, X>),
     UnusedHandler(HashSet<Label>),
     MissingHandler(HashSet<Label>),
-    HandlerInputTypeMismatch(Label, Expr<Label, S, X>, Expr<Label, S, X>),
-    HandlerOutputTypeMismatch(Label, Expr<Label, S, X>, Expr<Label, S, X>),
-    HandlerNotAFunction(Label, Expr<Label, S, X>),
-    NotARecord(Label, Expr<Label, S, X>, Expr<Label, S, X>),
-    MissingField(Label, Expr<Label, S, X>),
-    CantAnd(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantOr(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantEQ(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantNE(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantTextAppend(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantAdd(Expr<Label, S, X>, Expr<Label, S, X>),
-    CantMultiply(Expr<Label, S, X>, Expr<Label, S, X>),
-    NoDependentLet(Expr<Label, S, X>, Expr<Label, S, X>),
-    NoDependentTypes(Expr<Label, S, X>, Expr<Label, S, X>),
+    HandlerInputTypeMismatch(Label, Expr<S, X>, Expr<S, X>),
+    HandlerOutputTypeMismatch(Label, Expr<S, X>, Expr<S, X>),
+    HandlerNotAFunction(Label, Expr<S, X>),
+    NotARecord(Label, Expr<S, X>, Expr<S, X>),
+    MissingField(Label, Expr<S, X>),
+    CantAnd(Expr<S, X>, Expr<S, X>),
+    CantOr(Expr<S, X>, Expr<S, X>),
+    CantEQ(Expr<S, X>, Expr<S, X>),
+    CantNE(Expr<S, X>, Expr<S, X>),
+    CantTextAppend(Expr<S, X>, Expr<S, X>),
+    CantAdd(Expr<S, X>, Expr<S, X>),
+    CantMultiply(Expr<S, X>, Expr<S, X>),
+    NoDependentLet(Expr<S, X>, Expr<S, X>),
+    NoDependentTypes(Expr<S, X>, Expr<S, X>),
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<S> {
-    pub context: Context<Label, Expr<Label, S, X>>,
-    pub current: Expr<Label, S, X>,
+    pub context: Context<Label, Expr<S, X>>,
+    pub current: Expr<S, X>,
     pub type_message: TypeMessage<S>,
 }
 
 impl<S: Clone> TypeError<S> {
     pub fn new(
-        context: &Context<Label, Expr<Label, S, X>>,
-        current: &Expr<Label, S, X>,
+        context: &Context<Label, Expr<S, X>>,
+        current: &Expr<S, X>,
         type_message: TypeMessage<S>,
     ) -> Self {
         TypeError {

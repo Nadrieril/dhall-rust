@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
-use std::hash::Hash;
 use std::path::PathBuf;
 
 /// Constants for a pure type system
@@ -139,8 +138,8 @@ impl Label {
 /// Zero indices are omitted when pretty-printing `Var`s and non-zero indices
 /// appear as a numeric suffix.
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct V<Label>(pub Label, pub usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct V(pub Label, pub usize);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinOp {
@@ -172,52 +171,40 @@ pub enum BinOp {
 
 /// Syntax tree for expressions
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<Label, Note, Embed> {
+pub enum Expr<Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
     ///  `Var (V x n)                              ~  x@n`
-    Var(V<Label>),
+    Var(V),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(
-        Label,
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-    ),
+    Lam(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(
-        Label,
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-    ),
+    Pi(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<Label, Note, Embed>>, Box<Expr<Label, Note, Embed>>),
+    App(Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
         Label,
-        Option<Box<Expr<Label, Note, Embed>>>,
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
+        Option<Box<Expr<Note, Embed>>>,
+        Box<Expr<Note, Embed>>,
+        Box<Expr<Note, Embed>>,
     ),
     ///  `Annot x t                                ~  x : t`
-    Annot(Box<Expr<Label, Note, Embed>>, Box<Expr<Label, Note, Embed>>),
+    Annot(Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
-    BinOp(
-        BinOp,
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-    ),
+    BinOp(BinOp, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
+        Box<Expr<Note, Embed>>,
+        Box<Expr<Note, Embed>>,
+        Box<Expr<Note, Embed>>,
     ),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
@@ -228,38 +215,32 @@ pub enum Expr<Label, Note, Embed> {
     ///  `TextLit t                                ~  t`
     TextLit(Builder),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(
-        Option<Box<Expr<Label, Note, Embed>>>,
-        Vec<Expr<Label, Note, Embed>>,
-    ),
+    ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(
-        Option<Box<Expr<Label, Note, Embed>>>,
-        Vec<Expr<Label, Note, Embed>>,
-    ),
+    OptionalLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<Label, Expr<Label, Note, Embed>>),
+    Record(BTreeMap<Label, Expr<Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, Expr<Label, Note, Embed>>),
+    RecordLit(BTreeMap<Label, Expr<Note, Embed>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<Label, Expr<Label, Note, Embed>>),
+    Union(BTreeMap<Label, Expr<Note, Embed>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
         Label,
-        Box<Expr<Label, Note, Embed>>,
-        BTreeMap<Label, Expr<Label, Note, Embed>>,
+        Box<Expr<Note, Embed>>,
+        BTreeMap<Label, Expr<Note, Embed>>,
     ),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(
-        Box<Expr<Label, Note, Embed>>,
-        Box<Expr<Label, Note, Embed>>,
-        Option<Box<Expr<Label, Note, Embed>>>,
+        Box<Expr<Note, Embed>>,
+        Box<Expr<Note, Embed>>,
+        Option<Box<Expr<Note, Embed>>>,
     ),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr<Label, Note, Embed>>, Label),
+    Field(Box<Expr<Note, Embed>>, Label),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
-    Note(Note, Box<Expr<Label, Note, Embed>>),
+    Note(Note, Box<Expr<Note, Embed>>),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }
@@ -296,49 +277,43 @@ pub enum Builtin {
     TextShow,
 }
 
-impl From<Label> for V<Label> {
+impl From<Label> for V {
     fn from(s: Label) -> Self {
         V(s, 0)
     }
 }
 
-impl From<&'static str> for V<Label> {
+impl From<&'static str> for V {
     fn from(s: &'static str) -> Self {
         V(s.into(), 0)
     }
 }
 
-impl<'i, S, A> From<&'i str> for Expr<&'i str, S, A> {
-    fn from(s: &'i str) -> Self {
-        Expr::Var(V(s, 0))
-    }
-}
-
-impl<S, A> From<&'static str> for Expr<Label, S, A> {
+impl<S, A> From<&'static str> for Expr<S, A> {
     fn from(s: &'static str) -> Self {
         Expr::Var(V(s.into(), 0))
     }
 }
 
-impl<Label, S, A> From<Builtin> for Expr<Label, S, A> {
+impl<S, A> From<Builtin> for Expr<S, A> {
     fn from(t: Builtin) -> Self {
         Expr::Builtin(t)
     }
 }
 
-impl<S, A> Expr<Label, S, A> {
+impl<S, A> Expr<S, A> {
     pub fn map_shallow<T, B, F1, F2, F3, F4>(
         &self,
         map_expr: F1,
         map_note: F2,
         map_embed: F3,
         map_label: F4,
-    ) -> Expr<Label, T, B>
+    ) -> Expr<T, B>
     where
         A: Clone,
         T: Clone,
         S: Clone,
-        F1: Fn(&Self) -> Expr<Label, T, B>,
+        F1: Fn(&Self) -> Expr<T, B>,
         F2: FnOnce(&S) -> T,
         F3: FnOnce(&A) -> B,
         F4: Fn(&Label) -> Label,
@@ -346,15 +321,13 @@ impl<S, A> Expr<Label, S, A> {
         map_shallow(self, map_expr, map_note, map_embed, map_label)
     }
 
-    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<Label, S, B>
+    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<S, B>
     where
         A: Clone,
         S: Clone,
         F: Fn(&A) -> B,
     {
-        let recurse = |e: &Expr<Label, S, A>| -> Expr<Label, S, B> {
-            e.map_embed(map_embed)
-        };
+        let recurse = |e: &Expr<S, A>| -> Expr<S, B> { e.map_embed(map_embed) };
         self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
     }
 
@@ -390,8 +363,8 @@ impl<S, A> Expr<Label, S, A> {
     }
 }
 
-impl<S: Clone, A: Clone> Expr<Label, S, Expr<Label, S, A>> {
-    pub fn squash_embed(&self) -> Expr<Label, S, A> {
+impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
+    pub fn squash_embed(&self) -> Expr<S, A> {
         match self {
             Expr::Embed(e) => e.clone(),
             e => e.map_shallow(
@@ -414,7 +387,7 @@ impl<S: Clone, A: Clone> Expr<Label, S, Expr<Label, S, A>> {
 //  you add a new constructor to the syntax tree without adding a matching
 //  case the corresponding builder.
 
-impl<Label: Display, S, A: Display> Display for Expr<Label, S, A> {
+impl<S, A: Display> Display for Expr<S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         // buildExprA
         use crate::Expr::*;
@@ -430,7 +403,7 @@ impl<Label: Display, S, A: Display> Display for Expr<Label, S, A> {
     }
 }
 
-impl<Label: Display, S, A: Display> Expr<Label, S, A> {
+impl<S, A: Display> Expr<S, A> {
     fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::Expr::*;
         match self {
@@ -726,7 +699,7 @@ impl Builtin {
     }
 }
 
-impl<Label: Display> Display for V<Label> {
+impl Display for V {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let V(ref x, ref n) = *self;
         x.fmt(f)?;
@@ -737,19 +710,19 @@ impl<Label: Display> Display for V<Label> {
     }
 }
 
-pub fn pi<S, A, Name, Et, Ev>(var: Name, ty: Et, value: Ev) -> Expr<Label, S, A>
+pub fn pi<S, A, Name, Et, Ev>(var: Name, ty: Et, value: Ev) -> Expr<S, A>
 where
     Name: Into<Label>,
-    Et: Into<Expr<Label, S, A>>,
-    Ev: Into<Expr<Label, S, A>>,
+    Et: Into<Expr<S, A>>,
+    Ev: Into<Expr<S, A>>,
 {
     Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
-pub fn app<Label, S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr<Label, S, A>
+pub fn app<S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr<S, A>
 where
-    Ef: Into<Expr<Label, S, A>>,
-    Ex: Into<Expr<Label, S, A>>,
+    Ef: Into<Expr<S, A>>,
+    Ex: Into<Expr<S, A>>,
 {
     Expr::App(bx(f.into()), bx(x.into()))
 }
@@ -783,24 +756,23 @@ fn add_ui(u: usize, i: isize) -> usize {
 }
 
 pub fn map_shallow<S, T, A, B, F1, F2, F3, F4>(
-    e: &Expr<Label, S, A>,
+    e: &Expr<S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
-) -> Expr<Label, T, B>
+) -> Expr<T, B>
 where
     A: Clone,
     S: Clone,
     T: Clone,
-    F1: Fn(&Expr<Label, S, A>) -> Expr<Label, T, B>,
+    F1: Fn(&Expr<S, A>) -> Expr<T, B>,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
     F4: Fn(&Label) -> Label,
 {
     use crate::Expr::*;
-    let bxmap =
-        |x: &Expr<Label, S, A>| -> Box<Expr<Label, T, B>> { bx(map(x)) };
+    let bxmap = |x: &Expr<S, A>| -> Box<Expr<T, B>> { bx(map(x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -959,11 +931,7 @@ where
 /// descend into a lambda or let expression that binds a variable of the same
 /// name in order to avoid shifting the bound variables by mistake.
 ///
-pub fn shift<S, T, A: Clone>(
-    d: isize,
-    v: &V<Label>,
-    e: &Expr<Label, S, A>,
-) -> Expr<Label, T, A> {
+pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
     use crate::Expr::*;
     let V(x, n) = v;
     match e {
@@ -1039,15 +1007,12 @@ pub fn shift<S, T, A: Clone>(
 fn shift_op2<S, T, A, F>(
     f: F,
     d: isize,
-    v: &V<Label>,
-    a: &Expr<Label, S, A>,
-    b: &Expr<Label, S, A>,
-) -> Expr<Label, T, A>
+    v: &V,
+    a: &Expr<S, A>,
+    b: &Expr<S, A>,
+) -> Expr<T, A>
 where
-    F: FnOnce(
-        Box<Expr<Label, T, A>>,
-        Box<Expr<Label, T, A>>,
-    ) -> Expr<Label, T, A>,
+    F: FnOnce(Box<Expr<T, A>>, Box<Expr<T, A>>) -> Expr<T, A>,
     A: Clone,
 {
     map_op2(f, |x| bx(shift(d, v, x)), a, b)
@@ -1059,11 +1024,7 @@ where
 /// subst x C B  ~  B[x := C]
 /// ```
 ///
-pub fn subst<S, T, A>(
-    v: &V<Label>,
-    e: &Expr<Label, S, A>,
-    b: &Expr<Label, T, A>,
-) -> Expr<Label, S, A>
+pub fn subst<S, T, A>(v: &V, e: &Expr<S, A>, b: &Expr<T, A>) -> Expr<S, A>
 where
     S: Clone,
     A: Clone,
@@ -1150,16 +1111,13 @@ where
 
 fn subst_op2<S, T, A, F>(
     f: F,
-    v: &V<Label>,
-    e: &Expr<Label, S, A>,
-    a: &Expr<Label, T, A>,
-    b: &Expr<Label, T, A>,
-) -> Expr<Label, S, A>
+    v: &V,
+    e: &Expr<S, A>,
+    a: &Expr<T, A>,
+    b: &Expr<T, A>,
+) -> Expr<S, A>
 where
-    F: FnOnce(
-        Box<Expr<Label, S, A>>,
-        Box<Expr<Label, S, A>>,
-    ) -> Expr<Label, S, A>,
+    F: FnOnce(Box<Expr<S, A>>, Box<Expr<S, A>>) -> Expr<S, A>,
     S: Clone,
     A: Clone,
 {

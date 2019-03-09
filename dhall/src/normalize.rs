@@ -12,7 +12,7 @@ use std::fmt;
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<S, T, A>(e: &Expr<Label, S, A>) -> Expr<Label, T, A>
+pub fn normalize<S, T, A>(e: &Expr<S, A>) -> Expr<T, A>
 where
     S: Clone + fmt::Debug,
     T: Clone + fmt::Debug,
@@ -93,7 +93,7 @@ where
                     normalize(&dhall_expr!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)))
                 }
                 (App(box App(box App(box App(box Builtin(ListFold), _), box ListLit(_, xs)), _), cons), nil) => {
-                    let e2: Expr<_, _, _> = xs.into_iter().rev().fold(nil, |y, ys| {
+                    let e2: Expr<_, _> = xs.into_iter().rev().fold(nil, |y, ys| {
                         let y = bx(y);
                         let ys = bx(ys);
                         dhall_expr!(cons y ys)
@@ -130,7 +130,7 @@ where
                               ]
             */
                 (App(box App(box App(box App(box Builtin(OptionalFold), _), box OptionalLit(_, xs)), _), just), nothing) => {
-                    let e2: Expr<_, _, _> = xs.into_iter().fold(nothing, |y, _| {
+                    let e2: Expr<_, _> = xs.into_iter().fold(nothing, |y, _| {
                         let y = bx(y);
                         dhall_expr!(just y)
                     });
