@@ -816,68 +816,68 @@ pub fn parse_expr<'i>(s: &'i str) -> ParseResult<BoxExpr<'i>> {
     // Ok(bx(Expr::BoolLit(false)))
 }
 
-#[test]
-fn test_parse() {
-    use crate::core::BinOp::*;
-    use crate::core::Expr::*;
-    // let expr = r#"{ x = "foo", y = 4 }.x"#;
-    // let expr = r#"(1 + 2) * 3"#;
-    let expr = r#"if True then 1 + 3 * 5 else 2"#;
-    println!("{:?}", parse_expr(expr));
-    use std::thread;
-    // I don't understand why it stack overflows even on tiny expressions...
-    thread::Builder::new()
-        .stack_size(3 * 1024 * 1024)
-        .spawn(move || match parse_expr(expr) {
-            Err(e) => {
-                println!("{:?}", e);
-                println!("{}", e);
-            }
-            ok => println!("{:?}", ok),
-        })
-        .unwrap()
-        .join()
-        .unwrap();
-    // assert_eq!(parse_expr(expr).unwrap(), parse_expr(expr).unwrap());
-    // assert!(false);
+// #[test]
+// fn test_parse() {
+//     use crate::core::BinOp::*;
+//     use crate::core::Expr::*;
+//     // let expr = r#"{ x = "foo", y = 4 }.x"#;
+//     // let expr = r#"(1 + 2) * 3"#;
+//     let expr = r#"if True then 1 + 3 * 5 else 2"#;
+//     println!("{:?}", parse_expr(expr));
+//     use std::thread;
+//     // I don't understand why it stack overflows even on tiny expressions...
+//     thread::Builder::new()
+//         .stack_size(3 * 1024 * 1024)
+//         .spawn(move || match parse_expr(expr) {
+//             Err(e) => {
+//                 println!("{:?}", e);
+//                 println!("{}", e);
+//             }
+//             ok => println!("{:?}", ok),
+//         })
+//         .unwrap()
+//         .join()
+//         .unwrap();
+//     // assert_eq!(parse_expr(expr).unwrap(), parse_expr(expr).unwrap());
+//     // assert!(false);
 
-    println!("test {:?}", parse_expr("3 + 5 * 10"));
-    assert!(parse_expr("22").is_ok());
-    assert!(parse_expr("(22)").is_ok());
-    assert_eq!(
-        parse_expr("3 + 5 * 10").ok(),
-        Some(Box::new(BinOp(
-            NaturalPlus,
-            Box::new(NaturalLit(3)),
-            Box::new(BinOp(
-                NaturalTimes,
-                Box::new(NaturalLit(5)),
-                Box::new(NaturalLit(10))
-            ))
-        )))
-    );
-    // The original parser is apparently right-associative
-    assert_eq!(
-        parse_expr("2 * 3 * 4").ok(),
-        Some(Box::new(BinOp(
-            NaturalTimes,
-            Box::new(NaturalLit(2)),
-            Box::new(BinOp(
-                NaturalTimes,
-                Box::new(NaturalLit(3)),
-                Box::new(NaturalLit(4))
-            ))
-        )))
-    );
-    assert!(parse_expr("((((22))))").is_ok());
-    assert!(parse_expr("((22)").is_err());
-    println!("{:?}", parse_expr("\\(b : Bool) -> b == False"));
-    assert!(parse_expr("\\(b : Bool) -> b == False").is_ok());
-    println!("{:?}", parse_expr("foo.bar"));
-    assert!(parse_expr("foo.bar").is_ok());
-    assert!(parse_expr("[] : List Bool").is_ok());
+//     println!("test {:?}", parse_expr("3 + 5 * 10"));
+//     assert!(parse_expr("22").is_ok());
+//     assert!(parse_expr("(22)").is_ok());
+//     assert_eq!(
+//         parse_expr("3 + 5 * 10").ok(),
+//         Some(Box::new(BinOp(
+//             NaturalPlus,
+//             Box::new(NaturalLit(3)),
+//             Box::new(BinOp(
+//                 NaturalTimes,
+//                 Box::new(NaturalLit(5)),
+//                 Box::new(NaturalLit(10))
+//             ))
+//         )))
+//     );
+//     // The original parser is apparently right-associative
+//     assert_eq!(
+//         parse_expr("2 * 3 * 4").ok(),
+//         Some(Box::new(BinOp(
+//             NaturalTimes,
+//             Box::new(NaturalLit(2)),
+//             Box::new(BinOp(
+//                 NaturalTimes,
+//                 Box::new(NaturalLit(3)),
+//                 Box::new(NaturalLit(4))
+//             ))
+//         )))
+//     );
+//     assert!(parse_expr("((((22))))").is_ok());
+//     assert!(parse_expr("((22)").is_err());
+//     println!("{:?}", parse_expr("\\(b : Bool) -> b == False"));
+//     assert!(parse_expr("\\(b : Bool) -> b == False").is_ok());
+//     println!("{:?}", parse_expr("foo.bar"));
+//     assert!(parse_expr("foo.bar").is_ok());
+//     assert!(parse_expr("[] : List Bool").is_ok());
 
-    // println!("{:?}", parse_expr("< Left = True | Right : Natural >"));
-    // println!("{:?}", parse_expr(r#""bl${42}ah""#));
-    // assert!(parse_expr("< Left = True | Right : Natural >").is_ok());
-}
+//     // println!("{:?}", parse_expr("< Left = True | Right : Natural >"));
+//     // println!("{:?}", parse_expr(r#""bl${42}ah""#));
+//     // assert!(parse_expr("< Left = True | Right : Natural >").is_ok());
+// }

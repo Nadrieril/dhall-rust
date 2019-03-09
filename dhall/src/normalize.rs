@@ -186,7 +186,7 @@ where
                     let ys = ys.into_iter();
                     ListLit(t, xs.chain(ys).collect())
                 }
-                Merge(_x, _y, _t) => unimplemented!(),
+                // Merge(_x, _y, _t) => unimplemented!(),
                 Field(box RecordLit(kvs), x) => match kvs.get(&x) {
                     Some(r) => r.clone(),
                     None => Field(bx(RecordLit(kvs)), x),

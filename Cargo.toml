@@ -1,7 +1,13 @@
-[workspace]
+cargo-features = ["profile-overrides"]
 
+[workspace]
 members = [
     "abnf_to_pest",
     "dhall",
     "dhall_parser",
 ]
+
+# Prelude tests are too slow when not optimized
+[profile.dev]
+opt-level = 2
+
