@@ -35,9 +35,9 @@ fn resolve_import(
         Local(prefix, path) => {
             let path = match prefix {
                 Parent => cwd.parent().unwrap().join(path),
-                _ => unimplemented!(),
+                _ => unimplemented!("{:?}", import),
             };
-            load_dhall_file(&path, false)
+            load_dhall_file(&path, true)
         }
     }
 }
