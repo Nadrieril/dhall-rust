@@ -757,6 +757,7 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
+/// Map over the immediate children of the passed Expr
 pub fn map_shallow<S, T, A, B, F1, F2, F3, F4>(
     e: &Expr<S, A>,
     map: F1,
