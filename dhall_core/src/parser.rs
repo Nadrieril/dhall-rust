@@ -650,22 +650,69 @@ rule!(non_empty_optional<BoxExpr>;
     }
 );
 
+
+// List of rules that can be shortcutted as implemented in binop!()
+fn can_be_shortcutted(rule: Rule) -> bool {
+    use Rule::*;
+    match rule {
+        import_alt_expression |
+            or_expression |
+            plus_expression |
+            text_append_expression |
+            list_append_expression |
+            and_expression |
+            combine_expression |
+            prefer_expression |
+            combine_types_expression |
+            times_expression |
+            equal_expression |
+            not_equal_expression |
+            application_expression |
+            selector_expression_raw |
+            annotated_expression => true,
+        _ => false,
+    }
+}
+
 macro_rules! binop {
     ($rule:ident, $op:ident) => {
         rule!($rule<BoxExpr>;
-            children!(first: expression, rest*: expression) => {
-                rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
+            raw_pair!(pair) => {
+                // This all could be a trivial fold, but to avoid stack explosion
+                // we try to cut down on the recursion level here, by consuming
+                // chains of blah_expression > ... > blih_expression in one go.
+                let mut pair = pair;
+                let mut pairs = pair.into_inner();
+                let first = pairs.next().unwrap();
+                let rest: Vec<_> = pairs.map(expression).collect::<Result<_, _>>()?;
+                if !rest.is_empty() {
+                    // If there is more than one subexpression, handle it normally
+                    let first = expression(first)?;
+                    rest.into_iter().fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
+                } else {
+                    // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
+                    // println!("short-cutting {}", debug_pair(pair.clone()));
+                    pair = first;
+                    while can_be_shortcutted(pair.as_rule()) {
+                        let mut pairs = pair.clone().into_inner();
+                        let first = pairs.next().unwrap();
+                        let rest: Vec<_> = pairs.collect();
+                        if !rest.is_empty() {
+                            break;
+                        }
+                        pair = first;
+                    }
+                    // println!("short-cutted {}", debug_pair(pair.clone()));
+                    // println!();
+                    expression(pair)?
+                }
             }
+            // children!(first: expression, rest*: expression) => {
+            //     rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
+            // }
         );
     };
 }
-
-rule!(annotated_expression<BoxExpr>;
-    children!(e: expression, annot: expression) => {
-        bx(Expr::Annot(e, annot))
-    },
-    children!(e: expression) => e,
-);
 
 binop!(import_alt_expression, ImportAlt);
 binop!(or_expression, BoolOr);
@@ -679,6 +726,13 @@ binop!(combine_types_expression, CombineTypes);
 binop!(times_expression, NaturalTimes);
 binop!(equal_expression, BoolEQ);
 binop!(not_equal_expression, BoolNE);
+
+rule!(annotated_expression<BoxExpr>;
+    children!(e: expression, annot: expression) => {
+        bx(Expr::Annot(e, annot))
+    },
+    children!(e: expression) => e,
+);
 
 rule!(application_expression<BoxExpr>;
     children!(first: expression, rest*: expression) => {
@@ -820,72 +874,23 @@ rule!(final_expression<BoxExpr>;
 pub fn parse_expr(s: &str) -> ParseResult<BoxExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     // Match the only item in the pairs iterator
+    // println!("{}", debug_pair(pairs.clone().next().unwrap()));
     match_iter!(@panic; pairs; (p) => expression(p))
     // Ok(bx(Expr::BoolLit(false)))
 }
 
-// #[test]
-// fn test_parse() {
-//     use crate::core::BinOp::*;
-//     use crate::core::Expr::*;
-//     // let expr = r#"{ x = "foo", y = 4 }.x"#;
-//     // let expr = r#"(1 + 2) * 3"#;
-//     let expr = r#"if True then 1 + 3 * 5 else 2"#;
-//     println!("{:?}", parse_expr(expr));
-//     use std::thread;
-//     // I don't understand why it stack overflows even on tiny expressions...
-//     thread::Builder::new()
-//         .stack_size(3 * 1024 * 1024)
-//         .spawn(move || match parse_expr(expr) {
-//             Err(e) => {
-//                 println!("{:?}", e);
-//                 println!("{}", e);
-//             }
-//             ok => println!("{:?}", ok),
-//         })
-//         .unwrap()
-//         .join()
-//         .unwrap();
-//     // assert_eq!(parse_expr(expr).unwrap(), parse_expr(expr).unwrap());
-//     // assert!(false);
-
-//     println!("test {:?}", parse_expr("3 + 5 * 10"));
-//     assert!(parse_expr("22").is_ok());
-//     assert!(parse_expr("(22)").is_ok());
-//     assert_eq!(
-//         parse_expr("3 + 5 * 10").ok(),
-//         Some(Box::new(BinOp(
-//             NaturalPlus,
-//             Box::new(NaturalLit(3)),
-//             Box::new(BinOp(
-//                 NaturalTimes,
-//                 Box::new(NaturalLit(5)),
-//                 Box::new(NaturalLit(10))
-//             ))
-//         )))
-//     );
-//     // The original parser is apparently right-associative
-//     assert_eq!(
-//         parse_expr("2 * 3 * 4").ok(),
-//         Some(Box::new(BinOp(
-//             NaturalTimes,
-//             Box::new(NaturalLit(2)),
-//             Box::new(BinOp(
-//                 NaturalTimes,
-//                 Box::new(NaturalLit(3)),
-//                 Box::new(NaturalLit(4))
-//             ))
-//         )))
-//     );
-//     assert!(parse_expr("((((22))))").is_ok());
-//     assert!(parse_expr("((22)").is_err());
-//     println!("{:?}", parse_expr("\\(b : Bool) -> b == False"));
-//     assert!(parse_expr("\\(b : Bool) -> b == False").is_ok());
-//     println!("{:?}", parse_expr("foo.bar"));
-//     assert!(parse_expr("foo.bar").is_ok());
-//     assert!(parse_expr("[] : List Bool").is_ok());
-
-//     // println!("{:?}", parse_expr("< Left = True | Right : Natural >"));
-//     // println!("{:?}", parse_expr(r#""bl${42}ah""#));
-//     // assert!(parse_expr("< Left = True | Right : Natural >").is_ok());
-// }
+#[test]
+fn test_parse() {
+    // let expr = r#"{ x = "foo", y = 4 }.x"#;
+    // let expr = r#"(1 + 2) * 3"#;
+    let expr = r#"(1) + 3 * 5"#;
+    println!("{:?}", parse_expr(expr));
+    match parse_expr(expr) {
+        Err(e) => {
+            println!("{:?}", e);
+            println!("{}", e);
+        }
+        ok => println!("{:?}", ok),
+    };
+    // assert!(false);
+}

@@ -56,7 +56,7 @@ macro_rules! make_spec_test {
             // The parser stack overflows even on small files
             // when compiled without optimizations
             thread::Builder::new()
-                .stack_size(16 * 1024 * 1024)
+                .stack_size(4 * 1024 * 1024)
                 .spawn(move || {
                     run_spec_test!($type, $path);
                 })
