@@ -7,7 +7,13 @@ members = [
     "dhall_parser",
 ]
 
-# # Prelude tests are too slow when not optimized
+# # Parser is super slow when not optimized
+# [profile.dev.overrides.dhall_parser]
+# opt-level = 3
+# [profile.dev.overrides.dhall_core]
+# opt-level = 3
+# [profile.dev.overrides.dhall]
+# opt-level = 3
 # [profile.dev]
-# opt-level = 2
+# opt-level = 3
 
