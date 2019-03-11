@@ -36,6 +36,8 @@ where
                 normalize_whnf(&b3)
             }
             (Builtin(b), a) => match (b, normalize_whnf(a)) {
+                (OptionalSome, a) => OptionalLit(None, vec![a]),
+                (OptionalNone, a) => OptionalLit(Some(bx(a)), vec![]),
                 (NaturalIsZero, NaturalLit(n)) => BoolLit(n == 0),
                 (NaturalEven, NaturalLit(n)) => BoolLit(n % 2 == 0),
                 (NaturalOdd, NaturalLit(n)) => BoolLit(n % 2 != 0),
@@ -149,7 +151,7 @@ where
                                 ) => {
                                     let e2: Expr<_, _> = xs.into_iter().fold(
                                         (**nothing).clone(),
-                                        |y, _| {
+                                        |_, y| {
                                             let y = bx(y);
                                             dhall_expr!(just y)
                                         },
@@ -186,6 +188,13 @@ where
             BoolLit(false) => normalize_whnf(f),
             b2 => BoolIf(bx(b2), t.clone(), f.clone()),
         },
+        OptionalLit(t, es) => {
+            if !es.is_empty() {
+                OptionalLit(None, es.clone())
+            } else {
+                OptionalLit(t.clone(), es.clone())
+            }
+        }
         BinOp(o, x, y) => match (o, normalize_whnf(&x), normalize_whnf(&y)) {
             (BoolAnd, BoolLit(x), BoolLit(y)) => BoolLit(x && y),
             (BoolOr, BoolLit(x), BoolLit(y)) => BoolLit(x || y),

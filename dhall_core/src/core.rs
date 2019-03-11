@@ -257,6 +257,8 @@ pub enum Builtin {
     Text,
     List,
     Optional,
+    OptionalSome,
+    OptionalNone,
     NaturalBuild,
     NaturalFold,
     NaturalIsZero,
@@ -462,13 +464,19 @@ impl<S, A: Display> Expr<S, A> {
                 Ok(())
             }
             &OptionalLit(ref t, ref es) => {
-                fmt_list("[", "]", es, f, |e, f| e.fmt(f))?;
-                match t {
-                    Some(t) => {
-                        write!(f, " : Optional ")?;
-                        t.fmt_e(f)?
+                match es.iter().next() {
+                    None => {
+                        write!(f, "None ")?;
+                        t.as_ref().unwrap().fmt_e(f)?;
                     }
-                    None => {}
+                    Some(e) => {
+                        write!(f, "Some ")?;
+                        e.fmt_e(f)?;
+                        if let Some(t) = t {
+                            write!(f, " : Optional ")?;
+                            t.fmt_e(f)?;
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -624,6 +632,8 @@ impl Display for Builtin {
             Text => "Text",
             List => "List",
             Optional => "Optional",
+            OptionalSome => "Some",
+            OptionalNone => "None",
             NaturalBuild => "Natural/build",
             NaturalFold => "Natural/fold",
             NaturalIsZero => "Natural/isZero",
@@ -659,6 +669,8 @@ impl Builtin {
             "Text" => Some(Text),
             "List" => Some(List),
             "Optional" => Some(Optional),
+            "Some" => Some(OptionalSome),
+            "None" => Some(OptionalNone),
             "Natural/build" => Some(NaturalBuild),
             "Natural/fold" => Some(NaturalFold),
             "Natural/isZero" => Some(NaturalIsZero),
