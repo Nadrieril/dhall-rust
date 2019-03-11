@@ -132,10 +132,10 @@ where
                                     let e2: Expr<_, _> = xs
                                         .into_iter()
                                         .rev()
-                                        .fold((**nil).clone(), |y, ys| {
-                                            let y = bx(y);
-                                            let ys = bx(ys);
-                                            dhall_expr!(cons y ys)
+                                        .fold((**nil).clone(), |acc, x| {
+                                            let x = bx(x);
+                                            let acc = bx(acc);
+                                            dhall_expr!(cons x acc)
                                         });
                                     normalize_whnf(&e2)
                                 }

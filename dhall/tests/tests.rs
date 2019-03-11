@@ -18,8 +18,6 @@ make_spec_test!(normalization, spec_normalization_success_haskell_tutorial_acces
 // make_spec_test!(normalization, spec_normalization_success_multiline_twoLines, "normalization/success/multiline/twoLines");
 
 
-
-// Prelude tests import the whole prelude everytime. For now this is too slow for us
 make_spec_test!(normalization, spec_normalization_success_prelude_Bool_and_0, "normalization/success/prelude/Bool/and/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_Bool_and_1, "normalization/success/prelude/Bool/and/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_Bool_build_0, "normalization/success/prelude/Bool/build/0");
@@ -46,21 +44,21 @@ make_spec_test!(normalization, spec_normalization_success_prelude_Bool_show_1, "
 // make_spec_test!(normalization, spec_normalization_success_prelude_Integer_show_1, "normalization/success/prelude/Integer/show/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Integer_toDouble_0, "normalization/success/prelude/Integer/toDouble/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Integer_toDouble_1, "normalization/success/prelude/Integer/toDouble/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_all_0, "normalization/success/prelude/List/all/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_all_0, "normalization/success/prelude/List/all/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_all_1, "normalization/success/prelude/List/all/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_any_0, "normalization/success/prelude/List/any/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_any_0, "normalization/success/prelude/List/any/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_any_1, "normalization/success/prelude/List/any/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_build_0, "normalization/success/prelude/List/build/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_build_1, "normalization/success/prelude/List/build/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_concat_0, "normalization/success/prelude/List/concat/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_concat_0, "normalization/success/prelude/List/concat/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_concat_1, "normalization/success/prelude/List/concat/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_concatMap_0, "normalization/success/prelude/List/concatMap/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_concatMap_0, "normalization/success/prelude/List/concatMap/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_concatMap_1, "normalization/success/prelude/List/concatMap/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_filter_0, "normalization/success/prelude/List/filter/0");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_filter_1, "normalization/success/prelude/List/filter/1");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_filter_0, "normalization/success/prelude/List/filter/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_filter_1, "normalization/success/prelude/List/filter/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_0, "normalization/success/prelude/List/fold/0");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_1, "normalization/success/prelude/List/fold/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_2, "normalization/success/prelude/List/fold/2");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_1, "normalization/success/prelude/List/fold/1");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_2, "normalization/success/prelude/List/fold/2");
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_generate_0, "normalization/success/prelude/List/generate/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_generate_1, "normalization/success/prelude/List/generate/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_head_0, "normalization/success/prelude/List/head/0");
@@ -73,8 +71,8 @@ make_spec_test!(normalization, spec_normalization_success_prelude_List_fold_0, "
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_last_1, "normalization/success/prelude/List/last/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_length_0, "normalization/success/prelude/List/length/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_length_1, "normalization/success/prelude/List/length/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_map_0, "normalization/success/prelude/List/map/0");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_map_1, "normalization/success/prelude/List/map/1");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_map_0, "normalization/success/prelude/List/map/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_map_1, "normalization/success/prelude/List/map/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_null_0, "normalization/success/prelude/List/null/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_null_1, "normalization/success/prelude/List/null/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_replicate_0, "normalization/success/prelude/List/replicate/0");
