@@ -223,7 +223,11 @@ where
             let kB = match tB {
                 Const(k) => k,
                 _ => {
-                    return Err(TypeError::new(&ctx2, e, InvalidOutputType(tB)));
+                    return Err(TypeError::new(
+                        &ctx2,
+                        e,
+                        InvalidOutputType(tB),
+                    ));
                 }
             };
 
@@ -477,7 +481,11 @@ where
             match s {
                 Const(Type) => {}
                 _ => {
-                    return Err(TypeError::new(ctx, e, InvalidOptionalType(*t)));
+                    return Err(TypeError::new(
+                        ctx,
+                        e,
+                        InvalidOptionalType(*t),
+                    ));
                 }
             }
             let n = xs.len();

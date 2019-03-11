@@ -650,26 +650,25 @@ rule!(non_empty_optional<BoxExpr>;
     }
 );
 
-
 // List of rules that can be shortcutted as implemented in binop!()
 fn can_be_shortcutted(rule: Rule) -> bool {
     use Rule::*;
     match rule {
-        import_alt_expression |
-            or_expression |
-            plus_expression |
-            text_append_expression |
-            list_append_expression |
-            and_expression |
-            combine_expression |
-            prefer_expression |
-            combine_types_expression |
-            times_expression |
-            equal_expression |
-            not_equal_expression |
-            application_expression |
-            selector_expression_raw |
-            annotated_expression => true,
+        import_alt_expression
+        | or_expression
+        | plus_expression
+        | text_append_expression
+        | list_append_expression
+        | and_expression
+        | combine_expression
+        | prefer_expression
+        | combine_types_expression
+        | times_expression
+        | equal_expression
+        | not_equal_expression
+        | application_expression
+        | selector_expression_raw
+        | annotated_expression => true,
         _ => false,
     }
 }
