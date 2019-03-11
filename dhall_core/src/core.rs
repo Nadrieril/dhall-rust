@@ -405,6 +405,7 @@ impl<S, A: Display> Display for Expr<S, A> {
     }
 }
 
+// WARNING: this may cause stack overflows when adding new variants
 impl<S, A: Display> Expr<S, A> {
     fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::Expr::*;
@@ -495,44 +496,26 @@ impl<S, A: Display> Expr<S, A> {
         use crate::Expr::*;
         match self {
             // FIXME precedence
-            &BinOp(BoolOr, ref a, ref b) => {
+            &BinOp(op, ref a, ref b) => {
                 a.fmt_d(f)?;
-                f.write_str(" || ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(TextAppend, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" ++ ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(NaturalPlus, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" + ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(BoolAnd, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" && ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(Combine, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" ^ ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(NaturalTimes, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" * ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(BoolEQ, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" == ")?;
-                b.fmt_c(f)
-            }
-            &BinOp(BoolNE, ref a, ref b) => {
-                a.fmt_d(f)?;
-                f.write_str(" != ")?;
+                write!(
+                    f,
+                    " {} ",
+                    match op {
+                        BoolOr => "||",
+                        TextAppend => "++",
+                        NaturalPlus => "+",
+                        BoolAnd => "&&",
+                        Combine => "^",
+                        NaturalTimes => "*",
+                        BoolEQ => "==",
+                        BoolNE => "!=",
+                        CombineTypes => "//\\",
+                        ImportAlt => "?",
+                        Prefer => "//",
+                        ListAppend => "#",
+                    }
+                )?;
                 b.fmt_c(f)
             }
             &Note(_, ref b) => b.fmt_c(f),

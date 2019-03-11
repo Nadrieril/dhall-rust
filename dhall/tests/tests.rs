@@ -79,10 +79,10 @@ make_spec_test!(normalization, spec_normalization_success_prelude_List_null_1, "
 // make_spec_test!(normalization, spec_normalization_success_prelude_List_replicate_1, "normalization/success/prelude/List/replicate/1");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_reverse_0, "normalization/success/prelude/List/reverse/0");
 make_spec_test!(normalization, spec_normalization_success_prelude_List_reverse_1, "normalization/success/prelude/List/reverse/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_shifted_0, "normalization/success/prelude/List/shifted/0");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_shifted_1, "normalization/success/prelude/List/shifted/1");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_unzip_0, "normalization/success/prelude/List/unzip/0");
-// make_spec_test!(normalization, spec_normalization_success_prelude_List_unzip_1, "normalization/success/prelude/List/unzip/1");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_shifted_0, "normalization/success/prelude/List/shifted/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_shifted_1, "normalization/success/prelude/List/shifted/1");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_unzip_0, "normalization/success/prelude/List/unzip/0");
+make_spec_test!(normalization, spec_normalization_success_prelude_List_unzip_1, "normalization/success/prelude/List/unzip/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Natural_build_0, "normalization/success/prelude/Natural/build/0");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Natural_build_1, "normalization/success/prelude/Natural/build/1");
 // make_spec_test!(normalization, spec_normalization_success_prelude_Natural_enumerate_0, "normalization/success/prelude/Natural/enumerate/0");
