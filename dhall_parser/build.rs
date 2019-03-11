@@ -49,7 +49,7 @@ fn main() -> std::io::Result<()> {
     )?;
     writeln!(
         &mut file,
-        "final_expression = {{ SOI ~ complete_expression ~ EOI }}"
+        "final_expression = ${{ SOI ~ complete_expression ~ EOI }}"
     )?;
 
     // Generate pest parser manually to avoid spurious recompilations
