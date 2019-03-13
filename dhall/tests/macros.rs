@@ -90,11 +90,21 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
     use self::{ExpectedResult, Feature};
     match (feature, expected) {
         (Feature::Parser, ExpectedResult::Success) => {
-            let file_path = base_path.to_owned() + "A.dhall";
-            let _expr = read_dhall_file(&file_path)
+            let expr_file_path = base_path.to_owned() + "A.dhall";
+            let expected_file_path = base_path.to_owned() + "B.dhallb";
+            let expr = read_dhall_file(&expr_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
-            // panic!("{:?}", _expr);
+
+            use std::fs::File;
+            use std::io::Read;
+            let mut file = File::open(expected_file_path).unwrap();
+            let mut data = Vec::new();
+            file.read_to_end(&mut data).unwrap();
+            let expected = dhall::binary::decode(&data).unwrap();
+            let expected = dhall::imports::panic_imports(&expected);
+
+            assert_eq!(expr, expected);
         }
         (Feature::Parser, ExpectedResult::Failure) => {
             let file_path = base_path.to_owned() + ".dhall";

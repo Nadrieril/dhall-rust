@@ -80,9 +80,9 @@ impl From<String> for Label {
     }
 }
 
-impl From<&'static str> for Label {
-    fn from(s: &'static str) -> Self {
-        Label(s.into())
+impl<'a> From<&'a str> for Label {
+    fn from(s: &'a str) -> Self {
+        Label(Rc::from(s))
     }
 }
 
