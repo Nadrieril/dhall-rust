@@ -213,11 +213,17 @@ pub enum BorrowedInterpolatedTextContents<'a, Note, Embed> {
     Expr(&'a Expr<Note, Embed>),
 }
 
-impl<'a, N: Clone + 'a, E: Clone + 'a> BorrowedInterpolatedTextContents<'a, N, E> {
+impl<'a, N: Clone + 'a, E: Clone + 'a>
+    BorrowedInterpolatedTextContents<'a, N, E>
+{
     pub fn to_owned(self) -> OwnedInterpolatedTextContents<'a, N, E> {
         match self {
-            BorrowedInterpolatedTextContents::Text(s) => OwnedInterpolatedTextContents::Text(s),
-            BorrowedInterpolatedTextContents::Expr(e) => OwnedInterpolatedTextContents::Expr(e.clone()),
+            BorrowedInterpolatedTextContents::Text(s) => {
+                OwnedInterpolatedTextContents::Text(s)
+            }
+            BorrowedInterpolatedTextContents::Expr(e) => {
+                OwnedInterpolatedTextContents::Expr(e.clone())
+            }
         }
     }
 }
@@ -233,7 +239,9 @@ impl<N, E> InterpolatedText<N, E> {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = BorrowedInterpolatedTextContents<N, E>> {
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = BorrowedInterpolatedTextContents<N, E>> {
         use std::iter::once;
         once(BorrowedInterpolatedTextContents::Text(self.head.as_ref())).chain(
             self.tail.iter().flat_map(|(e, s)| {
@@ -275,7 +283,10 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
 impl<N: Clone, E: Clone> Add for InterpolatedText<N, E> {
     type Output = InterpolatedText<N, E>;
     fn add(self, rhs: InterpolatedText<N, E>) -> Self::Output {
-        self.iter().chain(rhs.iter()).map(BorrowedInterpolatedTextContents::to_owned).collect()
+        self.iter()
+            .chain(rhs.iter())
+            .map(BorrowedInterpolatedTextContents::to_owned)
+            .collect()
     }
 }
 
