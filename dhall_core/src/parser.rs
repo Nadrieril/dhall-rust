@@ -14,6 +14,8 @@ use crate::core::*;
 // are here and hopefully you can figure out how they work.
 
 pub type ParsedExpr = Expr<X, Import>;
+pub type ParsedText = InterpolatedText<X, Import>;
+pub type ParsedTextContents<'a> = OwnedInterpolatedTextContents<'a, X, Import>;
 pub type BoxExpr = Box<ParsedExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;
@@ -426,17 +428,25 @@ named!(raw_str<&'a str>; captured_str!(s) => s);
 
 named!(label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
-// TODO: parse escapes and interpolation
-rule!(double_quote_literal<String>;
-    children!(strs*: raw_str) => {
-        strs.collect()
+rule!(double_quote_literal<ParsedText>;
+    children!(chunks*: double_quote_chunk) => {
+        chunks.collect()
     }
 );
 
-rule!(single_quote_literal<String>;
+// TODO: parse escapes
+rule!(double_quote_chunk<ParsedTextContents<'a>>;
+    children!(c: interpolation) => {
+        OwnedInterpolatedTextContents::Expr(*c)
+    },
+    captured_str!(s) => {
+        OwnedInterpolatedTextContents::Text(s)
+    },
+);
+
+rule!(single_quote_literal<ParsedText>;
     children!(eol: raw_str, contents: single_quote_continue) => {
-        contents.push(eol);
-        contents.into_iter().rev().collect()
+        contents.into_iter().rev().collect::<ParsedText>()
     }
 );
 rule!(escaped_quote_pair<&'a str>;
@@ -445,21 +455,22 @@ rule!(escaped_quote_pair<&'a str>;
 rule!(escaped_interpolation<&'a str>;
     children!() => "${"
 );
+rule!(interpolation<BoxExpr>;
+    children!(e: expression) => e
+);
 
-rule!(single_quote_continue<Vec<&'a str>>;
-    // TODO: handle interpolation
-    // children!(c: expression, rest: single_quote_continue) => {
-    //     rest.push(c); rest
-    // },
+rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
+    children!(c: interpolation, rest: single_quote_continue) => {
+        rest.push(OwnedInterpolatedTextContents::Expr(*c)); rest
+    },
     children!(c: escaped_quote_pair, rest: single_quote_continue) => {
-        rest.push(c); rest
+        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
     },
     children!(c: escaped_interpolation, rest: single_quote_continue) => {
-        rest.push(c); rest
+        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
     },
-    // capture interpolation as string
     children!(c: raw_str, rest: single_quote_continue) => {
-        rest.push(c); rest
+        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
     },
     children!() => {
         vec![]

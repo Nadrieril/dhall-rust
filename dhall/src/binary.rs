@@ -160,9 +160,21 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             [U64(15), U64(x)] => Ok(NaturalLit(*x as Natural)),
             [U64(16), U64(x)] => Ok(IntegerLit(*x as Integer)),
             [U64(16), I64(x)] => Ok(IntegerLit(*x as Integer)),
-            [U64(18), String(first), _rest..] => {
-                // TODO: interpolated string
-                Ok(TextLit(first.clone()))
+            [U64(18), String(first), rest..] => {
+                Ok(TextLit(InterpolatedText::from((
+                    first.clone(),
+                    rest.iter()
+                        .tuples()
+                        .map(|(x, y)| {
+                            let x = cbor_value_to_dhall(&x)?;
+                            let y = match y {
+                                String(s) => s.clone(),
+                                _ => Err(DecodeError::WrongFormatError)?,
+                            };
+                            Ok((x, y))
+                        })
+                        .collect::<Result<_, _>>()?,
+                ))))
             }
             [U64(25), bindings..] => {
                 let mut tuples = bindings.iter().tuples();

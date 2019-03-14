@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
+use std::iter::FromIterator;
+use std::ops::Add;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -171,6 +173,112 @@ pub enum BinOp {
     ListAppend,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterpolatedText<Note, Embed> {
+    head: String,
+    tail: Vec<(Expr<Note, Embed>, String)>,
+}
+
+impl<N, E> From<(String, Vec<(Expr<N, E>, String)>)>
+    for InterpolatedText<N, E>
+{
+    fn from(x: (String, Vec<(Expr<N, E>, String)>)) -> Self {
+        InterpolatedText {
+            head: x.0,
+            tail: x.1,
+        }
+    }
+}
+
+impl<N, E> From<String> for InterpolatedText<N, E> {
+    fn from(s: String) -> Self {
+        InterpolatedText {
+            head: s,
+            tail: vec![],
+        }
+    }
+}
+
+// TODO: merge both when we move to Rc<>
+// This one is needed when parsing, because we need to own the Expr
+pub enum OwnedInterpolatedTextContents<'a, Note, Embed> {
+    Text(&'a str),
+    Expr(Expr<Note, Embed>),
+}
+
+// This one is needed everywhere else, because we don't want Clone traits bounds
+// everywhere
+pub enum BorrowedInterpolatedTextContents<'a, Note, Embed> {
+    Text(&'a str),
+    Expr(&'a Expr<Note, Embed>),
+}
+
+impl<'a, N: Clone + 'a, E: Clone + 'a> BorrowedInterpolatedTextContents<'a, N, E> {
+    pub fn to_owned(self) -> OwnedInterpolatedTextContents<'a, N, E> {
+        match self {
+            BorrowedInterpolatedTextContents::Text(s) => OwnedInterpolatedTextContents::Text(s),
+            BorrowedInterpolatedTextContents::Expr(e) => OwnedInterpolatedTextContents::Expr(e.clone()),
+        }
+    }
+}
+
+impl<N, E> InterpolatedText<N, E> {
+    pub fn map<N2, E2, F>(&self, mut f: F) -> InterpolatedText<N2, E2>
+    where
+        F: FnMut(&Expr<N, E>) -> Expr<N2, E2>,
+    {
+        InterpolatedText {
+            head: self.head.clone(),
+            tail: self.tail.iter().map(|(e, s)| (f(e), s.clone())).collect(),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = BorrowedInterpolatedTextContents<N, E>> {
+        use std::iter::once;
+        once(BorrowedInterpolatedTextContents::Text(self.head.as_ref())).chain(
+            self.tail.iter().flat_map(|(e, s)| {
+                once(BorrowedInterpolatedTextContents::Expr(e))
+                    .chain(once(BorrowedInterpolatedTextContents::Text(s)))
+            }),
+        )
+    }
+}
+
+impl<'a, N: Clone + 'a, E: Clone + 'a>
+    FromIterator<OwnedInterpolatedTextContents<'a, N, E>>
+    for InterpolatedText<N, E>
+{
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = OwnedInterpolatedTextContents<'a, N, E>>,
+    {
+        let mut res = InterpolatedText {
+            head: "".to_owned(),
+            tail: vec![],
+        };
+        // let mut empty_string = "".to_owned();
+        let mut crnt_str = &mut res.head;
+        for x in iter.into_iter() {
+            match x {
+                OwnedInterpolatedTextContents::Text(s) => crnt_str.push_str(s),
+                OwnedInterpolatedTextContents::Expr(e) => {
+                    // crnt_str = &mut empty_string;
+                    res.tail.push((e.clone(), "".to_owned()));
+                    crnt_str = &mut res.tail.last_mut().unwrap().1;
+                }
+            }
+        }
+        res
+    }
+}
+
+impl<N: Clone, E: Clone> Add for InterpolatedText<N, E> {
+    type Output = InterpolatedText<N, E>;
+    fn add(self, rhs: InterpolatedText<N, E>) -> Self::Output {
+        self.iter().chain(rhs.iter()).map(BorrowedInterpolatedTextContents::to_owned).collect()
+    }
+}
+
 /// Syntax tree for expressions
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<Note, Embed> {
@@ -215,7 +323,7 @@ pub enum Expr<Note, Embed> {
     ///  `DoubleLit n                              ~  n`
     DoubleLit(Double),
     ///  `TextLit t                                ~  t`
-    TextLit(Builder),
+    TextLit(InterpolatedText<Note, Embed>),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
     ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
@@ -355,13 +463,6 @@ impl<S, A> Expr<S, A> {
     pub fn natural_lit(&self) -> Option<usize> {
         match *self {
             Expr::NaturalLit(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn text_lit(&self) -> Option<String> {
-        match *self {
-            Expr::TextLit(ref t) => Some(t.clone()), // FIXME?
             _ => None,
         }
     }
@@ -570,7 +671,21 @@ impl<S, A: Display> Expr<S, A> {
                 a.fmt(f)
             }
             &DoubleLit(a) => a.fmt(f),
-            &TextLit(ref a) => <String as fmt::Debug>::fmt(a, f), // FIXME Format with Haskell escapes
+            &TextLit(ref a) => {
+                for x in a.iter() {
+                    match x {
+                        BorrowedInterpolatedTextContents::Text(a) => {
+                            <str as fmt::Debug>::fmt(a, f)?
+                        } // TODO Format escapes properly
+                        BorrowedInterpolatedTextContents::Expr(e) => {
+                            f.write_str("${")?;
+                            e.fmt(f)?;
+                            f.write_str("}")?;
+                        }
+                    }
+                }
+                Ok(())
+            }
             &Record(ref a) if a.is_empty() => f.write_str("{}"),
             &Record(ref a) => fmt_list("{ ", " }", a, f, |(k, t), f| {
                 write!(f, "{} : {}", k, t)
@@ -724,7 +839,6 @@ where
     Expr::App(bx(f.into()), bx(x.into()))
 }
 
-pub type Builder = String;
 pub type Double = f64;
 pub type Int = isize;
 pub type Integer = isize;
@@ -788,7 +902,7 @@ where
         NaturalLit(n) => NaturalLit(n),
         IntegerLit(n) => IntegerLit(n),
         DoubleLit(n) => DoubleLit(n),
-        TextLit(ref t) => TextLit(t.clone()),
+        TextLit(ref t) => TextLit(t.map(|e| map(e))),
         BinOp(o, ref x, ref y) => BinOp(o, bxmap(x), bxmap(y)),
         ListLit(ref t, ref es) => {
             let es = es.iter().map(&map).collect();
@@ -972,7 +1086,7 @@ pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
         NaturalLit(a) => NaturalLit(*a),
         IntegerLit(a) => IntegerLit(*a),
         DoubleLit(a) => DoubleLit(*a),
-        TextLit(a) => TextLit(a.clone()),
+        TextLit(a) => TextLit(a.map(|e| shift(d, v, e))),
         ListLit(t, es) => ListLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
             es.iter().map(|e| shift(d, v, e)).collect(),
@@ -1075,7 +1189,7 @@ where
         NaturalLit(a) => NaturalLit(*a),
         IntegerLit(a) => IntegerLit(*a),
         DoubleLit(a) => DoubleLit(*a),
-        TextLit(a) => TextLit(a.clone()),
+        TextLit(a) => TextLit(a.map(|b| subst(v, e, b))),
         ListLit(a, b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
             let b2 = b.iter().map(|be| subst(v, e, be)).collect();

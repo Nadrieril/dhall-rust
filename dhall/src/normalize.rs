@@ -42,7 +42,7 @@ where
                 (NaturalEven, NaturalLit(n)) => BoolLit(n % 2 == 0),
                 (NaturalOdd, NaturalLit(n)) => BoolLit(n % 2 != 0),
                 (NaturalToInteger, NaturalLit(n)) => IntegerLit(n as isize),
-                (NaturalShow, NaturalLit(n)) => TextLit(n.to_string()),
+                (NaturalShow, NaturalLit(n)) => TextLit(n.to_string().into()),
 
                 (b, App(f, x)) => match (b, normalize_whnf(&f), x) {
                     // fold/build fusion for `Natural`
@@ -202,7 +202,7 @@ where
             (BoolNE, BoolLit(x), BoolLit(y)) => BoolLit(x != y),
             (NaturalPlus, NaturalLit(x), NaturalLit(y)) => NaturalLit(x + y),
             (NaturalTimes, NaturalLit(x), NaturalLit(y)) => NaturalLit(x * y),
-            (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + &y),
+            (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
             (ListAppend, ListLit(t1, xs), ListLit(t2, ys)) => {
                 // Drop type annotation if the result is nonempty
                 let t = if xs.is_empty() && ys.is_empty() {

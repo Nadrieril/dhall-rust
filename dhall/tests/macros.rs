@@ -1,5 +1,7 @@
+use pretty_assertions::assert_eq as assert_eq_pretty;
+
 #[macro_export]
-macro_rules! assert_eq_ {
+macro_rules! assert_eq_display {
     ($left:expr, $right:expr) => {{
         match (&$left, &$right) {
             (left_val, right_val) => {
@@ -104,7 +106,7 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
             let expected = dhall::binary::decode(&data).unwrap();
             let expected = dhall::imports::panic_imports(&expected);
 
-            assert_eq!(expr, expected);
+            assert_eq_pretty!(expr, expected);
         }
         (Feature::Parser, ExpectedResult::Failure) => {
             let file_path = base_path.to_owned() + ".dhall";
@@ -120,7 +122,7 @@ pub fn run_test(base_path: &str, feature: Feature, expected: ExpectedResult) {
             let expr = read_dhall_file(&expr_file_path).unwrap();
             let expected = read_dhall_file(&expected_file_path).unwrap();
 
-            assert_eq_!(
+            assert_eq_display!(
                 normalize::<_, X, _>(&expr),
                 normalize::<_, X, _>(&expected)
             );
