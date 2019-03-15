@@ -71,17 +71,15 @@ where
                 (ListBuild, [a0, g]) => {
                     // fold/build fusion
                     let g = match g {
-                        App(f, args) => {
-                            match (&**f, args.as_slice()) {
-                                (Builtin(ListFold), [_, x, rest..]) => {
-                                    return normalize_whnf(&App(
-                                        bx(x.clone()),
-                                        rest.to_vec(),
-                                    ))
-                                }
-                                (f, args) => app(f.clone(), args.to_vec()),
+                        App(f, args) => match (&**f, args.as_slice()) {
+                            (Builtin(ListFold), [_, x, rest..]) => {
+                                return normalize_whnf(&App(
+                                    bx(x.clone()),
+                                    rest.to_vec(),
+                                ))
                             }
-                        }
+                            (f, args) => app(f.clone(), args.to_vec()),
+                        },
                         g => g.clone(),
                     };
                     let g = bx(g);
@@ -94,17 +92,15 @@ where
                 (OptionalBuild, [a0, g]) => {
                     // fold/build fusion
                     let g = match g {
-                        App(f, args) => {
-                            match (&**f, args.as_slice()) {
-                                (Builtin(OptionalFold), [_, x, rest..]) => {
-                                    return normalize_whnf(&App(
-                                        bx(x.clone()),
-                                        rest.to_vec(),
-                                    ))
-                                }
-                                (f, args) => app(f.clone(), args.to_vec()),
+                        App(f, args) => match (&**f, args.as_slice()) {
+                            (Builtin(OptionalFold), [_, x, rest..]) => {
+                                return normalize_whnf(&App(
+                                    bx(x.clone()),
+                                    rest.to_vec(),
+                                ))
                             }
-                        }
+                            (f, args) => app(f.clone(), args.to_vec()),
+                        },
                         g => g.clone(),
                     };
                     let g = bx(g);
@@ -146,9 +142,10 @@ where
                         (Builtin(NaturalFold), [x, rest..]) => {
                             normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
                         }
-                        (f, args) => {
-                            app(Builtin(NaturalBuild), vec![app(f.clone(), args.to_vec())])
-                        }
+                        (f, args) => app(
+                            Builtin(NaturalBuild),
+                            vec![app(f.clone(), args.to_vec())],
+                        ),
                     }
                 }
                 (NaturalFold, [App(f, args)]) => {
@@ -157,9 +154,10 @@ where
                         (Builtin(NaturalBuild), [x, rest..]) => {
                             normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
                         }
-                        (f, args) => {
-                            app(Builtin(NaturalFold), vec![app(f.clone(), args.to_vec())])
-                        }
+                        (f, args) => app(
+                            Builtin(NaturalFold),
+                            vec![app(f.clone(), args.to_vec())],
+                        ),
                     }
                 }
                 (b, args) => App(bx(Builtin(b)), args.to_vec()),
