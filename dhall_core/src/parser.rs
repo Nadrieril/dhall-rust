@@ -77,14 +77,14 @@ fn debug_pair(pair: Pair<Rule>) -> String {
  * ```
  * let vec = vec![1, 2, 3];
  *
- * match_iter!(vec.into_iter(); (x, y?, z) => {
+ * match_iter!(vec.into_iter(); (x, y, z) => {
  *  // x: T
- *  // y: Option<T>
+ *  // y: T
  *  // z: T
  * })
  *
  * // or
- * match_iter!(vec.into_iter(); (x, y, z*) => {
+ * match_iter!(vec.into_iter(); (x, y, z..) => {
  *  // x, y: T
  *  // z: impl Iterator<T>
  * })
@@ -98,27 +98,67 @@ enum IterMatchError<T> {
     NoMatchFound,
     Other(T), // Allow other macros to inject their own errors
 }
+// macro_rules! match_iter {
+//     (@as_expr, $e:expr) => {
+//         $e
+//     };
+//     // Everything else pattern
+//     (@match 0, $x:ident* $($rest:tt)*) => {
+//         match_iter!(@match 0, $iter $($rest)*);
+//         #[allow(unused_mut)]
+//         let mut $x = $x;
+//     };
+//     // Alias to use in macros
+//     (@match 0, $x:ident.. $($rest:tt)*) => {
+//         match_iter!(@match 0, $iter $($rest)*);
+//         #[allow(unused_mut)]
+//         let mut $x = $x;
+//     };
+//     // Normal pattern
+//     (@match 0, $x:ident $($rest:tt)*) => {
+//         #[allow(unused_mut)]
+//         let mut $x = match $x.next() {
+//             Some(x) => x,
+//             None => break Err(IterMatchError::NotEnoughItems),
+//         };
+//         match_iter!(@match 0, $iter $($rest)*);
+//     };
+
+//     (@match $_:expr, $iter:expr) => {};
+
+//     (@panic; $($args:tt)*) => {
+//         {
+//             let ret: Result<_, IterMatchError<()>> = match_iter!($($args)*);
+//             ret.unwrap()
+//         }
+//     };
+//     ($iter:expr; ($($args:tt)*) => $body:expr) => {
+//         {
+//             #[allow(unused_mut)]
+//             let mut iter = $iter;
+//             // Not a real loop; used for error handling
+//             let ret: Result<_, IterMatchError<_>> = loop {
+//                 let vec: Vec<_> = iter.collect();
+//                 break match_iter!(@as_expr, match *vec.into_boxed_slice() {
+//                     [$($args)*] => {
+//                         match_iter!(@match 0, $($args)*);
+//                         Ok($body)
+//                     },
+//                     _ => Err(IterMatchError::NotEnoughItems),
+//                 });
+//                 // match_iter!(@match 0, iter, $($args)*);
+//                 // break Ok($body);
+//             };
+//             ret
+//         }
+//     };
+// }
 macro_rules! match_iter {
     // Everything else pattern
-    (@match 0, $iter:expr, $x:ident* $($rest:tt)*) => {
+    (@match 0, $iter:expr, $x:ident.. $($rest:tt)*) => {
         match_iter!(@match 2, $iter $($rest)*);
         #[allow(unused_mut)]
         let mut $x = $iter;
-    };
-    // Alias to use in macros
-    (@match 0, $iter:expr, $x:ident?? $($rest:tt)*) => {
-        match_iter!(@match 2, $iter $($rest)*);
-        #[allow(unused_mut)]
-        let mut $x = $iter;
-    };
-    // Optional pattern
-    (@match 0, $iter:expr, $x:ident? $($rest:tt)*) => {
-        match_iter!(@match 1, $iter $($rest)*);
-        #[allow(unused_mut)]
-        let mut $x = $iter.next();
-        if $iter.next().is_some() {
-            break Err(IterMatchError::TooManyItems);
-        }
     };
     // Normal pattern
     (@match 0, $iter:expr, $x:ident $($rest:tt)*) => {
@@ -189,7 +229,7 @@ macro_rules! match_iter {
  * let vec = vec![-1, 2, 3];
  *
  * match_iter_typed!(callback; vec.into_iter();
- *     (x: positive, y?: negative, z: any) => { ... },
+ *     (x: positive, y*: negative, z: any) => { ... },
  * )
  * ```
  *
@@ -199,11 +239,8 @@ macro_rules! match_iter_typed {
     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
     };
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident? : $ty:ident, $($rest:tt)*)) => {
-        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x?), ($($rest)*))
-    };
     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident* : $ty:ident, $($rest:tt)*)) => {
-        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x??), ($($rest)*))
+        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x..), ($($rest)*))
     };
     // Catch extra comma if exists
     (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
@@ -289,7 +326,7 @@ macro_rules! match_iter_typed {
  * let vec = vec![-1, 2, 3];
  *
  * match_iter_branching!(branch_callback; vec.into_iter();
- *     typed!(x: positive, y?: negative, z: any) => { ... },
+ *     typed!(x: positive, y*: negative, z: any) => { ... },
  *     untyped!(x, y, z) => { ... },
  * )
  * ```
@@ -418,6 +455,56 @@ macro_rules! match_rule {
             }
         }
     };
+}
+
+enum ParsedValue<'a> {
+    Expr(ParsedExpr),
+    Label(Label),
+    Str(&'a str),
+    RawStr(&'a str),
+    Text(ParsedText),
+    TextContents(ParsedTextContents<'a>),
+    VecTextContents(Vec<ParsedTextContents<'a>>),
+}
+
+fn parse_pair(p: Pair<Rule>) -> ParseResult<ParsedValue> {
+    let rule = p.as_rule();
+    let mut values: Vec<_> = p
+        .clone()
+        .into_inner()
+        .map(parse_pair)
+        .collect::<Result<_, _>>()?;
+    use crate::Expr::*;
+    use crate::Label;
+    use std::mem;
+    use ParsedValue::*;
+    match rule {
+        Rule::lambda_expression => match *values.as_mut_slice() {
+            [Label(ref mut l), Expr(ref mut typ), Expr(ref mut body)] => {
+                let l: Label = mem::replace(l, Label::from(""));
+                let typ: BoxExpr = bx(mem::replace(typ, BoolLit(false)));
+                let body: BoxExpr = bx(mem::replace(body, BoolLit(false)));
+                return Ok(ParsedValue::Expr(Lam(l, typ, body)));
+            }
+            _ => {}
+        },
+        Rule::application_expression => match *values.as_mut_slice() {
+            [Expr(ref mut first), ref mut rest..] => {
+                let first: ParsedExpr = mem::replace(first, BoolLit(false));
+                let rest: Vec<ParsedExpr> = rest.into_iter()
+                    .map(|x| match *x {
+                        Expr(ref mut e) => Ok(mem::replace(e, BoolLit(false))),
+                        _ => Err(custom_parse_error(&p, "No match found".to_owned())),
+                    })
+                .collect::<Result<Vec<_>, _>>()?;
+                let rest = rest.into_iter();
+                return Ok(ParsedValue::Expr(rest.fold(first, |acc, e| App(bx(acc), bx(e)))));
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Err(custom_parse_error(&p, "No match found".to_owned()))
 }
 
 rule!(EOI<()>; children!() => ());
@@ -624,7 +711,8 @@ rule!(let_expression<BoxExpr>;
 );
 
 rule!(let_binding<(Label, Option<BoxExpr>, BoxExpr)>;
-    children!(name: label, annot?: expression, expr: expression) => (name, annot, expr)
+    children!(name: label, expr: expression) => (name, None, expr),
+    children!(name: label, annot: expression, expr: expression) => (name, Some(annot), expr),
 );
 
 rule!(forall_expression<BoxExpr>;
@@ -640,9 +728,12 @@ rule!(arrow_expression<BoxExpr>;
 );
 
 rule!(merge_expression<BoxExpr>;
-    children!(x: expression, y: expression, z?: expression) => {
-        bx(Expr::Merge(x, y, z))
-    }
+    children!(x: expression, y: expression) => {
+        bx(Expr::Merge(x, y, None))
+    },
+    children!(x: expression, y: expression, z: expression) => {
+        bx(Expr::Merge(x, y, Some(z)))
+    },
 );
 
 rule!(empty_collection<BoxExpr>;
@@ -769,7 +860,8 @@ rule!(literal_expression_raw<BoxExpr>;
 );
 
 rule!(identifier_raw<BoxExpr>;
-    children!(name: str, idx?: natural_literal_raw) => {
+    children!(name: str, idx*: natural_literal_raw) => {
+        let idx = idx.next();
         match Builtin::parse(name) {
             Some(b) => bx(Expr::Builtin(b)),
             None => match name {
