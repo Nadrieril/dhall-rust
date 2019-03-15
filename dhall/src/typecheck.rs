@@ -477,8 +477,8 @@ where
             let t: Box<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
-                    let first_x = iter.next().unwrap();
-                    bx(type_with(ctx, first_x)?)
+                    let x = iter.next().unwrap();
+                    bx(type_with(ctx, x)?)
                 }
             };
 
@@ -493,10 +493,6 @@ where
                     ));
                 }
             }
-            let n = xs.len();
-            if 2 <= n {
-                return Err(TypeError::new(ctx, e, InvalidOptionalLiteral(n)));
-            }
             for x in iter {
                 let t2 = type_with(ctx, x)?;
                 if !prop_equal(&t, &t2) {
@@ -505,7 +501,7 @@ where
                     return Err(TypeError::new(
                         ctx,
                         e,
-                        InvalidOptionalElement(nf_t, x.clone(), nf_t2),
+                        InvalidOptionalElement(nf_t, (**x).clone(), nf_t2),
                     ));
                 }
             }

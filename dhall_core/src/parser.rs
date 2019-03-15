@@ -648,7 +648,7 @@ rule!(merge_expression<BoxExpr>;
 rule!(empty_collection<BoxExpr>;
     children!(x: str, y: expression) => {
        match x {
-          "Optional" => bx(Expr::OptionalLit(Some(y), vec![])),
+          "Optional" => bx(Expr::OptionalLit(Some(y), None)),
           "List" => bx(Expr::ListLit(Some(y), vec![])),
           _ => unreachable!(),
        }
@@ -657,7 +657,7 @@ rule!(empty_collection<BoxExpr>;
 
 rule!(non_empty_optional<BoxExpr>;
     children!(x: expression, _y: str, z: expression) => {
-        bx(Expr::OptionalLit(Some(z), vec![*x]))
+        bx(Expr::OptionalLit(Some(z), Some(x)))
     }
 );
 

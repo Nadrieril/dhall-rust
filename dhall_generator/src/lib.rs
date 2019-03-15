@@ -59,10 +59,10 @@ fn dhall_to_tokenstream(
             let b = dhall_to_tokenstream_bx(b, ctx);
             quote! { BinOp(#o, #a, #b) }
         }
-        OptionalLit(t, es) => {
+        OptionalLit(t, e) => {
             let t = option_to_tokenstream(t, ctx);
-            let es = vec_to_tokenstream(es, ctx);
-            quote! { OptionalLit(#t, #es) }
+            let e = option_to_tokenstream(e, ctx);
+            quote! { OptionalLit(#t, #e) }
         }
         ListLit(t, es) => {
             let t = option_to_tokenstream(t, ctx);

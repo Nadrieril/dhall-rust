@@ -48,22 +48,20 @@ where
                     .collect::<Vec<_>>()
                     .as_slice(),
             ) {
-                (OptionalSome, [a]) => OptionalLit(None, vec![a.clone()]),
-                (OptionalNone, [a]) => OptionalLit(Some(bx(a.clone())), vec![]),
+                (OptionalSome, [a]) => OptionalLit(None, Some(bx(a.clone()))),
+                (OptionalNone, [a]) => OptionalLit(Some(bx(a.clone())), None),
                 (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
                 (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
                 (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
                 (NaturalToInteger, [NaturalLit(n)]) => IntegerLit(*n as isize),
                 (NaturalShow, [NaturalLit(n)]) => TextLit(n.to_string().into()),
                 (ListLength, [_, ListLit(_, ys)]) => NaturalLit(ys.len()),
-                (ListHead, [_, ListLit(t, ys)]) => OptionalLit(
-                    t.clone(),
-                    ys.into_iter().take(1).cloned().collect(),
-                ),
-                (ListLast, [_, ListLit(t, ys)]) => OptionalLit(
-                    t.clone(),
-                    ys.iter().last().cloned().into_iter().collect(),
-                ),
+                (ListHead, [_, ListLit(t, ys)]) => {
+                    OptionalLit(t.clone(), ys.iter().cloned().map(bx).next())
+                }
+                (ListLast, [_, ListLit(t, ys)]) => {
+                    OptionalLit(t.clone(), ys.iter().cloned().map(bx).last())
+                }
                 (ListReverse, [_, ListLit(t, ys)]) => {
                     let xs = ys.iter().rev().cloned().collect();
                     ListLit(t.clone(), xs)
@@ -123,14 +121,13 @@ where
                 // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
                 //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
                 // }
-                (OptionalFold, [_, OptionalLit(_, xs), _, just, nothing]) => {
-                    let e2: Expr<_, _> =
-                        xs.into_iter().fold((*nothing).clone(), |_, y| {
-                            let y = bx((y).clone());
-                            let just = bx((just).clone());
-                            dhall_expr!(just y)
-                        });
-                    normalize_whnf(&e2)
+                (OptionalFold, [_, OptionalLit(_, Some(x)), _, just, _]) => {
+                    let x = bx((**x).clone());
+                    let just = bx(just.clone());
+                    normalize_whnf(&dhall_expr!(just x))
+                }
+                (OptionalFold, [_, OptionalLit(_, None), _, _, nothing]) => {
+                    (*nothing).clone()
                 }
                 // // fold/build fusion
                 // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
@@ -170,7 +167,7 @@ where
             b2 => BoolIf(bx(b2), t.clone(), f.clone()),
         },
         OptionalLit(t, es) => {
-            if !es.is_empty() {
+            if !es.is_none() {
                 OptionalLit(None, es.clone())
             } else {
                 OptionalLit(t.clone(), es.clone())

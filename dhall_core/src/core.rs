@@ -339,7 +339,10 @@ pub enum Expr<Note, Embed> {
     ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
+    OptionalLit(
+        Option<Box<Expr<Note, Embed>>>,
+        Option<Box<Expr<Note, Embed>>>,
+    ),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
     Record(BTreeMap<Label, Expr<Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
@@ -576,7 +579,7 @@ impl<S, A: Display> Expr<S, A> {
                 Ok(())
             }
             &OptionalLit(ref t, ref es) => {
-                match es.iter().next() {
+                match es {
                     None => {
                         write!(f, "None ")?;
                         t.as_ref().unwrap().fmt_e(f)?;
@@ -925,10 +928,7 @@ where
             let es = es.iter().map(&map).collect();
             ListLit(opt(t), es)
         }
-        OptionalLit(ref t, ref es) => {
-            let es = es.iter().map(&map).collect();
-            OptionalLit(opt(t), es)
-        }
+        OptionalLit(ref t, ref es) => OptionalLit(opt(t), opt(es)),
         Record(ref kts) => {
             Record(map_record_value_and_keys(kts, map, map_label))
         }
@@ -1112,9 +1112,9 @@ pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
             t.as_ref().map(|t| bx(shift(d, v, t))),
             es.iter().map(|e| shift(d, v, e)).collect(),
         ),
-        OptionalLit(t, es) => OptionalLit(
+        OptionalLit(t, e) => OptionalLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
-            es.iter().map(|e| shift(d, v, e)).collect(),
+            e.as_ref().map(|t| bx(shift(d, v, t))),
         ),
         Record(a) => Record(map_record_value(a, |val| shift(d, v, val))),
         RecordLit(a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
@@ -1218,7 +1218,7 @@ where
         }
         OptionalLit(a, b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
-            let b2 = b.iter().map(|be| subst(v, e, be)).collect();
+            let b2 = b.as_ref().map(|a| bx(subst(v, e, a)));
             OptionalLit(a2, b2)
         }
         Record(kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
