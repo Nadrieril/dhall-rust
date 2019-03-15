@@ -23,7 +23,7 @@ macro_rules! make_spec_test {
         #[test]
         #[allow(non_snake_case)]
         fn $name() {
-            use crate::macros::*;
+            use crate::common::*;
             use std::thread;
 
             // The parser stack overflows even on small files
@@ -44,6 +44,7 @@ use dhall::*;
 use dhall_core::*;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 pub enum Feature {
     ParserSuccess,
     ParserFailure,
