@@ -25,20 +25,20 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
         String(s) => match Builtin::parse(s) {
             Some(b) => Ok(Expr::Builtin(b)),
             None => match s.as_str() {
-                "True" => Ok(Expr::BoolLit(true)),
-                "False" => Ok(Expr::BoolLit(false)),
-                "Type" => Ok(Expr::Const(Const::Type)),
-                "Kind" => Ok(Expr::Const(Const::Kind)),
-                s => Ok(Expr::Var(V(Label::from(s), 0))),
+                "True" => Ok(BoolLit(true)),
+                "False" => Ok(BoolLit(false)),
+                "Type" => Ok(Const(Const::Type)),
+                "Kind" => Ok(Const(Const::Kind)),
+                s => Ok(Var(V(Label::from(s), 0))),
             },
         },
-        U64(n) => Ok(Expr::Var(V(Label::from("_"), *n as usize))),
+        U64(n) => Ok(Var(V(Label::from("_"), *n as usize))),
         F64(x) => Ok(DoubleLit(*x)),
         Bool(b) => Ok(BoolLit(*b)),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
                 let l = Label::from(l.as_str());
-                Ok(Expr::Var(V(l, *n as usize)))
+                Ok(Var(V(l, *n as usize)))
             }
             [U64(0), f, args..] => {
                 let f = cbor_value_to_dhall(&f)?;
@@ -46,9 +46,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     .iter()
                     .map(cbor_value_to_dhall)
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(args
-                    .into_iter()
-                    .fold(f, |acc, e| (Expr::App(bx(acc), bx(e)))))
+                Ok(App(bx(f), args))
             }
             [U64(1), x, y] => {
                 let x = bx(cbor_value_to_dhall(&x)?);

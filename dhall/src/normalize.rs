@@ -26,162 +26,145 @@ where
         }
         Annot(x, _) => normalize_whnf(x),
         Note(_, e) => normalize_whnf(e),
-        App(f, a) => match (normalize_whnf(f), a) {
-            (Lam(x, _, b), a) => {
+        App(f, args) => match (normalize_whnf(f), args.as_slice()) {
+            (f, []) => f,
+            (App(f, args1), args2) => normalize_whnf(&App(
+                f.clone(),
+                args1.iter().chain(args2.iter()).cloned().collect(),
+            )),
+            (Lam(ref x, _, ref b), [a, rest..]) => {
                 // Beta reduce
-                let vx0 = &V(x, 0);
+                let vx0 = &V(x.clone(), 0);
                 let a2 = shift::<S, S, A>(1, vx0, a);
                 let b2 = subst::<S, S, A>(vx0, &a2, &b);
                 let b3 = shift::<S, S, A>(-1, vx0, &b2);
-                normalize_whnf(&b3)
+                normalize_whnf(&App(bx(b3), rest.to_vec()))
             }
-            (Builtin(b), a) => match (b, normalize_whnf(a)) {
-                (OptionalSome, a) => OptionalLit(None, vec![a]),
-                (OptionalNone, a) => OptionalLit(Some(bx(a)), vec![]),
-                (NaturalIsZero, NaturalLit(n)) => BoolLit(n == 0),
-                (NaturalEven, NaturalLit(n)) => BoolLit(n % 2 == 0),
-                (NaturalOdd, NaturalLit(n)) => BoolLit(n % 2 != 0),
-                (NaturalToInteger, NaturalLit(n)) => IntegerLit(n as isize),
-                (NaturalShow, NaturalLit(n)) => TextLit(n.to_string().into()),
-
-                (b, App(f, x)) => match (b, normalize_whnf(&f), x) {
-                    // fold/build fusion for `Natural`
-                    (NaturalBuild, Builtin(NaturalFold), x) => {
-                        normalize_whnf(&x)
-                    }
-                    (NaturalFold, Builtin(NaturalBuild), x) => {
-                        normalize_whnf(&x)
-                    }
-                    (b, f, x) => app(Builtin(b), app(f, *x)),
-                },
-                (b, a) => app(Builtin(b), a),
-            },
-            (App(f, x), y) => match (normalize_whnf(&f), x, y) {
-                // TODO: use whnf
-                (Builtin(b), x, y) => match (b, x, normalize::<S, S, A>(&y)) {
-                    (ListLength, _, ListLit(_, ys)) => NaturalLit(ys.len()),
-                    (ListHead, _, ListLit(t, ys)) => {
-                        OptionalLit(t, ys.into_iter().take(1).collect())
-                    }
-                    (ListLast, _, ListLit(t, ys)) => OptionalLit(
-                        t,
-                        ys.into_iter().last().into_iter().collect(),
-                    ),
-                    (ListReverse, _, ListLit(t, ys)) => {
-                        let mut xs = ys;
-                        xs.reverse();
-                        ListLit(t, xs)
-                    }
-
-                    // fold/build fusion for `List`
-                    (
-                        ListBuild,
-                        _,
-                        App(box App(box Builtin(ListFold), _), box e2),
-                    ) => normalize_whnf(&e2),
-                    (
-                        ListFold,
-                        _,
-                        App(box App(box Builtin(ListBuild), _), box e2),
-                    ) => normalize_whnf(&e2),
-
-                    // fold/build fusion for `Optional`
-                    (
-                        OptionalBuild,
-                        _,
-                        App(box App(box Builtin(OptionalFold), _), box e2),
-                    ) => normalize_whnf(&e2),
-                    (
-                        OptionalFold,
-                        _,
-                        App(box App(box Builtin(OptionalBuild), _), box e2),
-                    ) => normalize_whnf(&e2),
-
-                    (ListBuild, a0, k) => {
-                        let k = bx(k);
-                        let a1 = bx(shift(1, &V("a".into(), 0), &a0));
-                        normalize_whnf(
-                            &dhall_expr!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)),
-                        )
-                    }
-                    (OptionalBuild, a0, g) => {
-                        let g = bx(g);
-                        normalize_whnf(
-                            &dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)),
-                        )
-                    }
-                    (b, x, y) => app(App(bx(Builtin(b)), x), y),
-                },
-                (App(f, x), y, z) => match (normalize_whnf(&f), x, y, z) {
-                    (App(f, x), y, z, w) => {
-                        match (normalize_whnf(&f), x, y, z, w) {
-                            (App(f, x), y, z, w, t) => match (
-                                normalize_whnf(&f),
-                                x,
-                                normalize_whnf(&y),
-                                z,
-                                w,
-                                t,
-                            ) {
-                                (
-                                    Builtin(ListFold),
-                                    _,
-                                    ListLit(_, xs),
-                                    _,
-                                    cons,
-                                    nil,
-                                ) => {
-                                    let e2: Expr<_, _> = xs
-                                        .into_iter()
-                                        .rev()
-                                        .fold((**nil).clone(), |acc, x| {
-                                            let x = bx(x);
-                                            let acc = bx(acc);
-                                            dhall_expr!(cons x acc)
-                                        });
-                                    normalize_whnf(&e2)
+            // TODO: this is more normalization than needed
+            (Builtin(b), args) => match (
+                b,
+                args.iter()
+                    .map(normalize_whnf)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            ) {
+                (OptionalSome, [a]) => OptionalLit(None, vec![a.clone()]),
+                (OptionalNone, [a]) => OptionalLit(Some(bx(a.clone())), vec![]),
+                (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
+                (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
+                (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
+                (NaturalToInteger, [NaturalLit(n)]) => IntegerLit(*n as isize),
+                (NaturalShow, [NaturalLit(n)]) => TextLit(n.to_string().into()),
+                (ListLength, [_, ListLit(_, ys)]) => NaturalLit(ys.len()),
+                (ListHead, [_, ListLit(t, ys)]) => OptionalLit(
+                    t.clone(),
+                    ys.into_iter().take(1).cloned().collect(),
+                ),
+                (ListLast, [_, ListLit(t, ys)]) => OptionalLit(
+                    t.clone(),
+                    ys.iter().last().cloned().into_iter().collect(),
+                ),
+                (ListReverse, [_, ListLit(t, ys)]) => {
+                    let xs = ys.iter().rev().cloned().collect();
+                    ListLit(t.clone(), xs)
+                }
+                (ListBuild, [a0, k]) => {
+                    // fold/build fusion
+                    let k = match k {
+                        App(box Builtin(ListFold), args) => {
+                            match args.as_slice() {
+                                [_, x, rest..] => {
+                                    return normalize_whnf(&App(
+                                        bx(x.clone()),
+                                        rest.to_vec(),
+                                    ))
                                 }
-                                (
-                                    Builtin(OptionalFold),
-                                    _,
-                                    OptionalLit(_, xs),
-                                    _,
-                                    just,
-                                    nothing,
-                                ) => {
-                                    let e2: Expr<_, _> = xs.into_iter().fold(
-                                        (**nothing).clone(),
-                                        |_, y| {
-                                            let y = bx(y);
-                                            dhall_expr!(just y)
-                                        },
-                                    );
-                                    normalize_whnf(&e2)
+                                args => app(Builtin(ListFold), args.to_vec()),
+                            }
+                        }
+                        k => k.clone(),
+                    };
+                    let k = bx(k);
+                    let a0 = bx(a0.clone());
+                    let a1 = bx(shift(1, &V("a".into(), 0), &a0));
+                    normalize_whnf(
+                        &dhall_expr!(k (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)),
+                    )
+                }
+                (OptionalBuild, [a0, g]) => {
+                    // fold/build fusion
+                    let g = match g {
+                        App(box Builtin(OptionalFold), args) => {
+                            match args.as_slice() {
+                                [_, x, rest..] => {
+                                    return normalize_whnf(&App(
+                                        bx(x.clone()),
+                                        rest.to_vec(),
+                                    ))
                                 }
-                                (f, x, y, z, w, t) => app(
-                                    App(
-                                        bx(App(
-                                            bx(App(bx(App(bx(f), x)), bx(y))),
-                                            z,
-                                        )),
-                                        w,
-                                    ),
-                                    (**t).clone(),
-                                ),
-                            },
-                            (f, x, y, z, w) => app(
-                                App(bx(App(bx(App(bx(f), x)), y)), z),
-                                (**w).clone(),
-                            ),
+                                args => app(Builtin(OptionalFold), args.to_vec()),
+                            }
+                        }
+                        g => g.clone(),
+                    };
+                    let g = bx(g);
+                    let a0 = bx(a0.clone());
+                    normalize_whnf(
+                        &dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)),
+                    )
+                }
+                (ListFold, [_, ListLit(_, xs), _, cons, nil]) => {
+                    let e2: Expr<_, _> =
+                        xs.into_iter().rev().fold((*nil).clone(), |acc, x| {
+                            let x = bx((x).clone());
+                            let acc = bx((acc).clone());
+                            let cons = bx((cons).clone());
+                            dhall_expr!(cons x acc)
+                        });
+                    normalize_whnf(&e2)
+                }
+                // // fold/build fusion
+                // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
+                //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+                // }
+                (OptionalFold, [_, OptionalLit(_, xs), _, just, nothing]) => {
+                    let e2: Expr<_, _> =
+                        xs.into_iter().fold((*nothing).clone(), |_, y| {
+                            let y = bx((y).clone());
+                            let just = bx((just).clone());
+                            dhall_expr!(just y)
+                        });
+                    normalize_whnf(&e2)
+                }
+                // // fold/build fusion
+                // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
+                //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+                // }
+                (NaturalBuild, [App(f, args)]) => {
+                    match (&**f, args.as_slice()) {
+                        // fold/build fusion
+                        (Builtin(NaturalFold), [x, rest..]) => {
+                            normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+                        }
+                        (f, args) => {
+                            app(Builtin(NaturalBuild), vec![app(f.clone(), args.to_vec())])
                         }
                     }
-                    (f, x, y, z) => {
-                        app(App(bx(App(bx(f), x)), y), (**z).clone())
+                }
+                (NaturalFold, [App(f, args)]) => {
+                    match (&**f, args.as_slice()) {
+                        // fold/build fusion
+                        (Builtin(NaturalBuild), [x, rest..]) => {
+                            normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+                        }
+                        (f, args) => {
+                            app(Builtin(NaturalFold), vec![app(f.clone(), args.to_vec())])
+                        }
                     }
-                },
-                (f, x, y) => app(App(bx(f), x), (**y).clone()),
+                }
+                (b, args) => App(bx(Builtin(b)), args.to_vec()),
             },
-            (f, a) => app(f, (**a).clone()),
+            (f, args) => App(bx(f), args.to_vec()),
         },
         BoolIf(b, t, f) => match normalize_whnf(b) {
             BoolLit(true) => normalize_whnf(t),

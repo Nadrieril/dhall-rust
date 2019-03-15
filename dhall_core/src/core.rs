@@ -304,7 +304,7 @@ pub enum Expr<Note, Embed> {
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
     Pi(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
+    App(Box<Expr<Note, Embed>>, Vec<Expr<Note, Embed>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
@@ -646,10 +646,13 @@ impl<S, A: Display> Expr<S, A> {
     fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::Expr::*;
         match self {
-            &App(ref a, ref b) => {
+            &App(ref a, ref args) => {
                 a.fmt_d(f)?;
-                f.write_str(" ")?;
-                b.fmt_e(f)
+                for x in args {
+                    f.write_str(" ")?;
+                    x.fmt_e(f)?;
+                }
+                Ok(())
             }
             &Note(_, ref b) => b.fmt_d(f),
             a => a.fmt_e(f),
@@ -842,12 +845,12 @@ where
     Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
-pub fn app<S, A, Ef, Ex>(f: Ef, x: Ex) -> Expr<S, A>
+pub fn app<S, A, Ef, Ex>(f: Ef, x: Vec<Ex>) -> Expr<S, A>
 where
     Ef: Into<Expr<S, A>>,
     Ex: Into<Expr<S, A>>,
 {
-    Expr::App(bx(f.into()), bx(x.into()))
+    Expr::App(bx(f.into()), x.into_iter().map(|x| x.into()).collect())
 }
 
 pub type Double = f64;
@@ -902,7 +905,10 @@ where
         Var(V(ref x, n)) => Var(V(map_label(x), n)),
         Lam(ref x, ref t, ref b) => Lam(map_label(x), bxmap(t), bxmap(b)),
         Pi(ref x, ref t, ref b) => Pi(map_label(x), bxmap(t), bxmap(b)),
-        App(ref f, ref a) => App(bxmap(f), bxmap(a)),
+        App(ref f, ref args) => {
+            let args = args.iter().map(&map).collect();
+            App(bxmap(f), args)
+        }
         Let(ref l, ref t, ref a, ref b) => {
             Let(map_label(l), opt(t), bxmap(a), bxmap(b))
         }
@@ -1079,7 +1085,11 @@ pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
             let tB2 = shift(d, &V(x.clone(), n2), tB);
             Pi(x2.clone(), bx(tA2), bx(tB2))
         }
-        App(f, a) => app(shift(d, v, f), shift(d, v, a)),
+        App(f, args) => {
+            let f = shift(d, v, f);
+            let args = args.iter().map(|a| shift(d, v, a)).collect();
+            app(f, args)
+        }
         Let(f, mt, r, e) => {
             let n2 = if x == f { n + 1 } else { *n };
             let e2 = shift(d, &V(x.clone(), n2), e);
@@ -1170,10 +1180,10 @@ where
             let tA2 = subst(v, e, tA);
             Pi(y.clone(), bx(tA2), bx(tB2))
         }
-        App(f, a) => {
+        App(f, args) => {
             let f2 = subst(v, e, f);
-            let a2 = subst(v, e, a);
-            app(f2, a2)
+            let args = args.iter().map(|a| subst(v, e, a)).collect();
+            app(f2, args)
         }
         Var(v2) => {
             if v == v2 {

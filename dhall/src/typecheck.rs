@@ -79,7 +79,7 @@ where
             }
             (&App(ref fL, ref aL), &App(ref fR, ref aR)) => {
                 if go(ctx, fL, fR) {
-                    go(ctx, aL, aR)
+                    aL.iter().zip(aR.iter()).all(|(aL, aR)| go(ctx, aL, aR))
                 } else {
                     false
                 }
@@ -240,8 +240,13 @@ where
                 Ok(k) => Ok(Const(k)),
             }
         }
-        App(ref f, ref a) => {
-            let tf = normalize(&type_with(ctx, f)?);
+        App(ref f, ref args) => {
+            let (a, args) = match args.split_last() {
+                None => return type_with(ctx, f),
+                Some(x) => x,
+            };
+            let tf =
+                normalize(&type_with(ctx, &App(f.clone(), args.to_vec()))?);
             let (x, tA, tB) = match tf {
                 Pi(x, tA, tB) => (x, tA, tB),
                 _ => {
@@ -265,7 +270,7 @@ where
                 Err(TypeError::new(
                     ctx,
                     e,
-                    TypeMismatch((**f).clone(), nf_A, (**a).clone(), nf_A2),
+                    TypeMismatch((**f).clone(), nf_A, (*a).clone(), nf_A2),
                 ))
             }
         }
@@ -435,7 +440,7 @@ where
                     ));
                 }
             }
-            Ok(App(bx(Builtin(List)), t))
+            Ok(dhall_expr!(List t))
         }
         Builtin(ListBuild) => Ok(dhall_expr!(
             forall (a: Type) ->
@@ -504,7 +509,7 @@ where
                     ));
                 }
             }
-            Ok(App(bx(Builtin(Optional)), t))
+            Ok(dhall_expr!(Optional t))
         }
         Builtin(OptionalFold) => Ok(dhall_expr!(
             forall (a: Type) ->

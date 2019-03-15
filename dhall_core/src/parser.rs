@@ -746,7 +746,12 @@ rule!(annotated_expression<BoxExpr>;
 
 rule!(application_expression<BoxExpr>;
     children!(first: expression, rest*: expression) => {
-        rest.fold(first, |acc, e| bx(Expr::App(acc, e)))
+        let rest: Vec<_> = rest.map(|x| *x).collect();
+        if rest.is_empty() {
+            first
+        } else {
+            bx(Expr::App(first, rest))
+        }
     }
 );
 

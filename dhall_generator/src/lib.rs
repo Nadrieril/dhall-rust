@@ -42,7 +42,7 @@ fn dhall_to_tokenstream(
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
-            let a = dhall_to_tokenstream_bx(a, ctx);
+            let a = vec_to_tokenstream(a, ctx);
             quote! { App(#f, #a) }
         }
         Const(c) => {
