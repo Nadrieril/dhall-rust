@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #![feature(trace_macros)]
 #![feature(proc_macro_hygiene)]
 #![feature(slice_patterns)]

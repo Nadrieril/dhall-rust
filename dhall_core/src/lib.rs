@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #![feature(trace_macros)]
 #![allow(
     clippy::many_single_char_names,
