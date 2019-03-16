@@ -437,7 +437,7 @@ rule!(double_quote_literal<ParsedText>;
 // TODO: parse escapes
 rule!(double_quote_chunk<ParsedTextContents<'a>>;
     children!(c: interpolation) => {
-        OwnedInterpolatedTextContents::Expr(*c)
+        OwnedInterpolatedTextContents::Expr(c)
     },
     captured_str!(s) => {
         OwnedInterpolatedTextContents::Text(s)
@@ -461,7 +461,7 @@ rule!(interpolation<BoxExpr>;
 
 rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
     children!(c: interpolation, rest: single_quote_continue) => {
-        rest.push(OwnedInterpolatedTextContents::Expr(*c)); rest
+        rest.push(OwnedInterpolatedTextContents::Expr(c)); rest
     },
     children!(c: escaped_quote_pair, rest: single_quote_continue) => {
         rest.push(OwnedInterpolatedTextContents::Text(c)); rest
@@ -746,7 +746,7 @@ rule!(annotated_expression<BoxExpr>;
 
 rule!(application_expression<BoxExpr>;
     children!(first: expression, rest*: expression) => {
-        let rest: Vec<_> = rest.map(|x| *x).collect();
+        let rest: Vec<_> = rest.collect();
         if rest.is_empty() {
             first
         } else {
@@ -799,27 +799,23 @@ rule!(empty_record_type<BoxExpr>;
 rule!(non_empty_record_type_or_literal<BoxExpr>;
     children!(first_label: label, rest: non_empty_record_type) => {
         let (first_expr, mut map) = rest;
-        map.insert(first_label, *first_expr);
+        map.insert(first_label, first_expr);
         bx(Expr::Record(map))
     },
     children!(first_label: label, rest: non_empty_record_literal) => {
         let (first_expr, mut map) = rest;
-        map.insert(first_label, *first_expr);
+        map.insert(first_label, first_expr);
         bx(Expr::RecordLit(map))
     },
 );
 
-rule!(non_empty_record_type<(BoxExpr, BTreeMap<Label, ParsedExpr>)>;
+rule!(non_empty_record_type<(BoxExpr, BTreeMap<Label, BoxExpr>)>;
     self!(x: partial_record_entries) => x
 );
 
-named!(partial_record_entries<(BoxExpr, BTreeMap<Label, ParsedExpr>)>;
+named!(partial_record_entries<(BoxExpr, BTreeMap<Label, BoxExpr>)>;
     children!(expr: expression, entries*: record_entry) => {
-        let mut map: BTreeMap<Label, ParsedExpr> = BTreeMap::new();
-        for (n, e) in entries {
-            map.insert(n, *e);
-        }
-        (expr, map)
+        (expr, entries.collect())
     }
 );
 
@@ -827,7 +823,7 @@ named!(record_entry<(Label, BoxExpr)>;
     children!(name: label, expr: expression) => (name, expr)
 );
 
-rule!(non_empty_record_literal<(BoxExpr, BTreeMap<Label, ParsedExpr>)>;
+rule!(non_empty_record_literal<(BoxExpr, BTreeMap<Label, BoxExpr>)>;
     self!(x: partial_record_entries) => x
 );
 
@@ -846,29 +842,25 @@ rule!(union_type_or_literal<BoxExpr>;
 rule!(empty_union_type<()>; children!() => ());
 
 rule!(non_empty_union_type_or_literal
-      <(Option<(Label, BoxExpr)>, BTreeMap<Label, ParsedExpr>)>;
+      <(Option<(Label, BoxExpr)>, BTreeMap<Label, BoxExpr>)>;
     children!(l: label, e: expression, entries: union_type_entries) => {
         (Some((l, e)), entries)
     },
     children!(l: label, e: expression, rest: non_empty_union_type_or_literal) => {
         let (x, mut entries) = rest;
-        entries.insert(l, *e);
+        entries.insert(l, e);
         (x, entries)
     },
     children!(l: label, e: expression) => {
         let mut entries = BTreeMap::new();
-        entries.insert(l, *e);
+        entries.insert(l, e);
         (None, entries)
     },
 );
 
-rule!(union_type_entries<BTreeMap<Label, ParsedExpr>>;
+rule!(union_type_entries<BTreeMap<Label, BoxExpr>>;
     children!(entries*: union_type_entry) => {
-        let mut map: BTreeMap<Label, ParsedExpr> = BTreeMap::new();
-        for (n, e) in entries {
-            map.insert(n, *e);
-        }
-        map
+        entries.collect()
     }
 );
 
@@ -878,7 +870,7 @@ rule!(union_type_entry<(Label, BoxExpr)>;
 
 rule!(non_empty_list_literal_raw<BoxExpr>;
     children!(items*: expression) => {
-        bx(Expr::ListLit(None, items.map(|x| *x).collect()))
+        bx(Expr::ListLit(None, items.collect()))
     }
 );
 

@@ -2,7 +2,7 @@ use dhall_core::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
 
-type ParsedExpr = Expr<X, Import>;
+type ParsedExpr = Box<Expr<X, Import>>;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -21,24 +21,24 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
     use cbor::Value::*;
     use dhall_core::{BinOp, Builtin, Const};
     use Expr::*;
-    match data {
+    let e = match data {
         String(s) => match Builtin::parse(s) {
-            Some(b) => Ok(Expr::Builtin(b)),
+            Some(b) => Expr::Builtin(b),
             None => match s.as_str() {
-                "True" => Ok(BoolLit(true)),
-                "False" => Ok(BoolLit(false)),
-                "Type" => Ok(Const(Const::Type)),
-                "Kind" => Ok(Const(Const::Kind)),
-                s => Ok(Var(V(Label::from(s), 0))),
+                "True" => BoolLit(true),
+                "False" => BoolLit(false),
+                "Type" => Const(Const::Type),
+                "Kind" => Const(Const::Kind),
+                s => Var(V(Label::from(s), 0)),
             },
         },
-        U64(n) => Ok(Var(V(Label::from("_"), *n as usize))),
-        F64(x) => Ok(DoubleLit(*x)),
-        Bool(b) => Ok(BoolLit(*b)),
+        U64(n) => Var(V(Label::from("_"), *n as usize)),
+        F64(x) => DoubleLit(*x),
+        Bool(b) => BoolLit(*b),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
                 let l = Label::from(l.as_str());
-                Ok(Var(V(l, *n as usize)))
+                Var(V(l, *n as usize))
             }
             [U64(0), f, args..] => {
                 let f = cbor_value_to_dhall(&f)?;
@@ -46,33 +46,33 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     .iter()
                     .map(cbor_value_to_dhall)
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(App(bx(f), args))
+                App(f, args)
             }
             [U64(1), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                Ok(Lam(Label::from("_"), x, y))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                Lam(Label::from("_"), x, y)
             }
             [U64(1), String(l), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());
-                Ok(Lam(l, x, y))
+                Lam(l, x, y)
             }
             [U64(2), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                Ok(Pi(Label::from("_"), x, y))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                Pi(Label::from("_"), x, y)
             }
             [U64(2), String(l), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());
-                Ok(Pi(l, x, y))
+                Pi(l, x, y)
             }
             [U64(3), U64(n), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
                 use BinOp::*;
                 let op = match n {
                     0 => BoolOr,
@@ -89,77 +89,77 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     11 => ImportAlt,
                     _ => Err(DecodeError::WrongFormatError)?,
                 };
-                Ok(BinOp(op, x, y))
+                BinOp(op, x, y)
             }
             [U64(4), t] => {
-                let t = bx(cbor_value_to_dhall(&t)?);
-                Ok(ListLit(Some(t), vec![]))
+                let t = cbor_value_to_dhall(&t)?;
+                ListLit(Some(t), vec![])
             }
             [U64(4), Null, rest..] => {
                 let rest = rest
                     .iter()
                     .map(cbor_value_to_dhall)
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(ListLit(None, rest))
+                ListLit(None, rest)
             }
             [U64(5), t] => {
-                let t = bx(cbor_value_to_dhall(&t)?);
-                Ok(OptionalLit(Some(t), None))
+                let t = cbor_value_to_dhall(&t)?;
+                OptionalLit(Some(t), None)
             }
             [U64(5), Null, x] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                Ok(OptionalLit(None, Some(x)))
+                let x = cbor_value_to_dhall(&x)?;
+                OptionalLit(None, Some(x))
             }
             [U64(5), t, x] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let t = bx(cbor_value_to_dhall(&t)?);
-                Ok(OptionalLit(Some(t), Some(x)))
+                let x = cbor_value_to_dhall(&x)?;
+                let t = cbor_value_to_dhall(&t)?;
+                OptionalLit(Some(t), Some(x))
             }
             [U64(6), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                Ok(Merge(x, y, None))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                Merge(x, y, None)
             }
             [U64(6), x, y, z] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                let z = bx(cbor_value_to_dhall(&z)?);
-                Ok(Merge(x, y, Some(z)))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                let z = cbor_value_to_dhall(&z)?;
+                Merge(x, y, Some(z))
             }
             [U64(7), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                Ok(Record(map))
+                Record(map)
             }
             [U64(8), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                Ok(RecordLit(map))
+                RecordLit(map)
             }
             [U64(9), x, String(l)] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
+                let x = cbor_value_to_dhall(&x)?;
                 let l = Label::from(l.as_str());
-                Ok(Field(x, l))
+                Field(x, l)
             }
             [U64(11), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                Ok(Union(map))
+                Union(map)
             }
             [U64(12), String(l), x, Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                let x = bx(cbor_value_to_dhall(&x)?);
+                let x = cbor_value_to_dhall(&x)?;
                 let l = Label::from(l.as_str());
-                Ok(UnionLit(l, x, map))
+                UnionLit(l, x, map)
             }
             [U64(14), x, y, z] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                let z = bx(cbor_value_to_dhall(&z)?);
-                Ok(BoolIf(x, y, z))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                let z = cbor_value_to_dhall(&z)?;
+                BoolIf(x, y, z)
             }
-            [U64(15), U64(x)] => Ok(NaturalLit(*x as Natural)),
-            [U64(16), U64(x)] => Ok(IntegerLit(*x as Integer)),
-            [U64(16), I64(x)] => Ok(IntegerLit(*x as Integer)),
+            [U64(15), U64(x)] => NaturalLit(*x as Natural),
+            [U64(16), U64(x)] => IntegerLit(*x as Integer),
+            [U64(16), I64(x)] => IntegerLit(*x as Integer),
             [U64(18), String(first), rest..] => {
-                Ok(TextLit(InterpolatedText::from((
+                TextLit(InterpolatedText::from((
                     first.clone(),
                     rest.iter()
                         .tuples()
@@ -172,7 +172,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                             Ok((x, y))
                         })
                         .collect::<Result<_, _>>()?,
-                ))))
+                )))
             }
             [U64(25), bindings..] => {
                 let mut tuples = bindings.iter().tuples();
@@ -184,9 +184,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         };
                         let t = match t {
                             Null => None,
-                            t => Some(bx(cbor_value_to_dhall(&t)?)),
+                            t => Some(cbor_value_to_dhall(&t)?),
                         };
-                        let v = bx(cbor_value_to_dhall(&v)?);
+                        let v = cbor_value_to_dhall(&v)?;
                         Ok((x, t, v))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -195,19 +195,20 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     .next()
                     .ok_or(DecodeError::WrongFormatError)?;
                 let expr = cbor_value_to_dhall(expr)?;
-                Ok(bindings
+                return Ok(bindings
                     .into_iter()
-                    .fold(expr, |acc, (x, t, v)| Let(x, t, v, bx(acc))))
+                    .fold(expr, |acc, (x, t, v)| bx(Let(x, t, v, acc))));
             }
             [U64(26), x, y] => {
-                let x = bx(cbor_value_to_dhall(&x)?);
-                let y = bx(cbor_value_to_dhall(&y)?);
-                Ok(Annot(x, y))
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                Annot(x, y)
             }
-            _ => Err(DecodeError::WrongFormatError),
+            _ => Err(DecodeError::WrongFormatError)?,
         },
-        _ => Err(DecodeError::WrongFormatError),
-    }
+        _ => Err(DecodeError::WrongFormatError)?,
+    };
+    Ok(bx(e))
 }
 
 fn cbor_map_to_dhall_map(

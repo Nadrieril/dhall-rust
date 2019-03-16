@@ -176,13 +176,13 @@ pub enum BinOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InterpolatedText<Note, Embed> {
     head: String,
-    tail: Vec<(Expr<Note, Embed>, String)>,
+    tail: Vec<(Box<Expr<Note, Embed>>, String)>,
 }
 
-impl<N, E> From<(String, Vec<(Expr<N, E>, String)>)>
+impl<N, E> From<(String, Vec<(Box<Expr<N, E>>, String)>)>
     for InterpolatedText<N, E>
 {
-    fn from(x: (String, Vec<(Expr<N, E>, String)>)) -> Self {
+    fn from(x: (String, Vec<(Box<Expr<N, E>>, String)>)) -> Self {
         InterpolatedText {
             head: x.0,
             tail: x.1,
@@ -203,7 +203,7 @@ impl<N, E> From<String> for InterpolatedText<N, E> {
 // This one is needed when parsing, because we need to own the Expr
 pub enum OwnedInterpolatedTextContents<'a, Note, Embed> {
     Text(&'a str),
-    Expr(Expr<Note, Embed>),
+    Expr(Box<Expr<Note, Embed>>),
 }
 
 // This one is needed everywhere else, because we don't want Clone traits bounds
@@ -222,7 +222,7 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
                 OwnedInterpolatedTextContents::Text(s)
             }
             BorrowedInterpolatedTextContents::Expr(e) => {
-                OwnedInterpolatedTextContents::Expr(e.clone())
+                OwnedInterpolatedTextContents::Expr(bx(e.clone()))
             }
         }
     }
@@ -231,7 +231,7 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
 impl<N, E> InterpolatedText<N, E> {
     pub fn map<N2, E2, F>(&self, mut f: F) -> InterpolatedText<N2, E2>
     where
-        F: FnMut(&Expr<N, E>) -> Expr<N2, E2>,
+        F: FnMut(&Box<Expr<N, E>>) -> Box<Expr<N2, E2>>,
     {
         InterpolatedText {
             head: self.head.clone(),
@@ -304,7 +304,7 @@ pub enum Expr<Note, Embed> {
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
     Pi(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<Note, Embed>>, Vec<Expr<Note, Embed>>),
+    App(Box<Expr<Note, Embed>>, Vec<Box<Expr<Note, Embed>>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
@@ -336,7 +336,7 @@ pub enum Expr<Note, Embed> {
     ///  `TextLit t                                ~  t`
     TextLit(InterpolatedText<Note, Embed>),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Expr<Note, Embed>>),
+    ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Box<Expr<Note, Embed>>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(
@@ -344,16 +344,16 @@ pub enum Expr<Note, Embed> {
         Option<Box<Expr<Note, Embed>>>,
     ),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<Label, Expr<Note, Embed>>),
+    Record(BTreeMap<Label, Box<Expr<Note, Embed>>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, Expr<Note, Embed>>),
+    RecordLit(BTreeMap<Label, Box<Expr<Note, Embed>>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<Label, Expr<Note, Embed>>),
+    Union(BTreeMap<Label, Box<Expr<Note, Embed>>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
         Label,
         Box<Expr<Note, Embed>>,
-        BTreeMap<Label, Expr<Note, Embed>>,
+        BTreeMap<Label, Box<Expr<Note, Embed>>>,
     ),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(
@@ -848,12 +848,15 @@ where
     Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
-pub fn app<S, A, Ef, Ex>(f: Ef, x: Vec<Ex>) -> Expr<S, A>
+pub fn app<S, A, Ef, Ex>(f: Ef, x: Vec<Box<Ex>>) -> Expr<S, A>
 where
     Ef: Into<Expr<S, A>>,
     Ex: Into<Expr<S, A>>,
 {
-    Expr::App(bx(f.into()), x.into_iter().map(|x| x.into()).collect())
+    Expr::App(
+        bx(f.into()),
+        x.into_iter().map(|x| bx((*x).into())).collect(),
+    )
 }
 
 pub type Double = f64;
@@ -902,6 +905,7 @@ where
 {
     use crate::Expr::*;
     let bxmap = |x: &Expr<S, A>| -> Box<Expr<T, B>> { bx(map(x)) };
+    let bxbxmap = |x: &Box<Expr<S, A>>| -> Box<Expr<T, B>> { bx(map(&**x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -909,7 +913,7 @@ where
         Lam(ref x, ref t, ref b) => Lam(map_label(x), bxmap(t), bxmap(b)),
         Pi(ref x, ref t, ref b) => Pi(map_label(x), bxmap(t), bxmap(b)),
         App(ref f, ref args) => {
-            let args = args.iter().map(&map).collect();
+            let args = args.iter().map(bxbxmap).collect();
             App(bxmap(f), args)
         }
         Let(ref l, ref t, ref a, ref b) => {
@@ -922,24 +926,26 @@ where
         NaturalLit(n) => NaturalLit(n),
         IntegerLit(n) => IntegerLit(n),
         DoubleLit(n) => DoubleLit(n),
-        TextLit(ref t) => TextLit(t.map(|e| map(e))),
+        TextLit(ref t) => TextLit(t.map(&bxbxmap)),
         BinOp(o, ref x, ref y) => BinOp(o, bxmap(x), bxmap(y)),
         ListLit(ref t, ref es) => {
-            let es = es.iter().map(&map).collect();
+            let es = es.iter().map(&bxbxmap).collect();
             ListLit(opt(t), es)
         }
         OptionalLit(ref t, ref es) => OptionalLit(opt(t), opt(es)),
         Record(ref kts) => {
-            Record(map_record_value_and_keys(kts, map, map_label))
+            Record(map_record_value_and_keys(kts, bxbxmap, map_label))
         }
         RecordLit(ref kvs) => {
-            RecordLit(map_record_value_and_keys(kvs, map, map_label))
+            RecordLit(map_record_value_and_keys(kvs, bxbxmap, map_label))
         }
-        Union(ref kts) => Union(map_record_value_and_keys(kts, map, map_label)),
+        Union(ref kts) => {
+            Union(map_record_value_and_keys(kts, bxbxmap, map_label))
+        }
         UnionLit(ref k, ref v, ref kvs) => UnionLit(
             map_label(k),
             bxmap(v),
-            map_record_value_and_keys(kvs, map, map_label),
+            map_record_value_and_keys(kvs, bxbxmap, map_label),
         ),
         Merge(ref x, ref y, ref t) => Merge(bxmap(x), bxmap(y), opt(t)),
         Field(ref r, ref x) => Field(bxmap(r), map_label(x)),
@@ -1087,7 +1093,7 @@ pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
         }
         App(f, args) => {
             let f = shift(d, v, f);
-            let args = args.iter().map(|a| shift(d, v, a)).collect();
+            let args = args.iter().map(|a| bx(shift(d, v, a))).collect();
             app(f, args)
         }
         Let(f, mt, r, e) => {
@@ -1107,22 +1113,24 @@ pub fn shift<S, T, A: Clone>(d: isize, v: &V, e: &Expr<S, A>) -> Expr<T, A> {
         NaturalLit(a) => NaturalLit(*a),
         IntegerLit(a) => IntegerLit(*a),
         DoubleLit(a) => DoubleLit(*a),
-        TextLit(a) => TextLit(a.map(|e| shift(d, v, e))),
+        TextLit(a) => TextLit(a.map(|e| bx(shift(d, v, &*e)))),
         ListLit(t, es) => ListLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
-            es.iter().map(|e| shift(d, v, e)).collect(),
+            es.iter().map(|e| bx(shift(d, v, e))).collect(),
         ),
         OptionalLit(t, e) => OptionalLit(
             t.as_ref().map(|t| bx(shift(d, v, t))),
             e.as_ref().map(|t| bx(shift(d, v, t))),
         ),
-        Record(a) => Record(map_record_value(a, |val| shift(d, v, val))),
-        RecordLit(a) => RecordLit(map_record_value(a, |val| shift(d, v, val))),
-        Union(a) => Union(map_record_value(a, |val| shift(d, v, val))),
+        Record(a) => Record(map_record_value(a, |val| bx(shift(d, v, &*val)))),
+        RecordLit(a) => {
+            RecordLit(map_record_value(a, |val| bx(shift(d, v, &*val))))
+        }
+        Union(a) => Union(map_record_value(a, |val| bx(shift(d, v, &*val)))),
         UnionLit(k, uv, a) => UnionLit(
             k.clone(),
             bx(shift(d, v, uv)),
-            map_record_value(a, |val| shift(d, v, val)),
+            map_record_value(a, |val| bx(shift(d, v, &*val))),
         ),
         Merge(a, b, c) => Merge(
             bx(shift(d, v, a)),
@@ -1182,7 +1190,7 @@ where
         }
         App(f, args) => {
             let f2 = subst(v, e, f);
-            let args = args.iter().map(|a| subst(v, e, a)).collect();
+            let args = args.iter().map(|a| bx(subst(v, e, a))).collect();
             app(f2, args)
         }
         Var(v2) => {
@@ -1210,10 +1218,10 @@ where
         NaturalLit(a) => NaturalLit(*a),
         IntegerLit(a) => IntegerLit(*a),
         DoubleLit(a) => DoubleLit(*a),
-        TextLit(a) => TextLit(a.map(|b| subst(v, e, b))),
+        TextLit(a) => TextLit(a.map(|b| bx(subst(v, e, &*b)))),
         ListLit(a, b) => {
             let a2 = a.as_ref().map(|a| bx(subst(v, e, a)));
-            let b2 = b.iter().map(|be| subst(v, e, be)).collect();
+            let b2 = b.iter().map(|be| bx(subst(v, e, be))).collect();
             ListLit(a2, b2)
         }
         OptionalLit(a, b) => {
@@ -1221,15 +1229,15 @@ where
             let b2 = b.as_ref().map(|a| bx(subst(v, e, a)));
             OptionalLit(a2, b2)
         }
-        Record(kts) => Record(map_record_value(kts, |t| subst(v, e, t))),
+        Record(kts) => Record(map_record_value(kts, |t| bx(subst(v, e, &*t)))),
         RecordLit(kvs) => {
-            RecordLit(map_record_value(kvs, |val| subst(v, e, val)))
+            RecordLit(map_record_value(kvs, |val| bx(subst(v, e, &*val))))
         }
-        Union(kts) => Union(map_record_value(kts, |t| subst(v, e, t))),
+        Union(kts) => Union(map_record_value(kts, |t| bx(subst(v, e, &*t)))),
         UnionLit(k, uv, kvs) => UnionLit(
             k.clone(),
             bx(subst(v, e, uv)),
-            map_record_value(kvs, |val| subst(v, e, val)),
+            map_record_value(kvs, |val| bx(subst(v, e, &*val))),
         ),
         Merge(a, b, c) => Merge(
             bx(subst(v, e, a)),

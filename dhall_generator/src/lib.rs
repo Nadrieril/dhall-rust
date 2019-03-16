@@ -125,12 +125,14 @@ fn label_to_tokenstream(l: &Label) -> TokenStream {
 }
 
 fn map_to_tokenstream(
-    m: &BTreeMap<Label, Expr<X, X>>,
+    m: &BTreeMap<Label, Box<Expr<X, X>>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let (keys, values): (Vec<TokenStream>, Vec<TokenStream>) = m
         .iter()
-        .map(|(k, v)| (label_to_tokenstream(k), dhall_to_tokenstream(v, ctx)))
+        .map(|(k, v)| {
+            (label_to_tokenstream(k), dhall_to_tokenstream_bx(&*v, ctx))
+        })
         .unzip();
     quote! { {
         let mut m = BTreeMap::new();
@@ -151,10 +153,10 @@ fn option_to_tokenstream(
 }
 
 fn vec_to_tokenstream(
-    e: &Vec<Expr<X, X>>,
+    e: &Vec<Box<Expr<X, X>>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
-    let e = e.iter().map(|x| dhall_to_tokenstream(x, ctx));
+    let e = e.iter().map(|x| dhall_to_tokenstream_bx(&**x, ctx));
     quote! { vec![ #(#e),* ] }
 }
 

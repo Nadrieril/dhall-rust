@@ -270,7 +270,7 @@ where
                 Err(TypeError::new(
                     ctx,
                     e,
-                    TypeMismatch((**f).clone(), nf_A, (*a).clone(), nf_A2),
+                    TypeMismatch((**f).clone(), nf_A, (**a).clone(), nf_A2),
                 ))
             }
         }
@@ -436,7 +436,7 @@ where
                     return Err(TypeError::new(
                         ctx,
                         e,
-                        InvalidListElement(i, nf_t, x.clone(), nf_t2),
+                        InvalidListElement(i, nf_t, (**x).clone(), nf_t2),
                     ));
                 }
             }
@@ -529,7 +529,7 @@ where
                         return Err(TypeError::new(
                             ctx,
                             e,
-                            InvalidFieldType((*k).clone(), (*t).clone()),
+                            InvalidFieldType((*k).clone(), (**t).clone()),
                         ));
                     }
                 }
@@ -548,11 +548,11 @@ where
                             return Err(TypeError::new(
                                 ctx,
                                 e,
-                                InvalidField((*k).clone(), (*v).clone()),
+                                InvalidField((*k).clone(), (**v).clone()),
                             ));
                         }
                     }
-                    Ok(((*k).clone(), t))
+                    Ok(((*k).clone(), bx(t)))
                 })
                 .collect::<Result<_, _>>()?;
             Ok(Record(kts))
@@ -641,13 +641,15 @@ where
         Field(ref r, ref x) => {
             let t = normalize(&type_with(ctx, r)?);
             match t {
-                Record(ref kts) => kts.get(x).cloned().ok_or_else(|| {
-                    TypeError::new(
-                        ctx,
-                        e,
-                        MissingField((*x).clone(), t.clone()),
-                    )
-                }),
+                Record(ref kts) => {
+                    kts.get(x).map(|x| &**x).cloned().ok_or_else(|| {
+                        TypeError::new(
+                            ctx,
+                            e,
+                            MissingField((*x).clone(), t.clone()),
+                        )
+                    })
+                }
                 _ => Err(TypeError::new(
                     ctx,
                     e,
