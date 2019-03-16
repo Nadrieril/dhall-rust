@@ -2,6 +2,7 @@
 use dhall_core::core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
+use std::rc::Rc;
 
 /// Reduce an expression to its weak head normal form, i.e. normalize
 /// just enough to get the first constructor of the final expression

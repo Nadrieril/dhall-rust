@@ -4,11 +4,12 @@ use dhall_core::*;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 #[proc_macro]
 pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: Box<Expr<X, Import>> = parser::parse_expr(&input_str).unwrap();
+    let expr: Rc<Expr<X, Import>> = parser::parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.map_embed(&no_import);
@@ -17,7 +18,7 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 // Returns an expression of type Expr<_, _>. Expects input variables
-// to be of type Box<Expr<_, _>> (future-proof for structural sharing).
+// to be of type Rc<Expr<_, _>>.
 fn dhall_to_tokenstream(
     expr: &Expr<X, X>,
     ctx: &Context<Label, ()>,
@@ -77,7 +78,7 @@ fn dhall_to_tokenstream(
     }
 }
 
-// Returns an expression of type Box<Expr<_, _>>
+// Returns an expression of type Rc<Expr<_, _>>
 fn dhall_to_tokenstream_bx(
     expr: &Expr<X, X>,
     ctx: &Context<Label, ()>,
@@ -97,7 +98,7 @@ fn dhall_to_tokenstream_bx(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: Box<Expr<_, _>> = #v.clone();
+                        let x: Rc<Expr<_, _>> = #v.clone();
                         x
                     } }
                 }
@@ -125,7 +126,7 @@ fn label_to_tokenstream(l: &Label) -> TokenStream {
 }
 
 fn map_to_tokenstream(
-    m: &BTreeMap<Label, Box<Expr<X, X>>>,
+    m: &BTreeMap<Label, Rc<Expr<X, X>>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let (keys, values): (Vec<TokenStream>, Vec<TokenStream>) = m
@@ -142,7 +143,7 @@ fn map_to_tokenstream(
 }
 
 fn option_to_tokenstream(
-    e: &Option<Box<Expr<X, X>>>,
+    e: &Option<Rc<Expr<X, X>>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let e = e.as_ref().map(|x| dhall_to_tokenstream_bx(x, ctx));
@@ -153,7 +154,7 @@ fn option_to_tokenstream(
 }
 
 fn vec_to_tokenstream(
-    e: &Vec<Box<Expr<X, X>>>,
+    e: &Vec<Rc<Expr<X, X>>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let e = e.iter().map(|x| dhall_to_tokenstream_bx(&**x, ctx));

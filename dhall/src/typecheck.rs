@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::rc::Rc;
 
 use crate::normalize;
 use dhall_core::context::Context;
@@ -415,7 +416,7 @@ where
         }
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
-            let t: Box<Expr<_, _>> = match t {
+            let t: Rc<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let (_, first_x) = iter.next().unwrap();
@@ -426,7 +427,7 @@ where
             let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
             match s {
                 Const(Type) => {}
-                _ => return Err(TypeError::new(ctx, e, InvalidListType(*t))),
+                _ => return Err(TypeError::new(ctx, e, InvalidListType(t))),
             }
             for (i, x) in iter {
                 let t2 = type_with(ctx, x)?;
@@ -474,7 +475,7 @@ where
         )),
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
-            let t: Box<Expr<_, _>> = match t {
+            let t: Rc<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let x = iter.next().unwrap();
@@ -489,7 +490,7 @@ where
                     return Err(TypeError::new(
                         ctx,
                         e,
-                        InvalidOptionalType(*t),
+                        InvalidOptionalType(t),
                     ));
                 }
             }
@@ -689,10 +690,10 @@ pub enum TypeMessage<S> {
     AnnotMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>),
     Untyped,
     InvalidListElement(usize, Expr<S, X>, Expr<S, X>, Expr<S, X>),
-    InvalidListType(Expr<S, X>),
+    InvalidListType(Rc<Expr<S, X>>),
     InvalidOptionalElement(Expr<S, X>, Expr<S, X>, Expr<S, X>),
     InvalidOptionalLiteral(usize),
-    InvalidOptionalType(Expr<S, X>),
+    InvalidOptionalType(Rc<Expr<S, X>>),
     InvalidPredicate(Expr<S, X>, Expr<S, X>),
     IfBranchMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>, Expr<S, X>),
     IfBranchMustBeTerm(bool, Expr<S, X>, Expr<S, X>, Expr<S, X>),

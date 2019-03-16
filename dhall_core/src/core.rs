@@ -176,13 +176,13 @@ pub enum BinOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InterpolatedText<Note, Embed> {
     head: String,
-    tail: Vec<(Box<Expr<Note, Embed>>, String)>,
+    tail: Vec<(Rc<Expr<Note, Embed>>, String)>,
 }
 
-impl<N, E> From<(String, Vec<(Box<Expr<N, E>>, String)>)>
+impl<N, E> From<(String, Vec<(Rc<Expr<N, E>>, String)>)>
     for InterpolatedText<N, E>
 {
-    fn from(x: (String, Vec<(Box<Expr<N, E>>, String)>)) -> Self {
+    fn from(x: (String, Vec<(Rc<Expr<N, E>>, String)>)) -> Self {
         InterpolatedText {
             head: x.0,
             tail: x.1,
@@ -203,7 +203,7 @@ impl<N, E> From<String> for InterpolatedText<N, E> {
 // This one is needed when parsing, because we need to own the Expr
 pub enum OwnedInterpolatedTextContents<'a, Note, Embed> {
     Text(&'a str),
-    Expr(Box<Expr<Note, Embed>>),
+    Expr(Rc<Expr<Note, Embed>>),
 }
 
 // This one is needed everywhere else, because we don't want Clone traits bounds
@@ -231,7 +231,7 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
 impl<N, E> InterpolatedText<N, E> {
     pub fn map<N2, E2, F>(&self, mut f: F) -> InterpolatedText<N2, E2>
     where
-        F: FnMut(&Box<Expr<N, E>>) -> Box<Expr<N2, E2>>,
+        F: FnMut(&Rc<Expr<N, E>>) -> Rc<Expr<N2, E2>>,
     {
         InterpolatedText {
             head: self.head.clone(),
@@ -299,33 +299,33 @@ pub enum Expr<Note, Embed> {
     ///  `Var (V x n)                              ~  x@n`
     Var(V),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
+    Lam(Label, Rc<Expr<Note, Embed>>, Rc<Expr<Note, Embed>>),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(Label, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
+    Pi(Label, Rc<Expr<Note, Embed>>, Rc<Expr<Note, Embed>>),
     ///  `App f A                                  ~  f A`
-    App(Box<Expr<Note, Embed>>, Vec<Box<Expr<Note, Embed>>>),
+    App(Rc<Expr<Note, Embed>>, Vec<Rc<Expr<Note, Embed>>>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
     Let(
         Label,
-        Option<Box<Expr<Note, Embed>>>,
-        Box<Expr<Note, Embed>>,
-        Box<Expr<Note, Embed>>,
+        Option<Rc<Expr<Note, Embed>>>,
+        Rc<Expr<Note, Embed>>,
+        Rc<Expr<Note, Embed>>,
     ),
     ///  `Annot x t                                ~  x : t`
-    Annot(Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
+    Annot(Rc<Expr<Note, Embed>>, Rc<Expr<Note, Embed>>),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
-    BinOp(BinOp, Box<Expr<Note, Embed>>, Box<Expr<Note, Embed>>),
+    BinOp(BinOp, Rc<Expr<Note, Embed>>, Rc<Expr<Note, Embed>>),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolIf x y z                             ~  if x then y else z`
     BoolIf(
-        Box<Expr<Note, Embed>>,
-        Box<Expr<Note, Embed>>,
-        Box<Expr<Note, Embed>>,
+        Rc<Expr<Note, Embed>>,
+        Rc<Expr<Note, Embed>>,
+        Rc<Expr<Note, Embed>>,
     ),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
@@ -336,35 +336,35 @@ pub enum Expr<Note, Embed> {
     ///  `TextLit t                                ~  t`
     TextLit(InterpolatedText<Note, Embed>),
     ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Option<Box<Expr<Note, Embed>>>, Vec<Box<Expr<Note, Embed>>>),
+    ListLit(Option<Rc<Expr<Note, Embed>>>, Vec<Rc<Expr<Note, Embed>>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(
-        Option<Box<Expr<Note, Embed>>>,
-        Option<Box<Expr<Note, Embed>>>,
+        Option<Rc<Expr<Note, Embed>>>,
+        Option<Rc<Expr<Note, Embed>>>,
     ),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<Label, Box<Expr<Note, Embed>>>),
+    Record(BTreeMap<Label, Rc<Expr<Note, Embed>>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, Box<Expr<Note, Embed>>>),
+    RecordLit(BTreeMap<Label, Rc<Expr<Note, Embed>>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<Label, Box<Expr<Note, Embed>>>),
+    Union(BTreeMap<Label, Rc<Expr<Note, Embed>>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
         Label,
-        Box<Expr<Note, Embed>>,
-        BTreeMap<Label, Box<Expr<Note, Embed>>>,
+        Rc<Expr<Note, Embed>>,
+        BTreeMap<Label, Rc<Expr<Note, Embed>>>,
     ),
     ///  `Merge x y t                              ~  merge x y : t`
     Merge(
-        Box<Expr<Note, Embed>>,
-        Box<Expr<Note, Embed>>,
-        Option<Box<Expr<Note, Embed>>>,
+        Rc<Expr<Note, Embed>>,
+        Rc<Expr<Note, Embed>>,
+        Option<Rc<Expr<Note, Embed>>>,
     ),
     ///  `Field e x                                ~  e.x`
-    Field(Box<Expr<Note, Embed>>, Label),
+    Field(Rc<Expr<Note, Embed>>, Label),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
-    Note(Note, Box<Expr<Note, Embed>>),
+    Note(Note, Rc<Expr<Note, Embed>>),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }
@@ -848,14 +848,13 @@ where
     Expr::Pi(var.into(), bx(ty.into()), bx(value.into()))
 }
 
-pub fn app<S, A, Ef, Ex>(f: Ef, x: Vec<Box<Ex>>) -> Expr<S, A>
+pub fn app<S, A, Ef>(f: Ef, x: Vec<Rc<Expr<S, A>>>) -> Expr<S, A>
 where
     Ef: Into<Expr<S, A>>,
-    Ex: Into<Expr<S, A>>,
 {
     Expr::App(
         bx(f.into()),
-        x.into_iter().map(|x| bx((*x).into())).collect(),
+        x,
     )
 }
 
@@ -874,8 +873,11 @@ impl Display for X {
     }
 }
 
-pub fn bx<T>(x: T) -> Box<T> {
-    Box::new(x)
+pub fn bx<T>(x: T) -> Rc<T> {
+    Rc::new(x)
+}
+pub fn rc<T>(x: T) -> Rc<T> {
+    Rc::new(x)
 }
 
 fn add_ui(u: usize, i: isize) -> usize {
@@ -904,8 +906,8 @@ where
     F4: Fn(&Label) -> Label,
 {
     use crate::Expr::*;
-    let bxmap = |x: &Expr<S, A>| -> Box<Expr<T, B>> { bx(map(x)) };
-    let bxbxmap = |x: &Box<Expr<S, A>>| -> Box<Expr<T, B>> { bx(map(&**x)) };
+    let bxmap = |x: &Expr<S, A>| -> Rc<Expr<T, B>> { bx(map(x)) };
+    let bxbxmap = |x: &Rc<Expr<S, A>>| -> Rc<Expr<T, B>> { bx(map(&**x)) };
     let opt = |x| map_opt_box(x, &map);
     match *e {
         Const(k) => Const(k),
@@ -980,7 +982,7 @@ where
     it.into_iter().map(|(k, v)| (g(k), f(v))).collect()
 }
 
-pub fn map_opt_box<T, U, F>(x: &Option<Box<T>>, f: F) -> Option<Box<U>>
+pub fn map_opt_box<T, U, F>(x: &Option<Rc<T>>, f: F) -> Option<Rc<U>>
 where
     F: FnOnce(&T) -> U,
 {
@@ -1153,7 +1155,7 @@ fn shift_op2<S, T, A, F>(
     b: &Expr<S, A>,
 ) -> Expr<T, A>
 where
-    F: FnOnce(Box<Expr<T, A>>, Box<Expr<T, A>>) -> Expr<T, A>,
+    F: FnOnce(Rc<Expr<T, A>>, Rc<Expr<T, A>>) -> Expr<T, A>,
     A: Clone,
 {
     map_op2(f, |x| bx(shift(d, v, x)), a, b)
@@ -1258,7 +1260,7 @@ fn subst_op2<S, T, A, F>(
     b: &Expr<T, A>,
 ) -> Expr<S, A>
 where
-    F: FnOnce(Box<Expr<S, A>>, Box<Expr<S, A>>) -> Expr<S, A>,
+    F: FnOnce(Rc<Expr<S, A>>, Rc<Expr<S, A>>) -> Expr<S, A>,
     S: Clone,
     A: Clone,
 {
