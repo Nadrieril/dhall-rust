@@ -97,25 +97,25 @@ pub fn run_test(base_path: &str, feature: Feature) {
         Normalization => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = read_dhall_file(&expr_file_path).unwrap();
-            let expected = read_dhall_file(&expected_file_path).unwrap();
+            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
+            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
 
             assert_eq_display!(
-                normalize::<_, X, _>(&expr),
-                normalize::<_, X, _>(&expected)
+                normalize::<_, X, _>(expr),
+                normalize::<_, X, _>(expected)
             );
         }
         TypecheckFailure => {
             let file_path = base_path + ".dhall";
-            let expr = read_dhall_file(&file_path).unwrap();
-            typecheck::type_of(&expr).unwrap_err();
+            let expr = rc(read_dhall_file(&file_path).unwrap());
+            typecheck::type_of(expr).unwrap_err();
         }
         TypecheckSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = read_dhall_file(&expr_file_path).unwrap();
-            let expected = read_dhall_file(&expected_file_path).unwrap();
-            typecheck::type_of(&Expr::Annot(bx(expr), bx(expected))).unwrap();
+            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
+            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
+            typecheck::type_of(rc(Expr::Annot(expr, expected))).unwrap();
         }
     }
 }

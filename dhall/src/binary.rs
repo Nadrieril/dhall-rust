@@ -1,7 +1,7 @@
 use dhall_core::*;
 use itertools::*;
-use std::rc::Rc;
 use serde_cbor::value::value as cbor;
+use std::rc::Rc;
 
 type ParsedExpr = Rc<Expr<X, Import>>;
 
@@ -22,7 +22,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
     use cbor::Value::*;
     use dhall_core::{BinOp, Builtin, Const};
     use Expr::*;
-    let e = match data {
+    Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
             Some(b) => Expr::Builtin(b),
             None => match s.as_str() {
@@ -198,7 +198,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let expr = cbor_value_to_dhall(expr)?;
                 return Ok(bindings
                     .into_iter()
-                    .fold(expr, |acc, (x, t, v)| bx(Let(x, t, v, acc))));
+                    .fold(expr, |acc, (x, t, v)| rc(Let(x, t, v, acc))));
             }
             [U64(26), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
@@ -208,8 +208,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             _ => Err(DecodeError::WrongFormatError)?,
         },
         _ => Err(DecodeError::WrongFormatError)?,
-    };
-    Ok(bx(e))
+    }))
 }
 
 fn cbor_map_to_dhall_map(

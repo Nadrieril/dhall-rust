@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::io::{self, Read};
+use std::rc::Rc;
 use term_painter::ToStyle;
 
 use dhall::*;
@@ -65,9 +66,9 @@ fn main() {
         }
     };
 
-    let expr: Expr<_, _> = imports::panic_imports(&expr);
+    let expr: Rc<Expr<_, _>> = rc(imports::panic_imports(&expr));
 
-    let type_expr = match typecheck::type_of(&expr) {
+    let type_expr = match typecheck::type_of(expr.clone()) {
         Err(e) => {
             let explain = ::std::env::args().any(|s| s == "--explain");
             if !explain {
@@ -89,5 +90,5 @@ fn main() {
 
     println!("{}", type_expr);
     println!();
-    println!("{}", normalize::<_, X, _>(&expr));
+    println!("{}", normalize::<_, X, _>(expr));
 }

@@ -13,11 +13,11 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = expr.map_embed(&no_import);
-    let output = dhall_to_tokenstream(&expr, &Context::new());
+    let output = dhall_to_tokenstream_bx(&expr, &Context::new());
     output.into()
 }
 
-// Returns an expression of type Expr<_, _>. Expects input variables
+// Returns an expression of type Expr<_, _>. Expects interpolated variables
 // to be of type Rc<Expr<_, _>>.
 fn dhall_to_tokenstream(
     expr: &Expr<X, X>,

@@ -4,13 +4,13 @@ use std::collections::HashSet;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::normalize;
+use crate::normalize::normalize;
 use dhall_core::context::Context;
 use dhall_core::core;
 use dhall_core::core::Builtin::*;
 use dhall_core::core::Const::*;
 use dhall_core::core::Expr::*;
-use dhall_core::core::{bx, shift, subst, Expr, Label, V, X};
+use dhall_core::core::{bx, rc, shift, subst, Expr, Label, V, X};
 use dhall_generator::dhall_expr;
 
 use self::TypeMessage::*;
@@ -18,11 +18,11 @@ use self::TypeMessage::*;
 fn axiom<S: Clone>(c: core::Const) -> Result<core::Const, TypeError<S>> {
     match c {
         Type => Ok(Kind),
-        Kind => Err(TypeError::new(&Context::new(), &Const(Kind), Untyped)),
+        Kind => Err(TypeError::new(&Context::new(), rc(Const(Kind)), Untyped)),
     }
 }
 
-fn rule(a: core::Const, b: core::Const) -> Result<core::Const, ()> {
+fn rule(a: &core::Const, b: &core::Const) -> Result<core::Const, ()> {
     match (a, b) {
         (Type, Kind) => Err(()),
         (Kind, Kind) => Ok(Kind),
@@ -47,30 +47,30 @@ fn match_vars(vl: &V, vr: &V, ctx: &[(Label, Label)]) -> bool {
     }
 }
 
-fn prop_equal<S, T>(eL0: &Expr<S, X>, eR0: &Expr<T, X>) -> bool
+fn prop_equal<S, T>(eL0: Rc<Expr<S, X>>, eR0: Rc<Expr<T, X>>) -> bool
 where
     S: Clone + ::std::fmt::Debug,
     T: Clone + ::std::fmt::Debug,
 {
     fn go<S, T>(
         ctx: &mut Vec<(Label, Label)>,
-        el: &Expr<S, X>,
-        er: &Expr<T, X>,
+        el: Rc<Expr<S, X>>,
+        er: Rc<Expr<T, X>>,
     ) -> bool
     where
         S: Clone + ::std::fmt::Debug,
         T: Clone + ::std::fmt::Debug,
     {
-        match (el, er) {
+        match (el.as_ref(), er.as_ref()) {
             (&Const(Type), &Const(Type)) | (&Const(Kind), &Const(Kind)) => true,
-            (&Var(ref vL), &Var(ref vR)) => match_vars(vL, vR, &*ctx),
+            (&Var(ref vL), &Var(ref vR)) => match_vars(vL, vR, ctx),
             (&Pi(ref xL, ref tL, ref bL), &Pi(ref xR, ref tR, ref bR)) => {
                 //ctx <- State.get
-                let eq1 = go(ctx, tL, tR);
+                let eq1 = go(ctx, Rc::clone(tL), Rc::clone(tR));
                 if eq1 {
                     //State.put ((xL, xR):ctx)
                     ctx.push((xL.clone(), xR.clone()));
-                    let eq2 = go(ctx, bL, bR);
+                    let eq2 = go(ctx, Rc::clone(bL), Rc::clone(bR));
                     //State.put ctx
                     let _ = ctx.pop();
                     eq2
@@ -79,8 +79,10 @@ where
                 }
             }
             (&App(ref fL, ref aL), &App(ref fR, ref aR)) => {
-                if go(ctx, fL, fR) {
-                    aL.iter().zip(aR.iter()).all(|(aL, aR)| go(ctx, aL, aR))
+                if go(ctx, Rc::clone(fL), Rc::clone(fR)) {
+                    aL.iter()
+                        .zip(aR.iter())
+                        .all(|(aL, aR)| go(ctx, Rc::clone(aL), Rc::clone(aR)))
                 } else {
                     false
                 }
@@ -112,10 +114,9 @@ where
                 }
                 true
                 */
-                !ktsL0
-                    .iter()
-                    .zip(ktsR0.iter())
-                    .any(|((kL, tL), (kR, tR))| kL != kR || !go(ctx, tL, tR))
+                !ktsL0.iter().zip(ktsR0.iter()).any(|((kL, tL), (kR, tR))| {
+                    kL != kR || !go(ctx, Rc::clone(tL), Rc::clone(tR))
+                })
             }
             (&Union(ref ktsL0), &Union(ref ktsR0)) => {
                 if ktsL0.len() != ktsR0.len() {
@@ -132,40 +133,39 @@ where
                         loop _  _  = return False
                     loop (Data.Map.toList ktsL0) (Data.Map.toList ktsR0)
                 */
-                !ktsL0
-                    .iter()
-                    .zip(ktsR0.iter())
-                    .any(|((kL, tL), (kR, tR))| kL != kR || !go(ctx, tL, tR))
+                !ktsL0.iter().zip(ktsR0.iter()).any(|((kL, tL), (kR, tR))| {
+                    kL != kR || !go(ctx, Rc::clone(tL), Rc::clone(tR))
+                })
             }
             (_, _) => false,
         }
     }
     let mut ctx = vec![];
-    go::<S, T>(&mut ctx, &normalize(eL0), &normalize(eR0))
+    go::<S, T>(&mut ctx, normalize(eL0), normalize(eR0))
 }
 
 fn op2_type<S, EF>(
-    ctx: &Context<Label, Expr<S, X>>,
-    e: &Expr<S, X>,
+    ctx: &Context<Label, Rc<Expr<S, X>>>,
+    e: Rc<Expr<S, X>>,
     t: core::Builtin,
     ef: EF,
-    l: &Expr<S, X>,
-    r: &Expr<S, X>,
+    l: &Rc<Expr<S, X>>,
+    r: &Rc<Expr<S, X>>,
 ) -> Result<Expr<S, X>, TypeError<S>>
 where
     S: Clone + ::std::fmt::Debug,
-    EF: FnOnce(Expr<S, X>, Expr<S, X>) -> TypeMessage<S>,
+    EF: FnOnce(Rc<Expr<S, X>>, Rc<Expr<S, X>>) -> TypeMessage<S>,
 {
-    let tl = normalize(&type_with(ctx, l)?);
-    match tl {
+    let tl = normalize(type_with(ctx, l.clone())?);
+    match *tl {
         Builtin(lt) if lt == t => {}
-        _ => return Err(TypeError::new(ctx, e, ef((*l).clone(), tl))),
+        _ => return Err(TypeError::new(ctx, e, ef(l.clone(), tl))),
     }
 
-    let tr = normalize(&type_with(ctx, r)?);
-    match tr {
+    let tr = normalize(type_with(ctx, r.clone())?);
+    match *tr {
         Builtin(rt) if rt == t => {}
-        _ => return Err(TypeError::new(ctx, e, ef((*r).clone(), tr))),
+        _ => return Err(TypeError::new(ctx, e, ef(r.clone(), tr))),
     }
 
     Ok(Builtin(t))
@@ -178,55 +178,54 @@ where
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
 pub fn type_with<S>(
-    ctx: &Context<Label, Expr<S, X>>,
-    e: &Expr<S, X>,
-) -> Result<Expr<S, X>, TypeError<S>>
+    ctx: &Context<Label, Rc<Expr<S, X>>>,
+    e: Rc<Expr<S, X>>,
+) -> Result<Rc<Expr<S, X>>, TypeError<S>>
 where
     S: Clone + ::std::fmt::Debug,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Expr;
     match *e {
-        Const(c) => axiom(c).map(Const), //.map(Cow::Owned),
+        Const(c) => axiom(c).map(Const),
         Var(V(ref x, n)) => {
-            ctx.lookup(x, n)
+            return ctx
+                .lookup(x, n)
                 .cloned()
-                //.map(Cow::Borrowed)
-                .ok_or_else(|| TypeError::new(ctx, e, UnboundVariable))
+                .ok_or_else(|| TypeError::new(ctx, e.clone(), UnboundVariable))
         }
         Lam(ref x, ref tA, ref b) => {
             let ctx2 = ctx
-                .insert(x.clone(), (**tA).clone())
-                .map(|e| core::shift(1, &V(x.clone(), 0), e));
-            let tB = type_with(&ctx2, b)?;
-            let p = Pi(x.clone(), tA.clone(), bx(tB));
-            let _ = type_with(ctx, &p)?;
-            //Ok(Cow::Owned(p))
-            Ok(p)
+                .insert(x.clone(), tA.clone())
+                .map(|e| shift(1, &V(x.clone(), 0), e));
+            let tB = type_with(&ctx2, b.clone())?;
+            let p = rc(Pi(x.clone(), tA.clone(), tB));
+            let _ = type_with(ctx, p.clone())?;
+            return Ok(p);
         }
         Pi(ref x, ref tA, ref tB) => {
-            let tA2 = normalize::<S, S, X>(&type_with(ctx, tA)?);
-            let kA = match tA2 {
+            let tA2 = normalize::<S, S, X>(type_with(ctx, tA.clone())?);
+            let kA = match tA2.as_ref() {
                 Const(k) => k,
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        InvalidInputType((**tA).clone()),
+                        e.clone(),
+                        InvalidInputType(tA.clone()),
                     ));
                 }
             };
 
             let ctx2 = ctx
-                .insert(x.clone(), (**tA).clone())
-                .map(|e| core::shift(1, &V(x.clone(), 0), e));
-            let tB = normalize(&type_with(&ctx2, tB)?);
-            let kB = match tB {
+                .insert(x.clone(), tA.clone())
+                .map(|e| shift(1, &V(x.clone(), 0), e));
+            let tB = normalize(type_with(&ctx2, tB.clone())?);
+            let kB = match tB.as_ref() {
                 Const(k) => k,
                 _ => {
                     return Err(TypeError::new(
                         &ctx2,
-                        e,
+                        e.clone(),
                         InvalidOutputType(tB),
                     ));
                 }
@@ -235,184 +234,212 @@ where
             match rule(kA, kB) {
                 Err(()) => Err(TypeError::new(
                     ctx,
-                    e,
-                    NoDependentTypes((**tA).clone(), tB),
+                    e.clone(),
+                    NoDependentTypes(tA.clone(), tB),
                 )),
                 Ok(k) => Ok(Const(k)),
             }
         }
         App(ref f, ref args) => {
             let (a, args) = match args.split_last() {
-                None => return type_with(ctx, f),
+                None => return type_with(ctx, f.clone()),
                 Some(x) => x,
             };
             let tf =
-                normalize(&type_with(ctx, &App(f.clone(), args.to_vec()))?);
-            let (x, tA, tB) = match tf {
+                normalize(type_with(ctx, rc(App(f.clone(), args.to_vec())))?);
+            let (x, tA, tB) = match tf.as_ref() {
                 Pi(x, tA, tB) => (x, tA, tB),
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        NotAFunction((**f).clone(), tf),
+                        e.clone(),
+                        NotAFunction(f.clone(), tf),
                     ));
                 }
             };
-            let tA2 = type_with(ctx, a)?;
-            if prop_equal(&tA, &tA2) {
-                let vx0 = &V(x, 0);
+            let tA2 = type_with(ctx, a.clone())?;
+            if prop_equal(tA.clone(), tA2.clone()) {
+                let vx0 = &V(x.clone(), 0);
                 let a2 = shift::<S, S, X>(1, vx0, a);
                 let tB2 = subst(vx0, &a2, &tB);
                 let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
-                Ok(tB3)
+                return Ok(tB3);
             } else {
-                let nf_A = normalize(&tA);
-                let nf_A2 = normalize(&tA2);
+                let nf_A = normalize(tA.clone());
+                let nf_A2 = normalize(tA2);
                 Err(TypeError::new(
                     ctx,
-                    e,
-                    TypeMismatch((**f).clone(), nf_A, (**a).clone(), nf_A2),
+                    e.clone(),
+                    TypeMismatch(f.clone(), nf_A, a.clone(), nf_A2),
                 ))
             }
         }
         Let(ref f, ref mt, ref r, ref b) => {
-            let tR = type_with(ctx, r)?;
-            let ttR = normalize::<S, S, X>(&type_with(ctx, &tR)?);
-            let kR = match ttR {
+            let tR = type_with(ctx, r.clone())?;
+            let ttR = normalize::<S, S, X>(type_with(ctx, tR.clone())?);
+            let kR = match ttR.as_ref() {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _ => return Err(TypeError::new(ctx, e, InvalidInputType(tR))),
+                _ => {
+                    return Err(TypeError::new(
+                        ctx,
+                        e.clone(),
+                        InvalidInputType(tR),
+                    ))
+                }
             };
 
             let ctx2 = ctx.insert(f.clone(), tR.clone());
-            let tB = type_with(&ctx2, b)?;
-            let ttB = normalize::<S, S, X>(&type_with(ctx, &tB)?);
-            let kB = match ttB {
+            let tB = type_with(&ctx2, b.clone())?;
+            let ttB = normalize::<S, S, X>(type_with(ctx, tB.clone())?);
+            let kB = match ttB.as_ref() {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _ => return Err(TypeError::new(ctx, e, InvalidOutputType(tB))),
+                _ => {
+                    return Err(TypeError::new(
+                        ctx,
+                        e.clone(),
+                        InvalidOutputType(tB),
+                    ))
+                }
             };
 
             if let Err(()) = rule(kR, kB) {
-                return Err(TypeError::new(ctx, e, NoDependentLet(tR, tB)));
+                return Err(TypeError::new(
+                    ctx,
+                    e.clone(),
+                    NoDependentLet(tR, tB),
+                ));
             }
 
             if let Some(ref t) = *mt {
-                let nf_t = normalize(t);
-                let nf_tR = normalize(&tR);
-                if !prop_equal(&nf_tR, &nf_t) {
+                let nf_t = normalize(t.clone());
+                let nf_tR = normalize(tR);
+                if !prop_equal(nf_tR.clone(), nf_t.clone()) {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        AnnotMismatch((**r).clone(), nf_t, nf_tR),
+                        e.clone(),
+                        AnnotMismatch(r.clone(), nf_t, nf_tR),
                     ));
                 }
             }
 
-            Ok(tB)
+            return Ok(tB);
         }
         Annot(ref x, ref t) => {
             // This is mainly just to check that `t` is not `Kind`
-            let _ = type_with(ctx, t)?;
+            let _ = type_with(ctx, t.clone())?;
 
-            let t2 = type_with(ctx, x)?;
-            if prop_equal(t, &t2) {
-                Ok((**t).clone())
+            let t2 = type_with(ctx, x.clone())?;
+            if prop_equal(t.clone(), t2.clone()) {
+                return Ok(t.clone());
             } else {
-                let nf_t = normalize(t);
-                let nf_t2 = normalize(&t2);
+                let nf_t = normalize(t.clone());
+                let nf_t2 = normalize(t2);
                 Err(TypeError::new(
                     ctx,
-                    e,
-                    AnnotMismatch((**x).clone(), nf_t, nf_t2),
+                    e.clone(),
+                    AnnotMismatch(x.clone(), nf_t, nf_t2),
                 ))
             }
         }
         BoolLit(_) => Ok(Builtin(Bool)),
-        BinOp(BoolAnd, ref l, ref r) => op2_type(ctx, e, Bool, CantAnd, l, r),
-        BinOp(BoolOr, ref l, ref r) => op2_type(ctx, e, Bool, CantOr, l, r),
-        BinOp(BoolEQ, ref l, ref r) => op2_type(ctx, e, Bool, CantEQ, l, r),
-        BinOp(BoolNE, ref l, ref r) => op2_type(ctx, e, Bool, CantNE, l, r),
+        BinOp(BoolAnd, ref l, ref r) => {
+            op2_type(ctx, e.clone(), Bool, CantAnd, l, r)
+        }
+        BinOp(BoolOr, ref l, ref r) => {
+            op2_type(ctx, e.clone(), Bool, CantOr, l, r)
+        }
+        BinOp(BoolEQ, ref l, ref r) => {
+            op2_type(ctx, e.clone(), Bool, CantEQ, l, r)
+        }
+        BinOp(BoolNE, ref l, ref r) => {
+            op2_type(ctx, e.clone(), Bool, CantNE, l, r)
+        }
         BoolIf(ref x, ref y, ref z) => {
-            let tx = normalize(&type_with(ctx, x)?);
-            match tx {
+            let tx = normalize(type_with(ctx, x.clone())?);
+            match tx.as_ref() {
                 Builtin(Bool) => {}
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        InvalidPredicate((**x).clone(), tx),
+                        e.clone(),
+                        InvalidPredicate(x.clone(), tx),
                     ));
                 }
             }
-            let ty = normalize(&type_with(ctx, y)?);
-            let tty = normalize(&type_with(ctx, &ty)?);
-            match tty {
+            let ty = normalize(type_with(ctx, y.clone())?);
+            let tty = normalize(type_with(ctx, ty.clone())?);
+            match tty.as_ref() {
                 Const(Type) => {}
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        IfBranchMustBeTerm(true, (**y).clone(), ty, tty),
+                        e.clone(),
+                        IfBranchMustBeTerm(true, y.clone(), ty, tty),
                     ));
                 }
             }
 
-            let tz = normalize(&type_with(ctx, z)?);
-            let ttz = normalize(&type_with(ctx, &tz)?);
-            match ttz {
+            let tz = normalize(type_with(ctx, z.clone())?);
+            let ttz = normalize(type_with(ctx, tz.clone())?);
+            match ttz.as_ref() {
                 Const(Type) => {}
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        IfBranchMustBeTerm(false, (**z).clone(), tz, ttz),
+                        e.clone(),
+                        IfBranchMustBeTerm(false, z.clone(), tz, ttz),
                     ));
                 }
             }
 
-            if !prop_equal(&ty, &tz) {
+            if !prop_equal(ty.clone(), tz.clone()) {
                 return Err(TypeError::new(
                     ctx,
-                    e,
-                    IfBranchMismatch((**y).clone(), (**z).clone(), ty, tz),
+                    e.clone(),
+                    IfBranchMismatch(y.clone(), z.clone(), ty, tz),
                 ));
             }
-            Ok(ty)
+            return Ok(ty);
         }
         NaturalLit(_) => Ok(Builtin(Natural)),
-        Builtin(NaturalFold) => Ok(dhall_expr!(
-            Natural ->
-            forall (natural: Type) ->
-            forall (succ: natural -> natural) ->
-            forall (zero: natural) ->
-            natural
-        )),
-        Builtin(NaturalBuild) => Ok(dhall_expr!(
-            (forall (natural: Type) ->
+        Builtin(NaturalFold) => {
+            return Ok(dhall_expr!(
+                Natural ->
+                forall (natural: Type) ->
                 forall (succ: natural -> natural) ->
                 forall (zero: natural) ->
-                natural) ->
-            Natural
-        )),
+                natural
+            ))
+        }
+        Builtin(NaturalBuild) => {
+            return Ok(dhall_expr!(
+                (forall (natural: Type) ->
+                    forall (succ: natural -> natural) ->
+                    forall (zero: natural) ->
+                    natural) ->
+                Natural
+            ))
+        }
         Builtin(NaturalIsZero) | Builtin(NaturalEven) | Builtin(NaturalOdd) => {
-            Ok(dhall_expr!(
+            return Ok(dhall_expr!(
                 Natural -> Bool
             ))
         }
         BinOp(NaturalPlus, ref l, ref r) => {
-            op2_type(ctx, e, Natural, CantAdd, l, r)
+            op2_type(ctx, e.clone(), Natural, CantAdd, l, r)
         }
         BinOp(NaturalTimes, ref l, ref r) => {
-            op2_type(ctx, e, Natural, CantMultiply, l, r)
+            op2_type(ctx, e.clone(), Natural, CantMultiply, l, r)
         }
         IntegerLit(_) => Ok(Builtin(Integer)),
         DoubleLit(_) => Ok(Builtin(Double)),
         TextLit(_) => Ok(Builtin(Text)),
         BinOp(TextAppend, ref l, ref r) => {
-            op2_type(ctx, e, Text, CantTextAppend, l, r)
+            op2_type(ctx, e.clone(), Text, CantTextAppend, l, r)
         }
         ListLit(ref t, ref xs) => {
             let mut iter = xs.iter().enumerate();
@@ -420,117 +447,135 @@ where
                 Some(t) => t.clone(),
                 None => {
                     let (_, first_x) = iter.next().unwrap();
-                    bx(type_with(ctx, first_x)?)
+                    type_with(ctx, first_x.clone())?
                 }
             };
 
-            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
-            match s {
+            let s = normalize::<_, S, _>(type_with(ctx, t.clone())?);
+            match s.as_ref() {
                 Const(Type) => {}
-                _ => return Err(TypeError::new(ctx, e, InvalidListType(t))),
-            }
-            for (i, x) in iter {
-                let t2 = type_with(ctx, x)?;
-                if !prop_equal(&t, &t2) {
-                    let nf_t = normalize(&t);
-                    let nf_t2 = normalize(&t2);
+                _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        InvalidListElement(i, nf_t, (**x).clone(), nf_t2),
+                        e.clone(),
+                        InvalidListType(t),
+                    ))
+                }
+            }
+            for (i, x) in iter {
+                let t2 = type_with(ctx, x.clone())?;
+                if !prop_equal(t.clone(), t2.clone()) {
+                    let nf_t = normalize(t);
+                    let nf_t2 = normalize(t2);
+                    return Err(TypeError::new(
+                        ctx,
+                        e.clone(),
+                        InvalidListElement(i, nf_t, x.clone(), nf_t2),
                     ));
                 }
             }
-            Ok(dhall_expr!(List t))
+            return Ok(dhall_expr!(List t));
         }
-        Builtin(ListBuild) => Ok(dhall_expr!(
-            forall (a: Type) ->
-            (forall (list: Type) ->
+        Builtin(ListBuild) => {
+            return Ok(dhall_expr!(
+                forall (a: Type) ->
+                (forall (list: Type) ->
+                    forall (cons: a -> list -> list) ->
+                    forall (nil: list) ->
+                    list) ->
+                List a
+            ))
+        }
+        Builtin(ListFold) => {
+            return Ok(dhall_expr!(
+                forall (a: Type) ->
+                List a ->
+                forall (list: Type) ->
                 forall (cons: a -> list -> list) ->
                 forall (nil: list) ->
-                list) ->
-            List a
-        )),
-        Builtin(ListFold) => Ok(dhall_expr!(
-            forall (a: Type) ->
-            List a ->
-            forall (list: Type) ->
-            forall (cons: a -> list -> list) ->
-            forall (nil: list) ->
-            list
-        )),
+                list
+            ))
+        }
         Builtin(ListLength) => {
-            Ok(dhall_expr!(forall (a: Type) -> List a -> Natural))
+            return Ok(dhall_expr!(forall (a: Type) -> List a -> Natural))
         }
         Builtin(ListHead) | Builtin(ListLast) => {
-            Ok(dhall_expr!(forall (a: Type) -> List a -> Optional a))
+            return Ok(dhall_expr!(forall (a: Type) -> List a -> Optional a))
         }
-        Builtin(ListIndexed) => Ok(dhall_expr!(
-            forall (a: Type) ->
-            List a ->
-            List { index: Natural, value: a }
-        )),
-        Builtin(ListReverse) => Ok(dhall_expr!(
-            forall (a: Type) -> List a -> List a
-        )),
+        Builtin(ListIndexed) => {
+            return Ok(dhall_expr!(
+                forall (a: Type) ->
+                List a ->
+                List { index: Natural, value: a }
+            ))
+        }
+        Builtin(ListReverse) => {
+            return Ok(dhall_expr!(
+                forall (a: Type) -> List a -> List a
+            ))
+        }
         OptionalLit(ref t, ref xs) => {
             let mut iter = xs.iter();
             let t: Rc<Expr<_, _>> = match t {
                 Some(t) => t.clone(),
                 None => {
                     let x = iter.next().unwrap();
-                    bx(type_with(ctx, x)?)
+                    type_with(ctx, x.clone())?
                 }
             };
 
-            let s = normalize::<_, S, _>(&type_with(ctx, &t)?);
-            match s {
+            let s = normalize::<_, S, _>(type_with(ctx, t.clone())?);
+            match s.as_ref() {
                 Const(Type) => {}
                 _ => {
                     return Err(TypeError::new(
                         ctx,
-                        e,
+                        e.clone(),
                         InvalidOptionalType(t),
                     ));
                 }
             }
             for x in iter {
-                let t2 = type_with(ctx, x)?;
-                if !prop_equal(&t, &t2) {
-                    let nf_t = normalize(&t);
-                    let nf_t2 = normalize(&t2);
+                let t2 = type_with(ctx, x.clone())?;
+                if !prop_equal(t.clone(), t2.clone()) {
+                    let nf_t = normalize(t);
+                    let nf_t2 = normalize(t2);
                     return Err(TypeError::new(
                         ctx,
-                        e,
-                        InvalidOptionalElement(nf_t, (**x).clone(), nf_t2),
+                        e.clone(),
+                        InvalidOptionalElement(nf_t, x.clone(), nf_t2),
                     ));
                 }
             }
-            Ok(dhall_expr!(Optional t))
+            return Ok(dhall_expr!(Optional t));
         }
-        Builtin(OptionalFold) => Ok(dhall_expr!(
-            forall (a: Type) ->
-            Optional a ->
-            forall (optional: Type) ->
-            forall (just: a -> optional) ->
-            forall (nothing: optional) ->
-            optional
-        )),
-        Builtin(List) | Builtin(Optional) => Ok(dhall_expr!(
-            Type -> Type
-        )),
+        Builtin(OptionalFold) => {
+            return Ok(dhall_expr!(
+                forall (a: Type) ->
+                Optional a ->
+                forall (optional: Type) ->
+                forall (just: a -> optional) ->
+                forall (nothing: optional) ->
+                optional
+            ))
+        }
+        Builtin(List) | Builtin(Optional) => {
+            return Ok(dhall_expr!(
+                Type -> Type
+            ))
+        }
         Builtin(Bool) | Builtin(Natural) | Builtin(Integer)
         | Builtin(Double) | Builtin(Text) => Ok(Const(Type)),
         Record(ref kts) => {
             for (k, t) in kts {
-                let s = normalize::<S, S, X>(&type_with(ctx, t)?);
-                match s {
+                let s = normalize::<S, S, X>(type_with(ctx, t.clone())?);
+                match s.as_ref() {
                     Const(Type) => {}
                     _ => {
                         return Err(TypeError::new(
                             ctx,
-                            e,
-                            InvalidFieldType((*k).clone(), (**t).clone()),
+                            e.clone(),
+                            InvalidFieldType(k.clone(), t.clone()),
                         ));
                     }
                 }
@@ -541,19 +586,19 @@ where
             let kts = kvs
                 .iter()
                 .map(|(k, v)| {
-                    let t = type_with(ctx, v)?;
-                    let s = normalize::<S, S, X>(&type_with(ctx, &t)?);
-                    match s {
+                    let t = type_with(ctx, v.clone())?;
+                    let s = normalize::<S, S, X>(type_with(ctx, t.clone())?);
+                    match s.as_ref() {
                         Const(Type) => {}
                         _ => {
                             return Err(TypeError::new(
                                 ctx,
-                                e,
-                                InvalidField((*k).clone(), (**v).clone()),
+                                e.clone(),
+                                InvalidField(k.clone(), v.clone()),
                             ));
                         }
                     }
-                    Ok(((*k).clone(), bx(t)))
+                    Ok((k.clone(), t))
                 })
                 .collect::<Result<_, _>>()?;
             Ok(Record(kts))
@@ -640,21 +685,21 @@ where
             return t
             */
         Field(ref r, ref x) => {
-            let t = normalize(&type_with(ctx, r)?);
-            match t {
+            let t = normalize(type_with(ctx, r.clone())?);
+            match t.as_ref() {
                 Record(ref kts) => {
-                    kts.get(x).map(|x| &**x).cloned().ok_or_else(|| {
+                    return kts.get(x).cloned().ok_or_else(|| {
                         TypeError::new(
                             ctx,
-                            e,
-                            MissingField((*x).clone(), t.clone()),
+                            e.clone(),
+                            MissingField(x.clone(), t.clone()),
                         )
                     })
                 }
                 _ => Err(TypeError::new(
                     ctx,
-                    e,
-                    NotARecord((*x).clone(), (**r).clone(), t.clone()),
+                    e.clone(),
+                    NotARecord(x.clone(), r.clone(), t.clone()),
                 )),
             }
         }
@@ -667,14 +712,15 @@ where
         Embed(p) => match p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }
+    .map(rc)
 }
 
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
 pub fn type_of<S: Clone + ::std::fmt::Debug>(
-    e: &Expr<S, X>,
-) -> Result<Expr<S, X>, TypeError<S>> {
+    e: Rc<Expr<S, X>>,
+) -> Result<Rc<Expr<S, X>>, TypeError<S>> {
     let ctx = Context::new();
     type_with(&ctx, e) //.map(|e| e.into_owned())
 }
@@ -683,64 +729,74 @@ pub fn type_of<S: Clone + ::std::fmt::Debug>(
 #[derive(Debug)]
 pub enum TypeMessage<S> {
     UnboundVariable,
-    InvalidInputType(Expr<S, X>),
-    InvalidOutputType(Expr<S, X>),
-    NotAFunction(Expr<S, X>, Expr<S, X>),
-    TypeMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>, Expr<S, X>),
-    AnnotMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    InvalidInputType(Rc<Expr<S, X>>),
+    InvalidOutputType(Rc<Expr<S, X>>),
+    NotAFunction(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    TypeMismatch(
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+    ),
+    AnnotMismatch(Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
     Untyped,
-    InvalidListElement(usize, Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    InvalidListElement(usize, Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
     InvalidListType(Rc<Expr<S, X>>),
-    InvalidOptionalElement(Expr<S, X>, Expr<S, X>, Expr<S, X>),
+    InvalidOptionalElement(Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
     InvalidOptionalLiteral(usize),
     InvalidOptionalType(Rc<Expr<S, X>>),
-    InvalidPredicate(Expr<S, X>, Expr<S, X>),
-    IfBranchMismatch(Expr<S, X>, Expr<S, X>, Expr<S, X>, Expr<S, X>),
-    IfBranchMustBeTerm(bool, Expr<S, X>, Expr<S, X>, Expr<S, X>),
-    InvalidField(Label, Expr<S, X>),
-    InvalidFieldType(Label, Expr<S, X>),
-    InvalidAlternative(Label, Expr<S, X>),
-    InvalidAlternativeType(Label, Expr<S, X>),
+    InvalidPredicate(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    IfBranchMismatch(
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+        Rc<Expr<S, X>>,
+    ),
+    IfBranchMustBeTerm(bool, Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    InvalidField(Label, Rc<Expr<S, X>>),
+    InvalidFieldType(Label, Rc<Expr<S, X>>),
+    InvalidAlternative(Label, Rc<Expr<S, X>>),
+    InvalidAlternativeType(Label, Rc<Expr<S, X>>),
     DuplicateAlternative(Label),
-    MustCombineARecord(Expr<S, X>, Expr<S, X>),
+    MustCombineARecord(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
     FieldCollision(Label),
-    MustMergeARecord(Expr<S, X>, Expr<S, X>),
-    MustMergeUnion(Expr<S, X>, Expr<S, X>),
+    MustMergeARecord(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    MustMergeUnion(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
     UnusedHandler(HashSet<Label>),
     MissingHandler(HashSet<Label>),
-    HandlerInputTypeMismatch(Label, Expr<S, X>, Expr<S, X>),
-    HandlerOutputTypeMismatch(Label, Expr<S, X>, Expr<S, X>),
-    HandlerNotAFunction(Label, Expr<S, X>),
-    NotARecord(Label, Expr<S, X>, Expr<S, X>),
-    MissingField(Label, Expr<S, X>),
-    CantAnd(Expr<S, X>, Expr<S, X>),
-    CantOr(Expr<S, X>, Expr<S, X>),
-    CantEQ(Expr<S, X>, Expr<S, X>),
-    CantNE(Expr<S, X>, Expr<S, X>),
-    CantTextAppend(Expr<S, X>, Expr<S, X>),
-    CantAdd(Expr<S, X>, Expr<S, X>),
-    CantMultiply(Expr<S, X>, Expr<S, X>),
-    NoDependentLet(Expr<S, X>, Expr<S, X>),
-    NoDependentTypes(Expr<S, X>, Expr<S, X>),
+    HandlerInputTypeMismatch(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    HandlerOutputTypeMismatch(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    HandlerNotAFunction(Label, Rc<Expr<S, X>>),
+    NotARecord(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    MissingField(Label, Rc<Expr<S, X>>),
+    CantAnd(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantOr(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantEQ(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantNE(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantTextAppend(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantAdd(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    CantMultiply(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    NoDependentLet(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    NoDependentTypes(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<S> {
-    pub context: Context<Label, Expr<S, X>>,
-    pub current: Expr<S, X>,
+    pub context: Context<Label, Rc<Expr<S, X>>>,
+    pub current: Rc<Expr<S, X>>,
     pub type_message: TypeMessage<S>,
 }
 
 impl<S: Clone> TypeError<S> {
     pub fn new(
-        context: &Context<Label, Expr<S, X>>,
-        current: &Expr<S, X>,
+        context: &Context<Label, Rc<Expr<S, X>>>,
+        current: Rc<Expr<S, X>>,
         type_message: TypeMessage<S>,
     ) -> Self {
         TypeError {
             context: context.clone(),
-            current: current.clone(),
+            current: current,
             type_message,
         }
     }
