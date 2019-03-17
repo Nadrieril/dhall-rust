@@ -90,5 +90,5 @@ fn main() {
 
     println!("{}", type_expr);
     println!();
-    println!("{}", normalize::<_, X, _>(expr));
+    println!("{}", normalize(expr));
 }

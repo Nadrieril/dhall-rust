@@ -15,7 +15,7 @@ use dhall_generator::dhall_expr;
 
 use self::TypeMessage::*;
 
-fn axiom<S: Clone>(c: core::Const) -> Result<core::Const, TypeError<S>> {
+fn axiom<S>(c: core::Const) -> Result<core::Const, TypeError<S>> {
     match c {
         Type => Ok(Kind),
         Kind => Err(TypeError::new(&Context::new(), rc(Const(Kind)), Untyped)),
@@ -49,8 +49,8 @@ fn match_vars(vl: &V, vr: &V, ctx: &[(Label, Label)]) -> bool {
 
 fn prop_equal<S, T>(eL0: Rc<Expr<S, X>>, eR0: Rc<Expr<T, X>>) -> bool
 where
-    S: Clone + ::std::fmt::Debug,
-    T: Clone + ::std::fmt::Debug,
+    S: ::std::fmt::Debug,
+    T: ::std::fmt::Debug,
 {
     fn go<S, T>(
         ctx: &mut Vec<(Label, Label)>,
@@ -58,8 +58,8 @@ where
         er: Rc<Expr<T, X>>,
     ) -> bool
     where
-        S: Clone + ::std::fmt::Debug,
-        T: Clone + ::std::fmt::Debug,
+        S: ::std::fmt::Debug,
+        T: ::std::fmt::Debug,
     {
         match (el.as_ref(), er.as_ref()) {
             (&Const(Type), &Const(Type)) | (&Const(Kind), &Const(Kind)) => true,
@@ -153,7 +153,7 @@ fn op2_type<S, EF>(
     r: &Rc<Expr<S, X>>,
 ) -> Result<Expr<S, X>, TypeError<S>>
 where
-    S: Clone + ::std::fmt::Debug,
+    S: ::std::fmt::Debug,
     EF: FnOnce(Rc<Expr<S, X>>, Rc<Expr<S, X>>) -> TypeMessage<S>,
 {
     let tl = normalize(type_with(ctx, l.clone())?);
@@ -182,17 +182,18 @@ pub fn type_with<S>(
     e: Rc<Expr<S, X>>,
 ) -> Result<Rc<Expr<S, X>>, TypeError<S>>
 where
-    S: Clone + ::std::fmt::Debug,
+    S: ::std::fmt::Debug,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Expr;
+    let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
     match *e {
         Const(c) => axiom(c).map(Const),
         Var(V(ref x, n)) => {
             return ctx
                 .lookup(x, n)
                 .cloned()
-                .ok_or_else(|| TypeError::new(ctx, e.clone(), UnboundVariable))
+                .ok_or_else(|| mkerr(UnboundVariable))
         }
         Lam(ref x, ref tA, ref b) => {
             let ctx2 = ctx
@@ -204,15 +205,11 @@ where
             return Ok(p);
         }
         Pi(ref x, ref tA, ref tB) => {
-            let tA2 = normalize::<S, S, X>(type_with(ctx, tA.clone())?);
+            let tA2 = normalize(type_with(ctx, tA.clone())?);
             let kA = match tA2.as_ref() {
                 Const(k) => k,
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidInputType(tA.clone()),
-                    ));
+                    return Err(mkerr(InvalidInputType(tA.clone())));
                 }
             };
 
@@ -232,29 +229,26 @@ where
             };
 
             match rule(kA, kB) {
-                Err(()) => Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    NoDependentTypes(tA.clone(), tB),
-                )),
+                Err(()) => Err(mkerr(NoDependentTypes(tA.clone(), tB))),
                 Ok(k) => Ok(Const(k)),
             }
         }
         App(ref f, ref args) => {
-            let (a, args) = match args.split_last() {
+            // Recurse on args
+            let (a, tf) = match args.split_last() {
                 None => return type_with(ctx, f.clone()),
-                Some(x) => x,
+                Some((a, args)) => (
+                    a,
+                    normalize(type_with(
+                        ctx,
+                        rc(App(f.clone(), args.to_vec())),
+                    )?),
+                ),
             };
-            let tf =
-                normalize(type_with(ctx, rc(App(f.clone(), args.to_vec())))?);
             let (x, tA, tB) = match tf.as_ref() {
                 Pi(x, tA, tB) => (x, tA, tB),
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        NotAFunction(f.clone(), tf),
-                    ));
+                    return Err(mkerr(NotAFunction(f.clone(), tf)));
                 }
             };
             let tA2 = type_with(ctx, a.clone())?;
@@ -267,62 +261,38 @@ where
             } else {
                 let nf_A = normalize(tA.clone());
                 let nf_A2 = normalize(tA2);
-                Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    TypeMismatch(f.clone(), nf_A, a.clone(), nf_A2),
-                ))
+                Err(mkerr(TypeMismatch(f.clone(), nf_A, a.clone(), nf_A2)))
             }
         }
         Let(ref f, ref mt, ref r, ref b) => {
             let tR = type_with(ctx, r.clone())?;
-            let ttR = normalize::<S, S, X>(type_with(ctx, tR.clone())?);
+            let ttR = normalize(type_with(ctx, tR.clone())?);
             let kR = match ttR.as_ref() {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidInputType(tR),
-                    ))
-                }
+                _ => return Err(mkerr(InvalidInputType(tR))),
             };
 
             let ctx2 = ctx.insert(f.clone(), tR.clone());
             let tB = type_with(&ctx2, b.clone())?;
-            let ttB = normalize::<S, S, X>(type_with(ctx, tB.clone())?);
+            let ttB = normalize(type_with(ctx, tB.clone())?);
             let kB = match ttB.as_ref() {
                 Const(k) => k,
                 // Don't bother to provide a `let`-specific version of this error
                 // message because this should never happen anyway
-                _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidOutputType(tB),
-                    ))
-                }
+                _ => return Err(mkerr(InvalidOutputType(tB))),
             };
 
             if let Err(()) = rule(kR, kB) {
-                return Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    NoDependentLet(tR, tB),
-                ));
+                return Err(mkerr(NoDependentLet(tR, tB)));
             }
 
             if let Some(ref t) = *mt {
                 let nf_t = normalize(t.clone());
                 let nf_tR = normalize(tR);
                 if !prop_equal(nf_tR.clone(), nf_t.clone()) {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        AnnotMismatch(r.clone(), nf_t, nf_tR),
-                    ));
+                    return Err(mkerr(AnnotMismatch(r.clone(), nf_t, nf_tR)));
                 }
             }
 
@@ -338,11 +308,7 @@ where
             } else {
                 let nf_t = normalize(t.clone());
                 let nf_t2 = normalize(t2);
-                Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    AnnotMismatch(x.clone(), nf_t, nf_t2),
-                ))
+                Err(mkerr(AnnotMismatch(x.clone(), nf_t, nf_t2)))
             }
         }
         BoolLit(_) => Ok(Builtin(Bool)),
@@ -363,11 +329,7 @@ where
             match tx.as_ref() {
                 Builtin(Bool) => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidPredicate(x.clone(), tx),
-                    ));
+                    return Err(mkerr(InvalidPredicate(x.clone(), tx)));
                 }
             }
             let ty = normalize(type_with(ctx, y.clone())?);
@@ -375,11 +337,12 @@ where
             match tty.as_ref() {
                 Const(Type) => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        IfBranchMustBeTerm(true, y.clone(), ty, tty),
-                    ));
+                    return Err(mkerr(IfBranchMustBeTerm(
+                        true,
+                        y.clone(),
+                        ty,
+                        tty,
+                    )));
                 }
             }
 
@@ -388,20 +351,22 @@ where
             match ttz.as_ref() {
                 Const(Type) => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        IfBranchMustBeTerm(false, z.clone(), tz, ttz),
-                    ));
+                    return Err(mkerr(IfBranchMustBeTerm(
+                        false,
+                        z.clone(),
+                        tz,
+                        ttz,
+                    )));
                 }
             }
 
             if !prop_equal(ty.clone(), tz.clone()) {
-                return Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    IfBranchMismatch(y.clone(), z.clone(), ty, tz),
-                ));
+                return Err(mkerr(IfBranchMismatch(
+                    y.clone(),
+                    z.clone(),
+                    ty,
+                    tz,
+                )));
             }
             return Ok(ty);
         }
@@ -451,27 +416,22 @@ where
                 }
             };
 
-            let s = normalize::<_, S, _>(type_with(ctx, t.clone())?);
+            let s = normalize(type_with(ctx, t.clone())?);
             match s.as_ref() {
                 Const(Type) => {}
-                _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidListType(t),
-                    ))
-                }
+                _ => return Err(mkerr(InvalidListType(t))),
             }
             for (i, x) in iter {
                 let t2 = type_with(ctx, x.clone())?;
                 if !prop_equal(t.clone(), t2.clone()) {
                     let nf_t = normalize(t);
                     let nf_t2 = normalize(t2);
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidListElement(i, nf_t, x.clone(), nf_t2),
-                    ));
+                    return Err(mkerr(InvalidListElement(
+                        i,
+                        nf_t,
+                        x.clone(),
+                        nf_t2,
+                    )));
                 }
             }
             return Ok(dhall_expr!(List t));
@@ -524,15 +484,11 @@ where
                 }
             };
 
-            let s = normalize::<_, S, _>(type_with(ctx, t.clone())?);
+            let s = normalize(type_with(ctx, t.clone())?);
             match s.as_ref() {
                 Const(Type) => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidOptionalType(t),
-                    ));
+                    return Err(mkerr(InvalidOptionalType(t)));
                 }
             }
             for x in iter {
@@ -540,11 +496,11 @@ where
                 if !prop_equal(t.clone(), t2.clone()) {
                     let nf_t = normalize(t);
                     let nf_t2 = normalize(t2);
-                    return Err(TypeError::new(
-                        ctx,
-                        e.clone(),
-                        InvalidOptionalElement(nf_t, x.clone(), nf_t2),
-                    ));
+                    return Err(mkerr(InvalidOptionalElement(
+                        nf_t,
+                        x.clone(),
+                        nf_t2,
+                    )));
                 }
             }
             return Ok(dhall_expr!(Optional t));
@@ -568,15 +524,14 @@ where
         | Builtin(Double) | Builtin(Text) => Ok(Const(Type)),
         Record(ref kts) => {
             for (k, t) in kts {
-                let s = normalize::<S, S, X>(type_with(ctx, t.clone())?);
+                let s = normalize(type_with(ctx, t.clone())?);
                 match s.as_ref() {
                     Const(Type) => {}
                     _ => {
-                        return Err(TypeError::new(
-                            ctx,
-                            e.clone(),
-                            InvalidFieldType(k.clone(), t.clone()),
-                        ));
+                        return Err(mkerr(InvalidFieldType(
+                            k.clone(),
+                            t.clone(),
+                        )));
                     }
                 }
             }
@@ -587,15 +542,14 @@ where
                 .iter()
                 .map(|(k, v)| {
                     let t = type_with(ctx, v.clone())?;
-                    let s = normalize::<S, S, X>(type_with(ctx, t.clone())?);
+                    let s = normalize(type_with(ctx, t.clone())?);
                     match s.as_ref() {
                         Const(Type) => {}
                         _ => {
-                            return Err(TypeError::new(
-                                ctx,
-                                e.clone(),
-                                InvalidField(k.clone(), v.clone()),
-                            ));
+                            return Err(mkerr(InvalidField(
+                                k.clone(),
+                                v.clone(),
+                            )));
                         }
                     }
                     Ok((k.clone(), t))
@@ -603,112 +557,17 @@ where
                 .collect::<Result<_, _>>()?;
             Ok(Record(kts))
         }
-        /*
-        type_with ctx e@(Union     kts   ) = do
-            let process (k, t) = do
-                    s <- fmap Dhall.Core.normalize (type_with ctx t)
-                    case s of
-                        Const Type -> return ()
-                        _          -> Left (TypeError ctx e (InvalidAlternativeType k t))
-            mapM_ process (Data.Map.toList kts)
-            return (Const Type)
-        type_with ctx e@(UnionLit k v kts) = do
-            case Data.Map.lookup k kts of
-                Just _  -> Left (TypeError ctx e (DuplicateAlternative k))
-                Nothing -> return ()
-            t <- type_with ctx v
-            let union = Union (Data.Map.insert k t kts)
-            _ <- type_with ctx union
-            return union
-        type_with ctx e@(Combine kvsX kvsY) = do
-            tKvsX <- fmap Dhall.Core.normalize (type_with ctx kvsX)
-            ktsX  <- case tKvsX of
-                Record kts -> return kts
-                _          -> Left (TypeError ctx e (MustCombineARecord kvsX tKvsX))
-
-            tKvsY <- fmap Dhall.Core.normalize (type_with ctx kvsY)
-            ktsY  <- case tKvsY of
-                Record kts -> return kts
-                _          -> Left (TypeError ctx e (MustCombineARecord kvsY tKvsY))
-
-            let combineTypes ktsL ktsR = do
-                    let ks =
-                            Data.Set.union (Data.Map.keysSet ktsL) (Data.Map.keysSet ktsR)
-                    kts <- forM (toList ks) (\k -> do
-                        case (Data.Map.lookup k ktsL, Data.Map.lookup k ktsR) of
-                            (Just (Record ktsL'), Just (Record ktsR')) -> do
-                                t <- combineTypes ktsL' ktsR'
-                                return (k, t)
-                            (Nothing, Just t) -> do
-                                return (k, t)
-                            (Just t, Nothing) -> do
-                                return (k, t)
-                            _ -> do
-                                Left (TypeError ctx e (FieldCollision k)) )
-                    return (Record (Data.Map.fromList kts))
-
-            combineTypes ktsX ktsY
-        type_with ctx e@(Merge kvsX kvsY t) = do
-            tKvsX <- fmap Dhall.Core.normalize (type_with ctx kvsX)
-            ktsX  <- case tKvsX of
-                Record kts -> return kts
-                _          -> Left (TypeError ctx e (MustMergeARecord kvsX tKvsX))
-            let ksX = Data.Map.keysSet ktsX
-
-            tKvsY <- fmap Dhall.Core.normalize (type_with ctx kvsY)
-            ktsY  <- case tKvsY of
-                Union kts -> return kts
-                _         -> Left (TypeError ctx e (MustMergeUnion kvsY tKvsY))
-            let ksY = Data.Map.keysSet ktsY
-
-            let diffX = Data.Set.difference ksX ksY
-            let diffY = Data.Set.difference ksY ksX
-
-            if Data.Set.null diffX
-                then return ()
-                else Left (TypeError ctx e (UnusedHandler diffX))
-
-            let process (kY, tY) = do
-                    case Data.Map.lookup kY ktsX of
-                        Nothing  -> Left (TypeError ctx e (MissingHandler diffY))
-                        Just tX  ->
-                            case tX of
-                                Pi _ tY' t' -> do
-                                    if prop_equal tY tY'
-                                        then return ()
-                                        else Left (TypeError ctx e (HandlerInputTypeMismatch kY tY tY'))
-                                    if prop_equal t t'
-                                        then return ()
-                                        else Left (TypeError ctx e (HandlerOutputTypeMismatch kY t t'))
-                                _ -> Left (TypeError ctx e (HandlerNotAFunction kY tX))
-            mapM_ process (Data.Map.toList ktsY)
-            return t
-            */
         Field(ref r, ref x) => {
             let t = normalize(type_with(ctx, r.clone())?);
             match t.as_ref() {
                 Record(ref kts) => {
                     return kts.get(x).cloned().ok_or_else(|| {
-                        TypeError::new(
-                            ctx,
-                            e.clone(),
-                            MissingField(x.clone(), t.clone()),
-                        )
+                        mkerr(MissingField(x.clone(), t.clone()))
                     })
                 }
-                _ => Err(TypeError::new(
-                    ctx,
-                    e.clone(),
-                    NotARecord(x.clone(), r.clone(), t.clone()),
-                )),
+                _ => Err(mkerr(NotARecord(x.clone(), r.clone(), t.clone()))),
             }
         }
-        /*
-        type_with ctx   (Note s e'       ) = case type_with ctx e' of
-            Left (TypeError ctx2 (Note s' e'') m) -> Left (TypeError ctx2 (Note s' e'') m)
-            Left (TypeError ctx2          e''  m) -> Left (TypeError ctx2 (Note s  e'') m)
-            Right r                               -> Right r
-        */
         Embed(p) => match p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }
@@ -718,7 +577,7 @@ where
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of<S: Clone + ::std::fmt::Debug>(
+pub fn type_of<S: ::std::fmt::Debug>(
     e: Rc<Expr<S, X>>,
 ) -> Result<Rc<Expr<S, X>>, TypeError<S>> {
     let ctx = Context::new();
@@ -788,7 +647,7 @@ pub struct TypeError<S> {
     pub type_message: TypeMessage<S>,
 }
 
-impl<S: Clone> TypeError<S> {
+impl<S> TypeError<S> {
     pub fn new(
         context: &Context<Label, Rc<Expr<S, X>>>,
         current: Rc<Expr<S, X>>,

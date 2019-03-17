@@ -100,10 +100,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let expr = rc(read_dhall_file(&expr_file_path).unwrap());
             let expected = rc(read_dhall_file(&expected_file_path).unwrap());
 
-            assert_eq_display!(
-                normalize::<_, X, _>(expr),
-                normalize::<_, X, _>(expected)
-            );
+            assert_eq_display!(normalize(expr), normalize(expected));
         }
         TypecheckFailure => {
             let file_path = base_path + ".dhall";

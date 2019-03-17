@@ -163,10 +163,9 @@ where
                             let just = Rc::clone(&args[3]);
                             return normalize_whnf(&dhall_expr!(just x));
                         }
-                        (
-                            OptionalFold,
-                            [_, OptionalLit(_, None), _, _, _],
-                        ) => return Rc::clone(&args[4]),
+                        (OptionalFold, [_, OptionalLit(_, None), _, _, _]) => {
+                            return Rc::clone(&args[4])
+                        }
                         // // fold/build fusion
                         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
                         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
@@ -237,9 +236,7 @@ where
                     NaturalLit(x * y)
                 }
                 // TODO: interpolation
-                (TextAppend, TextLit(x), TextLit(y)) => {
-                    TextLit(x + y)
-                }
+                (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
                 (ListAppend, ListLit(t1, xs), ListLit(t2, ys)) => {
                     let t1: Option<Rc<_>> = t1.as_ref().map(Rc::clone);
                     let t2: Option<Rc<_>> = t2.as_ref().map(Rc::clone);
@@ -279,16 +276,10 @@ where
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<S, T, A>(e: SubExpr<S, A>) -> SubExpr<T, A>
+pub fn normalize<S, A>(e: SubExpr<S, A>) -> SubExpr<S, A>
 where
-    S: Clone + fmt::Debug,
-    T: Clone + fmt::Debug,
-    A: Clone + fmt::Debug,
+    S: fmt::Debug,
+    A: fmt::Debug,
 {
-    rc(normalize_whnf(&e).map_shallow_rc(
-        |x| normalize(Rc::clone(x)),
-        |_| unreachable!(),
-        |x| x.clone(),
-        |x| x.clone(),
-    ))
+    map_subexpr_rc(&normalize_whnf(&e), |x| normalize(Rc::clone(x)))
 }

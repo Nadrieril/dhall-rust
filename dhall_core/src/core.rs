@@ -215,9 +215,7 @@ impl<N, E> InterpolatedText<N, E> {
         }
     }
 
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = InterpolatedTextContents<N, E>> {
+    pub fn iter(&self) -> impl Iterator<Item = InterpolatedTextContents<N, E>> {
         use std::iter::once;
         once(InterpolatedTextContents::Text(self.head.as_ref())).chain(
             self.tail.iter().flat_map(|(e, s)| {
@@ -228,8 +226,7 @@ impl<N, E> InterpolatedText<N, E> {
     }
 }
 
-impl<'a, N: 'a, E: 'a>
-    FromIterator<InterpolatedTextContents<'a, N, E>>
+impl<'a, N: 'a, E: 'a> FromIterator<InterpolatedTextContents<'a, N, E>>
     for InterpolatedText<N, E>
 {
     fn from_iter<T>(iter: T) -> Self
@@ -259,9 +256,7 @@ impl<'a, N: 'a, E: 'a>
 impl<N, E> Add for &InterpolatedText<N, E> {
     type Output = InterpolatedText<N, E>;
     fn add(self, rhs: &InterpolatedText<N, E>) -> Self::Output {
-        self.iter()
-            .chain(rhs.iter())
-            .collect()
+        self.iter().chain(rhs.iter()).collect()
     }
 }
 
@@ -418,32 +413,14 @@ impl<S, A> Expr<S, A> {
         F3: FnOnce(&A) -> B,
         F4: Fn(&Label) -> Label,
     {
-        map_shallow(
+        map_subexpr(
             self,
             |x| rc(map_expr(x.as_ref())),
             map_note,
             map_embed,
             map_label,
+            |_, x| rc(map_expr(x.as_ref())),
         )
-    }
-
-    pub fn map_shallow_rc<T, B, F1, F2, F3, F4>(
-        &self,
-        map_expr: F1,
-        map_note: F2,
-        map_embed: F3,
-        map_label: F4,
-    ) -> Expr<T, B>
-    where
-        A: Clone,
-        T: Clone,
-        S: Clone,
-        F1: Fn(&SubExpr<S, A>) -> SubExpr<T, B>,
-        F2: FnOnce(&S) -> T,
-        F3: FnOnce(&A) -> B,
-        F4: Fn(&Label) -> Label,
-    {
-        map_shallow(self, map_expr, map_note, map_embed, map_label)
     }
 
     pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<S, B>
@@ -885,102 +862,92 @@ fn add_ui(u: usize, i: isize) -> usize {
 }
 
 /// Map over the immediate children of the passed Expr
-pub fn map_shallow<S, T, A, B, F1, F2, F3, F4>(
+pub fn map_subexpr<S, T, A, B, F1, F2, F3, F4, F5>(
     e: &Expr<S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
+    map_under_binder: F5,
 ) -> Expr<T, B>
 where
-    A: Clone,
-    S: Clone,
-    T: Clone,
     F1: Fn(&SubExpr<S, A>) -> SubExpr<T, B>,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
     F4: Fn(&Label) -> Label,
+    F5: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<T, B>,
 {
     use crate::Expr::*;
     let map = &map;
     let opt = |x: &Option<_>| x.as_ref().map(&map);
-    match *e {
-        Const(k) => Const(k),
-        Var(V(ref x, n)) => Var(V(map_label(x), n)),
-        Lam(ref x, ref t, ref b) => Lam(map_label(x), map(t), map(b)),
-        Pi(ref x, ref t, ref b) => Pi(map_label(x), map(t), map(b)),
-        App(ref f, ref args) => {
-            let args = args.iter().map(map).collect();
-            App(map(f), args)
+    let vec = |x: &Vec<_>| x.iter().map(&map).collect();
+    let btmap = |x: &BTreeMap<_, _>| {
+        x.into_iter().map(|(k, v)| (map_label(k), map(v))).collect()
+    };
+    match e {
+        Const(k) => Const(*k),
+        Var(V(x, n)) => Var(V(map_label(x), *n)),
+        Lam(x, t, b) => Lam(map_label(x), map(t), map_under_binder(x, b)),
+        Pi(x, t, b) => Pi(map_label(x), map(t), map_under_binder(x, b)),
+        App(f, args) => App(map(f), vec(args)),
+        Let(l, t, a, b) => {
+            Let(map_label(l), opt(t), map(a), map_under_binder(l, b))
         }
-        Let(ref l, ref t, ref a, ref b) => {
-            Let(map_label(l), opt(t), map(a), map(b))
-        }
-        Annot(ref x, ref t) => Annot(map(x), map(t)),
-        Builtin(v) => Builtin(v),
-        BoolLit(b) => BoolLit(b),
-        BoolIf(ref b, ref t, ref f) => BoolIf(map(b), map(t), map(f)),
-        NaturalLit(n) => NaturalLit(n),
-        IntegerLit(n) => IntegerLit(n),
-        DoubleLit(n) => DoubleLit(n),
-        TextLit(ref t) => TextLit(t.map(&map)),
-        BinOp(o, ref x, ref y) => BinOp(o, map(x), map(y)),
-        ListLit(ref t, ref es) => {
-            let es = es.iter().map(&map).collect();
-            ListLit(opt(t), es)
-        }
-        OptionalLit(ref t, ref es) => OptionalLit(opt(t), opt(es)),
-        Record(ref kts) => {
-            Record(map_record_value_and_keys(kts, map, map_label))
-        }
-        RecordLit(ref kvs) => {
-            RecordLit(map_record_value_and_keys(kvs, map, map_label))
-        }
-        Union(ref kts) => Union(map_record_value_and_keys(kts, map, map_label)),
-        UnionLit(ref k, ref v, ref kvs) => UnionLit(
-            map_label(k),
-            map(v),
-            map_record_value_and_keys(kvs, map, map_label),
-        ),
-        Merge(ref x, ref y, ref t) => Merge(map(x), map(y), opt(t)),
-        Field(ref r, ref x) => Field(map(r), map_label(x)),
-        Note(ref n, ref e) => Note(map_note(n), map(e)),
-        Embed(ref a) => Embed(map_embed(a)),
+        Annot(x, t) => Annot(map(x), map(t)),
+        Builtin(v) => Builtin(*v),
+        BoolLit(b) => BoolLit(*b),
+        BoolIf(b, t, f) => BoolIf(map(b), map(t), map(f)),
+        NaturalLit(n) => NaturalLit(*n),
+        IntegerLit(n) => IntegerLit(*n),
+        DoubleLit(n) => DoubleLit(*n),
+        TextLit(t) => TextLit(t.map(&map)),
+        BinOp(o, x, y) => BinOp(*o, map(x), map(y)),
+        ListLit(t, es) => ListLit(opt(t), vec(es)),
+        OptionalLit(t, es) => OptionalLit(opt(t), opt(es)),
+        Record(kts) => Record(btmap(kts)),
+        RecordLit(kvs) => RecordLit(btmap(kvs)),
+        Union(kts) => Union(btmap(kts)),
+        UnionLit(k, v, kvs) => UnionLit(map_label(k), map(v), btmap(kvs)),
+        Merge(x, y, t) => Merge(map(x), map(y), opt(t)),
+        Field(r, x) => Field(map(r), map_label(x)),
+        Note(n, e) => Note(map_note(n), map(e)),
+        Embed(a) => Embed(map_embed(a)),
     }
 }
 
-pub fn map_record_value<'a, I, K, V, U, F>(it: I, f: F) -> BTreeMap<K, U>
+pub fn map_subexpr_rc_binder<S, A, F1, F2>(
+    e: &SubExpr<S, A>,
+    map_expr: F1,
+    map_under_binder: F2,
+) -> SubExpr<S, A>
 where
-    I: IntoIterator<Item = (&'a K, &'a V)>,
-    K: Eq + Ord + Clone + 'a,
-    V: 'a,
-    F: FnMut(&V) -> U,
+    F1: Fn(&SubExpr<S, A>) -> SubExpr<S, A>,
+    F2: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<S, A>,
 {
-    map_record_value_and_keys(it, f, |x| x.clone())
+    match e.as_ref() {
+        Expr::Embed(_) => Rc::clone(e),
+        Expr::Note(_, e) => {
+            map_subexpr_rc_binder(e, map_expr, map_under_binder)
+        }
+        _ => rc(map_subexpr(
+            e,
+            map_expr,
+            |_| unreachable!(),
+            |_| unreachable!(),
+            Label::clone,
+            map_under_binder,
+        )),
+    }
 }
 
-pub fn map_record_value_and_keys<'a, I, K, L, V, U, F, G>(
-    it: I,
-    mut f: F,
-    mut g: G,
-) -> BTreeMap<L, U>
+pub fn map_subexpr_rc<S, A, F1>(
+    e: &SubExpr<S, A>,
+    map_expr: F1,
+) -> SubExpr<S, A>
 where
-    I: IntoIterator<Item = (&'a K, &'a V)>,
-    K: Eq + Ord + 'a,
-    L: Eq + Ord + 'a,
-    V: 'a,
-    F: FnMut(&V) -> U,
-    G: FnMut(&K) -> L,
+    F1: Fn(&SubExpr<S, A>) -> SubExpr<S, A>,
 {
-    it.into_iter().map(|(k, v)| (g(k), f(v))).collect()
-}
-
-fn map_op2<T, U, V, F, G>(f: F, g: G, a: T, b: T) -> V
-where
-    F: FnOnce(U, U) -> V,
-    G: Fn(T) -> U,
-{
-    f(g(a), g(b))
+    map_subexpr_rc_binder(e, &map_expr, |_, e| map_expr(e))
 }
 
 /// `shift` is used by both normalization and type-checking to avoid variable
@@ -1055,88 +1022,27 @@ where
 /// name in order to avoid shifting the bound variables by mistake.
 ///
 pub fn shift<S, A>(
-    d: isize,
-    v: &V,
-    e: &Rc<Expr<S, A>>,
+    delta: isize,
+    var: &V,
+    in_expr: &Rc<Expr<S, A>>,
 ) -> Rc<Expr<S, A>> {
     use crate::Expr::*;
-    let V(x, n) = v;
-    rc(match e.as_ref() {
-        Const(a) => Const(*a),
-        Var(V(x2, n2)) => {
-            let n3 = if x == x2 && n <= n2 {
-                add_ui(*n2, d)
-            } else {
-                *n2
-            };
-            Var(V(x2.clone(), n3))
+    let V(x, n) = var;
+    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
+        let n = if x == y { n + 1 } else { *n };
+        let newvar = &V(x.clone(), n);
+        shift(delta, newvar, e)
+    };
+    match in_expr.as_ref() {
+        Var(V(y, m)) if x == y && n <= m => {
+            rc(Var(V(y.clone(), add_ui(*m, delta))))
         }
-        Lam(x2, tA, b) => {
-            let n2 = if x == x2 { n + 1 } else { *n };
-            let tA2 = shift(d, v, tA);
-            let b2 = shift(d, &V(x.clone(), n2), b);
-            Lam(x2.clone(), tA2, b2)
-        }
-        Pi(x2, tA, tB) => {
-            let n2 = if x == x2 { n + 1 } else { *n };
-            let tA2 = shift(d, v, tA);
-            let tB2 = shift(d, &V(x.clone(), n2), tB);
-            Pi(x2.clone(), tA2, tB2)
-        }
-        App(f, args) => {
-            let f = shift(d, v, f);
-            let args = args.iter().map(|a| shift(d, v, a)).collect();
-            App(f, args)
-        }
-        Let(f, mt, r, e) => {
-            let n2 = if x == f { n + 1 } else { *n };
-            let e2 = shift(d, &V(x.clone(), n2), e);
-            let mt2 = mt.as_ref().map(|t| shift(d, v, t));
-            let r2 = shift(d, v, r);
-            Let(f.clone(), mt2, r2, e2)
-        }
-        Annot(a, b) => map_op2(Annot, |x| shift(d, v, x), a, b),
-        Builtin(v) => Builtin(*v),
-        BoolLit(a) => BoolLit(*a),
-        BinOp(o, a, b) => {
-            map_op2(|x, y| BinOp(*o, x, y), |x| shift(d, v, x), a, b)
-        }
-        BoolIf(a, b, c) => {
-            BoolIf(shift(d, v, a), shift(d, v, b), shift(d, v, c))
-        }
-        NaturalLit(a) => NaturalLit(*a),
-        IntegerLit(a) => IntegerLit(*a),
-        DoubleLit(a) => DoubleLit(*a),
-        TextLit(a) => TextLit(a.map(|e| shift(d, v, &*e))),
-        ListLit(t, es) => ListLit(
-            t.as_ref().map(|t| shift(d, v, t)),
-            es.iter().map(|e| shift(d, v, e)).collect(),
+        _ => map_subexpr_rc_binder(
+            in_expr,
+            |e| shift(delta, var, e),
+            under_binder,
         ),
-        OptionalLit(t, e) => OptionalLit(
-            t.as_ref().map(|t| shift(d, v, t)),
-            e.as_ref().map(|t| shift(d, v, t)),
-        ),
-        Record(a) => Record(map_record_value(a, |val| shift(d, v, &*val))),
-        RecordLit(a) => {
-            RecordLit(map_record_value(a, |val| shift(d, v, &*val)))
-        }
-        Union(a) => Union(map_record_value(a, |val| shift(d, v, &*val))),
-        UnionLit(k, uv, a) => UnionLit(
-            k.clone(),
-            shift(d, v, uv),
-            map_record_value(a, |val| shift(d, v, &*val)),
-        ),
-        Merge(a, b, c) => Merge(
-            shift(d, v, a),
-            shift(d, v, b),
-            c.as_ref().map(|c| shift(d, v, c)),
-        ),
-        Field(a, b) => Field(shift(d, v, a), b.clone()),
-        Note(_, b) => return shift(d, v, b),
-        // The Dhall compiler enforces that all embedded values are closed expressions
-        // and `shift` does nothing to a closed expression
-        Embed(_) => return Rc::clone(e),
-    })
+    }
 }
 
 /// Substitute all occurrences of a variable with an expression
@@ -1146,79 +1052,23 @@ pub fn shift<S, A>(
 /// ```
 ///
 pub fn subst<S, A>(
-    v: &V,
-    e: &Rc<Expr<S, A>>,
-    b: &Rc<Expr<S, A>>,
-) -> Rc<Expr<S, A>>
-{
+    var: &V,
+    value: &Rc<Expr<S, A>>,
+    in_expr: &Rc<Expr<S, A>>,
+) -> Rc<Expr<S, A>> {
     use crate::Expr::*;
-    let V(x, n) = v;
-    rc(match b.as_ref() {
-        Lam(y, tA, b) => {
-            let n2 = if x == y { n + 1 } else { *n };
-            let b2 =
-                subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), b);
-            let tA2 = subst(v, e, tA);
-            Lam(y.clone(), tA2, b2)
-        }
-        Pi(y, tA, tB) => {
-            let n2 = if x == y { n + 1 } else { *n };
-            let tB2 =
-                subst(&V(x.clone(), n2), &shift(1, &V(y.clone(), 0), e), tB);
-            let tA2 = subst(v, e, tA);
-            Pi(y.clone(), tA2, tB2)
-        }
-        App(f, args) => {
-            let f2 = subst(v, e, f);
-            let args = args.iter().map(|a| subst(v, e, a)).collect();
-            App(f2, args)
-        }
-        Var(v2) if v == v2 => {
-            return e.clone();
-        }
-        Let(f, mt, r, b) => {
-            let n2 = if x == f { n + 1 } else { *n };
-            let b2 =
-                subst(&V(x.clone(), n2), &shift(1, &V(f.clone(), 0), e), b);
-            let mt2 = mt.as_ref().map(|t| subst(v, e, t));
-            let r2 = subst(v, e, r);
-            Let(f.clone(), mt2, r2, b2)
-        }
-        Annot(a, b) => map_op2(Annot, |x| subst(v, e, x), a, b),
-        BinOp(o, a, b) => {
-            map_op2(|x, y| BinOp(*o, x, y), |x| subst(v, e, x), a, b)
-        }
-        BoolIf(a, b, c) => {
-            BoolIf(subst(v, e, a), subst(v, e, b), subst(v, e, c))
-        }
-        TextLit(a) => TextLit(a.map(|b| subst(v, e, &*b))),
-        ListLit(a, b) => {
-            let a2 = a.as_ref().map(|a| subst(v, e, a));
-            let b2 = b.iter().map(|be| subst(v, e, be)).collect();
-            ListLit(a2, b2)
-        }
-        OptionalLit(a, b) => {
-            let a2 = a.as_ref().map(|a| subst(v, e, a));
-            let b2 = b.as_ref().map(|a| subst(v, e, a));
-            OptionalLit(a2, b2)
-        }
-        Record(kts) => Record(map_record_value(kts, |t| subst(v, e, &*t))),
-        RecordLit(kvs) => {
-            RecordLit(map_record_value(kvs, |val| subst(v, e, &*val)))
-        }
-        Union(kts) => Union(map_record_value(kts, |t| subst(v, e, &*t))),
-        UnionLit(k, uv, kvs) => UnionLit(
-            k.clone(),
-            subst(v, e, uv),
-            map_record_value(kvs, |val| subst(v, e, &*val)),
+    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
+        let V(x, n) = var;
+        let n = if x == y { n + 1 } else { *n };
+        let newvar = &V(x.clone(), n);
+        subst(newvar, &shift(1, &V(y.clone(), 0), value), e)
+    };
+    match in_expr.as_ref() {
+        Var(v) if var == v => Rc::clone(value),
+        _ => map_subexpr_rc_binder(
+            in_expr,
+            |e| subst(var, value, e),
+            under_binder,
         ),
-        Merge(a, b, c) => Merge(
-            subst(v, e, a),
-            subst(v, e, b),
-            c.as_ref().map(|c| subst(v, e, c)),
-        ),
-        Field(a, b) => Field(subst(v, e, a), b.clone()),
-        Note(_, b) => return subst(v, e, b),
-        _ => return Rc::clone(b),
-    })
+    }
 }
