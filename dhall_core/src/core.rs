@@ -199,33 +199,9 @@ impl<N, E> From<String> for InterpolatedText<N, E> {
     }
 }
 
-// TODO: merge both when we move to Rc<>
-// This one is needed when parsing, because we need to own the Expr
-pub enum OwnedInterpolatedTextContents<'a, Note, Embed> {
+pub enum InterpolatedTextContents<'a, Note, Embed> {
     Text(&'a str),
-    Expr(Rc<Expr<Note, Embed>>),
-}
-
-// This one is needed everywhere else, because we don't want Clone traits bounds
-// everywhere
-pub enum BorrowedInterpolatedTextContents<'a, Note, Embed> {
-    Text(&'a str),
-    Expr(&'a Expr<Note, Embed>),
-}
-
-impl<'a, N: Clone + 'a, E: Clone + 'a>
-    BorrowedInterpolatedTextContents<'a, N, E>
-{
-    pub fn to_owned(self) -> OwnedInterpolatedTextContents<'a, N, E> {
-        match self {
-            BorrowedInterpolatedTextContents::Text(s) => {
-                OwnedInterpolatedTextContents::Text(s)
-            }
-            BorrowedInterpolatedTextContents::Expr(e) => {
-                OwnedInterpolatedTextContents::Expr(bx(e.clone()))
-            }
-        }
-    }
+    Expr(SubExpr<Note, Embed>),
 }
 
 impl<N, E> InterpolatedText<N, E> {
@@ -241,24 +217,24 @@ impl<N, E> InterpolatedText<N, E> {
 
     pub fn iter(
         &self,
-    ) -> impl Iterator<Item = BorrowedInterpolatedTextContents<N, E>> {
+    ) -> impl Iterator<Item = InterpolatedTextContents<N, E>> {
         use std::iter::once;
-        once(BorrowedInterpolatedTextContents::Text(self.head.as_ref())).chain(
+        once(InterpolatedTextContents::Text(self.head.as_ref())).chain(
             self.tail.iter().flat_map(|(e, s)| {
-                once(BorrowedInterpolatedTextContents::Expr(e))
-                    .chain(once(BorrowedInterpolatedTextContents::Text(s)))
+                once(InterpolatedTextContents::Expr(Rc::clone(e)))
+                    .chain(once(InterpolatedTextContents::Text(s)))
             }),
         )
     }
 }
 
-impl<'a, N: Clone + 'a, E: Clone + 'a>
-    FromIterator<OwnedInterpolatedTextContents<'a, N, E>>
+impl<'a, N: 'a, E: 'a>
+    FromIterator<InterpolatedTextContents<'a, N, E>>
     for InterpolatedText<N, E>
 {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = OwnedInterpolatedTextContents<'a, N, E>>,
+        T: IntoIterator<Item = InterpolatedTextContents<'a, N, E>>,
     {
         let mut res = InterpolatedText {
             head: "".to_owned(),
@@ -268,8 +244,8 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
         let mut crnt_str = &mut res.head;
         for x in iter.into_iter() {
             match x {
-                OwnedInterpolatedTextContents::Text(s) => crnt_str.push_str(s),
-                OwnedInterpolatedTextContents::Expr(e) => {
+                InterpolatedTextContents::Text(s) => crnt_str.push_str(s),
+                InterpolatedTextContents::Expr(e) => {
                     // crnt_str = &mut empty_string;
                     res.tail.push((e.clone(), "".to_owned()));
                     crnt_str = &mut res.tail.last_mut().unwrap().1;
@@ -280,12 +256,11 @@ impl<'a, N: Clone + 'a, E: Clone + 'a>
     }
 }
 
-impl<N: Clone, E: Clone> Add for InterpolatedText<N, E> {
+impl<N, E> Add for &InterpolatedText<N, E> {
     type Output = InterpolatedText<N, E>;
-    fn add(self, rhs: InterpolatedText<N, E>) -> Self::Output {
+    fn add(self, rhs: &InterpolatedText<N, E>) -> Self::Output {
         self.iter()
             .chain(rhs.iter())
-            .map(BorrowedInterpolatedTextContents::to_owned)
             .collect()
     }
 }
@@ -715,10 +690,10 @@ impl<S, A: Display> Expr<S, A> {
             &TextLit(ref a) => {
                 for x in a.iter() {
                     match x {
-                        BorrowedInterpolatedTextContents::Text(a) => {
+                        InterpolatedTextContents::Text(a) => {
                             <str as fmt::Debug>::fmt(a, f)?
                         } // TODO Format escapes properly
-                        BorrowedInterpolatedTextContents::Expr(e) => {
+                        InterpolatedTextContents::Expr(e) => {
                             f.write_str("${")?;
                             e.fmt(f)?;
                             f.write_str("}")?;
@@ -1079,11 +1054,11 @@ where
 /// descend into a lambda or let expression that binds a variable of the same
 /// name in order to avoid shifting the bound variables by mistake.
 ///
-pub fn shift<S, T, A: Clone>(
+pub fn shift<S, A>(
     d: isize,
     v: &V,
     e: &Rc<Expr<S, A>>,
-) -> Rc<Expr<T, A>> {
+) -> Rc<Expr<S, A>> {
     use crate::Expr::*;
     let V(x, n) = v;
     rc(match e.as_ref() {
@@ -1160,7 +1135,7 @@ pub fn shift<S, T, A: Clone>(
         Note(_, b) => return shift(d, v, b),
         // The Dhall compiler enforces that all embedded values are closed expressions
         // and `shift` does nothing to a closed expression
-        Embed(p) => Embed(p.clone()),
+        Embed(_) => return Rc::clone(e),
     })
 }
 
@@ -1170,19 +1145,15 @@ pub fn shift<S, T, A: Clone>(
 /// subst x C B  ~  B[x := C]
 /// ```
 ///
-pub fn subst<S, T, A>(
+pub fn subst<S, A>(
     v: &V,
     e: &Rc<Expr<S, A>>,
-    b: &Rc<Expr<T, A>>,
+    b: &Rc<Expr<S, A>>,
 ) -> Rc<Expr<S, A>>
-where
-    S: Clone,
-    A: Clone,
 {
     use crate::Expr::*;
     let V(x, n) = v;
     rc(match b.as_ref() {
-        Const(a) => Const(*a),
         Lam(y, tA, b) => {
             let n2 = if x == y { n + 1 } else { *n };
             let b2 =
@@ -1202,12 +1173,8 @@ where
             let args = args.iter().map(|a| subst(v, e, a)).collect();
             App(f2, args)
         }
-        Var(v2) => {
-            if v == v2 {
-                return e.clone();
-            } else {
-                Var(v2.clone())
-            }
+        Var(v2) if v == v2 => {
+            return e.clone();
         }
         Let(f, mt, r, b) => {
             let n2 = if x == f { n + 1 } else { *n };
@@ -1218,17 +1185,12 @@ where
             Let(f.clone(), mt2, r2, b2)
         }
         Annot(a, b) => map_op2(Annot, |x| subst(v, e, x), a, b),
-        Builtin(v) => Builtin(*v),
-        BoolLit(a) => BoolLit(*a),
         BinOp(o, a, b) => {
             map_op2(|x, y| BinOp(*o, x, y), |x| subst(v, e, x), a, b)
         }
         BoolIf(a, b, c) => {
             BoolIf(subst(v, e, a), subst(v, e, b), subst(v, e, c))
         }
-        NaturalLit(a) => NaturalLit(*a),
-        IntegerLit(a) => IntegerLit(*a),
-        DoubleLit(a) => DoubleLit(*a),
         TextLit(a) => TextLit(a.map(|b| subst(v, e, &*b))),
         ListLit(a, b) => {
             let a2 = a.as_ref().map(|a| subst(v, e, a));
@@ -1257,6 +1219,6 @@ where
         ),
         Field(a, b) => Field(subst(v, e, a), b.clone()),
         Note(_, b) => return subst(v, e, b),
-        Embed(p) => Embed(p.clone()),
+        _ => return Rc::clone(b),
     })
 }

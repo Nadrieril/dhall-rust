@@ -16,7 +16,7 @@ use crate::core::*;
 
 pub type ParsedExpr = Expr<X, Import>;
 pub type ParsedText = InterpolatedText<X, Import>;
-pub type ParsedTextContents<'a> = OwnedInterpolatedTextContents<'a, X, Import>;
+pub type ParsedTextContents<'a> = InterpolatedTextContents<'a, X, Import>;
 pub type RcExpr = Rc<ParsedExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;
@@ -438,10 +438,10 @@ rule!(double_quote_literal<ParsedText>;
 // TODO: parse escapes
 rule!(double_quote_chunk<ParsedTextContents<'a>>;
     children!(c: interpolation) => {
-        OwnedInterpolatedTextContents::Expr(c)
+        InterpolatedTextContents::Expr(c)
     },
     captured_str!(s) => {
-        OwnedInterpolatedTextContents::Text(s)
+        InterpolatedTextContents::Text(s)
     },
 );
 
@@ -462,16 +462,16 @@ rule!(interpolation<RcExpr>;
 
 rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
     children!(c: interpolation, rest: single_quote_continue) => {
-        rest.push(OwnedInterpolatedTextContents::Expr(c)); rest
+        rest.push(InterpolatedTextContents::Expr(c)); rest
     },
     children!(c: escaped_quote_pair, rest: single_quote_continue) => {
-        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
+        rest.push(InterpolatedTextContents::Text(c)); rest
     },
     children!(c: escaped_interpolation, rest: single_quote_continue) => {
-        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
+        rest.push(InterpolatedTextContents::Text(c)); rest
     },
     children!(c: raw_str, rest: single_quote_continue) => {
-        rest.push(OwnedInterpolatedTextContents::Text(c)); rest
+        rest.push(InterpolatedTextContents::Text(c)); rest
     },
     children!() => {
         vec![]

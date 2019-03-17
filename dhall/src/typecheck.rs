@@ -260,9 +260,9 @@ where
             let tA2 = type_with(ctx, a.clone())?;
             if prop_equal(tA.clone(), tA2.clone()) {
                 let vx0 = &V(x.clone(), 0);
-                let a2 = shift::<S, S, X>(1, vx0, a);
+                let a2 = shift(1, vx0, a);
                 let tB2 = subst(vx0, &a2, &tB);
-                let tB3 = shift::<S, S, X>(-1, vx0, &tB2);
+                let tB3 = shift(-1, vx0, &tB2);
                 return Ok(tB3);
             } else {
                 let nf_A = normalize(tA.clone());

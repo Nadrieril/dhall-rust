@@ -11,8 +11,8 @@ use std::rc::Rc;
 /// This allows normalization to be lazy.
 pub fn normalize_whnf<S, A>(e: &SubExpr<S, A>) -> SubExpr<S, A>
 where
-    S: Clone + fmt::Debug,
-    A: Clone + fmt::Debug,
+    S: fmt::Debug,
+    A: fmt::Debug,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
@@ -20,9 +20,9 @@ where
     rc(match e.as_ref() {
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
-            let r2 = shift::<_, S, _>(1, vf0, r);
-            let b2 = subst::<_, S, _>(vf0, &r2, b);
-            let b3 = shift::<_, S, _>(-1, vf0, &b2);
+            let r2 = shift(1, vf0, r);
+            let b2 = subst(vf0, &r2, b);
+            let b3 = shift(-1, vf0, &b2);
             return normalize_whnf(&b3);
         }
         Annot(x, _) => return normalize_whnf(x),
@@ -40,9 +40,9 @@ where
                 (Lam(ref x, _, ref b), [a, rest..]) => {
                     // Beta reduce
                     let vx0 = &V(x.clone(), 0);
-                    let a2 = shift::<S, S, A>(1, vx0, a);
-                    let b2 = subst::<S, S, A>(vx0, &a2, &b);
-                    let b3 = shift::<S, S, A>(-1, vx0, &b2);
+                    let a2 = shift(1, vx0, a);
+                    let b2 = subst(vx0, &a2, &b);
+                    let b3 = shift(-1, vx0, &b2);
                     return normalize_whnf(&rc(App(b3, rest.to_vec())));
                 }
                 // TODO: this is more normalization than needed
@@ -165,8 +165,8 @@ where
                         }
                         (
                             OptionalFold,
-                            [_, OptionalLit(_, None), _, _, nothing],
-                        ) => (*nothing).clone(),
+                            [_, OptionalLit(_, None), _, _, _],
+                        ) => return Rc::clone(&args[4]),
                         // // fold/build fusion
                         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
                         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
@@ -238,7 +238,7 @@ where
                 }
                 // TODO: interpolation
                 (TextAppend, TextLit(x), TextLit(y)) => {
-                    TextLit(x.clone() + y.clone())
+                    TextLit(x + y)
                 }
                 (ListAppend, ListLit(t1, xs), ListLit(t2, ys)) => {
                     let t1: Option<Rc<_>> = t1.as_ref().map(Rc::clone);
