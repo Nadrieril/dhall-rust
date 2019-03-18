@@ -4,6 +4,151 @@ use dhall_generator::dhall_expr;
 use std::fmt;
 use std::rc::Rc;
 
+fn apply_builtin<S, A>(b: Builtin, args: Vec<SubExpr<S, A>>) -> SubExpr<S, A>
+where
+    S: fmt::Debug,
+    A: fmt::Debug,
+{
+    use dhall_core::BinOp::*;
+    use dhall_core::Builtin::*;
+    use dhall_core::Expr::*;
+    let f = rc(Builtin(b));
+    // How many arguments for each builtin, and which argument
+    // is the important one for pattern-matching
+    let (len_consumption, arg_to_eval) = match b {
+        OptionalSome => (1, None),
+        OptionalNone => (1, None),
+        NaturalIsZero => (1, Some(0)),
+        NaturalEven => (1, Some(0)),
+        NaturalOdd => (1, Some(0)),
+        NaturalToInteger => (1, Some(0)),
+        NaturalShow => (1, Some(0)),
+        ListLength => (2, Some(1)),
+        ListHead => (2, Some(1)),
+        ListLast => (2, Some(1)),
+        ListReverse => (2, Some(1)),
+        ListBuild => (2, Some(1)),
+        OptionalBuild => (2, Some(1)),
+        ListFold => (5, Some(1)),
+        OptionalFold => (5, Some(1)),
+        NaturalBuild => (1, Some(0)),
+        NaturalFold => (1, Some(0)),
+        _ => (0, None),
+    };
+    let mut args = args.to_vec();
+    if len_consumption > args.len() {
+        return rc(App(f, args));
+    }
+    if let Some(i) = arg_to_eval {
+        args[i] = Rc::clone(&normalize_whnf(&args[i]));
+    }
+    let evaled_arg = arg_to_eval.map(|i| args[i].as_ref());
+
+    let ret = match (b, evaled_arg, args.as_slice()) {
+        (OptionalSome, _, [x, ..]) => rc(OptionalLit(None, Some(Rc::clone(x)))),
+        (OptionalNone, _, [t, ..]) => rc(OptionalLit(Some(Rc::clone(t)), None)),
+        (NaturalIsZero, Some(NaturalLit(n)), _) => rc(BoolLit(*n == 0)),
+        (NaturalEven, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 == 0)),
+        (NaturalOdd, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 != 0)),
+        (NaturalToInteger, Some(NaturalLit(n)), _) => {
+            rc(IntegerLit(*n as isize))
+        }
+        (NaturalShow, Some(NaturalLit(n)), _) => {
+            rc(TextLit(n.to_string().into()))
+        }
+        (ListLength, Some(ListLit(_, ys)), _) => rc(NaturalLit(ys.len())),
+        (ListHead, Some(ListLit(t, ys)), _) => {
+            rc(OptionalLit(t.clone(), ys.iter().cloned().next()))
+        }
+        (ListLast, Some(ListLit(t, ys)), _) => {
+            rc(OptionalLit(t.clone(), ys.iter().cloned().last()))
+        }
+        (ListReverse, Some(ListLit(t, ys)), _) => {
+            let xs = ys.iter().rev().cloned().collect();
+            rc(ListLit(t.clone(), xs))
+        }
+        (ListBuild, _, [a0, g, ..]) => {
+            loop {
+                if let App(f2, args2) = g.as_ref() {
+                    if let (Builtin(ListFold), [_, x, rest..]) =
+                        (f2.as_ref(), args2.as_slice())
+                    {
+                        // fold/build fusion
+                        break rc(App(x.clone(), rest.to_vec()));
+                    }
+                };
+                let a0 = Rc::clone(a0);
+                let a1 = shift(1, &V("a".into(), 0), &a0);
+                break dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0));
+            }
+        }
+        (OptionalBuild, _, [a0, g, ..]) => {
+            loop {
+                if let App(f2, args2) = g.as_ref() {
+                    if let (Builtin(OptionalFold), [_, x, rest..]) =
+                        (f2.as_ref(), args2.as_slice())
+                    {
+                        // fold/build fusion
+                        break rc(App(x.clone(), rest.to_vec()));
+                    }
+                };
+                let a0 = Rc::clone(a0);
+                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
+            }
+        }
+        (ListFold, Some(ListLit(_, xs)), [_, _, _, cons, nil, ..]) => {
+            xs.iter().rev().fold(Rc::clone(nil), |acc, x| {
+                let x = x.clone();
+                let acc = acc.clone();
+                let cons = Rc::clone(cons);
+                dhall_expr!(cons x acc)
+            })
+        }
+        // // fold/build fusion
+        // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
+        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+        // }
+        (
+            OptionalFold,
+            Some(OptionalLit(_, Some(x))),
+            [_, _, _, just, _, ..],
+        ) => {
+            let x = x.clone();
+            let just = Rc::clone(just);
+            dhall_expr!(just x)
+        }
+        (
+            OptionalFold,
+            Some(OptionalLit(_, None)),
+            [_, _, _, _, nothing, ..],
+        ) => Rc::clone(nothing),
+        // // fold/build fusion
+        // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
+        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
+        // }
+        (NaturalBuild, Some(App(f2, args2)), _) => {
+            match (f2.as_ref(), args2.as_slice()) {
+                // fold/build fusion
+                (Builtin(NaturalFold), [x, rest..]) => {
+                    rc(App(x.clone(), rest.to_vec()))
+                }
+                _ => return rc(App(f, args)),
+            }
+        }
+        (NaturalFold, Some(App(f2, args2)), _) => {
+            match (f2.as_ref(), args2.as_slice()) {
+                // fold/build fusion
+                (Builtin(NaturalBuild), [x, rest..]) => {
+                    rc(App(x.clone(), rest.to_vec()))
+                }
+                _ => return rc(App(f, args)),
+            }
+        }
+        _ => return rc(App(f, args)),
+    };
+    normalize_whnf(&rc(Expr::App(ret, args.split_off(len_consumption))))
+}
+
 /// Reduce an expression to its weak head normal form, i.e. normalize
 /// just enough to get the first constructor of the final expression
 /// Is identical to normalize on primitive types, but not on more complex
@@ -15,7 +160,6 @@ where
     A: fmt::Debug,
 {
     use dhall_core::BinOp::*;
-    use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
     match e.as_ref() {
         Let(f, _, r, b) => {
@@ -43,172 +187,8 @@ where
                     let b3 = shift(-1, vx0, &b2);
                     normalize_whnf(&rc(App(b3, rest.to_vec())))
                 }
-                (Builtin(b), _) => {
-                    // How many arguments for each builtin, and which argument
-                    // is the important one for pattern-matching
-                    let (len_consumption, arg_to_eval) = match b {
-                        OptionalSome => (1, None),
-                        OptionalNone => (1, None),
-                        NaturalIsZero => (1, Some(0)),
-                        NaturalEven => (1, Some(0)),
-                        NaturalOdd => (1, Some(0)),
-                        NaturalToInteger => (1, Some(0)),
-                        NaturalShow => (1, Some(0)),
-                        ListLength => (2, Some(1)),
-                        ListHead => (2, Some(1)),
-                        ListLast => (2, Some(1)),
-                        ListReverse => (2, Some(1)),
-                        ListBuild => (2, Some(1)),
-                        OptionalBuild => (2, Some(1)),
-                        ListFold => (5, Some(1)),
-                        OptionalFold => (5, Some(1)),
-                        NaturalBuild => (1, Some(0)),
-                        NaturalFold => (1, Some(0)),
-                        _ => (0, None),
-                    };
-                    let mut args = args.to_vec();
-                    if len_consumption > args.len() {
-                        return rc(App(f, args));
-                    }
-                    if let Some(i) = arg_to_eval {
-                        args[i] = Rc::clone(&normalize_whnf(&args[i]));
-                    }
-                    let evaled_arg = arg_to_eval.map(|i| args[i].as_ref());
-
-                    let ret = match (b, evaled_arg, args.as_slice()) {
-                        (OptionalSome, _, [x, ..]) => {
-                            rc(OptionalLit(None, Some(Rc::clone(x))))
-                        }
-                        (OptionalNone, _, [t, ..]) => {
-                            rc(OptionalLit(Some(Rc::clone(t)), None))
-                        }
-                        (NaturalIsZero, Some(NaturalLit(n)), _) => {
-                            rc(BoolLit(*n == 0))
-                        }
-                        (NaturalEven, Some(NaturalLit(n)), _) => {
-                            rc(BoolLit(*n % 2 == 0))
-                        }
-                        (NaturalOdd, Some(NaturalLit(n)), _) => {
-                            rc(BoolLit(*n % 2 != 0))
-                        }
-                        (NaturalToInteger, Some(NaturalLit(n)), _) => {
-                            rc(IntegerLit(*n as isize))
-                        }
-                        (NaturalShow, Some(NaturalLit(n)), _) => {
-                            rc(TextLit(n.to_string().into()))
-                        }
-                        (ListLength, Some(ListLit(_, ys)), _) => {
-                            rc(NaturalLit(ys.len()))
-                        }
-                        (ListHead, Some(ListLit(t, ys)), _) => rc(OptionalLit(
-                            t.clone(),
-                            ys.iter().cloned().next(),
-                        )),
-                        (ListLast, Some(ListLit(t, ys)), _) => rc(OptionalLit(
-                            t.clone(),
-                            ys.iter().cloned().last(),
-                        )),
-                        (ListReverse, Some(ListLit(t, ys)), _) => {
-                            let xs = ys.iter().rev().cloned().collect();
-                            rc(ListLit(t.clone(), xs))
-                        }
-                        (ListBuild, _, [a0, g, ..]) => {
-                            loop {
-                                if let App(f2, args2) = g.as_ref() {
-                                    if let (
-                                        Builtin(ListFold),
-                                        [_, x, rest..],
-                                    ) = (f2.as_ref(), args2.as_slice())
-                                    {
-                                        // fold/build fusion
-                                        break rc(App(
-                                            x.clone(),
-                                            rest.to_vec(),
-                                        ));
-                                    }
-                                };
-                                let a0 = Rc::clone(a0);
-                                let a1 = shift(1, &V("a".into(), 0), &a0);
-                                break dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0));
-                            }
-                        }
-                        (OptionalBuild, _, [a0, g, ..]) => {
-                            loop {
-                                if let App(f2, args2) = g.as_ref() {
-                                    if let (
-                                        Builtin(OptionalFold),
-                                        [_, x, rest..],
-                                    ) = (f2.as_ref(), args2.as_slice())
-                                    {
-                                        // fold/build fusion
-                                        break rc(App(
-                                            x.clone(),
-                                            rest.to_vec(),
-                                        ));
-                                    }
-                                };
-                                let a0 = Rc::clone(a0);
-                                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
-                            }
-                        }
-                        (
-                            ListFold,
-                            Some(ListLit(_, xs)),
-                            [_, _, _, cons, nil, ..],
-                        ) => xs.iter().rev().fold(Rc::clone(nil), |acc, x| {
-                            let x = x.clone();
-                            let acc = acc.clone();
-                            let cons = Rc::clone(cons);
-                            dhall_expr!(cons x acc)
-                        }),
-                        // // fold/build fusion
-                        // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
-                        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
-                        // }
-                        (
-                            OptionalFold,
-                            Some(OptionalLit(_, Some(x))),
-                            [_, _, _, just, _, ..],
-                        ) => {
-                            let x = x.clone();
-                            let just = Rc::clone(just);
-                            dhall_expr!(just x)
-                        }
-                        (
-                            OptionalFold,
-                            Some(OptionalLit(_, None)),
-                            [_, _, _, _, nothing, ..],
-                        ) => Rc::clone(nothing),
-                        // // fold/build fusion
-                        // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
-                        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
-                        // }
-                        (NaturalBuild, Some(App(f2, args2)), _) => {
-                            match (f2.as_ref(), args2.as_slice()) {
-                                // fold/build fusion
-                                (Builtin(NaturalFold), [x, rest..]) => {
-                                    rc(App(x.clone(), rest.to_vec()))
-                                }
-                                _ => return rc(App(f, args)),
-                            }
-                        }
-                        (NaturalFold, Some(App(f2, args2)), _) => {
-                            match (f2.as_ref(), args2.as_slice()) {
-                                // fold/build fusion
-                                (Builtin(NaturalBuild), [x, rest..]) => {
-                                    rc(App(x.clone(), rest.to_vec()))
-                                }
-                                _ => return rc(App(f, args)),
-                            }
-                        }
-                        (b, _, _) => return rc(App(rc(Builtin(*b)), args)),
-                    };
-                    normalize_whnf(&rc(Expr::App(
-                        ret,
-                        args.split_off(len_consumption),
-                    )))
-                }
-                (_, args) => rc(App(f, args.to_vec())),
+                (Builtin(b), _) => apply_builtin(*b, args.to_vec()),
+                _ => rc(App(f, args.to_vec())),
             }
         }
         BoolIf(b, t, f) => {
@@ -226,6 +206,8 @@ where
                 rc(OptionalLit(t.clone(), es.clone()))
             }
         }
+        // TODO: interpolation
+        // TextLit(t) =>
         BinOp(o, x, y) => {
             let x = normalize_whnf(x);
             let y = normalize_whnf(y);
@@ -240,7 +222,6 @@ where
                 (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
                     NaturalLit(x * y)
                 }
-                // TODO: interpolation
                 (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
                 (ListAppend, ListLit(t1, xs), ListLit(t2, ys)) => {
                     let t1: Option<Rc<_>> = t1.as_ref().map(Rc::clone);
