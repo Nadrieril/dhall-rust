@@ -20,4 +20,6 @@ script:
 
 after_success: |
   cargo tarpaulin --release --all --all-features --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+  cargo tarpaulin --release --all --all-features --out Xml
+  bash <(curl -s https://codecov.io/bash)
 
