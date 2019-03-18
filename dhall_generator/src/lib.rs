@@ -65,10 +65,13 @@ fn dhall_to_tokenstream(
             let e = option_to_tokenstream(e, ctx);
             quote! { OptionalLit(#t, #e) }
         }
-        ListLit(t, es) => {
-            let t = option_to_tokenstream(t, ctx);
+        EmptyListLit(t) => {
+            let t = dhall_to_tokenstream_bx(t, ctx);
+            quote! { EmptyListLit(#t) }
+        }
+        NEListLit(es) => {
             let es = vec_to_tokenstream(es, ctx);
-            quote! { ListLit(#t, #es) }
+            quote! { NEListLit(#es) }
         }
         Record(m) => {
             let m = map_to_tokenstream(m, ctx);

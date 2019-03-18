@@ -351,15 +351,16 @@ where
             }
             return Ok(ty);
         }
-        ListLit(t, xs) => {
+        EmptyListLit(t) => {
+            let s = normalized_type_with(ctx, t.clone())?;
+            ensure_is_type(s, InvalidListType(t.clone()))?;
+            let t = normalize(Rc::clone(t));
+            return Ok(dhall_expr!(List t));
+        }
+        NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
-            let t: Rc<Expr<_, _>> = match t {
-                Some(t) => t.clone(),
-                None => {
-                    let (_, first_x) = iter.next().unwrap();
-                    type_with(ctx, first_x.clone())?
-                }
-            };
+            let (_, first_x) = iter.next().unwrap();
+            let t = type_with(ctx, first_x.clone())?;
 
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;

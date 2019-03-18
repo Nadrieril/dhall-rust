@@ -94,14 +94,14 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                ListLit(Some(t), vec![])
+                EmptyListLit(t)
             }
             [U64(4), Null, rest..] => {
                 let rest = rest
                     .iter()
                     .map(cbor_value_to_dhall)
                     .collect::<Result<Vec<_>, _>>()?;
-                ListLit(None, rest)
+                NEListLit(rest)
             }
             [U64(5), t] => {
                 let t = cbor_value_to_dhall(&t)?;

@@ -307,8 +307,10 @@ pub enum Expr<Note, Embed> {
     DoubleLit(Double),
     ///  `TextLit t                                ~  t`
     TextLit(InterpolatedText<Note, Embed>),
-    ///  `ListLit t [x, y, z]                      ~  [x, y, z] : List t`
-    ListLit(Option<SubExpr<Note, Embed>>, Vec<SubExpr<Note, Embed>>),
+    ///  [] : List t`
+    EmptyListLit(SubExpr<Note, Embed>),
+    ///  [x, y, z]
+    NEListLit(Vec<SubExpr<Note, Embed>>),
     ///  `OptionalLit t [e]                        ~  [e] : Optional t`
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(Option<SubExpr<Note, Embed>>, Option<SubExpr<Note, Embed>>),
@@ -543,16 +545,12 @@ impl<S, A: Display> Expr<S, A> {
                 write!(f, ") → ")?;
                 d.fmt_b(f)
             }
-            &ListLit(ref t, ref es) => {
-                fmt_list("[", "]", es, f, |e, f| e.fmt(f))?;
-                match t {
-                    Some(t) => {
-                        write!(f, " : List ")?;
-                        t.fmt_e(f)?
-                    }
-                    None => {}
-                }
-                Ok(())
+            &EmptyListLit(ref t) => {
+                write!(f, "[] : List ")?;
+                t.fmt_e(f)
+            }
+            &NEListLit(ref es) => {
+                fmt_list("[", "]", es, f, |e, f| e.fmt(f))
             }
             &OptionalLit(ref t, ref es) => {
                 match es {
@@ -902,7 +900,8 @@ where
         DoubleLit(n) => DoubleLit(*n),
         TextLit(t) => TextLit(t.map(&map)),
         BinOp(o, x, y) => BinOp(*o, map(x), map(y)),
-        ListLit(t, es) => ListLit(opt(t), vec(es)),
+        EmptyListLit(t) => EmptyListLit(map(t)),
+        NEListLit(es) => NEListLit(vec(es)),
         OptionalLit(t, es) => OptionalLit(opt(t), opt(es)),
         Record(kts) => Record(btmap(kts)),
         RecordLit(kvs) => RecordLit(btmap(kvs)),

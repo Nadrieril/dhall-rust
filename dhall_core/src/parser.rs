@@ -650,7 +650,7 @@ rule!(empty_collection<RcExpr>;
     children!(x: str, y: expression) => {
        match x {
           "Optional" => bx(Expr::OptionalLit(Some(y), None)),
-          "List" => bx(Expr::ListLit(Some(y), vec![])),
+          "List" => bx(Expr::EmptyListLit(y)),
           _ => unreachable!(),
        }
     }
@@ -871,7 +871,7 @@ rule!(union_type_entry<(Label, RcExpr)>;
 
 rule!(non_empty_list_literal_raw<RcExpr>;
     children!(items*: expression) => {
-        bx(Expr::ListLit(None, items.collect()))
+        bx(Expr::NEListLit(items.collect()))
     }
 );
 

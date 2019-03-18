@@ -57,16 +57,26 @@ where
         (NaturalShow, Some(NaturalLit(n)), _) => {
             rc(TextLit(n.to_string().into()))
         }
-        (ListLength, Some(ListLit(_, ys)), _) => rc(NaturalLit(ys.len())),
-        (ListHead, Some(ListLit(t, ys)), _) => {
-            rc(OptionalLit(t.clone(), ys.iter().cloned().next()))
+        (ListLength, Some(EmptyListLit(_)), _) => rc(NaturalLit(0)),
+        (ListLength, Some(NEListLit(ys)), _) => rc(NaturalLit(ys.len())),
+        (ListHead, Some(EmptyListLit(t)), _) => {
+            rc(OptionalLit(Some(t.clone()), None))
         }
-        (ListLast, Some(ListLit(t, ys)), _) => {
-            rc(OptionalLit(t.clone(), ys.iter().cloned().last()))
+        (ListHead, Some(NEListLit(ys)), _) => {
+            rc(OptionalLit(None, ys.iter().cloned().next()))
         }
-        (ListReverse, Some(ListLit(t, ys)), _) => {
-            let xs = ys.iter().rev().cloned().collect();
-            rc(ListLit(t.clone(), xs))
+        (ListLast, Some(EmptyListLit(t)), _) => {
+            rc(OptionalLit(Some(t.clone()), None))
+        }
+        (ListLast, Some(NEListLit(ys)), _) => {
+            rc(OptionalLit(None, ys.iter().cloned().last()))
+        }
+        (ListReverse, Some(EmptyListLit(t)), _) => {
+            rc(EmptyListLit(t.clone()))
+        }
+        (ListReverse, Some(NEListLit(ys)), _) => {
+            let ys = ys.iter().rev().cloned().collect();
+            rc(NEListLit(ys))
         }
         (ListBuild, _, [a0, g, ..]) => {
             loop {
@@ -99,7 +109,10 @@ where
                 break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
             }
         }
-        (ListFold, Some(ListLit(_, xs)), [_, _, _, cons, nil, ..]) => {
+        (ListFold, Some(EmptyListLit(_)), [_, _, _, _, nil, ..]) => {
+            Rc::clone(nil)
+        }
+        (ListFold, Some(NEListLit(xs)), [_, _, _, cons, nil, ..]) => {
             xs.iter().rev().fold(Rc::clone(nil), |acc, x| {
                 let x = x.clone();
                 let acc = acc.clone();
@@ -233,18 +246,13 @@ where
                     NaturalLit(x * y)
                 }
                 (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
-                (ListAppend, ListLit(t1, xs), ListLit(t2, ys)) => {
-                    let t1: Option<Rc<_>> = t1.as_ref().map(Rc::clone);
-                    let t2: Option<Rc<_>> = t2.as_ref().map(Rc::clone);
-                    // Drop type annotation if the result is nonempty
-                    let t = if xs.is_empty() && ys.is_empty() {
-                        t1.or(t2)
-                    } else {
-                        None
-                    };
+                (ListAppend, EmptyListLit(t), EmptyListLit(_)) => EmptyListLit(Rc::clone(t)),
+                (ListAppend, EmptyListLit(_), _) => return y,
+                (ListAppend, _, EmptyListLit(_)) => return x,
+                (ListAppend, NEListLit(xs), NEListLit(ys)) => {
                     let xs = xs.into_iter().cloned();
                     let ys = ys.into_iter().cloned();
-                    ListLit(t, xs.chain(ys).collect())
+                    NEListLit(xs.chain(ys).collect())
                 }
                 (o, _, _) => BinOp(*o, x, y),
             })
