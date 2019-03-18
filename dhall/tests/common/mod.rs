@@ -24,18 +24,22 @@ macro_rules! make_spec_test {
         #[allow(non_snake_case)]
         fn $name() {
             use crate::common::*;
-            use std::thread;
 
-            // The parser stack overflows even on small files
-            // when compiled without optimizations
-            thread::Builder::new()
-                .stack_size(4 * 1024 * 1024)
-                .spawn(move || {
-                    run_test($path, Feature::$type);
-                })
-                .unwrap()
-                .join()
-                .unwrap();
+            if cfg!(feature="nothreads") {
+                run_test($path, Feature::$type);
+            } else {
+                use std::thread;
+                // The parser stack overflows even on small files
+                // when compiled without optimizations
+                thread::Builder::new()
+                    .stack_size(4 * 1024 * 1024)
+                    .spawn(move || {
+                        run_test($path, Feature::$type);
+                    })
+                    .unwrap()
+                    .join()
+                    .unwrap();
+            }
         }
     };
 }

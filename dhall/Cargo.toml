@@ -7,6 +7,9 @@ edition = "2018"
 [lib]
 doctest = false
 
+[features]
+nothreads = [] # disable threads for tarpaulin
+
 [dependencies]
 bytecount = "0.5.1"
 itertools = "0.8.0"
