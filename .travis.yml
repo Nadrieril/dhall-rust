@@ -9,11 +9,9 @@ cache: cargo
 rust:
   - nightly-2019-03-15
 
-before_cache: |
-  RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
-
 install:
 - cargo build --release --all --all-features
+- cargo tarpaulin --version || RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
 
 script:
 - cargo test --release --all --all-features
