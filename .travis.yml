@@ -10,7 +10,7 @@ rust:
   - nightly
 
 before_cache: |
-  # RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin -f
+  RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin -f
 
 install:
 - cargo build --release --all --all-features
@@ -19,10 +19,5 @@ script:
 - cargo test --release --all --all-features
 
 after_success: |
-  # Uncomment the following line for coveralls.io
-  # cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
-
-  # Uncomment the following two lines create and upload a report for codecov.io
-  # cargo tarpaulin --out Xml
-  # bash <(curl -s https://codecov.io/bash)
+  cargo tarpaulin --release --all --all-features --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
 
