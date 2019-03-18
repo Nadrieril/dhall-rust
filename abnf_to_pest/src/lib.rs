@@ -1,4 +1,5 @@
 #![allow(clippy::implicit_hasher, clippy::or_fun_call)]
+#![cfg_attr(tarpaulin, skip)]
 use abnf::abnf::Rule;
 pub use abnf::abnf::{
     Alternation, Concatenation, Element, Range, Repeat, Repetition,
