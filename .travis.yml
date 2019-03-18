@@ -7,10 +7,10 @@ addons:
       - libssl-dev
 cache: cargo
 rust:
-  - nightly
+  - nightly-2019-03-15
 
 before_cache: |
-  RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin -f
+  RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
 
 install:
 - cargo build --release --all --all-features
