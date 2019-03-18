@@ -4,7 +4,7 @@ use dhall_generator::dhall_expr;
 use std::fmt;
 use std::rc::Rc;
 
-fn apply_builtin<S, A>(b: Builtin, args: Vec<SubExpr<S, A>>) -> SubExpr<S, A>
+fn apply_builtin<S, A>(b: Builtin, mut args: Vec<SubExpr<S, A>>) -> SubExpr<S, A>
 where
     S: fmt::Debug,
     A: fmt::Debug,
@@ -13,8 +13,8 @@ where
     use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
     let f = rc(Builtin(b));
-    // How many arguments for each builtin, and which argument
-    // is the important one for pattern-matching
+    // How many arguments a builtin needs, and which argument
+    // should be normalized and pattern-matched
     let (len_consumption, arg_to_eval) = match b {
         OptionalSome => (1, None),
         OptionalNone => (1, None),
@@ -35,10 +35,11 @@ where
         NaturalFold => (1, Some(0)),
         _ => (0, None),
     };
-    let mut args = args.to_vec();
+    // Abort if not enough arguments present
     if len_consumption > args.len() {
         return rc(App(f, args));
     }
+    // Normalize the important argument
     if let Some(i) = arg_to_eval {
         args[i] = Rc::clone(&normalize_whnf(&args[i]));
     }
@@ -79,6 +80,7 @@ where
                 };
                 let a0 = Rc::clone(a0);
                 let a1 = shift(1, &V("a".into(), 0), &a0);
+                // TODO: use Embed to avoid reevaluating g
                 break dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0));
             }
         }
@@ -93,6 +95,7 @@ where
                     }
                 };
                 let a0 = Rc::clone(a0);
+                // TODO: use Embed to avoid reevaluating g
                 break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
             }
         }
@@ -146,6 +149,9 @@ where
         }
         _ => return rc(App(f, args)),
     };
+    // Put the remaining arguments back and eval again. In most cases
+    // ret will not be of a form that can be applied, so this won't go very deep.
+    // In lots of cases, there are no remaining args so this cann will just return ret.
     normalize_whnf(&rc(Expr::App(ret, args.split_off(len_consumption))))
 }
 
@@ -165,7 +171,10 @@ where
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
             let r2 = shift(1, vf0, r);
+            // TODO: use a context
             let b2 = subst(vf0, &r2, b);
+            // TODO: add tests sensitive to shift errors before
+            // trying anything
             let b3 = shift(-1, vf0, &b2);
             normalize_whnf(&b3)
         }
@@ -175,6 +184,7 @@ where
             let f = normalize_whnf(f);
             match (f.as_ref(), args.as_slice()) {
                 (_, []) => f,
+                // TODO: use Embed to avoid reevaluating f
                 (App(f, args1), args2) => normalize_whnf(&rc(App(
                     f.clone(),
                     args1.iter().chain(args2.iter()).cloned().collect(),
