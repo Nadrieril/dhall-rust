@@ -27,12 +27,13 @@ where
         ListHead => (2, Some(1)),
         ListLast => (2, Some(1)),
         ListReverse => (2, Some(1)),
+        ListIndexed => (2, Some(1)),
         ListBuild => (2, Some(1)),
         OptionalBuild => (2, Some(1)),
         ListFold => (5, Some(1)),
         OptionalFold => (5, Some(1)),
         NaturalBuild => (1, Some(0)),
-        NaturalFold => (1, Some(0)),
+        NaturalFold => (4, Some(0)),
         _ => (0, None),
     };
     // Abort if not enough arguments present
@@ -77,6 +78,17 @@ where
         (ListReverse, Some(NEListLit(ys)), _) => {
             let ys = ys.iter().rev().cloned().collect();
             rc(NEListLit(ys))
+        }
+        (ListIndexed, Some(EmptyListLit(t)), _) => {
+            let t = Rc::clone(t);
+            dhall_expr!([] : List ({ index : Natural, value : t }))
+        }
+        (ListIndexed, Some(NEListLit(xs)), _) => {
+            let xs = xs.iter().cloned().enumerate().map(|(i, e)| {
+                let i = rc(NaturalLit(i));
+                dhall_expr!({ index = i, value = e })
+            }).collect();
+            rc(NEListLit(xs))
         }
         (ListBuild, _, [a0, g, ..]) => {
             loop {
@@ -142,24 +154,40 @@ where
         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
-        (NaturalBuild, Some(App(f2, args2)), _) => {
-            match (f2.as_ref(), args2.as_slice()) {
-                // fold/build fusion
-                (Builtin(NaturalFold), [x, rest..]) => {
-                    rc(App(x.clone(), rest.to_vec()))
-                }
-                _ => return rc(App(f, args)),
+        (NaturalBuild, _, [g, ..]) => {
+            loop {
+                if let App(f2, args2) = g.as_ref() {
+                    if let (Builtin(NaturalFold), [x, rest..]) =
+                        (f2.as_ref(), args2.as_slice())
+                    {
+                        // fold/build fusion
+                        break rc(App(x.clone(), rest.to_vec()));
+                    }
+                };
+                // TODO: use Embed to avoid reevaluating g
+                break dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0)
             }
         }
-        (NaturalFold, Some(App(f2, args2)), _) => {
-            match (f2.as_ref(), args2.as_slice()) {
-                // fold/build fusion
-                (Builtin(NaturalBuild), [x, rest..]) => {
-                    rc(App(x.clone(), rest.to_vec()))
-                }
-                _ => return rc(App(f, args)),
-            }
+        (NaturalFold, Some(NaturalLit(0)), [_, _, _, zero]) => {
+            Rc::clone(zero)
         }
+        (NaturalFold, Some(NaturalLit(n)), [_, t, succ, zero]) => {
+            let fold = rc(Builtin(NaturalFold));
+            let n = rc(NaturalLit(n-1));
+            let t = Rc::clone(t);
+            let succ = Rc::clone(succ);
+            let zero = Rc::clone(zero);
+            dhall_expr!(succ (fold n t succ zero))
+        }
+        // (NaturalFold, Some(App(f2, args2)), _) => {
+        //     match (f2.as_ref(), args2.as_slice()) {
+        //         // fold/build fusion
+        //         (Builtin(NaturalBuild), [x, rest..]) => {
+        //             rc(App(x.clone(), rest.to_vec()))
+        //         }
+        //         _ => return rc(App(f, args)),
+        //     }
+        // }
         _ => return rc(App(f, args)),
     };
     // Put the remaining arguments back and eval again. In most cases

@@ -60,6 +60,9 @@ fn dhall_to_tokenstream(
             let b = dhall_to_tokenstream_bx(b, ctx);
             quote! { BinOp(#o, #a, #b) }
         }
+        NaturalLit(n) => {
+            quote! { NaturalLit(#n) }
+        }
         OptionalLit(t, e) => {
             let t = option_to_tokenstream(t, ctx);
             let e = option_to_tokenstream(e, ctx);
@@ -76,6 +79,10 @@ fn dhall_to_tokenstream(
         Record(m) => {
             let m = map_to_tokenstream(m, ctx);
             quote! { Record(#m) }
+        }
+        RecordLit(m) => {
+            let m = map_to_tokenstream(m, ctx);
+            quote! { RecordLit(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -139,6 +146,7 @@ fn map_to_tokenstream(
         })
         .unzip();
     quote! { {
+        use std::collections::BTreeMap;
         let mut m = BTreeMap::new();
         #( m.insert(#keys, #values); )*
         m
