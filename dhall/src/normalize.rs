@@ -17,214 +17,219 @@ where
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
-    rc(match e.as_ref() {
+    match e.as_ref() {
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
             let r2 = shift(1, vf0, r);
             let b2 = subst(vf0, &r2, b);
             let b3 = shift(-1, vf0, &b2);
-            return normalize_whnf(&b3);
+            normalize_whnf(&b3)
         }
-        Annot(x, _) => return normalize_whnf(x),
-        Note(_, e) => return normalize_whnf(e),
+        Annot(x, _) => normalize_whnf(x),
+        Note(_, e) => normalize_whnf(e),
         App(f, args) => {
             let f = normalize_whnf(f);
             match (f.as_ref(), args.as_slice()) {
-                (_, []) => return f,
-                (App(f, args1), args2) => {
-                    return normalize_whnf(&rc(App(
-                        f.clone(),
-                        args1.iter().chain(args2.iter()).cloned().collect(),
-                    )))
-                }
+                (_, []) => f,
+                (App(f, args1), args2) => normalize_whnf(&rc(App(
+                    f.clone(),
+                    args1.iter().chain(args2.iter()).cloned().collect(),
+                ))),
                 (Lam(ref x, _, ref b), [a, rest..]) => {
                     // Beta reduce
                     let vx0 = &V(x.clone(), 0);
                     let a2 = shift(1, vx0, a);
                     let b2 = subst(vx0, &a2, &b);
                     let b3 = shift(-1, vx0, &b2);
-                    return normalize_whnf(&rc(App(b3, rest.to_vec())));
+                    normalize_whnf(&rc(App(b3, rest.to_vec())))
                 }
-                // TODO: this is more normalization than needed
-                (Builtin(b), args) => {
-                    let args = args
-                        .iter()
-                        .map(|x| normalize_whnf(x))
-                        .collect::<Vec<Rc<Expr<_, _>>>>();
+                (Builtin(b), _) => {
+                    // How many arguments for each builtin, and which argument
+                    // is the important one for pattern-matching
+                    let (len_consumption, arg_to_eval) = match b {
+                        OptionalSome => (1, None),
+                        OptionalNone => (1, None),
+                        NaturalIsZero => (1, Some(0)),
+                        NaturalEven => (1, Some(0)),
+                        NaturalOdd => (1, Some(0)),
+                        NaturalToInteger => (1, Some(0)),
+                        NaturalShow => (1, Some(0)),
+                        ListLength => (2, Some(1)),
+                        ListHead => (2, Some(1)),
+                        ListLast => (2, Some(1)),
+                        ListReverse => (2, Some(1)),
+                        ListBuild => (2, Some(1)),
+                        OptionalBuild => (2, Some(1)),
+                        ListFold => (5, Some(1)),
+                        OptionalFold => (5, Some(1)),
+                        NaturalBuild => (1, Some(0)),
+                        NaturalFold => (1, Some(0)),
+                        _ => (0, None),
+                    };
+                    let mut args = args.to_vec();
+                    if len_consumption > args.len() {
+                        return rc(App(f, args));
+                    }
+                    if let Some(i) = arg_to_eval {
+                        args[i] = Rc::clone(&normalize_whnf(&args[i]));
+                    }
+                    let evaled_arg = arg_to_eval.map(|i| args[i].as_ref());
 
-                    match (
-                        b,
-                        args.iter()
-                            .map(Rc::as_ref)
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    ) {
-                        (OptionalSome, [_]) => {
-                            OptionalLit(None, Some(Rc::clone(&args[0])))
+                    let ret = match (b, evaled_arg, args.as_slice()) {
+                        (OptionalSome, _, [x, ..]) => {
+                            rc(OptionalLit(None, Some(Rc::clone(x))))
                         }
-                        (OptionalNone, [_]) => {
-                            OptionalLit(Some(Rc::clone(&args[0])), None)
+                        (OptionalNone, _, [t, ..]) => {
+                            rc(OptionalLit(Some(Rc::clone(t)), None))
                         }
-                        (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
-                        (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
-                        (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
-                        (NaturalToInteger, [NaturalLit(n)]) => {
-                            IntegerLit(*n as isize)
+                        (NaturalIsZero, Some(NaturalLit(n)), _) => {
+                            rc(BoolLit(*n == 0))
                         }
-                        (NaturalShow, [NaturalLit(n)]) => {
-                            TextLit(n.to_string().into())
+                        (NaturalEven, Some(NaturalLit(n)), _) => {
+                            rc(BoolLit(*n % 2 == 0))
                         }
-                        (ListLength, [_, ListLit(_, ys)]) => {
-                            NaturalLit(ys.len())
+                        (NaturalOdd, Some(NaturalLit(n)), _) => {
+                            rc(BoolLit(*n % 2 != 0))
                         }
-                        (ListHead, [_, ListLit(t, ys)]) => {
-                            OptionalLit(t.clone(), ys.iter().cloned().next())
+                        (NaturalToInteger, Some(NaturalLit(n)), _) => {
+                            rc(IntegerLit(*n as isize))
                         }
-                        (ListLast, [_, ListLit(t, ys)]) => {
-                            OptionalLit(t.clone(), ys.iter().cloned().last())
+                        (NaturalShow, Some(NaturalLit(n)), _) => {
+                            rc(TextLit(n.to_string().into()))
                         }
-                        (ListReverse, [_, ListLit(t, ys)]) => {
+                        (ListLength, Some(ListLit(_, ys)), _) => {
+                            rc(NaturalLit(ys.len()))
+                        }
+                        (ListHead, Some(ListLit(t, ys)), _) => rc(OptionalLit(
+                            t.clone(),
+                            ys.iter().cloned().next(),
+                        )),
+                        (ListLast, Some(ListLit(t, ys)), _) => rc(OptionalLit(
+                            t.clone(),
+                            ys.iter().cloned().last(),
+                        )),
+                        (ListReverse, Some(ListLit(t, ys)), _) => {
                             let xs = ys.iter().rev().cloned().collect();
-                            ListLit(t.clone(), xs)
+                            rc(ListLit(t.clone(), xs))
                         }
-                        (ListBuild, [_, _]) => {
-                            // fold/build fusion
-                            let g = Rc::clone(&args[1]);
-                            let g = match g.as_ref() {
-                                App(f, args) => {
-                                    match (f.as_ref(), args.as_slice()) {
-                                        (Builtin(ListFold), [_, x, rest..]) => {
-                                            return normalize_whnf(&rc(App(
-                                                x.clone(),
-                                                rest.to_vec(),
-                                            )))
-                                        }
-                                        (_, args) => {
-                                            rc(App(f.clone(), args.to_vec()))
-                                        }
+                        (ListBuild, _, [a0, g, ..]) => {
+                            loop {
+                                if let App(f2, args2) = g.as_ref() {
+                                    if let (
+                                        Builtin(ListFold),
+                                        [_, x, rest..],
+                                    ) = (f2.as_ref(), args2.as_slice())
+                                    {
+                                        // fold/build fusion
+                                        break rc(App(
+                                            x.clone(),
+                                            rest.to_vec(),
+                                        ));
                                     }
-                                }
-                                _ => g,
-                            };
-                            let a0 = Rc::clone(&args[0]);
-                            let a1 = shift(1, &V("a".into(), 0), &a0);
-                            return normalize_whnf(
-                                &dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0)),
-                            );
+                                };
+                                let a0 = Rc::clone(a0);
+                                let a1 = shift(1, &V("a".into(), 0), &a0);
+                                break dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0));
+                            }
                         }
-                        (OptionalBuild, [_, _]) => {
-                            // fold/build fusion
-                            let g = Rc::clone(&args[1]);
-                            let g = match g.as_ref() {
-                                App(f, args) => {
-                                    match (f.as_ref(), args.as_slice()) {
-                                        (
-                                            Builtin(OptionalFold),
-                                            [_, x, rest..],
-                                        ) => {
-                                            return normalize_whnf(&rc(App(
-                                                x.clone(),
-                                                rest.to_vec(),
-                                            )))
-                                        }
-                                        (_, args) => {
-                                            rc(App(f.clone(), args.to_vec()))
-                                        }
+                        (OptionalBuild, _, [a0, g, ..]) => {
+                            loop {
+                                if let App(f2, args2) = g.as_ref() {
+                                    if let (
+                                        Builtin(OptionalFold),
+                                        [_, x, rest..],
+                                    ) = (f2.as_ref(), args2.as_slice())
+                                    {
+                                        // fold/build fusion
+                                        break rc(App(
+                                            x.clone(),
+                                            rest.to_vec(),
+                                        ));
                                     }
-                                }
-                                _ => g,
-                            };
-                            let a0 = Rc::clone(&args[0]);
-                            return normalize_whnf(
-                                &dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0)),
-                            );
+                                };
+                                let a0 = Rc::clone(a0);
+                                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
+                            }
                         }
-                        (ListFold, [_, ListLit(_, xs), _, _, _]) => {
-                            let e2: Rc<Expr<_, _>> = xs.iter().rev().fold(
-                                Rc::clone(&args[4]),
-                                |acc, x| {
-                                    let x = x.clone();
-                                    let acc = acc.clone();
-                                    let cons = Rc::clone(&args[3]);
-                                    dhall_expr!(cons x acc)
-                                },
-                            );
-                            return normalize_whnf(&e2);
-                        }
+                        (
+                            ListFold,
+                            Some(ListLit(_, xs)),
+                            [_, _, _, cons, nil, ..],
+                        ) => xs.iter().rev().fold(Rc::clone(nil), |acc, x| {
+                            let x = x.clone();
+                            let acc = acc.clone();
+                            let cons = Rc::clone(cons);
+                            dhall_expr!(cons x acc)
+                        }),
                         // // fold/build fusion
                         // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
                         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
                         // }
                         (
                             OptionalFold,
-                            [_, OptionalLit(_, Some(x)), _, _, _],
+                            Some(OptionalLit(_, Some(x))),
+                            [_, _, _, just, _, ..],
                         ) => {
                             let x = x.clone();
-                            let just = Rc::clone(&args[3]);
-                            return normalize_whnf(&dhall_expr!(just x));
+                            let just = Rc::clone(just);
+                            dhall_expr!(just x)
                         }
-                        (OptionalFold, [_, OptionalLit(_, None), _, _, _]) => {
-                            return Rc::clone(&args[4])
-                        }
+                        (
+                            OptionalFold,
+                            Some(OptionalLit(_, None)),
+                            [_, _, _, _, nothing, ..],
+                        ) => Rc::clone(nothing),
                         // // fold/build fusion
                         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
                         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
                         // }
-                        (NaturalBuild, [App(f, args)]) => {
-                            match (f.as_ref(), args.as_slice()) {
+                        (NaturalBuild, Some(App(f2, args2)), _) => {
+                            match (f2.as_ref(), args2.as_slice()) {
                                 // fold/build fusion
                                 (Builtin(NaturalFold), [x, rest..]) => {
-                                    return normalize_whnf(&rc(App(
-                                        x.clone(),
-                                        rest.to_vec(),
-                                    )))
+                                    rc(App(x.clone(), rest.to_vec()))
                                 }
-                                (_, args) => app(
-                                    Builtin(NaturalBuild),
-                                    vec![bx(App(f.clone(), args.to_vec()))],
-                                ),
+                                _ => return rc(App(f, args)),
                             }
                         }
-                        (NaturalFold, [App(f, args)]) => {
-                            match (f.as_ref(), args.as_slice()) {
+                        (NaturalFold, Some(App(f2, args2)), _) => {
+                            match (f2.as_ref(), args2.as_slice()) {
                                 // fold/build fusion
                                 (Builtin(NaturalBuild), [x, rest..]) => {
-                                    return normalize_whnf(&rc(App(
-                                        x.clone(),
-                                        rest.to_vec(),
-                                    )))
+                                    rc(App(x.clone(), rest.to_vec()))
                                 }
-                                (_, args) => app(
-                                    Builtin(NaturalFold),
-                                    vec![bx(App(f.clone(), args.to_vec()))],
-                                ),
+                                _ => return rc(App(f, args)),
                             }
                         }
-                        (b, _) => App(rc(Builtin(*b)), args),
-                    }
+                        (b, _, _) => return rc(App(rc(Builtin(*b)), args)),
+                    };
+                    normalize_whnf(&rc(Expr::App(
+                        ret,
+                        args.split_off(len_consumption),
+                    )))
                 }
-                (_, args) => App(f, args.to_vec()),
+                (_, args) => rc(App(f, args.to_vec())),
             }
         }
         BoolIf(b, t, f) => {
             let b = normalize_whnf(b);
             match b.as_ref() {
-                BoolLit(true) => return normalize_whnf(t),
-                BoolLit(false) => return normalize_whnf(f),
-                _ => BoolIf(b, t.clone(), f.clone()),
+                BoolLit(true) => normalize_whnf(t),
+                BoolLit(false) => normalize_whnf(f),
+                _ => rc(BoolIf(b, t.clone(), f.clone())),
             }
         }
         OptionalLit(t, es) => {
             if !es.is_none() {
-                OptionalLit(None, es.clone())
+                rc(OptionalLit(None, es.clone()))
             } else {
-                OptionalLit(t.clone(), es.clone())
+                rc(OptionalLit(t.clone(), es.clone()))
             }
         }
         BinOp(o, x, y) => {
             let x = normalize_whnf(x);
             let y = normalize_whnf(y);
-            match (o, x.as_ref(), y.as_ref()) {
+            rc(match (o, x.as_ref(), y.as_ref()) {
                 (BoolAnd, BoolLit(x), BoolLit(y)) => BoolLit(*x && *y),
                 (BoolOr, BoolLit(x), BoolLit(y)) => BoolLit(*x || *y),
                 (BoolEQ, BoolLit(x), BoolLit(y)) => BoolLit(x == y),
@@ -251,20 +256,20 @@ where
                     ListLit(t, xs.chain(ys).collect())
                 }
                 (o, _, _) => BinOp(*o, x, y),
-            }
+            })
         }
         Field(e, x) => {
             let e = normalize_whnf(e);
             match (e.as_ref(), x) {
                 (RecordLit(kvs), x) => match kvs.get(&x) {
-                    Some(r) => return normalize_whnf(r),
-                    None => Field(e, x.clone()),
+                    Some(r) => normalize_whnf(r),
+                    None => rc(Field(e, x.clone())),
                 },
-                (_, x) => Field(e, x.clone()),
+                (_, x) => rc(Field(e, x.clone())),
             }
         }
-        _ => return Rc::clone(e),
-    })
+        _ => Rc::clone(e),
+    }
 }
 
 /// Reduce an expression to its normal form, performing beta reduction
