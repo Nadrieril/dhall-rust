@@ -4,7 +4,10 @@ use dhall_generator::dhall_expr;
 use std::fmt;
 use std::rc::Rc;
 
-fn apply_builtin<S, A>(b: Builtin, mut args: Vec<SubExpr<S, A>>) -> SubExpr<S, A>
+fn apply_builtin<S, A>(
+    b: Builtin,
+    mut args: Vec<SubExpr<S, A>>,
+) -> SubExpr<S, A>
 where
     S: fmt::Debug,
     A: fmt::Debug,
@@ -72,9 +75,7 @@ where
         (ListLast, Some(NEListLit(ys)), _) => {
             rc(OptionalLit(None, ys.iter().cloned().last()))
         }
-        (ListReverse, Some(EmptyListLit(t)), _) => {
-            rc(EmptyListLit(t.clone()))
-        }
+        (ListReverse, Some(EmptyListLit(t)), _) => rc(EmptyListLit(t.clone())),
         (ListReverse, Some(NEListLit(ys)), _) => {
             let ys = ys.iter().rev().cloned().collect();
             rc(NEListLit(ys))
@@ -84,10 +85,15 @@ where
             dhall_expr!([] : List ({ index : Natural, value : t }))
         }
         (ListIndexed, Some(NEListLit(xs)), _) => {
-            let xs = xs.iter().cloned().enumerate().map(|(i, e)| {
-                let i = rc(NaturalLit(i));
-                dhall_expr!({ index = i, value = e })
-            }).collect();
+            let xs = xs
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, e)| {
+                    let i = rc(NaturalLit(i));
+                    dhall_expr!({ index = i, value = e })
+                })
+                .collect();
             rc(NEListLit(xs))
         }
         (ListBuild, _, [a0, g, ..]) => {
@@ -165,15 +171,13 @@ where
                     }
                 };
                 // TODO: use Embed to avoid reevaluating g
-                break dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0)
+                break dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0);
             }
         }
-        (NaturalFold, Some(NaturalLit(0)), [_, _, _, zero]) => {
-            Rc::clone(zero)
-        }
+        (NaturalFold, Some(NaturalLit(0)), [_, _, _, zero]) => Rc::clone(zero),
         (NaturalFold, Some(NaturalLit(n)), [_, t, succ, zero]) => {
             let fold = rc(Builtin(NaturalFold));
-            let n = rc(NaturalLit(n-1));
+            let n = rc(NaturalLit(n - 1));
             let t = Rc::clone(t);
             let succ = Rc::clone(succ);
             let zero = Rc::clone(zero);
@@ -274,7 +278,9 @@ where
                     NaturalLit(x * y)
                 }
                 (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
-                (ListAppend, EmptyListLit(t), EmptyListLit(_)) => EmptyListLit(Rc::clone(t)),
+                (ListAppend, EmptyListLit(t), EmptyListLit(_)) => {
+                    EmptyListLit(Rc::clone(t))
+                }
                 (ListAppend, EmptyListLit(_), _) => return y,
                 (ListAppend, _, EmptyListLit(_)) => return x,
                 (ListAppend, NEListLit(xs), NEListLit(ys)) => {

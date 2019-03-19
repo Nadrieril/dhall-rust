@@ -25,7 +25,7 @@ macro_rules! make_spec_test {
         fn $name() {
             use crate::common::*;
 
-            if cfg!(feature="nothreads") {
+            if cfg!(feature = "nothreads") {
                 run_test($path, Feature::$type);
             } else {
                 use std::thread;
