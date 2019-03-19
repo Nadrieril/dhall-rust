@@ -231,7 +231,8 @@ macro_rules! match_iter_branching {
 
 macro_rules! match_pair {
     (@type_callback, $ty:ident, $x:expr) => {
-        $ty($x)
+        ParseUnwrapped::$ty($x)
+        // ParseWrapped::$ty($x).map(|x| x.$ty())
     };
     (@branch_callback, children, $pair:expr; $($args:tt)*) => {
         {
@@ -274,13 +275,75 @@ macro_rules! match_pair {
     };
 }
 
+macro_rules! make_parser {
+    ($( $submac:ident!( $name:ident<$o:ty>; $($args:tt)* ); )*) => (
+        // #[allow(non_camel_case_types, dead_code)]
+        // enum ParsedType {
+        //     $( $name, )*
+        // }
+
+        // impl ParsedType {
+        //     #[allow(dead_code)]
+        //     fn parse(self, pair: Pair<Rule>) -> ParseResult<ParsedValue> {
+        //         match self {
+        //             $( ParsedType::$name => {
+        //                 let ret = $name(pair)?;
+        //                 Ok(ParsedValue::$name(ret))
+        //             }, )*
+        //         }
+        //     }
+        //     // fn parse(self, pair: Pair<Rule>) -> ParseResult<ParsedValue> {
+        //     //     match self {
+        //     //         $( ParsedType::$name => $name(pair), )*
+        //     //     }
+        //     // }
+        // }
+        struct ParseWrapped;
+        struct ParseUnwrapped;
+
+        #[allow(non_camel_case_types, dead_code)]
+        enum ParsedValue<'a> {
+            $( $name($o), )*
+        }
+
+        impl<'a> ParsedValue<'a> {
+            $(
+                #[allow(non_snake_case, dead_code)]
+                fn $name(self) -> $o {
+                    match self {
+                        ParsedValue::$name(x) => x,
+                        _ => unreachable!(),
+                    }
+                }
+            )*
+        }
+
+        // fn do_the_parse(s: &str, r: Rule, ty: ParsedType) -> ParseResult<ParsedValue>  {
+        //     let pairs = DhallParser::parse(r, s)?;
+        //     match_iter!(pairs; (e) => ty.parse(e))
+        // }
+
+        $(
+            $submac!($name<$o>; $($args)*);
+        )*
+    );
+}
+
+
 macro_rules! make_pest_parse_function {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
-        #[allow(unused_variables)]
-        #[allow(non_snake_case)]
-        #[allow(clippy::all)]
-        fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<$o> {
-            $submac!(pair; $($args)*)
+        impl ParseUnwrapped {
+            #[allow(unused_variables, non_snake_case, dead_code, clippy::all)]
+            fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<$o> {
+                ParseWrapped::$name(pair).map(|x| x.$name())
+            }
+        }
+        impl ParseWrapped {
+            #[allow(unused_variables, non_snake_case, dead_code, clippy::all)]
+            fn $name<'a>(pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
+                let res: ParseResult<$o> = $submac!(pair; $($args)*);
+                Ok(ParsedValue::$name(res?))
+            }
         }
     );
 }
@@ -303,7 +366,7 @@ macro_rules! rule_group {
     ($name:ident<$o:ty>; $($ty:ident),*) => (
         make_pest_parse_function!($name<$o>; match_rule!(
             $(
-                Rule::$ty => match_pair!(raw_pair!(p) => $ty(p)?),
+                Rule::$ty => match_pair!(raw_pair!(p) => ParseUnwrapped::$ty(p)?),
             )*
         ));
     );
@@ -323,6 +386,71 @@ macro_rules! match_rule {
     };
 }
 
+// List of rules that can be shortcutted as implemented in binop!()
+fn can_be_shortcutted(rule: Rule) -> bool {
+    use Rule::*;
+    match rule {
+        import_alt_expression
+        | or_expression
+        | plus_expression
+        | text_append_expression
+        | list_append_expression
+        | and_expression
+        | combine_expression
+        | prefer_expression
+        | combine_types_expression
+        | times_expression
+        | equal_expression
+        | not_equal_expression
+        | application_expression
+        | selector_expression_raw
+        | annotated_expression => true,
+        _ => false,
+    }
+}
+
+macro_rules! binop {
+    ($rule:ident<$ty:ty>; $op:ident) => {
+        rule!($rule<$ty>;
+            raw_pair!(pair) => {
+                // This all could be a trivial fold, but to avoid stack explosion
+                // we try to cut down on the recursion level here, by consuming
+                // chains of blah_expression > ... > blih_expression in one go.
+                let mut pair = pair;
+                let mut pairs = pair.into_inner();
+                let first = pairs.next().unwrap();
+                let rest: Vec<_> = pairs.map(ParseUnwrapped::expression).collect::<Result<_, _>>()?;
+                if !rest.is_empty() {
+                    // If there is more than one subexpression, handle it normally
+                    let first = ParseUnwrapped::expression(first)?;
+                    rest.into_iter().fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
+                } else {
+                    // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
+                    // println!("short-cutting {}", debug_pair(pair.clone()));
+                    pair = first;
+                    while can_be_shortcutted(pair.as_rule()) {
+                        let mut pairs = pair.clone().into_inner();
+                        let first = pairs.next().unwrap();
+                        let rest: Vec<_> = pairs.collect();
+                        if !rest.is_empty() {
+                            break;
+                        }
+                        pair = first;
+                    }
+                    // println!("short-cutted {}", debug_pair(pair.clone()));
+                    // println!();
+                    ParseUnwrapped::expression(pair)?
+                }
+            }
+            // children!(first: expression, rest..: expression) => {
+            //     rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
+            // }
+        );
+    };
+}
+
+
+make_parser!{
 rule!(EOI<()>; children!() => ());
 
 named!(str<&'a str>; captured_str!(s) => s.trim());
@@ -584,81 +712,18 @@ rule!(non_empty_optional<RcExpr>;
     }
 );
 
-// List of rules that can be shortcutted as implemented in binop!()
-fn can_be_shortcutted(rule: Rule) -> bool {
-    use Rule::*;
-    match rule {
-        import_alt_expression
-        | or_expression
-        | plus_expression
-        | text_append_expression
-        | list_append_expression
-        | and_expression
-        | combine_expression
-        | prefer_expression
-        | combine_types_expression
-        | times_expression
-        | equal_expression
-        | not_equal_expression
-        | application_expression
-        | selector_expression_raw
-        | annotated_expression => true,
-        _ => false,
-    }
-}
-
-macro_rules! binop {
-    ($rule:ident, $op:ident) => {
-        rule!($rule<RcExpr>;
-            raw_pair!(pair) => {
-                // This all could be a trivial fold, but to avoid stack explosion
-                // we try to cut down on the recursion level here, by consuming
-                // chains of blah_expression > ... > blih_expression in one go.
-                let mut pair = pair;
-                let mut pairs = pair.into_inner();
-                let first = pairs.next().unwrap();
-                let rest: Vec<_> = pairs.map(expression).collect::<Result<_, _>>()?;
-                if !rest.is_empty() {
-                    // If there is more than one subexpression, handle it normally
-                    let first = expression(first)?;
-                    rest.into_iter().fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
-                } else {
-                    // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
-                    // println!("short-cutting {}", debug_pair(pair.clone()));
-                    pair = first;
-                    while can_be_shortcutted(pair.as_rule()) {
-                        let mut pairs = pair.clone().into_inner();
-                        let first = pairs.next().unwrap();
-                        let rest: Vec<_> = pairs.collect();
-                        if !rest.is_empty() {
-                            break;
-                        }
-                        pair = first;
-                    }
-                    // println!("short-cutted {}", debug_pair(pair.clone()));
-                    // println!();
-                    expression(pair)?
-                }
-            }
-            // children!(first: expression, rest..: expression) => {
-            //     rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
-            // }
-        );
-    };
-}
-
-binop!(import_alt_expression, ImportAlt);
-binop!(or_expression, BoolOr);
-binop!(plus_expression, NaturalPlus);
-binop!(text_append_expression, TextAppend);
-binop!(list_append_expression, ListAppend);
-binop!(and_expression, BoolAnd);
-binop!(combine_expression, Combine);
-binop!(prefer_expression, Prefer);
-binop!(combine_types_expression, CombineTypes);
-binop!(times_expression, NaturalTimes);
-binop!(equal_expression, BoolEQ);
-binop!(not_equal_expression, BoolNE);
+binop!(import_alt_expression<RcExpr>; ImportAlt);
+binop!(or_expression<RcExpr>; BoolOr);
+binop!(plus_expression<RcExpr>; NaturalPlus);
+binop!(text_append_expression<RcExpr>; TextAppend);
+binop!(list_append_expression<RcExpr>; ListAppend);
+binop!(and_expression<RcExpr>; BoolAnd);
+binop!(combine_expression<RcExpr>; Combine);
+binop!(prefer_expression<RcExpr>; Prefer);
+binop!(combine_types_expression<RcExpr>; CombineTypes);
+binop!(times_expression<RcExpr>; NaturalTimes);
+binop!(equal_expression<RcExpr>; BoolEQ);
+binop!(not_equal_expression<RcExpr>; BoolNE);
 
 rule!(annotated_expression<RcExpr>;
     children!(e: expression, annot: expression) => {
@@ -812,12 +877,17 @@ rule!(non_empty_list_literal_raw<RcExpr>;
 rule!(final_expression<RcExpr>;
     children!(e: expression, _eoi: EOI) => e
 );
+}
 
 pub fn parse_expr(s: &str) -> ParseResult<RcExpr> {
     let pairs = DhallParser::parse(Rule::final_expression, s)?;
     // Match the only item in the pairs iterator
     // println!("{}", debug_pair(pairs.clone().next().unwrap()));
-    iter_patterns::destructure_iter!(pairs; [p] => expression(p)).unwrap()
+    let expr = iter_patterns::destructure_iter!(pairs; [p] => ParseUnwrapped::expression(p))
+        .unwrap()?;
+    // expr.expression()
+    // Ok(expr.expression())
+    Ok(expr)
     // Ok(bx(Expr::BoolLit(false)))
 }
 
