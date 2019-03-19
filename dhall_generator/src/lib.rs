@@ -1,4 +1,3 @@
-#![cfg_attr(tarpaulin, skip)]
 extern crate proc_macro;
 use dhall_core::context::Context;
 use dhall_core::*;

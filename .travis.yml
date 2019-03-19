@@ -14,10 +14,8 @@ install:
 - cargo tarpaulin --version || RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
 
 script:
-- cargo test --release --all --all-features
+- cargo tarpaulin -v --release --all-features --all --exclude-files dhall_generator/* --exclude-files abnf_to_pest/* --out Xml
 
 after_success: |
-  cargo tarpaulin --release --all --all-features --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
-  cargo tarpaulin --release --all --all-features --out Xml
   bash <(curl -s https://codecov.io/bash)
 
