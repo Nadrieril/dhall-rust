@@ -138,7 +138,7 @@ macro_rules! match_vec {
  *         // x: usize
  *         // y: impl Iterator<Option<usize>>
  *         // z: Option<usize>
- *     }
+ *     },
  *     [x, Some(0)] => {
  *         // x: Option<usize>
  *     },
@@ -152,7 +152,7 @@ macro_rules! match_iter {
     ($arg:expr; $($args:tt)*) => {
         {
             let vec: Vec<_> = $arg.collect();
-            $crate::match_vec!(vec, $($args)*)
+            $crate::match_vec!(vec; $($args)*)
         }
     };
 }

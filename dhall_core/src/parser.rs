@@ -77,33 +77,6 @@ enum IterMatchError<T> {
     Other(T), // Allow other macros to inject their own errors
 }
 
-/* Extends match_iter with typed matches. Takes a callback that determines
- * when a capture matches.
- * Returns `Result<_, IterMatchError<_>>`; errors returned by the callback will
- * get propagated using IterMatchError::Other.
- *
- * Example:
- * ```
- * macro_rules! callback {
- *     (@type_callback, positive, $x:expr) => {
- *         if $x >= 0 { Ok($x) } else { Err(()) }
- *     };
- *     (@type_callback, negative, $x:expr) => {
- *         if $x <= 0 { Ok($x) } else { Err(()) }
- *     };
- *     (@type_callback, any, $x:expr) => {
- *         Ok($x)
- *     };
- * }
- *
- * let vec = vec![-1, 2, 3];
- *
- * match_iter_typed!(callback; vec.into_iter();
- *     (x: positive, y?: negative, z: any) => { ... },
- * )
- * ```
- *
-*/
 macro_rules! match_iter_typed {
     // Collect untyped arguments to pass to match_iter!
     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
@@ -163,41 +136,6 @@ macro_rules! match_iter_typed {
     };
 }
 
-/* Extends match_iter and match_iter_typed with branching.
- * Returns `Result<_, IterMatchError<_>>`; errors returned by the callback will
- * get propagated using IterMatchError::Other.
- * Allows multiple branches. The passed iterator must be Clone.
- * Will check the branches in order, testing each branch using the callback macro provided.
- *
- * Example:
- * ```
- * macro_rules! callback {
- *     (@type_callback, positive, $x:expr) => {
- *         if $x >= 0 { Ok($x) } else { Err(()) }
- *     };
- *     (@type_callback, negative, $x:expr) => {
- *         if $x <= 0 { Ok($x) } else { Err(()) }
- *     };
- *     (@type_callback, any, $x:expr) => {
- *         Ok($x)
- *     };
- *     (@branch_callback, typed, $($args:tt)*) => {
- *         match_iter_typed!(callback; $($args)*)
- *     };
- *     (@branch_callback, untyped, $($args:tt)*) => {
- *         match_iter!($($args)*)
- *     };
- * }
- *
- * let vec = vec![-1, 2, 3];
- *
- * match_iter_branching!(branch_callback; vec.into_iter();
- *     typed!(x: positive, y?: negative, z: any) => { ... },
- *     untyped!(x, y, z) => { ... },
- * )
- * ```
- *
-*/
 macro_rules! match_iter_branching {
     (@noclone, $callback:ident; $arg:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
         {
@@ -263,6 +201,23 @@ macro_rules! match_pair {
         }
     };
 
+    ($pair:expr; $( children!($($x:ident : $ty:ident),*) => $body:expr ),* $(,)*) => {
+        {
+            let pair = $pair;
+            let rule = pair.as_rule();
+            let err = custom_parse_error(&pair, "No match found".to_owned());
+            let parsed: Vec<_> = pair.into_inner().map(ParseWrapped::parse_any_fast).collect::<Result<_, _>>()?;
+            #[allow(unreachable_code)]
+            iter_patterns::match_vec!(parsed;
+                $(
+                    [$(ParsedValue::$ty($x)),*] => {
+                        $body
+                    },
+                )*
+                [x..] => panic!("Unexpected children while parsing rule '{:?}': {:?}", rule, x.collect::<Vec<_>>()),
+            ).ok_or(err)
+        }
+    };
     ($pair:expr; $($args:tt)*) => {
         {
             let pair = $pair;
@@ -276,6 +231,23 @@ macro_rules! match_pair {
 }
 
 macro_rules! make_parser {
+    (@branch_rules, $pair:expr, ($($acc:tt)*), rule!( $name:ident<$o:ty>; $($args:tt)* ); $($rest:tt)*) => (
+        make_parser!(@branch_rules, $pair, ($($acc)* Rule::$name => ParseWrapped::$name($pair),), $($rest)*)
+    );
+    (@branch_rules, $pair:expr, ($($acc:tt)*), rule_group!( $name:ident<$o:ty>; $($ty:ident),* ); $($rest:tt)*) => (
+        make_parser!(@branch_rules, $pair, ($($acc)* $( Rule::$ty => ParseUnwrapped::$ty($pair).map(ParsedValue::$name),)* ), $($rest)*)
+    );
+    (@branch_rules, $pair:expr, ($($acc:tt)*), $submac:ident!( $name:ident<$o:ty>; $($args:tt)* ); $($rest:tt)*) => (
+        make_parser!(@branch_rules, $pair, ($($acc)*), $($rest)*)
+    );
+    (@branch_rules, $pair:expr, ($($acc:tt)*),) => (
+        #[allow(unreachable_patterns)]
+        match $pair.as_rule() {
+            $($acc)*
+            r => Err(custom_parse_error(&$pair, format!("parse_any_fast: Unexpected {:?}", r))),
+            // [x..] => panic!("{:?}", x.collect::<Vec<_>>()),
+        }
+    );
     ($( $submac:ident!( $name:ident<$o:ty>; $($args:tt)* ); )*) => (
         // #[allow(non_camel_case_types, dead_code)]
         // enum ParsedType {
@@ -302,8 +274,10 @@ macro_rules! make_parser {
         struct ParseUnwrapped;
 
         #[allow(non_camel_case_types, dead_code)]
+        #[derive(Debug)]
         enum ParsedValue<'a> {
             $( $name($o), )*
+            parse_any(Box<ParsedValue<'a>>),
         }
 
         impl<'a> ParsedValue<'a> {
@@ -316,6 +290,31 @@ macro_rules! make_parser {
                     }
                 }
             )*
+            #[allow(non_snake_case, dead_code)]
+            fn parse_any(self) -> Box<ParsedValue<'a>> {
+                match self {
+                    ParsedValue::parse_any(x) => x,
+                    x => Box::new(x),
+                }
+            }
+            #[allow(non_snake_case, dead_code)]
+            fn parse_any_fast(self) -> Box<ParsedValue<'a>> {
+                self.parse_any()
+            }
+        }
+
+        named!(parse_any<Box<ParsedValue<'a>>>;
+            // self!(x: parse_any_fast) => x,
+            $(
+                self!(x: $name) => Box::new(ParsedValue::$name(x)),
+            )*
+        );
+
+        impl ParseWrapped {
+            #[allow(non_snake_case, dead_code)]
+            fn parse_any_fast(pair: Pair<Rule>) -> ParseResult<ParsedValue> {
+                make_parser!(@branch_rules, pair, (), $( $submac!( $name<$o>; $($args)* ); )*)
+            }
         }
 
         // fn do_the_parse(s: &str, r: Rule, ty: ParsedType) -> ParseResult<ParsedValue>  {
@@ -459,6 +458,8 @@ named!(raw_str<&'a str>; captured_str!(s) => s);
 
 named!(label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
+rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+
 rule!(double_quote_literal<ParsedText>;
     children!(chunks..: double_quote_chunk) => {
         chunks.collect()
@@ -495,10 +496,15 @@ rule!(double_quote_escaped<&'a str>;
     }
 );
 
+rule!(end_of_line<()>; children!() => ());
+
 rule!(single_quote_literal<ParsedText>;
-    children!(eol: raw_str, contents: single_quote_continue) => {
+    children!(eol: end_of_line, contents: single_quote_continue) => {
         contents.into_iter().rev().collect::<ParsedText>()
     }
+);
+rule!(single_quote_char<&'a str>;
+    captured_str!(s) => s
 );
 rule!(escaped_quote_pair<&'a str>;
     children!() => "''"
@@ -512,15 +518,19 @@ rule!(interpolation<RcExpr>;
 
 rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
     children!(c: interpolation, rest: single_quote_continue) => {
+        let mut rest = rest;
         rest.push(InterpolatedTextContents::Expr(c)); rest
     },
     children!(c: escaped_quote_pair, rest: single_quote_continue) => {
+        let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
     children!(c: escaped_interpolation, rest: single_quote_continue) => {
+        let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
-    children!(c: raw_str, rest: single_quote_continue) => {
+    children!(c: single_quote_char, rest: single_quote_continue) => {
+        let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
     children!() => {
@@ -560,6 +570,13 @@ rule!(path<PathBuf>;
     captured_str!(s) => (".".to_owned() + s).into()
 );
 
+rule_group!(local_raw<(FilePrefix, PathBuf)>;
+    parent_path,
+    here_path,
+    home_path,
+    absolute_path
+);
+
 rule!(parent_path<(FilePrefix, PathBuf)>;
     children!(p: path) => (FilePrefix::Parent, p)
 );
@@ -574,13 +591,6 @@ rule!(home_path<(FilePrefix, PathBuf)>;
 
 rule!(absolute_path<(FilePrefix, PathBuf)>;
     children!(p: path) => (FilePrefix::Absolute, p)
-);
-
-rule_group!(local_raw<(FilePrefix, PathBuf)>;
-    parent_path,
-    here_path,
-    home_path,
-    absolute_path
 );
 
 // TODO: other import types
@@ -604,18 +614,6 @@ rule!(import_hashed_raw<(ImportLocation, Option<()>)>;
     // TODO: handle hash
     children!(import: import_type_raw) => {
         (import, None)
-    }
-);
-
-rule!(import_raw<RcExpr>;
-    // TODO: handle "as Text"
-    children!(import: import_hashed_raw) => {
-        let (location, hash) = import;
-        bx(Expr::Embed(Import {
-            mode: ImportMode::Code,
-            hash,
-            location,
-        }))
     }
 );
 
@@ -656,8 +654,20 @@ rule_group!(expression<RcExpr>;
     final_expression
 );
 
+rule!(import_raw<RcExpr>;
+    // TODO: handle "as Text"
+    children!(import: import_hashed_raw) => {
+        let (location, hash) = import;
+        bx(Expr::Embed(Import {
+            mode: ImportMode::Code,
+            hash,
+            location,
+        }))
+    }
+);
+
 rule!(lambda_expression<RcExpr>;
-    children!(l: label, typ: expression, body: expression) => {
+    children!(l: label_raw, typ: expression, body: expression) => {
         bx(Expr::Lam(l, typ, body))
     }
 );
@@ -675,12 +685,12 @@ rule!(let_expression<RcExpr>;
 );
 
 rule!(let_binding<(Label, Option<RcExpr>, RcExpr)>;
-    children!(name: label, annot: expression, expr: expression) => (name, Some(annot), expr),
-    children!(name: label, expr: expression) => (name, None, expr),
+    children!(name: label_raw, annot: expression, expr: expression) => (name, Some(annot), expr),
+    children!(name: label_raw, expr: expression) => (name, None, expr),
 );
 
 rule!(forall_expression<RcExpr>;
-    children!(l: label, typ: expression, body: expression) => {
+    children!(l: label_raw, typ: expression, body: expression) => {
         bx(Expr::Pi(l, typ, body))
     }
 );
@@ -696,18 +706,20 @@ rule!(merge_expression<RcExpr>;
     children!(x: expression, y: expression) => bx(Expr::Merge(x, y, None)),
 );
 
+rule!(List<()>; children!() => ());
+rule!(Optional<()>; children!() => ());
+
 rule!(empty_collection<RcExpr>;
-    children!(x: str, y: expression) => {
-       match x {
-          "Optional" => bx(Expr::OptionalLit(Some(y), None)),
-          "List" => bx(Expr::EmptyListLit(y)),
-          _ => unreachable!(),
-       }
-    }
+    children!(_x: List, y: expression) => {
+        bx(Expr::EmptyListLit(y))
+    },
+    children!(_x: Optional, y: expression) => {
+        bx(Expr::OptionalLit(Some(y), None))
+    },
 );
 
 rule!(non_empty_optional<RcExpr>;
-    children!(x: expression, _y: str, z: expression) => {
+    children!(x: expression, _y: Optional, z: expression) => {
         bx(Expr::OptionalLit(Some(z), Some(x)))
     }
 );
@@ -762,27 +774,29 @@ rule!(literal_expression_raw<RcExpr>;
 );
 
 rule!(identifier_raw<RcExpr>;
-    children!(name: str, idx: natural_literal_raw) => {
-        match Builtin::parse(name) {
+    children!(l: label_raw, idx: natural_literal_raw) => {
+        let name = String::from(l.clone());
+        match Builtin::parse(name.as_str()) {
             Some(b) => bx(Expr::Builtin(b)),
-            None => match name {
+            None => match name.as_str() {
                 "True" => bx(Expr::BoolLit(true)),
                 "False" => bx(Expr::BoolLit(false)),
                 "Type" => bx(Expr::Const(Const::Type)),
                 "Kind" => bx(Expr::Const(Const::Kind)),
-                name => bx(Expr::Var(V(Label::from(name.to_owned()), idx))),
+                _ => bx(Expr::Var(V(l, idx))),
             }
         }
     },
-    children!(name: str) => {
-        match Builtin::parse(name) {
+    children!(l: label_raw) => {
+        let name = String::from(l.clone());
+        match Builtin::parse(name.as_str()) {
             Some(b) => bx(Expr::Builtin(b)),
-            None => match name {
+            None => match name.as_str() {
                 "True" => bx(Expr::BoolLit(true)),
                 "False" => bx(Expr::BoolLit(false)),
                 "Type" => bx(Expr::Const(Const::Type)),
                 "Kind" => bx(Expr::Const(Const::Kind)),
-                name => bx(Expr::Var(V(Label::from(name.to_owned()), 0))),
+                _ => bx(Expr::Var(V(l, 0))),
             }
         }
     },
@@ -797,12 +811,12 @@ rule!(empty_record_type<RcExpr>;
 );
 
 rule!(non_empty_record_type_or_literal<RcExpr>;
-    children!(first_label: label, rest: non_empty_record_type) => {
+    children!(first_label: label_raw, rest: non_empty_record_type) => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, first_expr);
         bx(Expr::Record(map))
     },
-    children!(first_label: label, rest: non_empty_record_literal) => {
+    children!(first_label: label_raw, rest: non_empty_record_literal) => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, first_expr);
         bx(Expr::RecordLit(map))
@@ -820,7 +834,7 @@ named!(partial_record_entries<(RcExpr, BTreeMap<Label, RcExpr>)>;
 );
 
 named!(record_entry<(Label, RcExpr)>;
-    children!(name: label, expr: expression) => (name, expr)
+    children!(name: label_raw, expr: expression) => (name, expr)
 );
 
 rule!(non_empty_record_literal<(RcExpr, BTreeMap<Label, RcExpr>)>;
@@ -843,15 +857,15 @@ rule!(empty_union_type<()>; children!() => ());
 
 rule!(non_empty_union_type_or_literal
       <(Option<(Label, RcExpr)>, BTreeMap<Label, RcExpr>)>;
-    children!(l: label, e: expression, entries: union_type_entries) => {
+    children!(l: label_raw, e: expression, entries: union_type_entries) => {
         (Some((l, e)), entries)
     },
-    children!(l: label, e: expression, rest: non_empty_union_type_or_literal) => {
+    children!(l: label_raw, e: expression, rest: non_empty_union_type_or_literal) => {
         let (x, mut entries) = rest;
         entries.insert(l, e);
         (x, entries)
     },
-    children!(l: label, e: expression) => {
+    children!(l: label_raw, e: expression) => {
         let mut entries = BTreeMap::new();
         entries.insert(l, e);
         (None, entries)
@@ -865,7 +879,7 @@ rule!(union_type_entries<BTreeMap<Label, RcExpr>>;
 );
 
 rule!(union_type_entry<(Label, RcExpr)>;
-    children!(name: label, expr: expression) => (name, expr)
+    children!(name: label_raw, expr: expression) => (name, expr)
 );
 
 rule!(non_empty_list_literal_raw<RcExpr>;

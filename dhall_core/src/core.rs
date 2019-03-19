@@ -199,6 +199,7 @@ impl<N, E> From<String> for InterpolatedText<N, E> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum InterpolatedTextContents<'a, Note, Embed> {
     Text(&'a str),
     Expr(SubExpr<Note, Embed>),
