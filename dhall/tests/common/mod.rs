@@ -89,6 +89,11 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let expected = dhall::imports::panic_imports(&expected);
 
             assert_eq_pretty!(expr, expected);
+
+            // Round-trip pretty-printer
+            let expr = parser::parse_expr(&expr.to_string()).unwrap();
+            let expr = dhall::imports::panic_imports(&expr);
+            assert_eq!(expr, expected);
         }
         ParserFailure => {
             let file_path = base_path + ".dhall";

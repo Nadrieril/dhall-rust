@@ -534,7 +534,7 @@ impl<S, A: Display> Expr<S, A> {
             &Let(ref a, None, ref c, ref d) => {
                 write!(f, "let {} = ", a)?;
                 c.fmt(f)?;
-                write!(f, ") → ")?;
+                write!(f, " in ")?;
                 d.fmt_b(f)
             }
             &Let(ref a, Some(ref b), ref c, ref d) => {
@@ -542,7 +542,7 @@ impl<S, A: Display> Expr<S, A> {
                 b.fmt(f)?;
                 write!(f, " = ")?;
                 c.fmt(f)?;
-                write!(f, ") → ")?;
+                write!(f, " in ")?;
                 d.fmt_b(f)
             }
             &EmptyListLit(ref t) => {
@@ -550,17 +550,20 @@ impl<S, A: Display> Expr<S, A> {
                 t.fmt_e(f)
             }
             &NEListLit(ref es) => {
-                fmt_list("[", "]", es, f, |e, f| e.fmt(f))
+                fmt_list("[", ", ", "]", es, f, |e, f| e.fmt(f))
             }
             &OptionalLit(ref t, ref es) => {
                 match es {
                     None => {
-                        write!(f, "None ")?;
+                        // TODO: use None when parsing fixed
+                        write!(f, "[] : Optional ")?;
                         t.as_ref().unwrap().fmt_e(f)?;
                     }
                     Some(e) => {
-                        write!(f, "Some ")?;
+                        // TODO: use Some when parsing fixed
+                        write!(f, "[ ")?;
                         e.fmt_e(f)?;
+                        write!(f, " ]")?;
                         if let Some(t) = t {
                             write!(f, " : Optional ")?;
                             t.fmt_e(f)?;
@@ -594,6 +597,7 @@ impl<S, A: Display> Expr<S, A> {
         match self {
             // FIXME precedence
             &BinOp(op, ref a, ref b) => {
+                write!(f, "(")?;
                 a.fmt_d(f)?;
                 write!(
                     f,
@@ -603,17 +607,18 @@ impl<S, A: Display> Expr<S, A> {
                         TextAppend => "++",
                         NaturalPlus => "+",
                         BoolAnd => "&&",
-                        Combine => "^",
+                        Combine => "/\\",
                         NaturalTimes => "*",
                         BoolEQ => "==",
                         BoolNE => "!=",
-                        CombineTypes => "//\\",
+                        CombineTypes => "//\\\\",
                         ImportAlt => "?",
                         Prefer => "//",
                         ListAppend => "#",
                     }
                 )?;
-                b.fmt_c(f)
+                b.fmt_c(f)?;
+                write!(f, ")")
             }
             &Note(_, ref b) => b.fmt_c(f),
             a => a.fmt_d(f),
@@ -656,37 +661,58 @@ impl<S, A: Display> Expr<S, A> {
             &Builtin(v) => v.fmt(f),
             &BoolLit(true) => f.write_str("True"),
             &BoolLit(false) => f.write_str("False"),
-            &IntegerLit(a) => a.fmt(f),
-            &NaturalLit(a) => {
+            &NaturalLit(a) => a.fmt(f),
+            &IntegerLit(a) if *a >= 0 => {
                 f.write_str("+")?;
                 a.fmt(f)
             }
+            &IntegerLit(a) => a.fmt(f),
             &DoubleLit(a) => a.fmt(f),
             &TextLit(ref a) => {
+                f.write_str("\"")?;
                 for x in a.iter() {
                     match x {
                         InterpolatedTextContents::Text(a) => {
-                            <str as fmt::Debug>::fmt(a, f)?
-                        } // TODO Format escapes properly
+                            // TODO Format all escapes properly
+                            f.write_str(
+                                &a.replace("\n", "\\n")
+                                    .replace("\t", "\\t")
+                                    .replace("\r", "\\r")
+                                    .replace("\"", "\\\""),
+                            )?;
+                        }
                         InterpolatedTextContents::Expr(e) => {
-                            f.write_str("${")?;
+                            f.write_str("${ ")?;
                             e.fmt(f)?;
-                            f.write_str("}")?;
+                            f.write_str(" }")?;
                         }
                     }
                 }
+                f.write_str("\"")?;
                 Ok(())
             }
             &Record(ref a) if a.is_empty() => f.write_str("{}"),
-            &Record(ref a) => fmt_list("{ ", " }", a, f, |(k, t), f| {
+            &Record(ref a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
                 write!(f, "{} : {}", k, t)
             }),
             &RecordLit(ref a) if a.is_empty() => f.write_str("{=}"),
-            &RecordLit(ref a) => fmt_list("{ ", " }", a, f, |(k, v), f| {
-                write!(f, "{} = {}", k, v)
+            &RecordLit(ref a) => {
+                fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
+                    write!(f, "{} = {}", k, v)
+                })
+            }
+            &Union(ref a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
+                write!(f, "{} : {}", k, v)
             }),
-            &Union(ref _a) => f.write_str("Union"),
-            &UnionLit(ref _a, ref _b, ref _c) => f.write_str("UnionLit"),
+            &UnionLit(ref a, ref b, ref c) => {
+                f.write_str("< ")?;
+                write!(f, "{} = {}", a, b)?;
+                for (k, v) in c {
+                    f.write_str(" | ")?;
+                    write!(f, "{} : {}", k, v)?;
+                }
+                f.write_str(" >")
+            }
             &Embed(ref a) => a.fmt(f),
             &Note(_, ref b) => b.fmt_f(f),
             a => write!(f, "({})", a),
@@ -696,6 +722,7 @@ impl<S, A: Display> Expr<S, A> {
 
 fn fmt_list<T, I, F>(
     open: &str,
+    sep: &str,
     close: &str,
     it: I,
     f: &mut fmt::Formatter,
@@ -708,7 +735,7 @@ where
     f.write_str(open)?;
     for (i, x) in it.into_iter().enumerate() {
         if i > 0 {
-            f.write_str(", ")?;
+            f.write_str(sep)?;
         }
         func(x, f)?;
     }

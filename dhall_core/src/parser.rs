@@ -435,14 +435,34 @@ rule!(double_quote_literal<ParsedText>;
     }
 );
 
-// TODO: parse escapes
 rule!(double_quote_chunk<ParsedTextContents<'a>>;
     children!(c: interpolation) => {
         InterpolatedTextContents::Expr(c)
     },
+    children!(s: double_quote_escaped) => {
+        InterpolatedTextContents::Text(s)
+    },
     captured_str!(s) => {
         InterpolatedTextContents::Text(s)
     },
+);
+rule!(double_quote_escaped<&'a str>;
+    // TODO: parse all escapes
+    captured_str!(s) => {
+        match s {
+            "\"" => "\"",
+            "$" => "$",
+            "\\" => "\\",
+            "/" => "/",
+            // "b" => "\b",
+            // "f" => "\f",
+            "n" => "\n",
+            "r" => "\r",
+            "t" => "\t",
+            // "uXXXX"
+            _ => unimplemented!(),
+        }
+    }
 );
 
 rule!(single_quote_literal<ParsedText>;
