@@ -118,7 +118,8 @@ macro_rules! match_pair {
 }
 
 macro_rules! make_parser {
-    // Filter out definitions that should not be matched on (i.e. rule_group)
+    (@pattern, rule, $name:ident) => (Rule::$name);
+    (@pattern, rule_group, $name:ident) => (_);
     (@filter, rule) => (true);
     (@filter, rule_group) => (false);
 
@@ -130,7 +131,7 @@ macro_rules! make_parser {
         let res: $o = $body;
         Ok(ParsedValue::$group(res))
     });
-    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty> as $group:ident; captured_str!($x:ident) => $body:expr )) => ( {
+    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty> as $group:ident; captured_str!($x:pat) => $body:expr )) => ( {
         let $x = $pair.as_str();
         let res: $o = $body;
         Ok(ParsedValue::$group(res))
@@ -142,7 +143,6 @@ macro_rules! make_parser {
     (@body, $pair:expr, $parsed:expr, rule_group!( $name:ident<$o:ty> )) => (
         unreachable!()
     );
-
 
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
         #[allow(non_camel_case_types, dead_code)]
@@ -181,9 +181,9 @@ macro_rules! make_parser {
                         parsed.reverse();
                         let val = match pair.as_rule() {
                             $(
-                                Rule::$name if make_parser!(@filter, $submac)
-                                =>
-                                make_parser!(@body, pair, parsed, $submac!( $name<$o> $($args)* ))
+                                make_parser!(@pattern, $submac, $name)
+                                if make_parser!(@filter, $submac)
+                                => make_parser!(@body, pair, parsed, $submac!( $name<$o> $($args)* ))
                                 ,
                             )*
                             r => Err(custom_parse_error(&pair, format!("parse_any: Unexpected {:?}", r))),
