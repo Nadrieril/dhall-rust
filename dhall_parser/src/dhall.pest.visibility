@@ -20,7 +20,7 @@ end_of_line
 simple_label
 quoted_label
 label_raw
-label
+# label
 double_quote_chunk
 double_quote_escaped
 double_quote_literal

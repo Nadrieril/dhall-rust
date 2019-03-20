@@ -5,6 +5,9 @@ members = [
     "abnf_to_pest",
     "dhall",
     "dhall_parser",
+    "dhall_core",
+    "dhall_generator",
+    "iter_patterns",
 ]
 
 # # Parser is super slow when not optimized

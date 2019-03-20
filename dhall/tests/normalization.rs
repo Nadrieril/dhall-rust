@@ -304,7 +304,7 @@ norm!(spec_normalization_success_unit_Record, "unit/Record");
 norm!(spec_normalization_success_unit_RecordEmpty, "unit/RecordEmpty");
 // norm!(spec_normalization_success_unit_RecordProjection, "unit/RecordProjection");
 // norm!(spec_normalization_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
-norm!(spec_normalization_success_unit_RecordProjectionNormalizeArguments, "unit/RecordProjectionNormalizeArguments");
+// norm!(spec_normalization_success_unit_RecordProjectionNormalizeArguments, "unit/RecordProjectionNormalizeArguments");
 norm!(spec_normalization_success_unit_RecordSelection, "unit/RecordSelection");
 norm!(spec_normalization_success_unit_RecordSelectionNormalizeArguments, "unit/RecordSelectionNormalizeArguments");
 norm!(spec_normalization_success_unit_RecordType, "unit/RecordType");
