@@ -25,27 +25,27 @@
 #[macro_export]
 macro_rules! destructure_iter {
     // Variable length pattern
-    (@match 0, $iter:expr, ($body:expr), $x:ident.., $($rest:tt)*) => {
-        $crate::destructure_iter!(@match 1, $iter, ({
+    (@match_forwards, $iter:expr, ($body:expr), $x:ident.., $($rest:tt)*) => {
+        $crate::destructure_iter!(@match_backwards, $iter, ({
             let $x = $iter;
             $body
         }), $($rest)*)
     };
     // Variable length pattern without a binder
-    (@match 0, $iter:expr, ($body:expr), .., $($rest:tt)*) => {
-        $crate::destructure_iter!(@match 1, $iter, ($body), $($rest)*)
+    (@match_forwards, $iter:expr, ($body:expr), .., $($rest:tt)*) => {
+        $crate::destructure_iter!(@match_backwards, $iter, ($body), $($rest)*)
     };
     // Single item pattern
-    (@match 0, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
+    (@match_forwards, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
         if let Some($x) = $iter.next() {
-            $crate::destructure_iter!(@match 0, $iter, ($body), $($rest)*)
+            $crate::destructure_iter!(@match_forwards, $iter, ($body), $($rest)*)
         } else {
             None
         }
     };
     // Single item pattern after a variable length one: declare reversed and take from the end
-    (@match 1, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
-        $crate::destructure_iter!(@match 1, $iter, (
+    (@match_backwards, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
+        $crate::destructure_iter!(@match_backwards, $iter, (
             if let Some($x) = $iter.next_back() {
                 $body
             } else {
@@ -55,7 +55,7 @@ macro_rules! destructure_iter {
     };
 
     // Check no elements remain
-    (@match 0, $iter:expr, ($body:expr) $(,)*) => {
+    (@match_forwards, $iter:expr, ($body:expr) $(,)*) => {
         if $iter.next().is_some() {
             None
         } else {
@@ -63,7 +63,7 @@ macro_rules! destructure_iter {
         }
     };
     // After a variable length pattern, everything has already been consumed
-    (@match 1, $iter:expr, ($body:expr) $(,)*) => {
+    (@match_backwards, $iter:expr, ($body:expr) $(,)*) => {
         $body
     };
 
@@ -71,11 +71,10 @@ macro_rules! destructure_iter {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
-            $crate::destructure_iter!(@match 0, iter, (Some($body)), $($args)*,)
+            $crate::destructure_iter!(@match_forwards, iter, (Some($body)), $($args)*,)
         }
     };
 }
-
 
 /* Pattern-match on a vec using the syntax of slice_patterns.
  * Wraps the match body in `Some` if there was a match; returns
@@ -124,7 +123,6 @@ macro_rules! match_vec {
     };
 }
 
-
 /* Pattern-match on an iterator using the syntax of slice_patterns.
  * Wraps the match body in `Some` if there was a match; returns
  * `None` otherwise.
@@ -156,7 +154,6 @@ macro_rules! match_iter {
         }
     };
 }
-
 
 #[test]
 fn test() {

@@ -71,152 +71,205 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-#[derive(Debug)]
-enum IterMatchError<T> {
-    NoMatchFound,
-    Other(T), // Allow other macros to inject their own errors
-}
+// #[derive(Debug)]
+// enum IterMatchError<T> {
+//     NoMatchFound,
+//     Other(T), // Allow other macros to inject their own errors
+// }
 
-macro_rules! match_iter_typed {
-    // Collect untyped arguments to pass to match_iter!
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
-        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
-    };
-    (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident.. : $ty:ident, $($rest:tt)*)) => {
-        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x..), ($($rest)*))
-    };
-    // Catch extra comma if exists
-    (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
-        match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
-    };
-    (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
-        {
-            let res = iter_patterns::destructure_iter!($iter; [$($acc)*] => {
-                match_iter_typed!(@callback, $callback, $iter, $($args)*);
-                $body
-            });
-            res.ok_or(IterMatchError::NoMatchFound)
-        }
-    };
+// macro_rules! match_iter_typed {
+//     // Collect untyped arguments to pass to match_iter!
+//     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
+//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
+//     };
+//     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident.. : $ty:ident, $($rest:tt)*)) => {
+//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x..), ($($rest)*))
+//     };
+//     // Catch extra comma if exists
+//     (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
+//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
+//     };
+//     (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
+//         {
+//             let res = iter_patterns::destructure_iter!($iter; [$($acc)*] => {
+//                 match_iter_typed!(@callback, $callback, $iter, $($args)*);
+//                 $body
+//             });
+//             res.ok_or(IterMatchError::NoMatchFound)
+//         }
+//     };
 
-    // Pass the matches through the callback
-    (@callback, $callback:ident, $iter:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-        let $x = $callback!(@type_callback, $ty, $x);
-        #[allow(unused_mut)]
-        let mut $x = match $x {
-            Ok(x) => x,
-            Err(e) => break Err(IterMatchError::Other(e)),
-        };
-        match_iter_typed!(@callback, $callback, $iter $($rest)*);
-    };
-    (@callback, $callback: ident, $iter:expr, $x:ident.. : $ty:ident $($rest:tt)*) => {
-        let $x = $x.map(|x| $callback!(@type_callback, $ty, x)).collect();
-        let $x: Vec<_> = match $x {
-            Ok(x) => x,
-            Err(e) => break Err(IterMatchError::Other(e)),
-        };
-        #[allow(unused_mut)]
-        let mut $x = $x.into_iter();
-        match_iter_typed!(@callback, $callback, $iter $($rest)*);
-    };
-    (@callback, $callback:ident, $iter:expr $(,)*) => {};
+//     // Pass the matches through the callback
+//     (@callback, $callback:ident, $iter:expr, $x:ident : $ty:ident $($rest:tt)*) => {
+//         let $x = $callback!(@type_callback, $ty, $x);
+//         #[allow(unused_mut)]
+//         let mut $x = match $x {
+//             Ok(x) => x,
+//             Err(e) => break Err(IterMatchError::Other(e)),
+//         };
+//         match_iter_typed!(@callback, $callback, $iter $($rest)*);
+//     };
+//     (@callback, $callback: ident, $iter:expr, $x:ident.. : $ty:ident $($rest:tt)*) => {
+//         let $x = $x.map(|x| $callback!(@type_callback, $ty, x)).collect();
+//         let $x: Vec<_> = match $x {
+//             Ok(x) => x,
+//             Err(e) => break Err(IterMatchError::Other(e)),
+//         };
+//         #[allow(unused_mut)]
+//         let mut $x = $x.into_iter();
+//         match_iter_typed!(@callback, $callback, $iter $($rest)*);
+//     };
+//     (@callback, $callback:ident, $iter:expr $(,)*) => {};
 
-    ($callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
-        {
-            #[allow(unused_mut)]
-            let mut iter = $iter;
-            let res: Result<_, IterMatchError<_>> = loop {
-                break match_iter_typed!(@collect,
-                    (iter, $body, $callback, last_error),
-                    ($($args)*), (), ($($args)*,)
-                )
-            };
-            res
-        }
-    };
-}
+//     ($callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
+//         {
+//             #[allow(unused_mut)]
+//             let mut iter = $iter;
+//             let res: Result<_, IterMatchError<_>> = loop {
+//                 break match_iter_typed!(@collect,
+//                     (iter, $body, $callback, last_error),
+//                     ($($args)*), (), ($($args)*,)
+//                 )
+//             };
+//             res
+//         }
+//     };
+// }
 
-macro_rules! match_iter_branching {
-    (@noclone, $callback:ident; $arg:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
-        {
-            #[allow(unused_assignments)]
-            let mut last_error = IterMatchError::NoMatchFound;
-            // Not a real loop; used for error handling
-            // Would use loop labels but they create warnings
-            #[allow(unreachable_code)]
-            loop {
-                $(
-                    let matched: Result<_, IterMatchError<_>> =
-                        $callback!(@branch_callback, $submac, $arg; ($($args)*) => $body);
-                    #[allow(unused_assignments)]
-                    match matched {
-                        Ok(v) => break Ok(v),
-                        Err(e) => last_error = e,
-                    };
-                )*
-                break Err(last_error);
-            }
-        }
-    };
-    ($callback:ident; $iter:expr; $($args:tt)*) => {
-        {
-            #[allow(unused_mut)]
-            let mut iter = $iter;
-            match_iter_branching!(@noclone, $callback; iter.clone(); $($args)*)
-        }
-    };
-}
+// macro_rules! match_iter_branching {
+//     (@noclone, $callback:ident; $arg:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
+//         {
+//             #[allow(unused_assignments)]
+//             let mut last_error = IterMatchError::NoMatchFound;
+//             // Not a real loop; used for error handling
+//             // Would use loop labels but they create warnings
+//             #[allow(unreachable_code)]
+//             loop {
+//                 $(
+//                     let matched: Result<_, IterMatchError<_>> =
+//                         $callback!(@branch_callback, $submac, $arg; ($($args)*) => $body);
+//                     #[allow(unused_assignments)]
+//                     match matched {
+//                         Ok(v) => break Ok(v),
+//                         Err(e) => last_error = e,
+//                     };
+//                 )*
+//                 break Err(last_error);
+//             }
+//         }
+//     };
+//     ($callback:ident; $iter:expr; $($args:tt)*) => {
+//         {
+//             #[allow(unused_mut)]
+//             let mut iter = $iter;
+//             match_iter_branching!(@noclone, $callback; iter.clone(); $($args)*)
+//         }
+//     };
+// }
 
 macro_rules! match_pair {
-    (@type_callback, $ty:ident, $x:expr) => {
-        ParseUnwrapped::$ty($x)
-        // ParseWrapped::$ty($x).map(|x| x.$ty())
+    // // (@type_callback, parse_any_fast, $x:expr) => {
+    // //     ParseWrapped::parse_any_fast($x).map(Box::new)
+    // // };
+    // (@type_callback, $ty:ident, $x:expr) => {
+    //     ParseUnwrapped::$ty($x)
+    //     // ParseWrapped::$ty($x).map(|x| x.$ty())
+    //     // match ParseWrapped::parse_any($x) {
+    //     // match parse_any_fast($x.clone()) {
+    //     // // match ParseWrapped::$ty($x.clone()) {
+    //     //     Ok(ParsedValue::$ty(x)) => Ok(x),
+    //     //     // _ => ParseUnwrapped::$ty($x),
+    //     //     _ => Err(custom_parse_error(&$x, format!("Total failure"))),
+    //     // }
+    // };
+    // (@branch_callback, children, $pair:expr; $($args:tt)*) => {
+    //     {
+    //         #[allow(unused_mut)]
+    //         let mut pairs = $pair.clone().into_inner();
+    //         match_iter_typed!(match_pair; pairs; $($args)*)
+    //     }
+    // };
+    // (@branch_callback, raw_pair, $pair:expr; ($x:ident) => $body:expr) => {
+    //     {
+    //         let $x = $pair.clone();
+    //         Ok($body)
+    //     }
+    // };
+    // (@branch_callback, captured_str, $pair:expr; ($x:ident) => $body:expr) => {
+    //     {
+    //         let $x = $pair.as_str();
+    //         Ok($body)
+    //     }
+    // };
+
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $x:ident : $ty:ident $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
     };
-    (@branch_callback, children, $pair:expr; $($args:tt)*) => {
-        {
-            #[allow(unused_mut)]
-            let mut pairs = $pair.clone().into_inner();
-            match_iter_typed!(match_pair; pairs; $($args)*)
-        }
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $x:ident.. : $ty:ident $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, x..), ($($rest_of_match)*) => {
+            let $x = x.map(|x| x.$ty());
+            $body
+        }, $($rest)*)
     };
-    (@branch_callback, self, $pair:expr; ($x:ident : $ty:ident) => $body:expr) => {
-        {
-            let $x = match_pair!(@type_callback, $ty, $pair.clone());
-            match $x {
-                Ok($x) => Ok($body),
-                Err(e) => Err(IterMatchError::Other(e)),
-            }
-        }
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), (, $($acc:tt)*), ($(,)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_matches, $pair, ([$($acc)*] => { $body }, $($outer_acc)*), $($rest)*)
     };
-    (@branch_callback, raw_pair, $pair:expr; ($x:ident) => $body:expr) => {
-        {
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), (), ($(,)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_matches, $pair, ([] => { $body }, $($outer_acc)*), $($rest)*)
+    };
+
+    (@make_matches, $pair:expr, ($($acc:tt)*), children!($($args:tt)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_child_match, $pair, ($($acc)*), (), ($($args)*) => $body, $($rest)*)
+    // (@make_matches, $pair:expr, ($($acc:tt)*), children!($($x:ident : $ty:ident),*) => $body:expr, $($rest:tt)*) => {
+        // match_pair!(@make_child_match, $pair, ($($acc)*), ($(, ParsedValue::$ty($x))*), () => $body, $($rest)*)
+        // match_pair!(@make_matches, $pair, ([$(ParsedValue::$ty($x)),*] => { $body }, $($acc)*), $($rest)*)
+    };
+    (@make_matches, $pair:expr, ($($acc:tt)*), raw_pair!($x:ident) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_matches, $pair, ([..] => {
             let $x = $pair.clone();
-            Ok($body)
-        }
+            $body
+        }, $($acc)*), $($rest)*)
     };
-    (@branch_callback, captured_str, $pair:expr; ($x:ident) => $body:expr) => {
-        {
+    (@make_matches, $pair:expr, ($($acc:tt)*), captured_str!($x:ident) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_matches, $pair, ([..] => {
             let $x = $pair.as_str();
-            Ok($body)
+            $body
+        }, $($acc)*), $($rest)*)
+    };
+    (@make_matches, $pair:expr, ($($acc:tt)*) $(,)*) => {
+        {
+            let pair = $pair.clone();
+            let rule = pair.as_rule();
+            let parsed: Vec<_> = pair.clone().into_inner().map(ParseWrapped::parse_any_fast).collect::<Result<_, _>>()?;
+            #[allow(unreachable_code)]
+            iter_patterns::match_vec!(parsed;
+                $($acc)*
+                [x..] => panic!("Unexpected children while parsing rule '{:?}': {:?}", rule, x.collect::<Vec<_>>()),
+            ).ok_or_else(|| custom_parse_error(&pair, "No match found".to_owned()))
         }
     };
 
-    ($pair:expr; $( children!($($x:ident : $ty:ident),*) => $body:expr ),* $(,)*) => {
-        {
-            let pair = $pair;
-            let rule = pair.as_rule();
-            let err = custom_parse_error(&pair, "No match found".to_owned());
-            let parsed: Vec<_> = pair.into_inner().map(ParseWrapped::parse_any_fast).collect::<Result<_, _>>()?;
-            #[allow(unreachable_code)]
-            iter_patterns::match_vec!(parsed;
-                $(
-                    [$(ParsedValue::$ty($x)),*] => {
-                        $body
-                    },
-                )*
-                [x..] => panic!("Unexpected children while parsing rule '{:?}': {:?}", rule, x.collect::<Vec<_>>()),
-            ).ok_or(err)
-        }
+    // ($pair:expr; $( children!($($x:ident : $ty:ident),*) => $body:expr ),* $(,)*) => {
+    //     match_pair!(@make_matches, $pair, (), $( children!($($x : $ty),*) => $body ),* ,)
+    // ($pair:expr; $( children!($($args:tt)*) => $body:expr ),* $(,)*) => {
+    //     match_pair!(@make_matches, $pair, (), $( children!($($args)*) => $body ),* ,)
+    ($pair:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
+        match_pair!(@make_matches, $pair, (), $( $submac!($($args)*) => $body ),* ,)
+    // ($pair:expr; $($args:tt)*) => {
+    //     match_pair!(@make_matches, $pair, (), $($args)*)
+        // {
+        //     let pair = $pair;
+        //     let rule = pair.as_rule();
+        //     let err = custom_parse_error(&pair, "No match found".to_owned());
+        //     let parsed: Vec<_> = pair.into_inner().map(ParseWrapped::parse_any_fast).collect::<Result<_, _>>()?;
+        //     #[allow(unreachable_code)]
+        //     iter_patterns::match_vec!(parsed;
+        //         $(
+        //             [$(ParsedValue::$ty($x)),*] => { $body },
+        //         )*
+        //         [x..] => panic!("Unexpected children while parsing rule '{:?}': {:?}", rule, x.collect::<Vec<_>>()),
+        //     ).ok_or(err)
+        // }
     };
     ($pair:expr; $($args:tt)*) => {
         {
@@ -277,7 +330,7 @@ macro_rules! make_parser {
         #[derive(Debug)]
         enum ParsedValue<'a> {
             $( $name($o), )*
-            parse_any(Box<ParsedValue<'a>>),
+            // parse_any(Box<ParsedValue<'a>>),
         }
 
         impl<'a> ParsedValue<'a> {
@@ -290,30 +343,43 @@ macro_rules! make_parser {
                     }
                 }
             )*
-            #[allow(non_snake_case, dead_code)]
-            fn parse_any(self) -> Box<ParsedValue<'a>> {
-                match self {
-                    ParsedValue::parse_any(x) => x,
-                    x => Box::new(x),
-                }
-            }
-            #[allow(non_snake_case, dead_code)]
-            fn parse_any_fast(self) -> Box<ParsedValue<'a>> {
-                self.parse_any()
-            }
+            // #[allow(non_snake_case, dead_code)]
+            // fn parse_any(self) -> Box<ParsedValue<'a>> {
+            //     match self {
+            //         ParsedValue::parse_any(x) => x,
+            //         x => Box::new(x),
+            //     }
+            // }
+            // #[allow(non_snake_case, dead_code)]
+            // fn parse_any_fast(self) -> Box<ParsedValue<'a>> {
+            //     self.parse_any()
+            // }
         }
 
-        named!(parse_any<Box<ParsedValue<'a>>>;
-            // self!(x: parse_any_fast) => x,
-            $(
-                self!(x: $name) => Box::new(ParsedValue::$name(x)),
-            )*
-        );
+        // named!(parse_any<Box<ParsedValue<'a>>>;
+        //     // self!(x: parse_any_fast) => x,
+        //     $(
+        //         self!(x: $name) => Box::new(ParsedValue::$name(x)),
+        //     )*
+        // );
 
         impl ParseWrapped {
             #[allow(non_snake_case, dead_code)]
             fn parse_any_fast(pair: Pair<Rule>) -> ParseResult<ParsedValue> {
                 make_parser!(@branch_rules, pair, (), $( $submac!( $name<$o>; $($args)* ); )*)
+            }
+        }
+
+        impl ParseUnwrapped {
+            #[allow(unused_variables, non_snake_case, dead_code, clippy::all)]
+            fn expression<'a>(pair: Pair<'a, Rule>) -> ParseResult<RcExpr> {
+                ParseWrapped::expression(pair).map(|x| x.expression())
+            }
+        }
+        impl ParseWrapped {
+            #[allow(unused_variables, non_snake_case, dead_code, clippy::all)]
+            fn expression<'a>(pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
+                ParseWrapped::parse_any_fast(pair)
             }
         }
 
@@ -327,7 +393,6 @@ macro_rules! make_parser {
         )*
     );
 }
-
 
 macro_rules! make_pest_parse_function {
     ($name:ident<$o:ty>; $submac:ident!( $($args:tt)* )) => (
@@ -347,43 +412,44 @@ macro_rules! make_pest_parse_function {
     );
 }
 
-macro_rules! named {
-    ($name:ident<$o:ty>; $($args:tt)*) => (
-        make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
-    );
-}
+// macro_rules! named {
+//     ($name:ident<$o:ty>; $($args:tt)*) => (
+//         make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
+//     );
+// }
 
 macro_rules! rule {
     ($name:ident<$o:ty>; $($args:tt)*) => (
-        make_pest_parse_function!($name<$o>; match_rule!(
-            Rule::$name => match_pair!( $($args)* ),
-        ));
+        make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
+        // make_pest_parse_function!($name<$o>; match_rule!(
+        //     Rule::$name => match_pair!( $($args)* ),
+        // ));
     );
 }
 
 macro_rules! rule_group {
     ($name:ident<$o:ty>; $($ty:ident),*) => (
-        make_pest_parse_function!($name<$o>; match_rule!(
-            $(
-                Rule::$ty => match_pair!(raw_pair!(p) => ParseUnwrapped::$ty(p)?),
-            )*
-        ));
+        // make_pest_parse_function!($name<$o>; match_rule!(
+        //     $(
+        //         Rule::$ty => match_pair!(raw_pair!(p) => ParseUnwrapped::$ty(p)?),
+        //     )*
+        // ));
     );
 }
 
-macro_rules! match_rule {
-    ($pair:expr; $($pat:pat => $submac:ident!( $($args:tt)* ),)*) => {
-        {
-            #[allow(unreachable_patterns)]
-            match $pair.as_rule() {
-                $(
-                    $pat => $submac!($pair; $($args)*),
-                )*
-                r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
-            }
-        }
-    };
-}
+// macro_rules! match_rule {
+//     ($pair:expr; $($pat:pat => $submac:ident!( $($args:tt)* ),)*) => {
+//         {
+//             #[allow(unreachable_patterns)]
+//             match $pair.as_rule() {
+//                 $(
+//                     $pat => $submac!($pair; $($args)*),
+//                 )*
+//                 r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
+//             }
+//         }
+//     };
+// }
 
 // List of rules that can be shortcutted as implemented in binop!()
 fn can_be_shortcutted(rule: Rule) -> bool {
@@ -448,15 +514,14 @@ macro_rules! binop {
     };
 }
 
-
-make_parser!{
+make_parser! {
 rule!(EOI<()>; children!() => ());
 
-named!(str<&'a str>; captured_str!(s) => s.trim());
+// named!(str<&'a str>; captured_str!(s) => s.trim());
 
-named!(raw_str<&'a str>; captured_str!(s) => s);
+// named!(raw_str<&'a str>; captured_str!(s) => s);
 
-named!(label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+// named!(label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
 rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
@@ -473,7 +538,7 @@ rule!(double_quote_chunk<ParsedTextContents<'a>>;
     children!(s: double_quote_escaped) => {
         InterpolatedTextContents::Text(s)
     },
-    captured_str!(s) => {
+    children!(s: double_quote_char) => {
         InterpolatedTextContents::Text(s)
     },
 );
@@ -494,6 +559,9 @@ rule!(double_quote_escaped<&'a str>;
             _ => unimplemented!(),
         }
     }
+);
+rule!(double_quote_char<&'a str>;
+    captured_str!(s) => s
 );
 
 rule!(end_of_line<()>; children!() => ());
@@ -756,8 +824,15 @@ rule!(application_expression<RcExpr>;
 );
 
 rule!(selector_expression_raw<RcExpr>;
-    children!(first: expression, rest..: label) => {
+    children!(first: expression, rest..: selector_raw) => {
         rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
+    }
+);
+
+// TODO: handle record projection
+rule!(selector_raw<Label>;
+    children!(l: label_raw) => {
+        l
     }
 );
 
@@ -824,21 +899,23 @@ rule!(non_empty_record_type_or_literal<RcExpr>;
 );
 
 rule!(non_empty_record_type<(RcExpr, BTreeMap<Label, RcExpr>)>;
-    self!(x: partial_record_entries) => x
-);
-
-named!(partial_record_entries<(RcExpr, BTreeMap<Label, RcExpr>)>;
-    children!(expr: expression, entries..: record_entry) => {
+    children!(expr: expression, entries..: record_type_entry) => {
         (expr, entries.collect())
     }
 );
 
-named!(record_entry<(Label, RcExpr)>;
+rule!(record_type_entry<(Label, RcExpr)>;
     children!(name: label_raw, expr: expression) => (name, expr)
 );
 
 rule!(non_empty_record_literal<(RcExpr, BTreeMap<Label, RcExpr>)>;
-    self!(x: partial_record_entries) => x
+    children!(expr: expression, entries..: record_literal_entry) => {
+        (expr, entries.collect())
+    }
+);
+
+rule!(record_literal_entry<(Label, RcExpr)>;
+    children!(name: label_raw, expr: expression) => (name, expr)
 );
 
 rule!(union_type_or_literal<RcExpr>;
