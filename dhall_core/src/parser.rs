@@ -188,11 +188,19 @@ macro_rules! make_parser {
             let mut values_stack: Vec<ParsedValue> = vec![];
             while let Some(p) = pairs_stack.pop() {
                 match p {
-                    Unprocessed(pair) => {
-                        let mut pairs: Vec<_> = pair.clone().into_inner().map(StackFrame::Unprocessed).collect();
-                        let n_children = pairs.len();
-                        pairs_stack.push(Processed(pair, n_children));
-                        pairs_stack.append(&mut pairs);
+                    Unprocessed(mut pair) => {
+                        loop {
+                            let mut pairs: Vec<_> = pair.clone().into_inner().collect();
+                            let n_children = pairs.len();
+                            if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
+                                pair = pairs.pop().unwrap();
+                                continue
+                            } else {
+                                pairs_stack.push(Processed(pair, n_children));
+                                pairs_stack.extend(pairs.into_iter().map(StackFrame::Unprocessed));
+                                break
+                            }
+                        }
                     }
                     Processed(pair, n) => {
                         let mut parsed: Vec<_> = values_stack.split_off(values_stack.len() - n);
