@@ -91,18 +91,6 @@ macro_rules! match_pair {
     (@make_matches, $pair:expr, ($($acc:tt)*), children!($($args:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($acc)*), (), ($($args)*) => $body, $($rest)*)
     };
-    (@make_matches, $pair:expr, ($($acc:tt)*), raw_pair!($x:ident) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, $pair, ([..] => {
-            let $x = $pair.clone();
-            $body
-        }, $($acc)*), $($rest)*)
-    };
-    (@make_matches, $pair:expr, ($($acc:tt)*), captured_str!($x:ident) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, $pair, ([..] => {
-            let $x = $pair.as_str();
-            $body
-        }, $($acc)*), $($rest)*)
-    };
     (@make_matches, $pair:expr, ($($acc:tt)*) $(,)*) => {
         {
             let pair = $pair.clone();
@@ -122,22 +110,27 @@ macro_rules! match_pair {
 }
 
 macro_rules! make_parser {
-    // Filter out definitions that should not be matched on
+    // Filter out definitions that should not be matched on (i.e. rule_group)
     (@filter, rule) => (true);
     (@filter, rule_in_group) => (true);
-    (@filter, binop) => (true);
     (@filter, rule_group) => (false);
 
-    (@body, $pair:expr, rule!( $name:ident<$o:ty>; $($args:tt)* )) => ( {
-        let res: $o = match_pair!($pair; $($args)*)?;
-        Ok(ParsedValue::$name(res))
+    (@body, $pair:expr, rule!( $name:ident<$o:ty>; $($args:tt)* )) => (
+        make_parser!(@body, $pair, rule_in_group!( $name<$o>; $name; $($args)* ))
+    );
+    (@body, $pair:expr, rule_in_group!( $name:ident<$o:ty>; $group:ident; raw_pair!($x:pat) => $body:expr )) => ( {
+        let $x = $pair.clone();
+        let res: $o = $body;
+        Ok(ParsedValue::$group(res))
+    });
+    (@body, $pair:expr, rule_in_group!( $name:ident<$o:ty>; $group:ident; captured_str!($x:ident) => $body:expr )) => ( {
+        let $x = $pair.as_str();
+        let res: $o = $body;
+        Ok(ParsedValue::$group(res))
     });
     (@body, $pair:expr, rule_in_group!( $name:ident<$o:ty>; $group:ident; $($args:tt)* )) => ( {
         let res: $o = match_pair!($pair; $($args)*)?;
         Ok(ParsedValue::$group(res))
-    });
-    (@body, $pair:expr, binop!( $name:ident<$o:ty>; $op:ident )) => ( {
-        parse_binop($pair, BinOp::$op)
     });
     (@body, $pair:expr, rule_group!( $name:ident<$o:ty> )) => (
         unreachable!()
@@ -224,7 +217,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
     }
 }
 
-fn parse_binop(pair: Pair<Rule>, o: BinOp) -> ParseResult<ParsedValue> {
+fn parse_binop(pair: Pair<Rule>, o: BinOp) -> ParseResult<RcExpr> {
     // This all could be a trivial fold, but to avoid stack explosion
     // we try to cut down on the recursion level here, by consuming
     // chains of blah_expression > ... > blih_expression in one go.
@@ -237,10 +230,9 @@ fn parse_binop(pair: Pair<Rule>, o: BinOp) -> ParseResult<ParsedValue> {
     if !rest.is_empty() {
         // If there is more than one subexpression, handle it normally
         let first = parse_any(first)?.expression();
-        Ok(ParsedValue::expression(
-            rest.into_iter()
-                .fold(first, |acc, e| bx(Expr::BinOp(o, acc, e))),
-        ))
+        Ok(rest
+            .into_iter()
+            .fold(first, |acc, e| bx(Expr::BinOp(o, acc, e))))
     } else {
         // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
         pair = first;
@@ -253,12 +245,12 @@ fn parse_binop(pair: Pair<Rule>, o: BinOp) -> ParseResult<ParsedValue> {
             }
             pair = first;
         }
-        parse_any(pair)
+        Ok(parse_any(pair)?.expression())
     }
 }
 
 make_parser! {
-rule!(EOI<()>; children!() => ());
+rule!(EOI<()>; raw_pair!(_) => ());
 
 rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
@@ -301,7 +293,7 @@ rule!(double_quote_char<&'a str>;
     captured_str!(s) => s
 );
 
-rule!(end_of_line<()>; children!() => ());
+rule!(end_of_line<()>; raw_pair!(_) => ());
 
 rule!(single_quote_literal<ParsedText>;
     children!(eol: end_of_line, contents: single_quote_continue) => {
@@ -312,10 +304,10 @@ rule!(single_quote_char<&'a str>;
     captured_str!(s) => s
 );
 rule!(escaped_quote_pair<&'a str>;
-    children!() => "''"
+    raw_pair!(_) => "''"
 );
 rule!(escaped_interpolation<&'a str>;
-    children!() => "${"
+    raw_pair!(_) => "${"
 );
 rule!(interpolation<RcExpr>;
     children!(e: expression) => e
@@ -343,9 +335,9 @@ rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
     },
 );
 
-rule!(NaN_raw<()>; children!() => ());
-rule!(minus_infinity_literal<()>; children!() => ());
-rule!(plus_infinity_literal<()>; children!() => ());
+rule!(NaN_raw<()>; raw_pair!(_) => ());
+rule!(minus_infinity_literal<()>; raw_pair!(_) => ());
+rule!(plus_infinity_literal<()>; raw_pair!(_) => ());
 
 rule!(double_literal_raw<core::Double>;
     raw_pair!(pair) => {
@@ -471,8 +463,8 @@ rule_in_group!(merge_expression<RcExpr>; expression;
     children!(x: expression, y: expression) => bx(Expr::Merge(x, y, None)),
 );
 
-rule!(List<()>; children!() => ());
-rule!(Optional<()>; children!() => ());
+rule!(List<()>; raw_pair!(_) => ());
+rule!(Optional<()>; raw_pair!(_) => ());
 
 rule_in_group!(empty_collection<RcExpr>; expression;
     children!(_x: List, y: expression) => {
@@ -489,18 +481,42 @@ rule_in_group!(non_empty_optional<RcExpr>; expression;
     }
 );
 
-binop!(import_alt_expression<RcExpr>; ImportAlt);
-binop!(or_expression<RcExpr>; BoolOr);
-binop!(plus_expression<RcExpr>; NaturalPlus);
-binop!(text_append_expression<RcExpr>; TextAppend);
-binop!(list_append_expression<RcExpr>; ListAppend);
-binop!(and_expression<RcExpr>; BoolAnd);
-binop!(combine_expression<RcExpr>; Combine);
-binop!(prefer_expression<RcExpr>; Prefer);
-binop!(combine_types_expression<RcExpr>; CombineTypes);
-binop!(times_expression<RcExpr>; NaturalTimes);
-binop!(equal_expression<RcExpr>; BoolEQ);
-binop!(not_equal_expression<RcExpr>; BoolNE);
+rule_in_group!(import_alt_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::ImportAlt)?
+);
+rule_in_group!(or_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::BoolOr)?
+);
+rule_in_group!(plus_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::NaturalPlus)?
+);
+rule_in_group!(text_append_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::TextAppend)?
+);
+rule_in_group!(list_append_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::ListAppend)?
+);
+rule_in_group!(and_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::BoolAnd)?
+);
+rule_in_group!(combine_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::Combine)?
+);
+rule_in_group!(prefer_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::Prefer)?
+);
+rule_in_group!(combine_types_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::CombineTypes)?
+);
+rule_in_group!(times_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::NaturalTimes)?
+);
+rule_in_group!(equal_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::BoolEQ)?
+);
+rule_in_group!(not_equal_expression<RcExpr>; expression;
+    raw_pair!(p) => parse_binop(p, BinOp::BoolNE)?
+);
 
 rule_in_group!(annotated_expression<RcExpr>; expression;
     children!(e: expression, annot: expression) => {
@@ -575,11 +591,11 @@ rule_in_group!(identifier_raw<RcExpr>; expression;
 );
 
 rule_in_group!(empty_record_literal<RcExpr>; expression;
-    children!() => bx(Expr::RecordLit(BTreeMap::new()))
+    raw_pair!(_) => bx(Expr::RecordLit(BTreeMap::new()))
 );
 
 rule_in_group!(empty_record_type<RcExpr>; expression;
-    children!() => bx(Expr::Record(BTreeMap::new()))
+    raw_pair!(_) => bx(Expr::Record(BTreeMap::new()))
 );
 
 rule_in_group!(non_empty_record_type_or_literal<RcExpr>; expression;
@@ -627,7 +643,7 @@ rule_in_group!(union_type_or_literal<RcExpr>; expression;
     },
 );
 
-rule!(empty_union_type<()>; children!() => ());
+rule!(empty_union_type<()>; raw_pair!(_) => ());
 
 rule!(non_empty_union_type_or_literal
       <(Option<(Label, RcExpr)>, BTreeMap<Label, RcExpr>)>;
