@@ -72,10 +72,10 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 macro_rules! match_pair {
-    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $x:ident : $ty:ident $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:ident)  $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
     };
-    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $x:ident.. : $ty:ident $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, x..), ($($rest_of_match)*) => {
             let $x = x.map(|x| x.$ty());
             $body
@@ -88,7 +88,7 @@ macro_rules! match_pair {
         match_pair!(@make_matches, $pair, ([] => { $body }, $($outer_acc)*), $($rest)*)
     };
 
-    (@make_matches, $pair:expr, ($($acc:tt)*), children!($($args:tt)*) => $body:expr, $($rest:tt)*) => {
+    (@make_matches, $pair:expr, ($($acc:tt)*), [$($args:tt)*] => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($acc)*), (), ($($args)*) => $body, $($rest)*)
     };
     (@make_matches, $pair:expr, ($($acc:tt)*) $(,)*) => {
@@ -104,8 +104,8 @@ macro_rules! match_pair {
         }
     };
 
-    ($pair:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
-        match_pair!(@make_matches, $pair, (), $( $submac!($($args)*) => $body ),* ,)
+    ($pair:expr; $( [$($args:tt)*] => $body:expr ),* $(,)*) => {
+        match_pair!(@make_matches, $pair, (), $( [$($args)*] => $body ),* ,)
     };
 }
 
@@ -128,7 +128,7 @@ macro_rules! make_parser {
         let res: $o = $body;
         Ok(ParsedValue::$group(res))
     });
-    (@body, $pair:expr, rule_in_group!( $name:ident<$o:ty>; $group:ident; $($args:tt)* )) => ( {
+    (@body, $pair:expr, rule_in_group!( $name:ident<$o:ty>; $group:ident; children!( $($args:tt)* ) )) => ( {
         let res: $o = match_pair!($pair; $($args)*)?;
         Ok(ParsedValue::$group(res))
     });
@@ -254,23 +254,23 @@ rule!(EOI<()>; raw_pair!(_) => ());
 
 rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
-rule!(double_quote_literal<ParsedText>;
-    children!(chunks..: double_quote_chunk) => {
+rule!(double_quote_literal<ParsedText>; children!(
+    [double_quote_chunk(chunks..)] => {
         chunks.collect()
     }
-);
+));
 
-rule!(double_quote_chunk<ParsedTextContents<'a>>;
-    children!(c: interpolation) => {
+rule!(double_quote_chunk<ParsedTextContents<'a>>; children!(
+    [interpolation(c)] => {
         InterpolatedTextContents::Expr(c)
     },
-    children!(s: double_quote_escaped) => {
+    [double_quote_escaped(s)] => {
         InterpolatedTextContents::Text(s)
     },
-    children!(s: double_quote_char) => {
+    [double_quote_char(s)] => {
         InterpolatedTextContents::Text(s)
     },
-);
+));
 rule!(double_quote_escaped<&'a str>;
     // TODO: parse all escapes
     captured_str!(s) => {
@@ -295,11 +295,11 @@ rule!(double_quote_char<&'a str>;
 
 rule!(end_of_line<()>; raw_pair!(_) => ());
 
-rule!(single_quote_literal<ParsedText>;
-    children!(eol: end_of_line, contents: single_quote_continue) => {
+rule!(single_quote_literal<ParsedText>; children!(
+    [end_of_line(eol), single_quote_continue(contents)] => {
         contents.into_iter().rev().collect::<ParsedText>()
     }
-);
+));
 rule!(single_quote_char<&'a str>;
     captured_str!(s) => s
 );
@@ -309,31 +309,31 @@ rule!(escaped_quote_pair<&'a str>;
 rule!(escaped_interpolation<&'a str>;
     raw_pair!(_) => "${"
 );
-rule!(interpolation<RcExpr>;
-    children!(e: expression) => e
-);
+rule!(interpolation<RcExpr>; children!(
+    [expression(e)] => e
+));
 
-rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>;
-    children!(c: interpolation, rest: single_quote_continue) => {
+rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>; children!(
+    [interpolation(c), single_quote_continue(rest)] => {
         let mut rest = rest;
         rest.push(InterpolatedTextContents::Expr(c)); rest
     },
-    children!(c: escaped_quote_pair, rest: single_quote_continue) => {
+    [escaped_quote_pair(c), single_quote_continue(rest)] => {
         let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
-    children!(c: escaped_interpolation, rest: single_quote_continue) => {
+    [escaped_interpolation(c), single_quote_continue(rest)] => {
         let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
-    children!(c: single_quote_char, rest: single_quote_continue) => {
+    [single_quote_char(c), single_quote_continue(rest)] => {
         let mut rest = rest;
         rest.push(InterpolatedTextContents::Text(c)); rest
     },
-    children!() => {
+    [] => {
         vec![]
     },
-);
+));
 
 rule!(NaN_raw<()>; raw_pair!(_) => ());
 rule!(minus_infinity_literal<()>; raw_pair!(_) => ());
@@ -369,51 +369,51 @@ rule!(path<PathBuf>;
 
 rule_group!(local_raw<(FilePrefix, PathBuf)>);
 
-rule_in_group!(parent_path<(FilePrefix, PathBuf)>; local_raw;
-    children!(p: path) => (FilePrefix::Parent, p)
-);
+rule_in_group!(parent_path<(FilePrefix, PathBuf)>; local_raw; children!(
+    [path(p)] => (FilePrefix::Parent, p)
+));
 
-rule_in_group!(here_path<(FilePrefix, PathBuf)>; local_raw;
-    children!(p: path) => (FilePrefix::Here, p)
-);
+rule_in_group!(here_path<(FilePrefix, PathBuf)>; local_raw; children!(
+    [path(p)] => (FilePrefix::Here, p)
+));
 
-rule_in_group!(home_path<(FilePrefix, PathBuf)>; local_raw;
-    children!(p: path) => (FilePrefix::Home, p)
-);
+rule_in_group!(home_path<(FilePrefix, PathBuf)>; local_raw; children!(
+    [path(p)] => (FilePrefix::Home, p)
+));
 
-rule_in_group!(absolute_path<(FilePrefix, PathBuf)>; local_raw;
-    children!(p: path) => (FilePrefix::Absolute, p)
-);
+rule_in_group!(absolute_path<(FilePrefix, PathBuf)>; local_raw; children!(
+    [path(p)] => (FilePrefix::Absolute, p)
+));
 
 // TODO: other import types
-rule!(import_type_raw<ImportLocation>;
-    // children!(_e: missing_raw) => {
+rule!(import_type_raw<ImportLocation>; children!(
+    // [missing_raw(_e)] => {
     //     ImportLocation::Missing
     // }
-    // children!(e: env_raw) => {
+    // [env_raw(e)] => {
     //     ImportLocation::Env(e)
     // }
-    // children!(url: http) => {
+    // [http(url)] => {
     //     ImportLocation::Remote(url)
     // }
-    children!(import: local_raw) => {
+    [local_raw(import)] => {
         let (prefix, path) = import;
         ImportLocation::Local(prefix, path)
     }
-);
+));
 
-rule!(import_hashed_raw<(ImportLocation, Option<()>)>;
+rule!(import_hashed_raw<(ImportLocation, Option<()>)>; children!(
     // TODO: handle hash
-    children!(import: import_type_raw) => {
+    [import_type_raw(import)] => {
         (import, None)
     }
-);
+));
 
 rule_group!(expression<RcExpr>);
 
-rule_in_group!(import_raw<RcExpr>; expression;
+rule_in_group!(import_raw<RcExpr>; expression; children!(
     // TODO: handle "as Text"
-    children!(import: import_hashed_raw) => {
+    [import_hashed_raw(import)] => {
         let (location, hash) = import;
         bx(Expr::Embed(Import {
             mode: ImportMode::Code,
@@ -421,65 +421,65 @@ rule_in_group!(import_raw<RcExpr>; expression;
             location,
         }))
     }
-);
+));
 
-rule_in_group!(lambda_expression<RcExpr>; expression;
-    children!(l: label_raw, typ: expression, body: expression) => {
+rule_in_group!(lambda_expression<RcExpr>; expression; children!(
+    [label_raw(l), expression(typ), expression(body)] => {
         bx(Expr::Lam(l, typ, body))
     }
-);
+));
 
-rule_in_group!(ifthenelse_expression<RcExpr>; expression;
-    children!(cond: expression, left: expression, right: expression) => {
+rule_in_group!(ifthenelse_expression<RcExpr>; expression; children!(
+    [expression(cond), expression(left), expression(right)] => {
         bx(Expr::BoolIf(cond, left, right))
     }
-);
+));
 
-rule_in_group!(let_expression<RcExpr>; expression;
-    children!(bindings..: let_binding, final_expr: expression) => {
+rule_in_group!(let_expression<RcExpr>; expression; children!(
+    [let_binding(bindings..), expression(final_expr)] => {
         bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
     }
-);
+));
 
-rule!(let_binding<(Label, Option<RcExpr>, RcExpr)>;
-    children!(name: label_raw, annot: expression, expr: expression) => (name, Some(annot), expr),
-    children!(name: label_raw, expr: expression) => (name, None, expr),
-);
+rule!(let_binding<(Label, Option<RcExpr>, RcExpr)>; children!(
+    [label_raw(name), expression(annot), expression(expr)] => (name, Some(annot), expr),
+    [label_raw(name), expression(expr)] => (name, None, expr),
+));
 
-rule_in_group!(forall_expression<RcExpr>; expression;
-    children!(l: label_raw, typ: expression, body: expression) => {
+rule_in_group!(forall_expression<RcExpr>; expression; children!(
+    [label_raw(l), expression(typ), expression(body)] => {
         bx(Expr::Pi(l, typ, body))
     }
-);
+));
 
-rule_in_group!(arrow_expression<RcExpr>; expression;
-    children!(typ: expression, body: expression) => {
+rule_in_group!(arrow_expression<RcExpr>; expression; children!(
+    [expression(typ), expression(body)] => {
         bx(Expr::Pi("_".into(), typ, body))
     }
-);
+));
 
-rule_in_group!(merge_expression<RcExpr>; expression;
-    children!(x: expression, y: expression, z: expression) => bx(Expr::Merge(x, y, Some(z))),
-    children!(x: expression, y: expression) => bx(Expr::Merge(x, y, None)),
-);
+rule_in_group!(merge_expression<RcExpr>; expression; children!(
+    [expression(x), expression(y), expression(z)] => bx(Expr::Merge(x, y, Some(z))),
+    [expression(x), expression(y)] => bx(Expr::Merge(x, y, None)),
+));
 
 rule!(List<()>; raw_pair!(_) => ());
 rule!(Optional<()>; raw_pair!(_) => ());
 
-rule_in_group!(empty_collection<RcExpr>; expression;
-    children!(_x: List, y: expression) => {
+rule_in_group!(empty_collection<RcExpr>; expression; children!(
+    [List(_x), expression(y)] => {
         bx(Expr::EmptyListLit(y))
     },
-    children!(_x: Optional, y: expression) => {
+    [Optional(_x), expression(y)] => {
         bx(Expr::OptionalLit(Some(y), None))
     },
-);
+));
 
-rule_in_group!(non_empty_optional<RcExpr>; expression;
-    children!(x: expression, _y: Optional, z: expression) => {
+rule_in_group!(non_empty_optional<RcExpr>; expression; children!(
+    [expression(x), Optional(_y), expression(z)] => {
         bx(Expr::OptionalLit(Some(z), Some(x)))
     }
-);
+));
 
 rule_in_group!(import_alt_expression<RcExpr>; expression;
     raw_pair!(p) => parse_binop(p, BinOp::ImportAlt)?
@@ -518,15 +518,15 @@ rule_in_group!(not_equal_expression<RcExpr>; expression;
     raw_pair!(p) => parse_binop(p, BinOp::BoolNE)?
 );
 
-rule_in_group!(annotated_expression<RcExpr>; expression;
-    children!(e: expression, annot: expression) => {
+rule_in_group!(annotated_expression<RcExpr>; expression; children!(
+    [expression(e), expression(annot)] => {
         bx(Expr::Annot(e, annot))
     },
-    children!(e: expression) => e,
-);
+    [expression(e)] => e,
+));
 
-rule_in_group!(application_expression<RcExpr>; expression;
-    children!(first: expression, rest..: expression) => {
+rule_in_group!(application_expression<RcExpr>; expression; children!(
+    [expression(first), expression(rest..)] => {
         let rest: Vec<_> = rest.collect();
         if rest.is_empty() {
             first
@@ -534,35 +534,35 @@ rule_in_group!(application_expression<RcExpr>; expression;
             bx(Expr::App(first, rest))
         }
     }
-);
+));
 
-rule_in_group!(selector_expression_raw<RcExpr>; expression;
-    children!(first: expression, rest..: selector_raw) => {
+rule_in_group!(selector_expression_raw<RcExpr>; expression; children!(
+    [expression(first), selector_raw(rest..)] => {
         rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
     }
-);
+));
 
 // TODO: handle record projection
-rule!(selector_raw<Label>;
-    children!(l: label_raw) => {
+rule!(selector_raw<Label>; children!(
+    [label_raw(l)] => {
         l
     }
-);
+));
 
-rule_in_group!(literal_expression_raw<RcExpr>; expression;
-    children!(n: double_literal_raw) => bx(Expr::DoubleLit(n)),
-    children!(n: minus_infinity_literal) => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
-    children!(n: plus_infinity_literal) => bx(Expr::DoubleLit(std::f64::INFINITY)),
-    children!(n: NaN_raw) => bx(Expr::DoubleLit(std::f64::NAN)),
-    children!(n: natural_literal_raw) => bx(Expr::NaturalLit(n)),
-    children!(n: integer_literal_raw) => bx(Expr::IntegerLit(n)),
-    children!(s: double_quote_literal) => bx(Expr::TextLit(s)),
-    children!(s: single_quote_literal) => bx(Expr::TextLit(s)),
-    children!(e: expression) => e,
-);
+rule_in_group!(literal_expression_raw<RcExpr>; expression; children!(
+    [double_literal_raw(n)] => bx(Expr::DoubleLit(n)),
+    [minus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
+    [plus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::INFINITY)),
+    [NaN_raw(n)] => bx(Expr::DoubleLit(std::f64::NAN)),
+    [natural_literal_raw(n)] => bx(Expr::NaturalLit(n)),
+    [integer_literal_raw(n)] => bx(Expr::IntegerLit(n)),
+    [double_quote_literal(s)] => bx(Expr::TextLit(s)),
+    [single_quote_literal(s)] => bx(Expr::TextLit(s)),
+    [expression(e)] => e,
+));
 
-rule_in_group!(identifier_raw<RcExpr>; expression;
-    children!(l: label_raw, idx: natural_literal_raw) => {
+rule_in_group!(identifier_raw<RcExpr>; expression; children!(
+    [label_raw(l), natural_literal_raw(idx)] => {
         let name = String::from(l.clone());
         match Builtin::parse(name.as_str()) {
             Some(b) => bx(Expr::Builtin(b)),
@@ -575,7 +575,7 @@ rule_in_group!(identifier_raw<RcExpr>; expression;
             }
         }
     },
-    children!(l: label_raw) => {
+    [label_raw(l)] => {
         let name = String::from(l.clone());
         match Builtin::parse(name.as_str()) {
             Some(b) => bx(Expr::Builtin(b)),
@@ -588,7 +588,7 @@ rule_in_group!(identifier_raw<RcExpr>; expression;
             }
         }
     },
-);
+));
 
 rule_in_group!(empty_record_literal<RcExpr>; expression;
     raw_pair!(_) => bx(Expr::RecordLit(BTreeMap::new()))
@@ -598,89 +598,89 @@ rule_in_group!(empty_record_type<RcExpr>; expression;
     raw_pair!(_) => bx(Expr::Record(BTreeMap::new()))
 );
 
-rule_in_group!(non_empty_record_type_or_literal<RcExpr>; expression;
-    children!(first_label: label_raw, rest: non_empty_record_type) => {
+rule_in_group!(non_empty_record_type_or_literal<RcExpr>; expression; children!(
+    [label_raw(first_label), non_empty_record_type(rest)] => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, first_expr);
         bx(Expr::Record(map))
     },
-    children!(first_label: label_raw, rest: non_empty_record_literal) => {
+    [label_raw(first_label), non_empty_record_literal(rest)] => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, first_expr);
         bx(Expr::RecordLit(map))
     },
-);
+));
 
-rule!(non_empty_record_type<(RcExpr, BTreeMap<Label, RcExpr>)>;
-    children!(expr: expression, entries..: record_type_entry) => {
+rule!(non_empty_record_type<(RcExpr, BTreeMap<Label, RcExpr>)>; children!(
+    [expression(expr), record_type_entry(entries..)] => {
         (expr, entries.collect())
     }
-);
+));
 
-rule!(record_type_entry<(Label, RcExpr)>;
-    children!(name: label_raw, expr: expression) => (name, expr)
-);
+rule!(record_type_entry<(Label, RcExpr)>; children!(
+    [label_raw(name), expression(expr)] => (name, expr)
+));
 
-rule!(non_empty_record_literal<(RcExpr, BTreeMap<Label, RcExpr>)>;
-    children!(expr: expression, entries..: record_literal_entry) => {
+rule!(non_empty_record_literal<(RcExpr, BTreeMap<Label, RcExpr>)>; children!(
+    [expression(expr), record_literal_entry(entries..)] => {
         (expr, entries.collect())
     }
-);
+));
 
-rule!(record_literal_entry<(Label, RcExpr)>;
-    children!(name: label_raw, expr: expression) => (name, expr)
-);
+rule!(record_literal_entry<(Label, RcExpr)>; children!(
+    [label_raw(name), expression(expr)] => (name, expr)
+));
 
-rule_in_group!(union_type_or_literal<RcExpr>; expression;
-    children!(_e: empty_union_type) => {
+rule_in_group!(union_type_or_literal<RcExpr>; expression; children!(
+    [empty_union_type(_e)] => {
         bx(Expr::Union(BTreeMap::new()))
     },
-    children!(x: non_empty_union_type_or_literal) => {
+    [non_empty_union_type_or_literal(x)] => {
         match x {
             (Some((l, e)), entries) => bx(Expr::UnionLit(l, e, entries)),
             (None, entries) => bx(Expr::Union(entries)),
         }
     },
-);
+));
 
 rule!(empty_union_type<()>; raw_pair!(_) => ());
 
 rule!(non_empty_union_type_or_literal
-      <(Option<(Label, RcExpr)>, BTreeMap<Label, RcExpr>)>;
-    children!(l: label_raw, e: expression, entries: union_type_entries) => {
+      <(Option<(Label, RcExpr)>, BTreeMap<Label, RcExpr>)>; children!(
+    [label_raw(l), expression(e), union_type_entries(entries)] => {
         (Some((l, e)), entries)
     },
-    children!(l: label_raw, e: expression, rest: non_empty_union_type_or_literal) => {
+    [label_raw(l), expression(e), non_empty_union_type_or_literal(rest)] => {
         let (x, mut entries) = rest;
         entries.insert(l, e);
         (x, entries)
     },
-    children!(l: label_raw, e: expression) => {
+    [label_raw(l), expression(e)] => {
         let mut entries = BTreeMap::new();
         entries.insert(l, e);
         (None, entries)
     },
-);
+  ));
 
-rule!(union_type_entries<BTreeMap<Label, RcExpr>>;
-    children!(entries..: union_type_entry) => {
+rule!(union_type_entries<BTreeMap<Label, RcExpr>>; children!(
+    [union_type_entry(entries..)] => {
         entries.collect()
     }
-);
+));
 
-rule!(union_type_entry<(Label, RcExpr)>;
-    children!(name: label_raw, expr: expression) => (name, expr)
-);
+rule!(union_type_entry<(Label, RcExpr)>; children!(
+    [label_raw(name), expression(expr)] => (name, expr)
+));
 
-rule_in_group!(non_empty_list_literal_raw<RcExpr>; expression;
-    children!(items..: expression) => {
+rule_in_group!(non_empty_list_literal_raw<RcExpr>; expression; children!(
+    [expression(items..)] => {
         bx(Expr::NEListLit(items.collect()))
     }
-);
+));
 
-rule_in_group!(final_expression<RcExpr>; expression;
-    children!(e: expression, _eoi: EOI) => e
-);
+rule_in_group!(final_expression<RcExpr>; expression; children!(
+    [expression(e), EOI(_eoi)] => e
+));
 }
 
 pub fn parse_expr(s: &str) -> ParseResult<RcExpr> {
