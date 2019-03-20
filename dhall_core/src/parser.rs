@@ -72,14 +72,14 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 macro_rules! match_pair {
-    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:ident)  $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
-    };
     (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, x..), ($($rest_of_match)*) => {
             let $x = x.map(|x| x.$ty());
             $body
         }, $($rest)*)
+    };
+    (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:pat)  $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
+        match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
     };
     (@make_child_match, $pair:expr, ($($outer_acc:tt)*), (, $($acc:tt)*), ($(,)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_matches, $pair, ([$($acc)*] => { $body }, $($outer_acc)*), $($rest)*)
@@ -261,8 +261,8 @@ rule!(double_quote_literal<ParsedText>; children!(
 ));
 
 rule!(double_quote_chunk<ParsedTextContents<'a>>; children!(
-    [interpolation(c)] => {
-        InterpolatedTextContents::Expr(c)
+    [interpolation(e)] => {
+        InterpolatedTextContents::Expr(e)
     },
     [double_quote_escaped(s)] => {
         InterpolatedTextContents::Text(s)
@@ -396,25 +396,21 @@ rule!(import_type_raw<ImportLocation>; children!(
     // [http(url)] => {
     //     ImportLocation::Remote(url)
     // }
-    [local_raw(import)] => {
-        let (prefix, path) = import;
+    [local_raw((prefix, path))] => {
         ImportLocation::Local(prefix, path)
     }
 ));
 
 rule!(import_hashed_raw<(ImportLocation, Option<()>)>; children!(
     // TODO: handle hash
-    [import_type_raw(import)] => {
-        (import, None)
-    }
+    [import_type_raw(import)] => (import, None)
 ));
 
 rule_group!(expression<RcExpr>);
 
 rule_in_group!(import_raw<RcExpr>; expression; children!(
     // TODO: handle "as Text"
-    [import_hashed_raw(import)] => {
-        let (location, hash) = import;
+    [import_hashed_raw((location, hash))] => {
         bx(Expr::Embed(Import {
             mode: ImportMode::Code,
             hash,
@@ -467,16 +463,16 @@ rule!(List<()>; raw_pair!(_) => ());
 rule!(Optional<()>; raw_pair!(_) => ());
 
 rule_in_group!(empty_collection<RcExpr>; expression; children!(
-    [List(_x), expression(y)] => {
+    [List(_), expression(y)] => {
         bx(Expr::EmptyListLit(y))
     },
-    [Optional(_x), expression(y)] => {
+    [Optional(_), expression(y)] => {
         bx(Expr::OptionalLit(Some(y), None))
     },
 ));
 
 rule_in_group!(non_empty_optional<RcExpr>; expression; children!(
-    [expression(x), Optional(_y), expression(z)] => {
+    [expression(x), Optional(_), expression(z)] => {
         bx(Expr::OptionalLit(Some(z), Some(x)))
     }
 ));
@@ -544,9 +540,7 @@ rule_in_group!(selector_expression_raw<RcExpr>; expression; children!(
 
 // TODO: handle record projection
 rule!(selector_raw<Label>; children!(
-    [label_raw(l)] => {
-        l
-    }
+    [label_raw(l)] => l
 ));
 
 rule_in_group!(literal_expression_raw<RcExpr>; expression; children!(
@@ -632,14 +626,14 @@ rule!(record_literal_entry<(Label, RcExpr)>; children!(
 ));
 
 rule_in_group!(union_type_or_literal<RcExpr>; expression; children!(
-    [empty_union_type(_e)] => {
+    [empty_union_type(_)] => {
         bx(Expr::Union(BTreeMap::new()))
     },
-    [non_empty_union_type_or_literal(x)] => {
-        match x {
-            (Some((l, e)), entries) => bx(Expr::UnionLit(l, e, entries)),
-            (None, entries) => bx(Expr::Union(entries)),
-        }
+    [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
+        bx(Expr::UnionLit(l, e, entries))
+    },
+    [non_empty_union_type_or_literal((None, entries))] => {
+        bx(Expr::Union(entries))
     },
 ));
 
@@ -660,12 +654,10 @@ rule!(non_empty_union_type_or_literal
         entries.insert(l, e);
         (None, entries)
     },
-  ));
+));
 
 rule!(union_type_entries<BTreeMap<Label, RcExpr>>; children!(
-    [union_type_entry(entries..)] => {
-        entries.collect()
-    }
+    [union_type_entry(entries..)] => entries.collect()
 ));
 
 rule!(union_type_entry<(Label, RcExpr)>; children!(
@@ -673,9 +665,7 @@ rule!(union_type_entry<(Label, RcExpr)>; children!(
 ));
 
 rule_in_group!(non_empty_list_literal_raw<RcExpr>; expression; children!(
-    [expression(items..)] => {
-        bx(Expr::NEListLit(items.collect()))
-    }
+    [expression(items..)] => bx(Expr::NEListLit(items.collect()))
 ));
 
 rule_in_group!(final_expression<RcExpr>; expression; children!(
