@@ -1,6 +1,5 @@
 #![feature(trace_macros)]
 #![feature(slice_patterns)]
-#![recursion_limit = "128"]
 #![allow(
     clippy::many_single_char_names,
     clippy::should_implement_trait,
