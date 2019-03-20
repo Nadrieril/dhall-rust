@@ -71,137 +71,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-// #[derive(Debug)]
-// enum IterMatchError<T> {
-//     NoMatchFound,
-//     Other(T), // Allow other macros to inject their own errors
-// }
-
-// macro_rules! match_iter_typed {
-//     // Collect untyped arguments to pass to match_iter!
-//     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident : $ty:ident, $($rest:tt)*)) => {
-//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x), ($($rest)*))
-//     };
-//     (@collect, ($($vars:tt)*), ($($args:tt)*), ($($acc:tt)*), ($x:ident.. : $ty:ident, $($rest:tt)*)) => {
-//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*, $x..), ($($rest)*))
-//     };
-//     // Catch extra comma if exists
-//     (@collect, ($($vars:tt)*), ($($args:tt)*), (,$($acc:tt)*), ($(,)*)) => {
-//         match_iter_typed!(@collect, ($($vars)*), ($($args)*), ($($acc)*), ())
-//     };
-//     (@collect, ($iter:expr, $body:expr, $callback:ident, $error:ident), ($($args:tt)*), ($($acc:tt)*), ($(,)*)) => {
-//         {
-//             let res = iter_patterns::destructure_iter!($iter; [$($acc)*] => {
-//                 match_iter_typed!(@callback, $callback, $iter, $($args)*);
-//                 $body
-//             });
-//             res.ok_or(IterMatchError::NoMatchFound)
-//         }
-//     };
-
-//     // Pass the matches through the callback
-//     (@callback, $callback:ident, $iter:expr, $x:ident : $ty:ident $($rest:tt)*) => {
-//         let $x = $callback!(@type_callback, $ty, $x);
-//         #[allow(unused_mut)]
-//         let mut $x = match $x {
-//             Ok(x) => x,
-//             Err(e) => break Err(IterMatchError::Other(e)),
-//         };
-//         match_iter_typed!(@callback, $callback, $iter $($rest)*);
-//     };
-//     (@callback, $callback: ident, $iter:expr, $x:ident.. : $ty:ident $($rest:tt)*) => {
-//         let $x = $x.map(|x| $callback!(@type_callback, $ty, x)).collect();
-//         let $x: Vec<_> = match $x {
-//             Ok(x) => x,
-//             Err(e) => break Err(IterMatchError::Other(e)),
-//         };
-//         #[allow(unused_mut)]
-//         let mut $x = $x.into_iter();
-//         match_iter_typed!(@callback, $callback, $iter $($rest)*);
-//     };
-//     (@callback, $callback:ident, $iter:expr $(,)*) => {};
-
-//     ($callback:ident; $iter:expr; ($($args:tt)*) => $body:expr) => {
-//         {
-//             #[allow(unused_mut)]
-//             let mut iter = $iter;
-//             let res: Result<_, IterMatchError<_>> = loop {
-//                 break match_iter_typed!(@collect,
-//                     (iter, $body, $callback, last_error),
-//                     ($($args)*), (), ($($args)*,)
-//                 )
-//             };
-//             res
-//         }
-//     };
-// }
-
-// macro_rules! match_iter_branching {
-//     (@noclone, $callback:ident; $arg:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
-//         {
-//             #[allow(unused_assignments)]
-//             let mut last_error = IterMatchError::NoMatchFound;
-//             // Not a real loop; used for error handling
-//             // Would use loop labels but they create warnings
-//             #[allow(unreachable_code)]
-//             loop {
-//                 $(
-//                     let matched: Result<_, IterMatchError<_>> =
-//                         $callback!(@branch_callback, $submac, $arg; ($($args)*) => $body);
-//                     #[allow(unused_assignments)]
-//                     match matched {
-//                         Ok(v) => break Ok(v),
-//                         Err(e) => last_error = e,
-//                     };
-//                 )*
-//                 break Err(last_error);
-//             }
-//         }
-//     };
-//     ($callback:ident; $iter:expr; $($args:tt)*) => {
-//         {
-//             #[allow(unused_mut)]
-//             let mut iter = $iter;
-//             match_iter_branching!(@noclone, $callback; iter.clone(); $($args)*)
-//         }
-//     };
-// }
-
 macro_rules! match_pair {
-    // // (@type_callback, parse_any_fast, $x:expr) => {
-    // //     ParseWrapped::parse_any_fast($x).map(Box::new)
-    // // };
-    // (@type_callback, $ty:ident, $x:expr) => {
-    //     ParseUnwrapped::$ty($x)
-    //     // ParseWrapped::$ty($x).map(|x| x.$ty())
-    //     // match ParseWrapped::parse_any($x) {
-    //     // match parse_any_fast($x.clone()) {
-    //     // // match ParseWrapped::$ty($x.clone()) {
-    //     //     Ok(ParsedValue::$ty(x)) => Ok(x),
-    //     //     // _ => ParseUnwrapped::$ty($x),
-    //     //     _ => Err(custom_parse_error(&$x, format!("Total failure"))),
-    //     // }
-    // };
-    // (@branch_callback, children, $pair:expr; $($args:tt)*) => {
-    //     {
-    //         #[allow(unused_mut)]
-    //         let mut pairs = $pair.clone().into_inner();
-    //         match_iter_typed!(match_pair; pairs; $($args)*)
-    //     }
-    // };
-    // (@branch_callback, raw_pair, $pair:expr; ($x:ident) => $body:expr) => {
-    //     {
-    //         let $x = $pair.clone();
-    //         Ok($body)
-    //     }
-    // };
-    // (@branch_callback, captured_str, $pair:expr; ($x:ident) => $body:expr) => {
-    //     {
-    //         let $x = $pair.as_str();
-    //         Ok($body)
-    //     }
-    // };
-
     (@make_child_match, $pair:expr, ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $x:ident : $ty:ident $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
     };
@@ -220,9 +90,6 @@ macro_rules! match_pair {
 
     (@make_matches, $pair:expr, ($($acc:tt)*), children!($($args:tt)*) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, $pair, ($($acc)*), (), ($($args)*) => $body, $($rest)*)
-    // (@make_matches, $pair:expr, ($($acc:tt)*), children!($($x:ident : $ty:ident),*) => $body:expr, $($rest:tt)*) => {
-        // match_pair!(@make_child_match, $pair, ($($acc)*), ($(, ParsedValue::$ty($x))*), () => $body, $($rest)*)
-        // match_pair!(@make_matches, $pair, ([$(ParsedValue::$ty($x)),*] => { $body }, $($acc)*), $($rest)*)
     };
     (@make_matches, $pair:expr, ($($acc:tt)*), raw_pair!($x:ident) => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_matches, $pair, ([..] => {
@@ -249,27 +116,8 @@ macro_rules! match_pair {
         }
     };
 
-    // ($pair:expr; $( children!($($x:ident : $ty:ident),*) => $body:expr ),* $(,)*) => {
-    //     match_pair!(@make_matches, $pair, (), $( children!($($x : $ty),*) => $body ),* ,)
-    // ($pair:expr; $( children!($($args:tt)*) => $body:expr ),* $(,)*) => {
-    //     match_pair!(@make_matches, $pair, (), $( children!($($args)*) => $body ),* ,)
     ($pair:expr; $( $submac:ident!($($args:tt)*) => $body:expr ),* $(,)*) => {
         match_pair!(@make_matches, $pair, (), $( $submac!($($args)*) => $body ),* ,)
-    // ($pair:expr; $($args:tt)*) => {
-    //     match_pair!(@make_matches, $pair, (), $($args)*)
-        // {
-        //     let pair = $pair;
-        //     let rule = pair.as_rule();
-        //     let err = custom_parse_error(&pair, "No match found".to_owned());
-        //     let parsed: Vec<_> = pair.into_inner().map(ParseWrapped::parse_any_fast).collect::<Result<_, _>>()?;
-        //     #[allow(unreachable_code)]
-        //     iter_patterns::match_vec!(parsed;
-        //         $(
-        //             [$(ParsedValue::$ty($x)),*] => { $body },
-        //         )*
-        //         [x..] => panic!("Unexpected children while parsing rule '{:?}': {:?}", rule, x.collect::<Vec<_>>()),
-        //     ).ok_or(err)
-        // }
     };
     ($pair:expr; $($args:tt)*) => {
         {
@@ -285,11 +133,23 @@ macro_rules! match_pair {
 
 macro_rules! make_parser {
     (@branch_rules, $pair:expr, ($($acc:tt)*), rule!( $name:ident<$o:ty>; $($args:tt)* ); $($rest:tt)*) => (
-        make_parser!(@branch_rules, $pair, ($($acc)* Rule::$name => ParseWrapped::$name($pair),), $($rest)*)
+        make_parser!(@branch_rules, $pair, ($($acc)* Rule::$name => {
+            ParseWrapped::$name($pair)
+        },), $($rest)*)
     );
-    (@branch_rules, $pair:expr, ($($acc:tt)*), rule_group!( $name:ident<$o:ty>; $($ty:ident),* ); $($rest:tt)*) => (
-        make_parser!(@branch_rules, $pair, ($($acc)* $( Rule::$ty => ParseUnwrapped::$ty($pair).map(ParsedValue::$name),)* ), $($rest)*)
+    (@branch_rules, $pair:expr, ($($acc:tt)*), rule_in_group!( $name:ident<$o:ty>; $group:ident; $($args:tt)* ); $($rest:tt)*) => (
+        make_parser!(@branch_rules, $pair, ($($acc)* Rule::$name => {
+            ParseWrapped::$name($pair).map(|x| x.$name()).map(ParsedValue::$group)
+        },), $($rest)*)
     );
+    (@branch_rules, $pair:expr, ($($acc:tt)*), binop!( $name:ident<$o:ty>; $op:ident ); $($rest:tt)*) => (
+        make_parser!(@branch_rules, $pair, ($($acc)* Rule::$name => {
+            parse_binop($pair, BinOp::$op).map(ParsedValue::expression)
+        },), $($rest)*)
+    );
+    // (@branch_rules, $pair:expr, ($($acc:tt)*), rule_group!( $name:ident<$o:ty>; $($ty:ident),* ); $($rest:tt)*) => (
+    //     make_parser!(@branch_rules, $pair, ($($acc)* $( Rule::$ty => ParseUnwrapped::$ty($pair).map(ParsedValue::$name),)* ), $($rest)*)
+    // );
     (@branch_rules, $pair:expr, ($($acc:tt)*), $submac:ident!( $name:ident<$o:ty>; $($args:tt)* ); $($rest:tt)*) => (
         make_parser!(@branch_rules, $pair, ($($acc)*), $($rest)*)
     );
@@ -298,7 +158,6 @@ macro_rules! make_parser {
         match $pair.as_rule() {
             $($acc)*
             r => Err(custom_parse_error(&$pair, format!("parse_any_fast: Unexpected {:?}", r))),
-            // [x..] => panic!("{:?}", x.collect::<Vec<_>>()),
         }
     );
     ($( $submac:ident!( $name:ident<$o:ty>; $($args:tt)* ); )*) => (
@@ -330,7 +189,6 @@ macro_rules! make_parser {
         #[derive(Debug)]
         enum ParsedValue<'a> {
             $( $name($o), )*
-            // parse_any(Box<ParsedValue<'a>>),
         }
 
         impl<'a> ParsedValue<'a> {
@@ -343,25 +201,7 @@ macro_rules! make_parser {
                     }
                 }
             )*
-            // #[allow(non_snake_case, dead_code)]
-            // fn parse_any(self) -> Box<ParsedValue<'a>> {
-            //     match self {
-            //         ParsedValue::parse_any(x) => x,
-            //         x => Box::new(x),
-            //     }
-            // }
-            // #[allow(non_snake_case, dead_code)]
-            // fn parse_any_fast(self) -> Box<ParsedValue<'a>> {
-            //     self.parse_any()
-            // }
         }
-
-        // named!(parse_any<Box<ParsedValue<'a>>>;
-        //     // self!(x: parse_any_fast) => x,
-        //     $(
-        //         self!(x: $name) => Box::new(ParsedValue::$name(x)),
-        //     )*
-        // );
 
         impl ParseWrapped {
             #[allow(non_snake_case, dead_code)]
@@ -412,46 +252,23 @@ macro_rules! make_pest_parse_function {
     );
 }
 
-// macro_rules! named {
-//     ($name:ident<$o:ty>; $($args:tt)*) => (
-//         make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
-//     );
-// }
-
 macro_rules! rule {
     ($name:ident<$o:ty>; $($args:tt)*) => (
         make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
-        // make_pest_parse_function!($name<$o>; match_rule!(
-        //     Rule::$name => match_pair!( $($args)* ),
-        // ));
+    );
+}
+
+macro_rules! rule_in_group {
+    ($name:ident<$o:ty>; $group:ident; $($args:tt)*) => (
+        make_pest_parse_function!($name<$o>; match_pair!( $($args)* ));
     );
 }
 
 macro_rules! rule_group {
-    ($name:ident<$o:ty>; $($ty:ident),*) => (
-        // make_pest_parse_function!($name<$o>; match_rule!(
-        //     $(
-        //         Rule::$ty => match_pair!(raw_pair!(p) => ParseUnwrapped::$ty(p)?),
-        //     )*
-        // ));
-    );
+    ($name:ident<$o:ty>; $($ty:ident),*) => ();
 }
 
-// macro_rules! match_rule {
-//     ($pair:expr; $($pat:pat => $submac:ident!( $($args:tt)* ),)*) => {
-//         {
-//             #[allow(unreachable_patterns)]
-//             match $pair.as_rule() {
-//                 $(
-//                     $pat => $submac!($pair; $($args)*),
-//                 )*
-//                 r => Err(custom_parse_error(&$pair, format!("Unexpected {:?}", r))),
-//             }
-//         }
-//     };
-// }
-
-// List of rules that can be shortcutted as implemented in binop!()
+// List of rules that can be shortcutted as implemented in parse_binop
 fn can_be_shortcutted(rule: Rule) -> bool {
     use Rule::*;
     match rule {
@@ -474,54 +291,49 @@ fn can_be_shortcutted(rule: Rule) -> bool {
     }
 }
 
+fn parse_binop(pair: Pair<Rule>, o: BinOp) -> ParseResult<RcExpr> {
+    // This all could be a trivial fold, but to avoid stack explosion
+    // we try to cut down on the recursion level here, by consuming
+    // chains of blah_expression > ... > blih_expression in one go.
+    let mut pair = pair;
+    let mut pairs = pair.into_inner();
+    let first = pairs.next().unwrap();
+    let rest: Vec<_> = pairs.map(ParseUnwrapped::expression).collect::<Result<_, _>>()?;
+    if !rest.is_empty() {
+        // If there is more than one subexpression, handle it normally
+        let first = ParseUnwrapped::expression(first)?;
+        Ok(rest.into_iter().fold(first, |acc, e| bx(Expr::BinOp(o, acc, e))))
+    } else {
+        // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
+        // println!("short-cutting {}", debug_pair(pair.clone()));
+        pair = first;
+        while can_be_shortcutted(pair.as_rule()) {
+            let mut pairs = pair.clone().into_inner();
+            let first = pairs.next().unwrap();
+            let rest: Vec<_> = pairs.collect();
+            if !rest.is_empty() {
+                break;
+            }
+            pair = first;
+        }
+        // println!("short-cutted {}", debug_pair(pair.clone()));
+        // println!();
+        Ok(ParseUnwrapped::expression(pair)?)
+    }
+}
+
 macro_rules! binop {
     ($rule:ident<$ty:ty>; $op:ident) => {
         rule!($rule<$ty>;
             raw_pair!(pair) => {
-                // This all could be a trivial fold, but to avoid stack explosion
-                // we try to cut down on the recursion level here, by consuming
-                // chains of blah_expression > ... > blih_expression in one go.
-                let mut pair = pair;
-                let mut pairs = pair.into_inner();
-                let first = pairs.next().unwrap();
-                let rest: Vec<_> = pairs.map(ParseUnwrapped::expression).collect::<Result<_, _>>()?;
-                if !rest.is_empty() {
-                    // If there is more than one subexpression, handle it normally
-                    let first = ParseUnwrapped::expression(first)?;
-                    rest.into_iter().fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
-                } else {
-                    // Otherwise, consume short-cuttable rules as long as they contain only one subexpression.
-                    // println!("short-cutting {}", debug_pair(pair.clone()));
-                    pair = first;
-                    while can_be_shortcutted(pair.as_rule()) {
-                        let mut pairs = pair.clone().into_inner();
-                        let first = pairs.next().unwrap();
-                        let rest: Vec<_> = pairs.collect();
-                        if !rest.is_empty() {
-                            break;
-                        }
-                        pair = first;
-                    }
-                    // println!("short-cutted {}", debug_pair(pair.clone()));
-                    // println!();
-                    ParseUnwrapped::expression(pair)?
-                }
+                parse_binop(pair, BinOp::$op)?
             }
-            // children!(first: expression, rest..: expression) => {
-            //     rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::$op, acc, e)))
-            // }
         );
     };
 }
 
 make_parser! {
 rule!(EOI<()>; children!() => ());
-
-// named!(str<&'a str>; captured_str!(s) => s.trim());
-
-// named!(raw_str<&'a str>; captured_str!(s) => s);
-
-// named!(label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
 rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
 
@@ -638,26 +450,21 @@ rule!(path<PathBuf>;
     captured_str!(s) => (".".to_owned() + s).into()
 );
 
-rule_group!(local_raw<(FilePrefix, PathBuf)>;
-    parent_path,
-    here_path,
-    home_path,
-    absolute_path
-);
+rule_group!(local_raw<(FilePrefix, PathBuf)>;);
 
-rule!(parent_path<(FilePrefix, PathBuf)>;
+rule_in_group!(parent_path<(FilePrefix, PathBuf)>; local_raw;
     children!(p: path) => (FilePrefix::Parent, p)
 );
 
-rule!(here_path<(FilePrefix, PathBuf)>;
+rule_in_group!(here_path<(FilePrefix, PathBuf)>; local_raw;
     children!(p: path) => (FilePrefix::Here, p)
 );
 
-rule!(home_path<(FilePrefix, PathBuf)>;
+rule_in_group!(home_path<(FilePrefix, PathBuf)>; local_raw;
     children!(p: path) => (FilePrefix::Home, p)
 );
 
-rule!(absolute_path<(FilePrefix, PathBuf)>;
+rule_in_group!(absolute_path<(FilePrefix, PathBuf)>; local_raw;
     children!(p: path) => (FilePrefix::Absolute, p)
 );
 
@@ -685,44 +492,9 @@ rule!(import_hashed_raw<(ImportLocation, Option<()>)>;
     }
 );
 
-rule_group!(expression<RcExpr>;
-    identifier_raw,
-    lambda_expression,
-    ifthenelse_expression,
-    let_expression,
-    forall_expression,
-    arrow_expression,
-    merge_expression,
-    empty_collection,
-    non_empty_optional,
+rule_group!(expression<RcExpr>;);
 
-    annotated_expression,
-    import_alt_expression,
-    or_expression,
-    plus_expression,
-    text_append_expression,
-    list_append_expression,
-    and_expression,
-    combine_expression,
-    prefer_expression,
-    combine_types_expression,
-    times_expression,
-    equal_expression,
-    not_equal_expression,
-    application_expression,
-
-    import_raw,
-    selector_expression_raw,
-    literal_expression_raw,
-    empty_record_type,
-    empty_record_literal,
-    non_empty_record_type_or_literal,
-    union_type_or_literal,
-    non_empty_list_literal_raw,
-    final_expression
-);
-
-rule!(import_raw<RcExpr>;
+rule_in_group!(import_raw<RcExpr>; expression;
     // TODO: handle "as Text"
     children!(import: import_hashed_raw) => {
         let (location, hash) = import;
@@ -734,19 +506,19 @@ rule!(import_raw<RcExpr>;
     }
 );
 
-rule!(lambda_expression<RcExpr>;
+rule_in_group!(lambda_expression<RcExpr>; expression;
     children!(l: label_raw, typ: expression, body: expression) => {
         bx(Expr::Lam(l, typ, body))
     }
 );
 
-rule!(ifthenelse_expression<RcExpr>;
+rule_in_group!(ifthenelse_expression<RcExpr>; expression;
     children!(cond: expression, left: expression, right: expression) => {
         bx(Expr::BoolIf(cond, left, right))
     }
 );
 
-rule!(let_expression<RcExpr>;
+rule_in_group!(let_expression<RcExpr>; expression;
     children!(bindings..: let_binding, final_expr: expression) => {
         bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
     }
@@ -757,19 +529,19 @@ rule!(let_binding<(Label, Option<RcExpr>, RcExpr)>;
     children!(name: label_raw, expr: expression) => (name, None, expr),
 );
 
-rule!(forall_expression<RcExpr>;
+rule_in_group!(forall_expression<RcExpr>; expression;
     children!(l: label_raw, typ: expression, body: expression) => {
         bx(Expr::Pi(l, typ, body))
     }
 );
 
-rule!(arrow_expression<RcExpr>;
+rule_in_group!(arrow_expression<RcExpr>; expression;
     children!(typ: expression, body: expression) => {
         bx(Expr::Pi("_".into(), typ, body))
     }
 );
 
-rule!(merge_expression<RcExpr>;
+rule_in_group!(merge_expression<RcExpr>; expression;
     children!(x: expression, y: expression, z: expression) => bx(Expr::Merge(x, y, Some(z))),
     children!(x: expression, y: expression) => bx(Expr::Merge(x, y, None)),
 );
@@ -777,7 +549,7 @@ rule!(merge_expression<RcExpr>;
 rule!(List<()>; children!() => ());
 rule!(Optional<()>; children!() => ());
 
-rule!(empty_collection<RcExpr>;
+rule_in_group!(empty_collection<RcExpr>; expression;
     children!(_x: List, y: expression) => {
         bx(Expr::EmptyListLit(y))
     },
@@ -786,7 +558,7 @@ rule!(empty_collection<RcExpr>;
     },
 );
 
-rule!(non_empty_optional<RcExpr>;
+rule_in_group!(non_empty_optional<RcExpr>; expression;
     children!(x: expression, _y: Optional, z: expression) => {
         bx(Expr::OptionalLit(Some(z), Some(x)))
     }
@@ -805,14 +577,14 @@ binop!(times_expression<RcExpr>; NaturalTimes);
 binop!(equal_expression<RcExpr>; BoolEQ);
 binop!(not_equal_expression<RcExpr>; BoolNE);
 
-rule!(annotated_expression<RcExpr>;
+rule_in_group!(annotated_expression<RcExpr>; expression;
     children!(e: expression, annot: expression) => {
         bx(Expr::Annot(e, annot))
     },
     children!(e: expression) => e,
 );
 
-rule!(application_expression<RcExpr>;
+rule_in_group!(application_expression<RcExpr>; expression;
     children!(first: expression, rest..: expression) => {
         let rest: Vec<_> = rest.collect();
         if rest.is_empty() {
@@ -823,7 +595,7 @@ rule!(application_expression<RcExpr>;
     }
 );
 
-rule!(selector_expression_raw<RcExpr>;
+rule_in_group!(selector_expression_raw<RcExpr>; expression;
     children!(first: expression, rest..: selector_raw) => {
         rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
     }
@@ -836,7 +608,7 @@ rule!(selector_raw<Label>;
     }
 );
 
-rule!(literal_expression_raw<RcExpr>;
+rule_in_group!(literal_expression_raw<RcExpr>; expression;
     children!(n: double_literal_raw) => bx(Expr::DoubleLit(n)),
     children!(n: minus_infinity_literal) => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
     children!(n: plus_infinity_literal) => bx(Expr::DoubleLit(std::f64::INFINITY)),
@@ -848,7 +620,7 @@ rule!(literal_expression_raw<RcExpr>;
     children!(e: expression) => e,
 );
 
-rule!(identifier_raw<RcExpr>;
+rule_in_group!(identifier_raw<RcExpr>; expression;
     children!(l: label_raw, idx: natural_literal_raw) => {
         let name = String::from(l.clone());
         match Builtin::parse(name.as_str()) {
@@ -877,15 +649,15 @@ rule!(identifier_raw<RcExpr>;
     },
 );
 
-rule!(empty_record_literal<RcExpr>;
+rule_in_group!(empty_record_literal<RcExpr>; expression;
     children!() => bx(Expr::RecordLit(BTreeMap::new()))
 );
 
-rule!(empty_record_type<RcExpr>;
+rule_in_group!(empty_record_type<RcExpr>; expression;
     children!() => bx(Expr::Record(BTreeMap::new()))
 );
 
-rule!(non_empty_record_type_or_literal<RcExpr>;
+rule_in_group!(non_empty_record_type_or_literal<RcExpr>; expression;
     children!(first_label: label_raw, rest: non_empty_record_type) => {
         let (first_expr, mut map) = rest;
         map.insert(first_label, first_expr);
@@ -918,7 +690,7 @@ rule!(record_literal_entry<(Label, RcExpr)>;
     children!(name: label_raw, expr: expression) => (name, expr)
 );
 
-rule!(union_type_or_literal<RcExpr>;
+rule_in_group!(union_type_or_literal<RcExpr>; expression;
     children!(_e: empty_union_type) => {
         bx(Expr::Union(BTreeMap::new()))
     },
@@ -959,13 +731,13 @@ rule!(union_type_entry<(Label, RcExpr)>;
     children!(name: label_raw, expr: expression) => (name, expr)
 );
 
-rule!(non_empty_list_literal_raw<RcExpr>;
+rule_in_group!(non_empty_list_literal_raw<RcExpr>; expression;
     children!(items..: expression) => {
         bx(Expr::NEListLit(items.collect()))
     }
 );
 
-rule!(final_expression<RcExpr>;
+rule_in_group!(final_expression<RcExpr>; expression;
     children!(e: expression, _eoi: EOI) => e
 );
 }
