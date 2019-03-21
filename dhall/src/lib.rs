@@ -10,16 +10,16 @@
 mod normalize;
 pub use crate::normalize::*;
 pub mod binary;
-pub mod dhall_type;
+// pub mod dhall_type;
 pub mod imports;
 pub mod typecheck;
 
 pub use crate::imports::*;
 
-pub struct DhallExpr(dhall_core::DhallExpr);
+// pub struct DhallExpr(dhall_core::DhallExpr);
 
-impl DhallExpr {
-    pub fn normalize(self) -> Self {
-        DhallExpr(crate::normalize::normalize(self.0))
-    }
-}
+// impl DhallExpr {
+//     pub fn normalize(self) -> Self {
+//         DhallExpr(crate::normalize::normalize(self.0))
+//     }
+// }
