@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use std::ops::Add;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterpolatedText<Note, Embed> {
     head: String,
     tail: Vec<(Rc<Expr<Note, Embed>>, String)>,

@@ -3,14 +3,38 @@ use crate::*;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-pub type Double = f64;
 pub type Int = isize;
 pub type Integer = isize;
 pub type Natural = usize;
+pub type Double = NaiveDouble;
 
 /// An empty type
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum X {}
+
+/// Double with bitwise equality
+#[derive(Debug, Copy, Clone)]
+pub struct NaiveDouble(f64);
+
+impl PartialEq for NaiveDouble {
+    fn eq(&self, other: &Self) -> bool {
+        return self.0.to_bits() == other.0.to_bits();
+    }
+}
+
+impl Eq for NaiveDouble {}
+
+impl From<f64> for NaiveDouble {
+    fn from(x: f64) -> Self {
+        NaiveDouble(x)
+    }
+}
+
+impl From<NaiveDouble> for f64 {
+    fn from(x: NaiveDouble) -> f64 {
+        x.0
+    }
+}
 
 /// Constants for a pure type system
 ///
@@ -147,7 +171,7 @@ pub type DhallExpr = ResolvedExpr<X>;
 pub type SubExpr<Note, Embed> = Rc<Expr<Note, Embed>>;
 
 /// Syntax tree for expressions
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr<Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),

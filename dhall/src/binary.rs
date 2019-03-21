@@ -34,7 +34,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             },
         },
         U64(n) => Var(V(Label::from("_"), *n as usize)),
-        F64(x) => DoubleLit(*x),
+        F64(x) => DoubleLit((*x).into()),
         Bool(b) => BoolLit(*b),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {

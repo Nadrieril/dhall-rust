@@ -183,7 +183,23 @@ impl<S, A: Display> Expr<S, A> {
                 a.fmt(f)
             }
             &IntegerLit(a) => a.fmt(f),
-            &DoubleLit(a) => a.fmt(f),
+            &DoubleLit(a) => {
+                let a = f64::from(*a);
+                if a == std::f64::INFINITY {
+                    f.write_str("Infinity")
+                } else if a == std::f64::NEG_INFINITY {
+                    f.write_str("-Infinity")
+                } else if a.is_nan() {
+                    f.write_str("NaN")
+                } else {
+                    let s = format!("{}", a);
+                    if s.contains("e") || s.contains(".") {
+                        f.write_str(&s)
+                    } else {
+                        write!(f, "{}.0", s)
+                    }
+                }
+            }
             &TextLit(ref a) => {
                 f.write_str("\"")?;
                 for x in a.iter() {

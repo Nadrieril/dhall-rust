@@ -348,7 +348,8 @@ make_parser! {
     rule!(double_literal_raw<core::Double>;
         raw_pair!(pair) => {
             pair.as_str().trim()
-                .parse()
+                .parse::<f64>()
+                .map(NaiveDouble::from)
                 .map_err(|e: std::num::ParseFloatError| custom_parse_error(&pair, format!("{}", e)))?
         }
     );
@@ -599,9 +600,9 @@ make_parser! {
 
     rule!(literal_expression_raw<ParsedExpr> as expression; children!(
         [double_literal_raw(n)] => bx(Expr::DoubleLit(n)),
-        [minus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::NEG_INFINITY)),
-        [plus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::INFINITY)),
-        [NaN_raw(n)] => bx(Expr::DoubleLit(std::f64::NAN)),
+        [minus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::NEG_INFINITY.into())),
+        [plus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::INFINITY.into())),
+        [NaN_raw(n)] => bx(Expr::DoubleLit(std::f64::NAN.into())),
         [natural_literal_raw(n)] => bx(Expr::NaturalLit(n)),
         [integer_literal_raw(n)] => bx(Expr::IntegerLit(n)),
         [double_quote_literal(s)] => bx(Expr::TextLit(s)),
