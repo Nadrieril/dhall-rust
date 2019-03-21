@@ -90,7 +90,7 @@ where
                         .zip(aR.iter())
                         .all(|(aL, aR)| go(ctx, aL.as_ref(), aR.as_ref()))
             }
-            (&Record(ref ktsL0), &Record(ref ktsR0)) => {
+            (&RecordType(ref ktsL0), &RecordType(ref ktsR0)) => {
                 ktsL0.len() == ktsR0.len()
                     && ktsL0.iter().zip(ktsR0.iter()).all(
                         |((kL, tL), (kR, tR))| {
@@ -98,7 +98,7 @@ where
                         },
                     )
             }
-            (&Union(ref ktsL0), &Union(ref ktsR0)) => {
+            (&UnionType(ref ktsL0), &UnionType(ref ktsR0)) => {
                 ktsL0.len() == ktsR0.len()
                     && ktsL0.iter().zip(ktsR0.iter()).all(
                         |((kL, tL), (kR, tR))| {
@@ -397,7 +397,7 @@ where
             }
             return Ok(dhall_expr!(Optional t));
         }
-        Record(kts) => {
+        RecordType(kts) => {
             for (k, t) in kts {
                 let s = normalized_type_with(ctx, t.clone())?;
                 ensure_is_type(s, InvalidFieldType(k.clone(), t.clone()))?;
@@ -414,12 +414,12 @@ where
                     Ok((k.clone(), t))
                 })
                 .collect::<Result<_, _>>()?;
-            Ok(Record(kts))
+            Ok(RecordType(kts))
         }
         Field(r, x) => {
             let t = normalized_type_with(ctx, r.clone())?;
             match t.as_ref() {
-                Record(kts) => {
+                RecordType(kts) => {
                     return kts.get(x).cloned().ok_or_else(|| {
                         mkerr(MissingField(x.clone(), t.clone()))
                     })

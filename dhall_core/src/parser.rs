@@ -631,14 +631,14 @@ make_parser! {
     );
 
     rule!(empty_record_type<ParsedExpr> as expression;
-        raw_pair!(_) => bx(Expr::Record(BTreeMap::new()))
+        raw_pair!(_) => bx(Expr::RecordType(BTreeMap::new()))
     );
 
     rule!(non_empty_record_type_or_literal<ParsedExpr> as expression; children!(
         [label_raw(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
             map.insert(first_label, first_expr);
-            bx(Expr::Record(map))
+            bx(Expr::RecordType(map))
         },
         [label_raw(first_label), non_empty_record_literal(rest)] => {
             let (first_expr, mut map) = rest;
@@ -669,13 +669,13 @@ make_parser! {
 
     rule!(union_type_or_literal<ParsedExpr> as expression; children!(
         [empty_union_type(_)] => {
-            bx(Expr::Union(BTreeMap::new()))
+            bx(Expr::UnionType(BTreeMap::new()))
         },
         [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
             bx(Expr::UnionLit(l, e, entries))
         },
         [non_empty_union_type_or_literal((None, entries))] => {
-            bx(Expr::Union(entries))
+            bx(Expr::UnionType(entries))
         },
     ));
 

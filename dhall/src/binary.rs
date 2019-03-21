@@ -129,7 +129,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             }
             [U64(7), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                Record(map)
+                RecordType(map)
             }
             [U64(8), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
@@ -142,7 +142,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             }
             [U64(11), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
-                Union(map)
+                UnionType(map)
             }
             [U64(12), String(l), x, Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;

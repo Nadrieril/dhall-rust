@@ -199,11 +199,11 @@ pub enum Expr<Note, Embed> {
     ///  `OptionalLit t []                         ~  []  : Optional t`
     OptionalLit(Option<SubExpr<Note, Embed>>, Option<SubExpr<Note, Embed>>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    Record(BTreeMap<Label, SubExpr<Note, Embed>>),
+    RecordType(BTreeMap<Label, SubExpr<Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
     RecordLit(BTreeMap<Label, SubExpr<Note, Embed>>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    Union(BTreeMap<Label, SubExpr<Note, Embed>>),
+    UnionType(BTreeMap<Label, SubExpr<Note, Embed>>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(
         Label,
@@ -347,9 +347,9 @@ where
         EmptyListLit(t) => EmptyListLit(map(t)),
         NEListLit(es) => NEListLit(vec(es)),
         OptionalLit(t, es) => OptionalLit(opt(t), opt(es)),
-        Record(kts) => Record(btmap(kts)),
+        RecordType(kts) => RecordType(btmap(kts)),
         RecordLit(kvs) => RecordLit(btmap(kvs)),
-        Union(kts) => Union(btmap(kts)),
+        UnionType(kts) => UnionType(btmap(kts)),
         UnionLit(k, v, kvs) => UnionLit(map_label(k), map(v), btmap(kvs)),
         Merge(x, y, t) => Merge(map(x), map(y), opt(t)),
         Field(r, x) => Field(map(r), map_label(x)),

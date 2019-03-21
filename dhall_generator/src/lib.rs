@@ -76,9 +76,9 @@ fn dhall_to_tokenstream(
             let es = vec_to_tokenstream(es, ctx);
             quote! { NEListLit(#es) }
         }
-        Record(m) => {
+        RecordType(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { Record(#m) }
+            quote! { RecordType(#m) }
         }
         RecordLit(m) => {
             let m = map_to_tokenstream(m, ctx);
