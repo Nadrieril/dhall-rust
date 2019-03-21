@@ -17,7 +17,7 @@ parser_success!(spec_parser_success_annotations, "annotations");
 // parser_success!(spec_parser_success_asText, "asText");
 parser_success!(spec_parser_success_blockComment, "blockComment");
 parser_success!(spec_parser_success_builtins, "builtins");
-// parser_success!(spec_parser_success_collectionImportType, "collectionImportType");
+parser_success!(spec_parser_success_collectionImportType, "collectionImportType");
 parser_success!(spec_parser_success_double, "double");
 parser_success!(spec_parser_success_doubleQuotedString, "doubleQuotedString");
 // parser_success!(spec_parser_success_environmentVariables, "environmentVariables");

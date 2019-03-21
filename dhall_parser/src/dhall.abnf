@@ -378,8 +378,10 @@ quoted-path-character =
         ; %x2F = "/"
     / %x30-10FFFF
 
+unquoted-path-component = 1*path-character
+quoted-path-component = 1*quoted-path-character
 
-path-component = "/" ( 1*path-character / %x22 1*quoted-path-character %x22 )
+path-component = "/" ( unquoted-path-component / %x22 quoted-path-component %x22 )
 
 path = 1*path-component
 

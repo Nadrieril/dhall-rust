@@ -286,7 +286,19 @@ impl Display for Const {
 
 impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        <Self as fmt::Debug>::fmt(self, f)
+        use FilePrefix::*;
+        use ImportLocation::*;
+        match &self.location {
+            Local(prefix, path) => {
+                let prefix = match prefix {
+                    Here => ".",
+                    Parent => "..",
+                    Home => "~",
+                    Absolute => "",
+                };
+                write!(f, "{}/{}", prefix, path.to_str().unwrap())
+            }
+        }
     }
 }
 

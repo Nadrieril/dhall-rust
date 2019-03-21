@@ -12,7 +12,6 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-type ParsedExpr = crate::ParsedExpr<X>;
 type ParsedText = InterpolatedText<X, Import>;
 type ParsedTextContents<'a> = InterpolatedTextContents<'a, X, Import>;
 
@@ -370,9 +369,21 @@ make_parser! {
         }
     );
 
-    rule!(path<PathBuf>;
-        captured_str!(s) => (".".to_owned() + s).into()
-    );
+    rule!(unquoted_path_component<&'a str>; captured_str!(s) => s);
+    rule!(quoted_path_component<&'a str>; captured_str!(s) => s);
+    rule!(path_component<&'a str>; children!(
+        [unquoted_path_component(s)] => s,
+        [quoted_path_component(s)] => s,
+    ));
+    rule!(path<PathBuf>; children!(
+        [path_component(components..)] => {
+            let mut path = PathBuf::new();
+            for s in components {
+                path.push(s);
+            }
+            path
+        }
+    ));
 
     rule_group!(local_raw<(FilePrefix, PathBuf)>);
 
@@ -728,7 +739,7 @@ make_parser! {
     ));
 }
 
-pub fn parse_expr(s: &str) -> ParseResult<crate::ParsedExpr<X>> {
+pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let expr = parse_any(pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);

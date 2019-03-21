@@ -84,3 +84,12 @@ pub fn load_dhall_file(
     };
     Ok(expr)
 }
+
+pub fn load_dhall_file_no_resolve_imports(
+    f: &Path,
+) -> Result<ParsedExpr, DhallError> {
+    let mut buffer = String::new();
+    File::open(f)?.read_to_string(&mut buffer)?;
+    let expr = parse_expr(&*buffer)?;
+    Ok(expr)
+}

@@ -1,6 +1,7 @@
 use dhall_core::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 type ParsedExpr = Rc<Expr<X, Import>>;
@@ -174,6 +175,20 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         })
                         .collect::<Result<_, _>>()?,
                 )))
+            }
+            [U64(24), Null, U64(0), U64(3), rest..] => {
+                let mut path = PathBuf::new();
+                for s in rest {
+                    match s {
+                        String(s) => path.push(s),
+                        _ => Err(DecodeError::WrongFormatError)?,
+                    }
+                }
+                Embed(Import {
+                    mode: ImportMode::Code,
+                    hash: None,
+                    location: ImportLocation::Local(FilePrefix::Here, path),
+                })
             }
             [U64(25), bindings..] => {
                 let mut tuples = bindings.iter().tuples();

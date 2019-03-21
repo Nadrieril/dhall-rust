@@ -92,7 +92,7 @@ identifier_raw
 identifier
 # path_character
 # quoted_path_character
-# path_component
+path_component
 path
 # local_raw
 scheme

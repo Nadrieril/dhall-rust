@@ -164,9 +164,9 @@ pub enum Builtin {
     TextShow,
 }
 
-pub type ParsedExpr<S> = SubExpr<S, Import>;
-pub type ResolvedExpr<S> = SubExpr<S, X>;
-pub type DhallExpr = ResolvedExpr<X>;
+pub type ParsedExpr = SubExpr<X, Import>;
+pub type ResolvedExpr = SubExpr<X, X>;
+pub type DhallExpr = ResolvedExpr;
 
 pub type SubExpr<Note, Embed> = Rc<Expr<Note, Embed>>;
 

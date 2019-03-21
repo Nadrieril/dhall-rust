@@ -46,6 +46,12 @@ pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, DhallError> {
     load_dhall_file(&PathBuf::from(file_path), true)
 }
 
+pub fn read_dhall_file_no_resolve_imports<'i>(
+    file_path: &str,
+) -> Result<ParsedExpr, DhallError> {
+    load_dhall_file_no_resolve_imports(&PathBuf::from(file_path))
+}
+
 pub fn run_test(base_path: &str, feature: Feature) {
     use self::Feature::*;
     let base_path_prefix = match feature {
@@ -61,7 +67,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
         ParserSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhallb";
-            let expr = read_dhall_file(&expr_file_path)
+            let expr = read_dhall_file_no_resolve_imports(&expr_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
 
@@ -71,18 +77,17 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let mut data = Vec::new();
             file.read_to_end(&mut data).unwrap();
             let expected = dhall::binary::decode(&data).unwrap();
-            let expected = dhall::imports::panic_imports(&expected);
 
             assert_eq_pretty!(expr, expected);
 
             // Round-trip pretty-printer
             let expr = parse_expr(&expr.to_string()).unwrap();
-            let expr = dhall::imports::panic_imports(&expr);
             assert_eq!(expr, expected);
         }
         ParserFailure => {
             let file_path = base_path + ".dhall";
-            let err = read_dhall_file(&file_path).unwrap_err();
+            let err =
+                read_dhall_file_no_resolve_imports(&file_path).unwrap_err();
             match err {
                 DhallError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
