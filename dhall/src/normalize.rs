@@ -50,8 +50,8 @@ where
     let evaled_arg = arg_to_eval.map(|i| args[i].as_ref());
 
     let ret = match (b, evaled_arg, args.as_slice()) {
-        (OptionalSome, _, [x, ..]) => rc(OptionalLit(None, Some(Rc::clone(x)))),
-        (OptionalNone, _, [t, ..]) => rc(OptionalLit(Some(Rc::clone(t)), None)),
+        (OptionalSome, _, [x, ..]) => rc(NEOptionalLit(Rc::clone(x))),
+        (OptionalNone, _, [t, ..]) => rc(EmptyOptionalLit(Rc::clone(t))),
         (NaturalIsZero, Some(NaturalLit(n)), _) => rc(BoolLit(*n == 0)),
         (NaturalEven, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 == 0)),
         (NaturalOdd, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 != 0)),
@@ -64,16 +64,16 @@ where
         (ListLength, Some(EmptyListLit(_)), _) => rc(NaturalLit(0)),
         (ListLength, Some(NEListLit(ys)), _) => rc(NaturalLit(ys.len())),
         (ListHead, Some(EmptyListLit(t)), _) => {
-            rc(OptionalLit(Some(t.clone()), None))
+            rc(EmptyOptionalLit(t.clone()))
         }
         (ListHead, Some(NEListLit(ys)), _) => {
-            rc(OptionalLit(None, ys.iter().cloned().next()))
+            rc(NEOptionalLit(ys.first().unwrap().clone()))
         }
         (ListLast, Some(EmptyListLit(t)), _) => {
-            rc(OptionalLit(Some(t.clone()), None))
+            rc(EmptyOptionalLit(t.clone()))
         }
         (ListLast, Some(NEListLit(ys)), _) => {
-            rc(OptionalLit(None, ys.iter().cloned().last()))
+            rc(NEOptionalLit(ys.last().unwrap().clone()))
         }
         (ListReverse, Some(EmptyListLit(t)), _) => rc(EmptyListLit(t.clone())),
         (ListReverse, Some(NEListLit(ys)), _) => {
@@ -124,7 +124,7 @@ where
                 };
                 let a0 = Rc::clone(a0);
                 // TODO: use Embed to avoid reevaluating g
-                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> [x] :  Optional a0) ([] :  Optional a0));
+                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> Some x) (None a0));
             }
         }
         (ListFold, Some(EmptyListLit(_)), [_, _, _, _, nil, ..]) => {
@@ -144,7 +144,7 @@ where
         // }
         (
             OptionalFold,
-            Some(OptionalLit(_, Some(x))),
+            Some(NEOptionalLit(x)),
             [_, _, _, just, _, ..],
         ) => {
             let x = x.clone();
@@ -153,7 +153,7 @@ where
         }
         (
             OptionalFold,
-            Some(OptionalLit(_, None)),
+            Some(EmptyOptionalLit(_)),
             [_, _, _, _, nothing, ..],
         ) => Rc::clone(nothing),
         // // fold/build fusion
@@ -252,13 +252,6 @@ where
                 BoolLit(true) => normalize_whnf(t),
                 BoolLit(false) => normalize_whnf(f),
                 _ => rc(BoolIf(b, t.clone(), f.clone())),
-            }
-        }
-        OptionalLit(t, es) => {
-            if !es.is_none() {
-                rc(OptionalLit(None, es.clone()))
-            } else {
-                rc(OptionalLit(t.clone(), es.clone()))
             }
         }
         // TODO: interpolation

@@ -63,10 +63,13 @@ fn dhall_to_tokenstream(
         NaturalLit(n) => {
             quote! { NaturalLit(#n) }
         }
-        OptionalLit(t, e) => {
-            let t = option_to_tokenstream(t, ctx);
-            let e = option_to_tokenstream(e, ctx);
-            quote! { OptionalLit(#t, #e) }
+        EmptyOptionalLit(x) => {
+            let x = dhall_to_tokenstream_bx(x, ctx);
+            quote! { EmptyOptionalLit(#x) }
+        }
+        NEOptionalLit(x) => {
+            let x = dhall_to_tokenstream_bx(x, ctx);
+            quote! { NEOptionalLit(#x) }
         }
         EmptyListLit(t) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
@@ -151,17 +154,6 @@ fn map_to_tokenstream(
         #( m.insert(#keys, #values); )*
         m
     } }
-}
-
-fn option_to_tokenstream(
-    e: &Option<DhallExpr>,
-    ctx: &Context<Label, ()>,
-) -> TokenStream {
-    let e = e.as_ref().map(|x| dhall_to_tokenstream_bx(x, ctx));
-    match e {
-        Some(x) => quote! { Some(#x) },
-        None => quote! { None },
-    }
 }
 
 fn vec_to_tokenstream(

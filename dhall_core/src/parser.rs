@@ -123,10 +123,10 @@ macro_rules! match_pair {
         match_pair!(@make_child_match, ($($vars)*), ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
     };
     (@make_child_match, ($($vars:tt)*), ($($outer_acc:tt)*), (, $($acc:tt)*), ($(,)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, ($($vars)*), ([$($acc)*] => { $body }, $($outer_acc)*), $($rest)*)
+        match_pair!(@make_matches, ($($vars)*), ($($outer_acc)* [$($acc)*] => { $body },), $($rest)*)
     };
     (@make_child_match, ($($vars:tt)*), ($($outer_acc:tt)*), (), ($(,)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, ($($vars)*), ([] => { $body }, $($outer_acc)*), $($rest)*)
+        match_pair!(@make_matches, ($($vars)*), ($($outer_acc)* [] => { $body },), $($rest)*)
     };
 
     (@make_matches, ($($vars:tt)*), ($($acc:tt)*), [$($args:tt)*] => $body:expr, $($rest:tt)*) => {
@@ -469,17 +469,17 @@ make_parser! {
     rule!(Optional<()>; raw_pair!(_) => ());
 
     rule!(empty_collection<ParsedExpr> as expression; children!(
-        [List(_), expression(y)] => {
-            bx(Expr::EmptyListLit(y))
+        [List(_), expression(t)] => {
+            bx(Expr::EmptyListLit(t))
         },
-        [Optional(_), expression(y)] => {
-            bx(Expr::OptionalLit(Some(y), None))
+        [Optional(_), expression(t)] => {
+            bx(Expr::EmptyOptionalLit(t))
         },
     ));
 
     rule!(non_empty_optional<ParsedExpr> as expression; children!(
-        [expression(x), Optional(_), expression(z)] => {
-            bx(Expr::OptionalLit(Some(z), Some(x)))
+        [expression(x), Optional(_), expression(t)] => {
+            rc(Expr::Annot(rc(Expr::NEOptionalLit(x)), t))
         }
     ));
 
@@ -557,24 +557,36 @@ make_parser! {
     ));
 
     rule!(annotated_expression<ParsedExpr> as expression; children!(
+        [expression(e)] => e,
         [expression(e), expression(annot)] => {
             bx(Expr::Annot(e, annot))
         },
-        [expression(e)] => e,
     ));
 
     rule!(application_expression<ParsedExpr> as expression; children!(
-        [expression(first), expression(rest..)] => {
-            let rest: Vec<_> = rest.collect();
-            if rest.is_empty() {
-                first
-            } else {
-                bx(Expr::App(first, rest))
+        [expression(e)] => e,
+        [expression(first), expression(second)] => {
+            match first.as_ref() {
+                Expr::Builtin(Builtin::OptionalNone) =>
+                    bx(Expr::EmptyOptionalLit(second)),
+                Expr::Builtin(Builtin::OptionalSome) =>
+                    bx(Expr::NEOptionalLit(second)),
+                _ => bx(Expr::App(first, vec![second])),
             }
-        }
+        },
+        [expression(first), expression(second), expression(rest..)] => {
+            match first.as_ref() {
+                Expr::Builtin(Builtin::OptionalNone) =>
+                    bx(Expr::App(bx(Expr::EmptyOptionalLit(second)), rest.collect())),
+                Expr::Builtin(Builtin::OptionalSome) =>
+                    bx(Expr::App(bx(Expr::NEOptionalLit(second)), rest.collect())),
+                _ => bx(Expr::App(first, std::iter::once(second).chain(rest).collect())),
+            }
+        },
     ));
 
     rule!(selector_expression_raw<ParsedExpr> as expression; children!(
+        [expression(e)] => e,
         [expression(first), selector_raw(rest..)] => {
             rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
         }

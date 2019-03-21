@@ -195,9 +195,10 @@ pub enum Expr<Note, Embed> {
     EmptyListLit(SubExpr<Note, Embed>),
     ///  [x, y, z]
     NEListLit(Vec<SubExpr<Note, Embed>>),
-    ///  `OptionalLit t [e]                        ~  [e] : Optional t`
-    ///  `OptionalLit t []                         ~  []  : Optional t`
-    OptionalLit(Option<SubExpr<Note, Embed>>, Option<SubExpr<Note, Embed>>),
+    ///  None t
+    EmptyOptionalLit(SubExpr<Note, Embed>),
+    ///  Some e
+    NEOptionalLit(SubExpr<Note, Embed>),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
     RecordType(BTreeMap<Label, SubExpr<Note, Embed>>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
@@ -346,7 +347,8 @@ where
         BinOp(o, x, y) => BinOp(*o, map(x), map(y)),
         EmptyListLit(t) => EmptyListLit(map(t)),
         NEListLit(es) => NEListLit(vec(es)),
-        OptionalLit(t, es) => OptionalLit(opt(t), opt(es)),
+        EmptyOptionalLit(t) => EmptyOptionalLit(map(t)),
+        NEOptionalLit(e) => NEOptionalLit(map(e)),
         RecordType(kts) => RecordType(btmap(kts)),
         RecordLit(kvs) => RecordLit(btmap(kvs)),
         UnionType(kts) => UnionType(btmap(kts)),

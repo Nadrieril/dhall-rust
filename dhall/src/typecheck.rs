@@ -372,29 +372,17 @@ where
             }
             return Ok(dhall_expr!(List t));
         }
-        OptionalLit(t, xs) => {
-            let mut iter = xs.iter();
-            let t: Rc<Expr<_, _>> = match t {
-                Some(t) => t.clone(),
-                None => {
-                    let x = iter.next().unwrap();
-                    type_with(ctx, x.clone())?
-                }
-            };
-
+        EmptyOptionalLit(t) => {
+            let s = normalized_type_with(ctx, t.clone())?;
+            ensure_is_type(s, InvalidOptionalType(t.clone()))?;
+            let t = normalize(t.clone());
+            return Ok(dhall_expr!(Optional t));
+        }
+        NEOptionalLit(x) => {
+            let t: Rc<Expr<_, _>> = type_with(ctx, x.clone())?;
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
             let t = normalize(t);
-            for x in iter {
-                let t2 = normalized_type_with(ctx, x.clone())?;
-                if !prop_equal(t.as_ref(), t2.as_ref()) {
-                    return Err(mkerr(InvalidOptionalElement(
-                        t,
-                        x.clone(),
-                        t2,
-                    )));
-                }
-            }
             return Ok(dhall_expr!(Optional t));
         }
         RecordType(kts) => {
