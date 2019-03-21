@@ -63,15 +63,11 @@ where
         }
         (ListLength, Some(EmptyListLit(_)), _) => rc(NaturalLit(0)),
         (ListLength, Some(NEListLit(ys)), _) => rc(NaturalLit(ys.len())),
-        (ListHead, Some(EmptyListLit(t)), _) => {
-            rc(EmptyOptionalLit(t.clone()))
-        }
+        (ListHead, Some(EmptyListLit(t)), _) => rc(EmptyOptionalLit(t.clone())),
         (ListHead, Some(NEListLit(ys)), _) => {
             rc(NEOptionalLit(ys.first().unwrap().clone()))
         }
-        (ListLast, Some(EmptyListLit(t)), _) => {
-            rc(EmptyOptionalLit(t.clone()))
-        }
+        (ListLast, Some(EmptyListLit(t)), _) => rc(EmptyOptionalLit(t.clone())),
         (ListLast, Some(NEListLit(ys)), _) => {
             rc(NEOptionalLit(ys.last().unwrap().clone()))
         }
@@ -142,11 +138,7 @@ where
         // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
-        (
-            OptionalFold,
-            Some(NEOptionalLit(x)),
-            [_, _, _, just, _, ..],
-        ) => {
+        (OptionalFold, Some(NEOptionalLit(x)), [_, _, _, just, _, ..]) => {
             let x = x.clone();
             let just = Rc::clone(just);
             dhall_expr!(just x)
