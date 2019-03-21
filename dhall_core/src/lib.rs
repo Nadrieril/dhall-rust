@@ -6,7 +6,16 @@
     clippy::new_without_default
 )]
 
-pub mod core;
+mod core;
 pub use crate::core::*;
+mod import;
+pub use crate::import::*;
+mod label;
+pub use crate::label::*;
+mod text;
+pub use crate::text::*;
+mod printer;
+pub use crate::printer::*;
+mod parser;
+pub use crate::parser::*;
 pub mod context;
-pub mod parser;

@@ -58,7 +58,7 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
-    let expr = match parser::parse_expr(&buffer) {
+    let expr = match parse_expr(&buffer) {
         Ok(e) => e,
         Err(e) => {
             print_error(&format!("Parse error {}", e), &buffer, 0, 0);

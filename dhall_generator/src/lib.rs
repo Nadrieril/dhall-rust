@@ -9,10 +9,10 @@ use std::rc::Rc;
 #[proc_macro]
 pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: Rc<Expr<X, Import>> = parser::parse_expr(&input_str).unwrap();
+    let expr: Rc<Expr<X, Import>> = parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
-    let expr = expr.map_embed(&no_import);
+    let expr = rc(expr.map_embed(&no_import));
     let output = dhall_to_tokenstream_bx(&expr, &Context::new());
     output.into()
 }
@@ -20,13 +20,13 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 // Returns an expression of type Expr<_, _>. Expects interpolated variables
 // to be of type Rc<Expr<_, _>>.
 fn dhall_to_tokenstream(
-    expr: &Expr<X, X>,
+    expr: &DhallExpr,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
-    match expr {
-        e @ Var(_) => {
-            let v = dhall_to_tokenstream_bx(e, ctx);
+    match expr.as_ref() {
+        Var(_) => {
+            let v = dhall_to_tokenstream_bx(expr, ctx);
             quote! { *#v }
         }
         Pi(x, t, b) => {
@@ -90,11 +90,11 @@ fn dhall_to_tokenstream(
 
 // Returns an expression of type Rc<Expr<_, _>>
 fn dhall_to_tokenstream_bx(
-    expr: &Expr<X, X>,
+    expr: &DhallExpr,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::Expr::*;
-    match expr {
+    match expr.as_ref() {
         Var(V(s, n)) => {
             match ctx.lookup(&s, *n) {
                 // Non-free variable; interpolates as itself
@@ -114,7 +114,7 @@ fn dhall_to_tokenstream_bx(
                 }
             }
         }
-        e => bx(dhall_to_tokenstream(e, ctx)),
+        _ => bx(dhall_to_tokenstream(expr, ctx)),
     }
 }
 
@@ -154,7 +154,7 @@ fn map_to_tokenstream(
 }
 
 fn option_to_tokenstream(
-    e: &Option<Rc<Expr<X, X>>>,
+    e: &Option<DhallExpr>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let e = e.as_ref().map(|x| dhall_to_tokenstream_bx(x, ctx));
@@ -165,10 +165,10 @@ fn option_to_tokenstream(
 }
 
 fn vec_to_tokenstream(
-    e: &Vec<Rc<Expr<X, X>>>,
+    e: &Vec<DhallExpr>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
-    let e = e.iter().map(|x| dhall_to_tokenstream_bx(&**x, ctx));
+    let e = e.iter().map(|x| dhall_to_tokenstream_bx(x, ctx));
     quote! { vec![ #(#e),* ] }
 }
 

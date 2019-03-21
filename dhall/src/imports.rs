@@ -43,11 +43,11 @@ fn resolve_import(
 
 #[derive(Debug)]
 pub enum DhallError {
-    ParseError(parser::ParseError),
+    ParseError(ParseError),
     IOError(std::io::Error),
 }
-impl From<parser::ParseError> for DhallError {
-    fn from(e: parser::ParseError) -> Self {
+impl From<ParseError> for DhallError {
+    fn from(e: ParseError) -> Self {
         DhallError::ParseError(e)
     }
 }
@@ -72,7 +72,7 @@ pub fn load_dhall_file(
 ) -> Result<Expr<X, X>, DhallError> {
     let mut buffer = String::new();
     File::open(f)?.read_to_string(&mut buffer)?;
-    let expr = parser::parse_expr(&*buffer)?;
+    let expr = parse_expr(&*buffer)?;
     let expr = if resolve_imports {
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
         let resolve = |import: &Import| -> Expr<X, X> {

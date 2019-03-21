@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use dhall_core::core::*;
+use dhall_core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
 use std::rc::Rc;
