@@ -9,7 +9,7 @@ type ParsedExpr = Rc<Expr<X, Import>>;
 #[derive(Debug)]
 pub enum DecodeError {
     CBORError(serde_cbor::error::Error),
-    WrongFormatError,
+    WrongFormatError(String),
 }
 
 pub fn decode(data: &[u8]) -> Result<ParsedExpr, DecodeError> {
@@ -89,7 +89,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     9 => Prefer,
                     10 => CombineTypes,
                     11 => ImportAlt,
-                    _ => Err(DecodeError::WrongFormatError)?,
+                    _ => {
+                        Err(DecodeError::WrongFormatError("binop".to_owned()))?
+                    }
                 };
                 BinOp(op, x, y)
             }
@@ -169,7 +171,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                             let x = cbor_value_to_dhall(&x)?;
                             let y = match y {
                                 String(s) => s.clone(),
-                                _ => Err(DecodeError::WrongFormatError)?,
+                                _ => Err(DecodeError::WrongFormatError(
+                                    "text".to_owned(),
+                                ))?,
                             };
                             Ok((x, y))
                         })
@@ -194,10 +198,12 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let mut tuples = bindings.iter().tuples();
                 let bindings = (&mut tuples)
                     .map(|(x, t, v)| {
-                        let x = match x {
-                            String(s) => Label::from(s.as_str()),
-                            _ => Err(DecodeError::WrongFormatError)?,
-                        };
+                        let x = x.as_string().ok_or(
+                            DecodeError::WrongFormatError(
+                                "let/label".to_owned(),
+                            ),
+                        )?;
+                        let x = Label::from(x.as_str());
                         let t = match t {
                             Null => None,
                             t => Some(cbor_value_to_dhall(&t)?),
@@ -206,10 +212,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         Ok((x, t, v))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let expr = tuples
-                    .into_buffer()
-                    .next()
-                    .ok_or(DecodeError::WrongFormatError)?;
+                let expr = tuples.into_buffer().next().ok_or(
+                    DecodeError::WrongFormatError("let/expr".to_owned()),
+                )?;
                 let expr = cbor_value_to_dhall(expr)?;
                 return Ok(bindings
                     .into_iter()
@@ -220,9 +225,13 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
-            _ => Err(DecodeError::WrongFormatError)?,
+            [U64(t), ..] => Err(DecodeError::WrongFormatError(format!(
+                "unknown tag: {}",
+                t
+            )))?,
+            _ => Err(DecodeError::WrongFormatError("array".to_owned()))?,
         },
-        _ => Err(DecodeError::WrongFormatError)?,
+        _ => Err(DecodeError::WrongFormatError("unknown type".to_owned()))?,
     }))
 }
 
@@ -231,7 +240,9 @@ fn cbor_map_to_dhall_map(
 ) -> Result<std::collections::BTreeMap<Label, ParsedExpr>, DecodeError> {
     map.iter()
         .map(|(k, v)| -> Result<(_, _), _> {
-            let k = k.as_string().ok_or(DecodeError::WrongFormatError)?;
+            let k = k
+                .as_string()
+                .ok_or(DecodeError::WrongFormatError("map/key".to_owned()))?;
             let v = cbor_value_to_dhall(v)?;
             Ok((Label::from(k.as_ref()), v))
         })
