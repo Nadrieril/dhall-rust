@@ -1,7 +1,6 @@
 use dhall_core::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 type ParsedExpr = Rc<Expr<X, Import>>;
@@ -180,18 +179,92 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         .collect::<Result<_, _>>()?,
                 )))
             }
-            [U64(24), Null, U64(0), U64(3), rest..] => {
-                let mut path = PathBuf::new();
-                for s in rest {
-                    match s {
-                        String(s) => path.push(s),
-                        _ => Err(DecodeError::WrongFormatError)?,
+            [U64(24), _hash, U64(mode), U64(scheme), rest..] => {
+                let mode = match mode {
+                    1 => ImportMode::RawText,
+                    _ => ImportMode::Code,
+                };
+                let mut rest = rest.iter();
+                let location = match scheme {
+                    0 | 1 => {
+                        let scheme = match scheme {
+                            0 => Scheme::HTTP,
+                            _ => Scheme::HTTPS,
+                        };
+                        let _headers = match rest.next() {
+                            Some(Null) => (),
+                            _ => Err(DecodeError::WrongFormatError(
+                                "import/remote/headers".to_owned(),
+                            ))?,
+                        };
+                        let authority = match rest.next() {
+                            Some(String(s)) => s.to_owned(),
+                            _ => Err(DecodeError::WrongFormatError(
+                                "import/remote/authority".to_owned(),
+                            ))?,
+                        };
+                        let query = match rest.next_back() {
+                            Some(Null) => None,
+                            Some(String(s)) => Some(s.to_owned()),
+                            _ => Err(DecodeError::WrongFormatError(
+                                "import/remote/query".to_owned(),
+                            ))?,
+                        };
+                        let path = rest
+                            .map(|s| {
+                                s.as_string().ok_or(
+                                    DecodeError::WrongFormatError(
+                                        "import/remote/path".to_owned(),
+                                    ),
+                                )
+                            })
+                            .collect::<Result<_, _>>()?;
+                        ImportLocation::Remote(URL {
+                            scheme,
+                            authority,
+                            path,
+                            query,
+                        })
                     }
-                }
+                    2 | 3 | 4 | 5 => {
+                        let prefix = match scheme {
+                            2 => FilePrefix::Absolute,
+                            3 => FilePrefix::Here,
+                            4 => FilePrefix::Parent,
+                            5 => FilePrefix::Home,
+                            _ => Err(DecodeError::WrongFormatError(
+                                "import/local/prefix".to_owned(),
+                            ))?,
+                        };
+                        let path = rest
+                            .map(|s| {
+                                s.as_string().ok_or(
+                                    DecodeError::WrongFormatError(
+                                        "import/local/path".to_owned(),
+                                    ),
+                                )
+                            })
+                            .collect::<Result<_, _>>()?;
+                        ImportLocation::Local(prefix, path)
+                    }
+                    6 => {
+                        let env = match rest.next() {
+                            Some(String(s)) => s.to_owned(),
+                            _ => Err(DecodeError::WrongFormatError(
+                                "import/env".to_owned(),
+                            ))?,
+                        };
+                        ImportLocation::Env(env)
+                    }
+                    7 => ImportLocation::Missing,
+                    _ => Err(DecodeError::WrongFormatError(
+                        "import/type".to_owned(),
+                    ))?,
+                };
                 Embed(Import {
-                    mode: ImportMode::Code,
+                    mode,
                     hash: None,
-                    location: ImportLocation::Local(FilePrefix::Here, path),
+                    location,
                 })
             }
             [U64(25), bindings..] => {

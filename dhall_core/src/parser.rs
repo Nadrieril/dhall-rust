@@ -377,11 +377,7 @@ make_parser! {
     ));
     rule!(path<PathBuf>; children!(
         [path_component(components..)] => {
-            let mut path = PathBuf::new();
-            for s in components {
-                path.push(s);
-            }
-            path
+            components.collect()
         }
     ));
 
@@ -390,33 +386,69 @@ make_parser! {
     rule!(parent_path<(FilePrefix, PathBuf)> as local_raw; children!(
         [path(p)] => (FilePrefix::Parent, p)
     ));
-
     rule!(here_path<(FilePrefix, PathBuf)> as local_raw; children!(
         [path(p)] => (FilePrefix::Here, p)
     ));
-
     rule!(home_path<(FilePrefix, PathBuf)> as local_raw; children!(
         [path(p)] => (FilePrefix::Home, p)
     ));
-
     rule!(absolute_path<(FilePrefix, PathBuf)> as local_raw; children!(
         [path(p)] => (FilePrefix::Absolute, p)
     ));
 
+    rule!(scheme<Scheme>; captured_str!(s) => match s {
+        "http" => Scheme::HTTP,
+        "https" => Scheme::HTTPS,
+        _ => unreachable!(),
+    });
+
+    rule!(http_raw<URL>; children!(
+        [scheme(sch), authority(auth), path(p)] => URL {
+            scheme: sch,
+            authority: auth,
+            path: p,
+            query: None,
+        },
+        [scheme(sch), authority(auth), path(p), query(q)] => URL {
+            scheme: sch,
+            authority: auth,
+            path: p,
+            query: Some(q),
+        },
+    ));
+
+    rule!(authority<String>; captured_str!(s) => s.to_owned());
+
+    rule!(query<String>; captured_str!(s) => s.to_owned());
+
+    // TODO: headers
+    rule!(http<URL>; children!(
+        [http_raw(url)] => url
+    ));
+
+    rule!(env_raw<String>; children!(
+        [bash_environment_variable(s)] => s,
+        [posix_environment_variable(s)] => s,
+    ));
+    rule!(bash_environment_variable<String>; captured_str!(s) => s.to_owned());
+    rule!(posix_environment_variable<String>; captured_str!(s) => s.to_owned());
+
+    rule!(missing_raw<()>; raw_pair!(_) => ());
+
     // TODO: other import types
     rule!(import_type_raw<ImportLocation>; children!(
-        // [missing_raw(_e)] => {
-        //     ImportLocation::Missing
-        // }
-        // [env_raw(e)] => {
-        //     ImportLocation::Env(e)
-        // }
-        // [http(url)] => {
-        //     ImportLocation::Remote(url)
-        // }
+        [missing_raw(_)] => {
+            ImportLocation::Missing
+        },
+        [env_raw(e)] => {
+            ImportLocation::Env(e)
+        },
+        [http(url)] => {
+            ImportLocation::Remote(url)
+        },
         [local_raw((prefix, path))] => {
             ImportLocation::Local(prefix, path)
-        }
+        },
     ));
 
     rule!(import_hashed_raw<(ImportLocation, Option<()>)>; children!(
@@ -426,15 +458,23 @@ make_parser! {
 
     rule_group!(expression<ParsedExpr>);
 
+    rule!(Text_raw<()>; raw_pair!(_) => ());
+
     rule!(import_raw<ParsedExpr> as expression; children!(
-        // TODO: handle "as Text"
         [import_hashed_raw((location, hash))] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::Code,
                 hash,
                 location,
             }))
-        }
+        },
+        [import_hashed_raw((location, hash)), Text_raw(_)] => {
+            bx(Expr::Embed(Import {
+                mode: ImportMode::RawText,
+                hash,
+                location,
+            }))
+        },
     ));
 
     rule!(lambda_expression<ParsedExpr> as expression; children!(

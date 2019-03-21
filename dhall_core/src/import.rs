@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 /// The beginning of a file path which anchors subsequent path components
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FilePrefix {
     /// Absolute path
     Absolute,
@@ -17,15 +17,31 @@ pub enum FilePrefix {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportLocation {
     Local(FilePrefix, PathBuf),
-    // TODO: other import types
+    Remote(URL),
+    Env(String),
+    Missing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct URL {
+    pub scheme: Scheme,
+    pub authority: String,
+    pub path: PathBuf,
+    pub query: Option<String>,
+    // pub headers: Option<ImportHashed>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Scheme {
+    HTTP,
+    HTTPS,
 }
 
 /// How to interpret the import's contents (i.e. as Dhall code or raw text)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImportMode {
     Code,
-    // TODO
-    // RawText,
+    RawText,
 }
 
 /// Reference to an external resource

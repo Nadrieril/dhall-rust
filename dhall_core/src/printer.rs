@@ -1,4 +1,5 @@
 use crate::*;
+use itertools::Itertools;
 use std::fmt::{self, Display};
 
 //  There used to be a one-to-one correspondence between the formatters in this section
@@ -286,8 +287,25 @@ impl Display for Const {
 
 impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use std::path::PathBuf;
         use FilePrefix::*;
         use ImportLocation::*;
+        use ImportMode::*;
+        let quoted = |s: &str| -> String {
+            if s.chars().all(|c| c.is_ascii_alphanumeric()) {
+                s.to_owned()
+            } else {
+                format!("\"{}\"", s)
+            }
+        };
+        let fmt_path = |f: &mut fmt::Formatter, p: &PathBuf| {
+            let res: String = p
+                .iter()
+                .map(|c| quoted(c.to_string_lossy().as_ref()))
+                .join("/");
+            f.write_str(&res)
+        };
+
         match &self.location {
             Local(prefix, path) => {
                 let prefix = match prefix {
@@ -296,9 +314,28 @@ impl Display for Import {
                     Home => "~",
                     Absolute => "",
                 };
-                write!(f, "{}/{}", prefix, path.to_str().unwrap())
+                write!(f, "{}/", prefix)?;
+                fmt_path(f, path)?;
+            }
+            Remote(url) => {
+                write!(f, "{}://{}/", url.scheme, url.authority,)?;
+                fmt_path(f, &url.path)?;
+                if let Some(q) = &url.query {
+                    write!(f, "?{}", q)?
+                }
+            }
+            Env(e) => {
+                write!(f, "env:{}", quoted(e))?;
+            }
+            Missing => {
+                write!(f, "missing")?;
             }
         }
+        match self.mode {
+            Code => {}
+            RawText => write!(f, " as Text")?,
+        }
+        Ok(())
     }
 }
 
@@ -335,6 +372,16 @@ impl Display for Builtin {
             OptionalFold => "Optional/fold",
             OptionalBuild => "Optional/build",
             TextShow => "Text/show",
+        })
+    }
+}
+
+impl Display for Scheme {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use crate::Scheme::*;
+        f.write_str(match *self {
+            HTTP => "http",
+            HTTPS => "https",
         })
     }
 }

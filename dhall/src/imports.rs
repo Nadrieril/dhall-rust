@@ -38,6 +38,7 @@ fn resolve_import(
             };
             load_dhall_file(&path, true)
         }
+        _ => unimplemented!("{:?}", import),
     }
 }
 

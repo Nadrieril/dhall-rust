@@ -35,9 +35,9 @@ single_quote_literal
 # as_raw
 # using_raw
 # merge_raw
-# missing_raw
+missing_raw
 # Optional_raw
-# Text_raw
+Text_raw
 # List_raw
 # Infinity_raw
 # if_
@@ -98,28 +98,28 @@ path
 scheme
 http_raw
 authority
-userinfo
-host
-port
-IP_literal
-IPvFuture
-IPv6address
-h16
-ls32
-IPv4address
-dec_octet
-reg_name
-pchar
+# userinfo
+# host
+# port
+# IP_literal
+# IPvFuture
+# IPv6address
+# h16
+# ls32
+# IPv4address
+# dec_octet
+# reg_name
+# pchar
 query
 fragment
-pct_encoded
-unreserved
-sub_delims
+# pct_encoded
+# unreserved
+# sub_delims
 http
 env_raw
 bash_environment_variable
 posix_environment_variable
-posix_environment_variable_character
+# posix_environment_variable_character
 import_type_raw
 hash_raw
 import_hashed_raw
