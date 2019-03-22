@@ -257,7 +257,12 @@ fn can_be_shortcutted(rule: Rule) -> bool {
 make_parser! {
     rule!(EOI<()>; raw_pair!(_) => ());
 
-    rule!(label_raw<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+    rule!(simple_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+    rule!(quoted_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+    rule!(label_raw<Label>; children!(
+        [simple_label(l)] => l,
+        [quoted_label(l)] => l,
+    ));
 
     rule!(double_quote_literal<ParsedText>; children!(
         [double_quote_chunk(chunks..)] => {

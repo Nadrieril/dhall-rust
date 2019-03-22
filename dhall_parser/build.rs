@@ -35,7 +35,7 @@ fn main() -> std::io::Result<()> {
     writeln!(&mut file)?;
     writeln!(
         &mut file,
-        "simple_label = _{{
+        "simple_label = {{
               keyword_raw ~ simple_label_next_char+
             | !keyword_raw ~ simple_label_first_char ~ simple_label_next_char*
     }}"

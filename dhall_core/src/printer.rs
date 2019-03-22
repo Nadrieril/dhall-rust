@@ -285,6 +285,21 @@ impl Display for Const {
     }
 }
 
+impl Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let s = String::from(self.clone());
+        let is_keyword = |s| match s {
+            "let" | "in" | "if" | "then" | "else" => true,
+            _ => false,
+        };
+        if s.chars().all(|c| c.is_ascii_alphanumeric()) && !is_keyword(&s) {
+            write!(f, "{}", s)
+        } else {
+            write!(f, "`{}`", s)
+        }
+    }
+}
+
 impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use std::path::PathBuf;
