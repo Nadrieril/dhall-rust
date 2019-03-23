@@ -110,9 +110,7 @@ macro_rules! match_pair {
         match_pair!(@make_child_match, ($pair, $($vars)*), ($($outer_acc)*), ($($acc)*, xs..), ($($rest_of_match)*) => {
             let xs = xs.map(|x| match x {
                 ParsedValue::$ty(y) => Ok(y),
-                x => Err(custom_parse_error(&$pair,
-                    format!("Unexpected child: {:?}", x)
-                )),
+                x => Err(format!("Unexpected child: {:?}", x)),
             }).collect::<Result<Vec<_>, _>>()?;
             let $x = xs.into_iter();
             $body
@@ -131,18 +129,15 @@ macro_rules! match_pair {
     (@make_matches, ($($vars:tt)*), ($($acc:tt)*), [$($args:tt)*] => $body:expr, $($rest:tt)*) => {
         match_pair!(@make_child_match, ($($vars)*), ($($acc)*), (), ($($args)*) => $body, $($rest)*)
     };
-    (@make_matches, ($pair:expr, $parsed:expr), ($($acc:tt)*) $(,)*) => {
+    (@make_matches, ($pair:expr, $children:expr), ($($acc:tt)*) $(,)*) => {
         {
-            let pair = $pair.clone();
             #[allow(unreachable_code)]
-            iter_patterns::match_vec!($parsed;
+            iter_patterns::match_vec!($children;
                 $($acc)*
                 [x..] => Err(
-                    custom_parse_error(&pair,
-                        format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-                    )
+                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
                 )?,
-            ).ok_or_else(|| unreachable!())
+            ).ok_or_else(|| -> String { unreachable!() })
         }
     };
 
@@ -157,24 +152,19 @@ macro_rules! make_parser {
     (@filter, rule) => (true);
     (@filter, rule_group) => (false);
 
-    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty>; $($args:tt)* )) => (
-        make_parser!(@body, $pair, $parsed, rule!( $name<$o> as $name; $($args)* ))
+    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty>; $($args:tt)* )) => (
+        make_parser!(@body, $pair, $children, rule!( $name<$o> as $name; $($args)* ))
     );
-    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty> as $group:ident; raw_pair!($x:pat) => $body:expr )) => ( {
-        let $x = $pair;
-        let res: $o = $body;
-        Ok(ParsedValue::$group(res))
-    });
-    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty> as $group:ident; captured_str!($x:pat) => $body:expr )) => ( {
+    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty> as $group:ident; captured_str!($x:pat) => $body:expr )) => ( {
         let $x = $pair.as_str();
         let res: $o = $body;
         Ok(ParsedValue::$group(res))
     });
-    (@body, $pair:expr, $parsed:expr, rule!( $name:ident<$o:ty> as $group:ident; children!( $($args:tt)* ) )) => ( {
-        let res: $o = match_pair!(($pair, $parsed); $($args)*)?;
+    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty> as $group:ident; children!( $($args:tt)* ) )) => ( {
+        let res: $o = match_pair!(($pair, $children); $($args)*)?;
         Ok(ParsedValue::$group(res))
     });
-    (@body, $pair:expr, $parsed:expr, rule_group!( $name:ident<$o:ty> )) => (
+    (@body, $pair:expr, $children:expr, rule_group!( $name:ident<$o:ty> )) => (
         unreachable!()
     );
 
@@ -185,8 +175,20 @@ macro_rules! make_parser {
             $( $name($o), )*
         }
 
+        fn parse_any<'a>(pair: Pair<'a, Rule>, children: Vec<ParsedValue<'a>>) -> Result<ParsedValue<'a>, String> {
+            match pair.as_rule() {
+                $(
+                    make_parser!(@pattern, $submac, $name)
+                    if make_parser!(@filter, $submac)
+                    => make_parser!(@body, pair, children, $submac!( $name<$o> $($args)* ))
+                    ,
+                )*
+                r => Err(format!("Unexpected {:?}", r)),
+            }
+        }
+
         // Non-recursive implementation to avoid stack overflows
-        fn parse_any<'a>(initial_pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
+        fn do_parse<'a>(initial_pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
             enum StackFrame<'a> {
                 Unprocessed(Pair<'a, Rule>),
                 Processed(Pair<'a, Rule>, usize),
@@ -211,17 +213,12 @@ macro_rules! make_parser {
                         }
                     }
                     Processed(pair, n) => {
-                        let mut parsed: Vec<_> = values_stack.split_off(values_stack.len() - n);
-                        parsed.reverse();
-                        let val = match pair.as_rule() {
-                            $(
-                                make_parser!(@pattern, $submac, $name)
-                                if make_parser!(@filter, $submac)
-                                => make_parser!(@body, pair, parsed, $submac!( $name<$o> $($args)* ))
-                                ,
-                            )*
-                            r => Err(custom_parse_error(&pair, format!("parse_any: Unexpected {:?}", r))),
-                        }?;
+                        let mut children: Vec<_> = values_stack.split_off(values_stack.len() - n);
+                        children.reverse();
+                        let val = match parse_any(pair.clone(), children) {
+                            Ok(v) => v,
+                            Err(msg) => Err(custom_parse_error(&pair, msg))?,
+                        };
                         values_stack.push(val);
                     }
                 }
@@ -255,7 +252,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
 }
 
 make_parser! {
-    rule!(EOI<()>; raw_pair!(_) => ());
+    rule!(EOI<()>; captured_str!(_) => ());
 
     rule!(simple_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
     rule!(quoted_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
@@ -307,7 +304,7 @@ make_parser! {
         captured_str!(s) => s
     );
 
-    rule!(end_of_line<()>; raw_pair!(_) => ());
+    rule!(end_of_line<()>; captured_str!(_) => ());
 
     rule!(single_quote_literal<ParsedText>; children!(
         [end_of_line(eol), single_quote_continue(contents)] => {
@@ -318,10 +315,10 @@ make_parser! {
         captured_str!(s) => s
     );
     rule!(escaped_quote_pair<&'a str>;
-        raw_pair!(_) => "''"
+        captured_str!(_) => "''"
     );
     rule!(escaped_interpolation<&'a str>;
-        raw_pair!(_) => "${"
+        captured_str!(_) => "${"
     );
     rule!(interpolation<ParsedExpr>; children!(
         [expression(e)] => e
@@ -349,37 +346,35 @@ make_parser! {
         },
     ));
 
-    rule!(NaN_raw<()>; raw_pair!(_) => ());
-    rule!(minus_infinity_literal<()>; raw_pair!(_) => ());
-    rule!(plus_infinity_literal<()>; raw_pair!(_) => ());
+    rule!(NaN_raw<()>; captured_str!(_) => ());
+    rule!(minus_infinity_literal<()>; captured_str!(_) => ());
+    rule!(plus_infinity_literal<()>; captured_str!(_) => ());
 
     rule!(double_literal_raw<core::Double>;
-        raw_pair!(pair) => {
-            let s = pair.as_str().trim();
+        captured_str!(s) => {
+            let s = s.trim();
             match s.parse::<f64>() {
                 Ok(x) if x.is_infinite() =>
-                    Err(custom_parse_error(&pair,
-                        format!("Overflow while parsing double literal '{}'", s)
-                    ))?,
+                    Err(format!("Overflow while parsing double literal '{}'", s))?,
                 Ok(x) => NaiveDouble::from(x),
-                Err(e) => Err(custom_parse_error(&pair, format!("{}", e)))?,
+                Err(e) => Err(format!("{}", e))?,
             }
         }
     );
 
     rule!(natural_literal_raw<core::Natural>;
-        raw_pair!(pair) => {
-            pair.as_str().trim()
+        captured_str!(s) => {
+            s.trim()
                 .parse()
-                .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+                .map_err(|e| format!("{}", e))?
         }
     );
 
     rule!(integer_literal_raw<core::Integer>;
-        raw_pair!(pair) => {
-            pair.as_str().trim()
+        captured_str!(s) => {
+            s.trim()
                 .parse()
-                .map_err(|e: std::num::ParseIntError| custom_parse_error(&pair, format!("{}", e)))?
+                .map_err(|e| format!("{}", e))?
         }
     );
 
@@ -447,7 +442,7 @@ make_parser! {
     rule!(bash_environment_variable<String>; captured_str!(s) => s.to_owned());
     rule!(posix_environment_variable<String>; captured_str!(s) => s.to_owned());
 
-    rule!(missing_raw<()>; raw_pair!(_) => ());
+    rule!(missing_raw<()>; captured_str!(_) => ());
 
     // TODO: other import types
     rule!(import_type_raw<ImportLocation>; children!(
@@ -472,7 +467,7 @@ make_parser! {
 
     rule_group!(expression<ParsedExpr>);
 
-    rule!(Text_raw<()>; raw_pair!(_) => ());
+    rule!(Text_raw<()>; captured_str!(_) => ());
 
     rule!(import_raw<ParsedExpr> as expression; children!(
         [import_hashed_raw((location, hash))] => {
@@ -531,8 +526,8 @@ make_parser! {
         [expression(x), expression(y)] => bx(Expr::Merge(x, y, None)),
     ));
 
-    rule!(List<()>; raw_pair!(_) => ());
-    rule!(Optional<()>; raw_pair!(_) => ());
+    rule!(List<()>; captured_str!(_) => ());
+    rule!(Optional<()>; captured_str!(_) => ());
 
     rule!(empty_collection<ParsedExpr> as expression; children!(
         [List(_), expression(t)] => {
@@ -705,11 +700,11 @@ make_parser! {
     ));
 
     rule!(empty_record_literal<ParsedExpr> as expression;
-        raw_pair!(_) => bx(Expr::RecordLit(BTreeMap::new()))
+        captured_str!(_) => bx(Expr::RecordLit(BTreeMap::new()))
     );
 
     rule!(empty_record_type<ParsedExpr> as expression;
-        raw_pair!(_) => bx(Expr::RecordType(BTreeMap::new()))
+        captured_str!(_) => bx(Expr::RecordType(BTreeMap::new()))
     );
 
     rule!(non_empty_record_type_or_literal<ParsedExpr> as expression; children!(
@@ -757,7 +752,7 @@ make_parser! {
         },
     ));
 
-    rule!(empty_union_type<()>; raw_pair!(_) => ());
+    rule!(empty_union_type<()>; captured_str!(_) => ());
 
     rule!(non_empty_union_type_or_literal
           <(Option<(Label, ParsedExpr)>, BTreeMap<Label, ParsedExpr>)>; children!(
@@ -795,7 +790,7 @@ make_parser! {
 
 pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
-    let expr = parse_any(pairs.next().unwrap())?;
+    let expr = do_parse(pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);
     match expr {
         ParsedValue::expression(e) => Ok(e),
