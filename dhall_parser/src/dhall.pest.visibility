@@ -20,27 +20,23 @@ end_of_line
 simple_label
 # quoted_label_char
 quoted_label
-label_raw
-# any_label_raw
+label
+# any_label
 double_quote_chunk
 double_quote_escaped
 double_quote_literal
 single_quote_continue
 single_quote_literal
-# text_literal_raw
-# if_raw
-# then_raw
-# else_raw
-# let_raw
-# in_raw
-# as_raw
-# using_raw
-# merge_raw
-missing_raw
-# Optional_raw
-Text_raw
-# List_raw
-# Infinity_raw
+# text_literal
+# if
+# then
+# else
+# let
+# in
+# as
+# using
+# merge
+missing
 # if_
 # then
 # else_
@@ -49,6 +45,7 @@ Text_raw
 # as_
 # using
 # merge
+# Infinity
 Optional
 Text
 List
@@ -68,16 +65,16 @@ List
 # colon
 # import_alt
 # open_parens
-# close_parens_raw
+# close_parens
 # close_parens
 # open_brace
-# close_brace_raw
+# close_brace
 # close_brace
 # open_bracket
-# close_bracket_raw
+# close_bracket
 # close_bracket
 # open_angle
-# close_angle_raw
+# close_angle
 # close_angle
 # combine
 # combine_types
@@ -86,16 +83,15 @@ List
 # forall
 # arrow
 # exponent
-double_literal_raw
-natural_literal_raw
-integer_literal_raw
-identifier_raw
+double_literal
+natural_literal
+integer_literal
 identifier
 # path_character
 # quoted_path_character
 path_component
 path
-# local_raw
+# local
 scheme
 http_raw
 authority
@@ -117,14 +113,14 @@ fragment
 # unreserved
 # sub_delims
 http
-env_raw
+env
 bash_environment_variable
 posix_environment_variable
 # posix_environment_variable_character
-import_type_raw
-hash_raw
-import_hashed_raw
-import_raw
+import_type
+hash
+import_hashed
+import
 # expression
 lambda_expression
 ifthenelse_expression
@@ -151,14 +147,12 @@ equal_expression
 not_equal_expression
 application_expression
 # atomic_expression
-# atomic_expression_raw
 # import_expression
-# import_expression_raw
-selector_expression_raw
-selector_raw
-labels_raw
-# primitive_expression_raw
-literal_expression_raw
+selector_expression
+selector
+labels
+# primitive_expression
+literal_expression
 # record_type_or_literal
 empty_record_literal
 empty_record_type
@@ -168,6 +162,6 @@ non_empty_record_literal
 union_type_or_literal
 empty_union_type
 non_empty_union_type_or_literal
-non_empty_list_literal_raw
-# parenthesized_expression_raw
+non_empty_list_literal
+# parenthesized_expression
 # complete_expression

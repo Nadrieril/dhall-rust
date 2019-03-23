@@ -172,10 +172,10 @@ quoted-label = 1*quoted-label-char
 ; Their list can be found in semantics.md. This is not enforced by the grammar but
 ; should be checked by implementations. The only place where this restriction applies
 ; is bound variables.
-label-raw = ("`" quoted-label "`" / simple-label)
+label = ("`" quoted-label "`" / simple-label)
 
 ; An any-label is allowed to be one of the reserved identifiers.
-any-label-raw = label-raw
+any-label = label
 
 
 ; Dhall's double-quoted strings are equivalent to JSON strings except with
@@ -274,31 +274,30 @@ single-quote-literal = "''" end-of-line single-quote-continue
 ; Interpolation
 interpolation = "${" complete-expression "}"
 
-text-literal-raw = (double-quote-literal / single-quote-literal)
+text-literal = (double-quote-literal / single-quote-literal)
 
 ; RFC 5234 interprets string literals as case-insensitive and recommends using
 ; hex instead for case-sensitive strings
 ;
 ; If you don't feel like reading hex, these are all the same as the rule name,
-; except without the '-raw' ending.
+; except without the '' ending.
 ; Keywords that should never be parsed as identifiers
-if-raw                = %x69.66
-then-raw              = %x74.68.65.6e
-else-raw              = %x65.6c.73.65
-let-raw               = %x6c.65.74
-in-raw                = %x69.6e
-as-raw                = %x61.73
-using-raw             = %x75.73.69.6e.67
-merge-raw             = %x6d.65.72.67.65
-missing-raw           = %x6d.69.73.73.69.6e.67
-Infinity-raw          = %x49.6e.66.69.6e.69.74.79
+if                = %x69.66
+then              = %x74.68.65.6e
+else              = %x65.6c.73.65
+let               = %x6c.65.74
+in                = %x69.6e
+as                = %x61.73
+using             = %x75.73.69.6e.67
+merge             = %x6d.65.72.67.65
+missing           = %x6d.69.73.73.69.6e.67
+Infinity          = %x49.6e.66.69.6e.69.74.79
 ; Reserved identifiers, only needed for some special cases of parsing
 Optional              = %x4f.70.74.69.6f.6e.61.6c
 Text                  = %x54.65.78.74
 List                  = %x4c.69.73.74
-Infinity-raw          = %x49.6e.66.69.6e.69.74.79
-NaN-raw               = %x4e.61.4e
-Some-raw              = %x53.6f.6d.65
+NaN               = %x4e.61.4e
+Some              = %x53.6f.6d.65
 
 combine       = %x2227 / "/\"
 combine-types = %x2A53 / "//\\"
@@ -309,15 +308,15 @@ arrow         = %x2192 / "->"
 
 exponent = "e" [ "+" / "-" ] 1*DIGIT
 
-double-literal-raw = [ "+" / "-" ] 1*DIGIT ( "." 1*DIGIT [ exponent ] / exponent)
+double-literal = [ "+" / "-" ] 1*DIGIT ( "." 1*DIGIT [ exponent ] / exponent)
 
-natural-literal-raw = 1*DIGIT
+natural-literal = 1*DIGIT
 
-integer-literal-raw = ( "+" / "-" ) natural-literal-raw
+integer-literal = ( "+" / "-" ) natural-literal
 
 ; The implementation should recognize reserved names for builtins and treat them as special
 ; values instead of variables.
-identifier-raw = any-label-raw [ whitespace "@" whitespace natural-literal-raw ]
+identifier = any-label [ whitespace "@" whitespace natural-literal ]
 
 ; Printable characters other than " ()[]{}<>/\,"
 ;
@@ -364,7 +363,7 @@ path-component = "/" ( unquoted-path-component / %x22 quoted-path-component %x22
 
 path = 1*path-component
 
-local-raw =
+local =
     parent-path
     / here-path
     / home-path
@@ -444,11 +443,11 @@ sub-delims = "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / "," / ";" / "="
 
 http =
     http-raw
-    [ whitespace using-raw nonempty-whitespace (import-hashed-raw / "(" whitespace import-hashed-raw whitespace ")") ]
+    [ whitespace using nonempty-whitespace (import-hashed / "(" whitespace import-hashed whitespace ")") ]
 
 ; Dhall supports unquoted environment variables that are Bash-compliant or
 ; quoted environment variables that are POSIX-compliant
-env-raw = "env:"
+env = "env:"
     ( bash-environment-variable
     / %x22 posix-environment-variable %x22
     )
@@ -510,21 +509,21 @@ posix-environment-variable-character =
         ; %x5C = "\"
     / %x5D-7E
 
-import-type-raw = missing-raw / local-raw / http / env-raw
+import-type = missing / local / http / env
 
-hash-raw = %x73.68.61.32.35.36.3a 64HEXDIG  ; "sha256:XXX...XXX"
+hash = %x73.68.61.32.35.36.3a 64HEXDIG  ; "sha256:XXX...XXX"
 
-import-hashed-raw = import-type-raw [ whitespace hash-raw ]
+import-hashed = import-type [ whitespace hash ]
 
 ; "http://example.com"
 ; "./foo/bar"
 ; "env:FOO"
-import-raw = import-hashed-raw [ whitespace as-raw nonempty-whitespace Text ]
+import = import-hashed [ whitespace as nonempty-whitespace Text ]
 
 ; NOTE: Every rule past this point should only reference rules that end with
 ; whitespace.  This ensures consistent handling of whitespace in the absence of
 ; a separate lexing step.
-; The exception is the rules ending in -raw, which should _not_ end in whitespace.
+; The exception is the rules ending in , which should _not_ end in whitespace.
 ; This is important to avoid the need for sequential backtracking in application-expression.
 
 expression =
@@ -542,33 +541,33 @@ expression =
     / annotated-expression
 
 ; "\(x : a) -> b"
-lambda-expression = lambda whitespace "(" whitespace label-raw whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
+lambda-expression = lambda whitespace "(" whitespace label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
 
 ; "if a then b else c"
-ifthenelse-expression = if-raw nonempty-whitespace expression then-raw nonempty-whitespace expression else-raw nonempty-whitespace expression
+ifthenelse-expression = if nonempty-whitespace expression then nonempty-whitespace expression else nonempty-whitespace expression
 
 ; "let x : t = e1 in e2"
 ; "let x     = e1 in e2"
 ; "let x = e1 let y = e2 in e3"
-let-expression = 1*let-binding in-raw nonempty-whitespace expression
-let-binding = let-raw nonempty-whitespace label-raw whitespace [ ":" nonempty-whitespace expression ] "=" whitespace expression
+let-expression = 1*let-binding in nonempty-whitespace expression
+let-binding = let nonempty-whitespace label whitespace [ ":" nonempty-whitespace expression ] "=" whitespace expression
 
 ; "forall (x : a) -> b"
-forall-expression = forall whitespace "(" whitespace label-raw whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
+forall-expression = forall whitespace "(" whitespace label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
 
 ; "a -> b"
 arrow-expression = operator-expression arrow whitespace expression
 
 ; "merge e1 e2 : t"
 ; "merge e1 e2"
-merge-expression = merge-raw nonempty-whitespace import-expression import-expression [ ":" nonempty-whitespace application-expression ]
+merge-expression = merge nonempty-whitespace import-expression whitespace import-expression whitespace [ ":" nonempty-whitespace application-expression ]
 
 ; "[]  : List     t"
 ; "[]  : Optional t"
 ; "[x] : Optional t"
 empty-list-or-optional = "[" whitespace (empty-collection / non-empty-optional)
-empty-collection = "]" whitespace ":" nonempty-whitespace (List whitespace / Optional whitespace) import-expression
-non-empty-optional = expression "]" whitespace ":" nonempty-whitespace Optional whitespace import-expression
+empty-collection = "]" whitespace ":" nonempty-whitespace (List whitespace / Optional whitespace) import-expression whitespace
+non-empty-optional = expression "]" whitespace ":" nonempty-whitespace Optional whitespace import-expression whitespace
 
 ; "x : t"
 annotated-expression = operator-expression [ ":" nonempty-whitespace expression ]
@@ -593,12 +592,11 @@ not-equal-expression     = application-expression   *("!=" whitespace     applic
 ; would be ambiguity: `./ab` could be interpreted as "import the file `./ab`",
 ; or "apply the import `./a` to label `b`"
 application-expression =
-    import-expression-raw *(nonempty-whitespace import-expression-raw) whitespace
+    import-expression *(nonempty-whitespace import-expression) whitespace
 
-import-expression = import-expression-raw whitespace
-import-expression-raw =
-      import-raw
-    / selector-expression-raw
+import-expression =
+      import
+    / selector-expression
 
 ; `record.field` extracts one field of a record
 ; `record.{ field0, field1, field2 }` projects out several fields of a record
@@ -607,48 +605,48 @@ import-expression-raw =
 ; can't tell from parsing just the period whether "foo." will become "foo.bar"
 ; (i.e. accessing field `bar` of the record `foo`) or `foo./bar` (i.e. applying
 ; the function `foo` to the relative path `./bar`)
-selector-expression-raw = primitive-expression-raw *(whitespace "." whitespace selector-raw)
+selector-expression = primitive-expression *(whitespace "." whitespace selector)
 
-selector-raw = any-label-raw / labels-raw
+selector = any-label / labels
 
-labels-raw = "{" whitespace [ any-label-raw whitespace *("," whitespace any-label-raw whitespace) ] "}"
+labels = "{" whitespace [ any-label whitespace *("," whitespace any-label whitespace) ] "}"
 
 
-primitive-expression-raw =
-      literal-expression-raw
+primitive-expression =
+      literal-expression
     / "{" whitespace record-type-or-literal "}"
     / "<" whitespace union-type-or-literal ">"
-    / non-empty-list-literal-raw
-    / parenthesized-expression-raw
+    / non-empty-list-literal
+    / parenthesized-expression
 
 ; NOTE: Backtrack when parsing the first three alternatives (i.e. the numeric
 ; literals).  This is because they share leading characters in common
-literal-expression-raw =
+literal-expression =
     ; "2.0"
-      double-literal-raw
+      double-literal
     
     ; "2"
-    / natural-literal-raw
+    / natural-literal
     
     ; "+2"
-    / integer-literal-raw
+    / integer-literal
     
     ; "-Infinity"
     / minus-infinity-literal
     ; "Infinity"
     / plus-infinity-literal
     ; "NaN"
-    / NaN-raw
+    / NaN
     
     ; '"ABC"'
-    / text-literal-raw
+    / text-literal
     
     ; "x"
     ; "x@2"
-    / identifier-raw
+    / identifier
 
-minus-infinity-literal = "-" Infinity-raw
-plus-infinity-literal = Infinity-raw
+minus-infinity-literal = "-" Infinity
+plus-infinity-literal = Infinity
 
 ; "{ foo = 1      , bar = True }"
 ; "{ foo : Integer, bar : Bool }"
@@ -659,11 +657,11 @@ record-type-or-literal =
 empty-record-literal = "=" whitespace
 empty-record-type = ""
 non-empty-record-type-or-literal =
-    any-label-raw whitespace (non-empty-record-literal / non-empty-record-type)
+    any-label whitespace (non-empty-record-literal / non-empty-record-type)
 non-empty-record-type    = ":" nonempty-whitespace expression *("," whitespace record-type-entry)
-record-type-entry = any-label-raw whitespace ":" nonempty-whitespace expression
+record-type-entry = any-label whitespace ":" nonempty-whitespace expression
 non-empty-record-literal = "=" whitespace expression *("," whitespace record-literal-entry)
-record-literal-entry = any-label-raw whitespace "=" whitespace expression
+record-literal-entry = any-label whitespace "=" whitespace expression
 
 ; "< Foo : Integer | Bar : Bool >"
 ; "< Foo : Integer | Bar = True >"
@@ -672,19 +670,19 @@ union-type-or-literal =
     / empty-union-type
 empty-union-type = ""
 non-empty-union-type-or-literal =
-    any-label-raw whitespace
+    any-label whitespace
     ( "=" whitespace expression union-type-entries
     / ":" nonempty-whitespace expression [ "|" whitespace non-empty-union-type-or-literal ]
     )
 union-type-entries = *("|" whitespace union-type-entry)
-union-type-entry = any-label-raw whitespace ":" nonempty-whitespace expression
+union-type-entry = any-label whitespace ":" nonempty-whitespace expression
 
 ; "[1, 2, 3]"
 ; `empty-list-or-optional` handles empty lists
-non-empty-list-literal-raw = "[" whitespace expression *("," whitespace expression) "]"
+non-empty-list-literal = "[" whitespace expression *("," whitespace expression) "]"
 
 ; "( e )"
-parenthesized-expression-raw = "(" whitespace expression ")"
+parenthesized-expression = "(" whitespace expression ")"
 
 
 ; All expressions end with trailing whitespace.  This just adds a final

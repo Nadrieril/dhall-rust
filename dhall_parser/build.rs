@@ -36,15 +36,15 @@ fn main() -> std::io::Result<()> {
     writeln!(
         &mut file,
         "simple_label = {{
-              keyword_raw ~ simple_label_next_char+
-            | !keyword_raw ~ simple_label_first_char ~ simple_label_next_char*
+              keyword ~ simple_label_next_char+
+            | !keyword ~ simple_label_first_char ~ simple_label_next_char*
     }}"
     )?;
     writeln!(
         &mut file,
-        "keyword_raw = _{{
-            let_raw | in_raw | if_raw | then_raw
-                | else_raw | Infinity_raw | NaN_raw
+        "keyword = _{{
+            let_ | in_ | if_ | then
+                | else_ | Infinity | NaN
     }}"
     )?;
     writeln!(

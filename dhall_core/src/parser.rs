@@ -245,7 +245,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
         | equal_expression
         | not_equal_expression
         | application_expression
-        | selector_expression_raw
+        | selector_expression
         | annotated_expression => true,
         _ => false,
     }
@@ -256,7 +256,7 @@ make_parser! {
 
     rule!(simple_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
     rule!(quoted_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
-    rule!(label_raw<Label>; children!(
+    rule!(label<Label>; children!(
         [simple_label(l)] => l,
         [quoted_label(l)] => l,
     ));
@@ -346,11 +346,11 @@ make_parser! {
         },
     ));
 
-    rule!(NaN_raw<()>; captured_str!(_) => ());
+    rule!(NaN<()>; captured_str!(_) => ());
     rule!(minus_infinity_literal<()>; captured_str!(_) => ());
     rule!(plus_infinity_literal<()>; captured_str!(_) => ());
 
-    rule!(double_literal_raw<core::Double>;
+    rule!(double_literal<core::Double>;
         captured_str!(s) => {
             let s = s.trim();
             match s.parse::<f64>() {
@@ -362,7 +362,7 @@ make_parser! {
         }
     );
 
-    rule!(natural_literal_raw<core::Natural>;
+    rule!(natural_literal<core::Natural>;
         captured_str!(s) => {
             s.trim()
                 .parse()
@@ -370,7 +370,7 @@ make_parser! {
         }
     );
 
-    rule!(integer_literal_raw<core::Integer>;
+    rule!(integer_literal<core::Integer>;
         captured_str!(s) => {
             s.trim()
                 .parse()
@@ -390,18 +390,18 @@ make_parser! {
         }
     ));
 
-    rule_group!(local_raw<(FilePrefix, PathBuf)>);
+    rule_group!(local<(FilePrefix, PathBuf)>);
 
-    rule!(parent_path<(FilePrefix, PathBuf)> as local_raw; children!(
+    rule!(parent_path<(FilePrefix, PathBuf)> as local; children!(
         [path(p)] => (FilePrefix::Parent, p)
     ));
-    rule!(here_path<(FilePrefix, PathBuf)> as local_raw; children!(
+    rule!(here_path<(FilePrefix, PathBuf)> as local; children!(
         [path(p)] => (FilePrefix::Here, p)
     ));
-    rule!(home_path<(FilePrefix, PathBuf)> as local_raw; children!(
+    rule!(home_path<(FilePrefix, PathBuf)> as local; children!(
         [path(p)] => (FilePrefix::Home, p)
     ));
-    rule!(absolute_path<(FilePrefix, PathBuf)> as local_raw; children!(
+    rule!(absolute_path<(FilePrefix, PathBuf)> as local; children!(
         [path(p)] => (FilePrefix::Absolute, p)
     ));
 
@@ -435,49 +435,49 @@ make_parser! {
         [http_raw(url)] => url
     ));
 
-    rule!(env_raw<String>; children!(
+    rule!(env<String>; children!(
         [bash_environment_variable(s)] => s,
         [posix_environment_variable(s)] => s,
     ));
     rule!(bash_environment_variable<String>; captured_str!(s) => s.to_owned());
     rule!(posix_environment_variable<String>; captured_str!(s) => s.to_owned());
 
-    rule!(missing_raw<()>; captured_str!(_) => ());
+    rule!(missing<()>; captured_str!(_) => ());
 
     // TODO: other import types
-    rule!(import_type_raw<ImportLocation>; children!(
-        [missing_raw(_)] => {
+    rule!(import_type<ImportLocation>; children!(
+        [missing(_)] => {
             ImportLocation::Missing
         },
-        [env_raw(e)] => {
+        [env(e)] => {
             ImportLocation::Env(e)
         },
         [http(url)] => {
             ImportLocation::Remote(url)
         },
-        [local_raw((prefix, path))] => {
+        [local((prefix, path))] => {
             ImportLocation::Local(prefix, path)
         },
     ));
 
-    rule!(import_hashed_raw<(ImportLocation, Option<()>)>; children!(
+    rule!(import_hashed<(ImportLocation, Option<()>)>; children!(
         // TODO: handle hash
-        [import_type_raw(import)] => (import, None)
+        [import_type(import)] => (import, None)
     ));
 
     rule_group!(expression<ParsedExpr>);
 
     rule!(Text<()>; captured_str!(_) => ());
 
-    rule!(import_raw<ParsedExpr> as expression; children!(
-        [import_hashed_raw((location, hash))] => {
+    rule!(import<ParsedExpr> as expression; children!(
+        [import_hashed((location, hash))] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::Code,
                 hash,
                 location,
             }))
         },
-        [import_hashed_raw((location, hash)), Text(_)] => {
+        [import_hashed((location, hash)), Text(_)] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::RawText,
                 hash,
@@ -487,7 +487,7 @@ make_parser! {
     ));
 
     rule!(lambda_expression<ParsedExpr> as expression; children!(
-        [label_raw(l), expression(typ), expression(body)] => {
+        [label(l), expression(typ), expression(body)] => {
             bx(Expr::Lam(l, typ, body))
         }
     ));
@@ -505,12 +505,12 @@ make_parser! {
     ));
 
     rule!(let_binding<(Label, Option<ParsedExpr>, ParsedExpr)>; children!(
-        [label_raw(name), expression(annot), expression(expr)] => (name, Some(annot), expr),
-        [label_raw(name), expression(expr)] => (name, None, expr),
+        [label(name), expression(annot), expression(expr)] => (name, Some(annot), expr),
+        [label(name), expression(expr)] => (name, None, expr),
     ));
 
     rule!(forall_expression<ParsedExpr> as expression; children!(
-        [label_raw(l), expression(typ), expression(body)] => {
+        [label(l), expression(typ), expression(body)] => {
             bx(Expr::Pi(l, typ, body))
         }
     ));
@@ -646,32 +646,32 @@ make_parser! {
         },
     ));
 
-    rule!(selector_expression_raw<ParsedExpr> as expression; children!(
+    rule!(selector_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), selector_raw(rest..)] => {
+        [expression(first), selector(rest..)] => {
             rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
         }
     ));
 
     // TODO: handle record projection
-    rule!(selector_raw<Label>; children!(
-        [label_raw(l)] => l
+    rule!(selector<Label>; children!(
+        [label(l)] => l
     ));
 
-    rule!(literal_expression_raw<ParsedExpr> as expression; children!(
-        [double_literal_raw(n)] => bx(Expr::DoubleLit(n)),
+    rule!(literal_expression<ParsedExpr> as expression; children!(
+        [double_literal(n)] => bx(Expr::DoubleLit(n)),
         [minus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::NEG_INFINITY.into())),
         [plus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::INFINITY.into())),
-        [NaN_raw(n)] => bx(Expr::DoubleLit(std::f64::NAN.into())),
-        [natural_literal_raw(n)] => bx(Expr::NaturalLit(n)),
-        [integer_literal_raw(n)] => bx(Expr::IntegerLit(n)),
+        [NaN(n)] => bx(Expr::DoubleLit(std::f64::NAN.into())),
+        [natural_literal(n)] => bx(Expr::NaturalLit(n)),
+        [integer_literal(n)] => bx(Expr::IntegerLit(n)),
         [double_quote_literal(s)] => bx(Expr::TextLit(s)),
         [single_quote_literal(s)] => bx(Expr::TextLit(s)),
         [expression(e)] => e,
     ));
 
-    rule!(identifier_raw<ParsedExpr> as expression; children!(
-        [label_raw(l), natural_literal_raw(idx)] => {
+    rule!(identifier<ParsedExpr> as expression; children!(
+        [label(l), natural_literal(idx)] => {
             let name = String::from(l.clone());
             match Builtin::parse(name.as_str()) {
                 Some(b) => bx(Expr::Builtin(b)),
@@ -684,7 +684,7 @@ make_parser! {
                 }
             }
         },
-        [label_raw(l)] => {
+        [label(l)] => {
             let name = String::from(l.clone());
             match Builtin::parse(name.as_str()) {
                 Some(b) => bx(Expr::Builtin(b)),
@@ -708,12 +708,12 @@ make_parser! {
     );
 
     rule!(non_empty_record_type_or_literal<ParsedExpr> as expression; children!(
-        [label_raw(first_label), non_empty_record_type(rest)] => {
+        [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
             map.insert(first_label, first_expr);
             bx(Expr::RecordType(map))
         },
-        [label_raw(first_label), non_empty_record_literal(rest)] => {
+        [label(first_label), non_empty_record_literal(rest)] => {
             let (first_expr, mut map) = rest;
             map.insert(first_label, first_expr);
             bx(Expr::RecordLit(map))
@@ -727,7 +727,7 @@ make_parser! {
     ));
 
     rule!(record_type_entry<(Label, ParsedExpr)>; children!(
-        [label_raw(name), expression(expr)] => (name, expr)
+        [label(name), expression(expr)] => (name, expr)
     ));
 
     rule!(non_empty_record_literal<(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
@@ -737,7 +737,7 @@ make_parser! {
     ));
 
     rule!(record_literal_entry<(Label, ParsedExpr)>; children!(
-        [label_raw(name), expression(expr)] => (name, expr)
+        [label(name), expression(expr)] => (name, expr)
     ));
 
     rule!(union_type_or_literal<ParsedExpr> as expression; children!(
@@ -756,15 +756,15 @@ make_parser! {
 
     rule!(non_empty_union_type_or_literal
           <(Option<(Label, ParsedExpr)>, BTreeMap<Label, ParsedExpr>)>; children!(
-        [label_raw(l), expression(e), union_type_entries(entries)] => {
+        [label(l), expression(e), union_type_entries(entries)] => {
             (Some((l, e)), entries)
         },
-        [label_raw(l), expression(e), non_empty_union_type_or_literal(rest)] => {
+        [label(l), expression(e), non_empty_union_type_or_literal(rest)] => {
             let (x, mut entries) = rest;
             entries.insert(l, e);
             (x, entries)
         },
-        [label_raw(l), expression(e)] => {
+        [label(l), expression(e)] => {
             let mut entries = BTreeMap::new();
             entries.insert(l, e);
             (None, entries)
@@ -776,10 +776,10 @@ make_parser! {
     ));
 
     rule!(union_type_entry<(Label, ParsedExpr)>; children!(
-        [label_raw(name), expression(expr)] => (name, expr)
+        [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(non_empty_list_literal_raw<ParsedExpr> as expression; children!(
+    rule!(non_empty_list_literal<ParsedExpr> as expression; children!(
         [expression(items..)] => bx(Expr::NEListLit(items.collect()))
     ));
 
