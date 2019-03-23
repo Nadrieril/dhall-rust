@@ -206,13 +206,19 @@ impl<S, A: Display> Expr<S, A> {
                 for x in a.iter() {
                     match x {
                         InterpolatedTextContents::Text(a) => {
-                            // TODO Format all escapes properly
-                            f.write_str(
-                                &a.replace("\n", "\\n")
-                                    .replace("\t", "\\t")
-                                    .replace("\r", "\\r")
-                                    .replace("\"", "\\\""),
-                            )?;
+                            for c in a.chars() {
+                                match c {
+                                    '\\' => f.write_str("\\\\"),
+                                    '"' => f.write_str("\\\""),
+                                    '$' => f.write_str("\\$"),
+                                    '\u{0008}' => f.write_str("\\b"),
+                                    '\u{000C}' => f.write_str("\\f"),
+                                    '\n' => f.write_str("\\n"),
+                                    '\r' => f.write_str("\\r"),
+                                    '\t' => f.write_str("\\t"),
+                                    c => write!(f, "{}", c),
+                                }?;
+                            }
                         }
                         InterpolatedTextContents::Expr(e) => {
                             f.write_str("${ ")?;

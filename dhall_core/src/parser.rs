@@ -13,7 +13,7 @@ use crate::*;
 // are here and hopefully you can figure out how they work.
 
 type ParsedText = InterpolatedText<X, Import>;
-type ParsedTextContents<'a> = InterpolatedTextContents<'a, X, Import>;
+type ParsedTextContents = InterpolatedTextContents<X, Import>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
@@ -270,7 +270,7 @@ make_parser! {
         }
     ));
 
-    rule!(double_quote_chunk<ParsedTextContents<'a>>; children!(
+    rule!(double_quote_chunk<ParsedTextContents>; children!(
         [interpolation(e)] => {
             InterpolatedTextContents::Expr(e)
         },
@@ -278,24 +278,28 @@ make_parser! {
             InterpolatedTextContents::Text(s)
         },
         [double_quote_char(s)] => {
-            InterpolatedTextContents::Text(s)
+            InterpolatedTextContents::Text(s.to_owned())
         },
     ));
-    rule!(double_quote_escaped<&'a str>;
-        // TODO: parse all escapes
+    rule!(double_quote_escaped<String>;
         captured_str!(s) => {
             match s {
-                "\"" => "\"",
-                "$" => "$",
-                "\\" => "\\",
-                "/" => "/",
-                // "b" => "\b",
-                // "f" => "\f",
-                "n" => "\n",
-                "r" => "\r",
-                "t" => "\t",
-                // "uXXXX"
-                _ => unimplemented!(),
+                "\"" => "\"".to_owned(),
+                "$" => "$".to_owned(),
+                "\\" => "\\".to_owned(),
+                "/" => "/".to_owned(),
+                "b" => "\u{0008}".to_owned(),
+                "f" => "\u{000C}".to_owned(),
+                "n" => "\n".to_owned(),
+                "r" => "\r".to_owned(),
+                "t" => "\t".to_owned(),
+                _ => {
+                    // "uXXXX"
+                    use std::convert::TryFrom;
+                    let c = u16::from_str_radix(&s[1..5], 16).unwrap();
+                    let c = char::try_from(c as u32).unwrap();
+                    std::iter::once(c).collect()
+                }
             }
         }
     );
@@ -323,22 +327,22 @@ make_parser! {
         [expression(e)] => e
     ));
 
-    rule!(single_quote_continue<Vec<ParsedTextContents<'a>>>; children!(
+    rule!(single_quote_continue<Vec<ParsedTextContents>>; children!(
         [interpolation(c), single_quote_continue(rest)] => {
             let mut rest = rest;
             rest.push(InterpolatedTextContents::Expr(c)); rest
         },
         [escaped_quote_pair(c), single_quote_continue(rest)] => {
             let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c)); rest
+            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
         },
         [escaped_interpolation(c), single_quote_continue(rest)] => {
             let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c)); rest
+            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
         },
         [single_quote_char(c), single_quote_continue(rest)] => {
             let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c)); rest
+            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
         },
         [] => {
             vec![]

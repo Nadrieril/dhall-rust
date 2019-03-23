@@ -21,7 +21,7 @@ parser_success!(spec_parser_success_collectionImportType, "collectionImportType"
 parser_success!(spec_parser_success_double, "double");
 parser_success!(spec_parser_success_doubleQuotedString, "doubleQuotedString");
 parser_success!(spec_parser_success_environmentVariables, "environmentVariables");
-// parser_success!(spec_parser_success_escapedDoubleQuotedString, "escapedDoubleQuotedString");
+parser_success!(spec_parser_success_escapedDoubleQuotedString, "escapedDoubleQuotedString");
 parser_success!(spec_parser_success_escapedSingleQuotedString, "escapedSingleQuotedString");
 parser_success!(spec_parser_success_fields, "fields");
 parser_success!(spec_parser_success_forall, "forall");
