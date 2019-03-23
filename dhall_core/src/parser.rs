@@ -355,10 +355,15 @@ make_parser! {
 
     rule!(double_literal_raw<core::Double>;
         raw_pair!(pair) => {
-            pair.as_str().trim()
-                .parse::<f64>()
-                .map(NaiveDouble::from)
-                .map_err(|e: std::num::ParseFloatError| custom_parse_error(&pair, format!("{}", e)))?
+            let s = pair.as_str().trim();
+            match s.parse::<f64>() {
+                Ok(x) if x.is_infinite() =>
+                    Err(custom_parse_error(&pair,
+                        format!("Overflow while parsing double literal '{}'", s)
+                    ))?,
+                Ok(x) => NaiveDouble::from(x),
+                Err(e) => Err(custom_parse_error(&pair, format!("{}", e)))?,
+            }
         }
     );
 
