@@ -165,6 +165,11 @@ impl<S, A: Display> Expr<S, A> {
                 a.fmt_e(f)?;
                 write!(f, ".{}", b)
             }
+            &Projection(ref e, ref ls) => {
+                e.fmt_e(f)?;
+                write!(f, ".")?;
+                fmt_list("{ ", ", ", " }", ls, f, |l, f| write!(f, "{}", l))
+            }
             &Note(_, ref b) => b.fmt_e(f),
             a => a.fmt_f(f),
         }

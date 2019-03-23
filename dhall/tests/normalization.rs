@@ -13,7 +13,7 @@ norm!(spec_normalization_success_haskell_tutorial_access_0, "haskell-tutorial/ac
 // norm!(spec_normalization_success_haskell_tutorial_combineTypes_0, "haskell-tutorial/combineTypes/0");
 // norm!(spec_normalization_success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
 // norm!(spec_normalization_success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
-// norm!(spec_normalization_success_haskell_tutorial_projection_0, "haskell-tutorial/projection/0");
+norm!(spec_normalization_success_haskell_tutorial_projection_0, "haskell-tutorial/projection/0");
 // norm!(spec_normalization_success_multiline_escape, "multiline/escape");
 // norm!(spec_normalization_success_multiline_hangingIndent, "multiline/hangingIndent");
 // norm!(spec_normalization_success_multiline_interesting, "multiline/interesting");
@@ -228,9 +228,9 @@ norm!(spec_normalization_success_unit_ListNormalizeTypeAnnotation, "unit/ListNor
 norm!(spec_normalization_success_unit_ListReverse, "unit/ListReverse");
 norm!(spec_normalization_success_unit_ListReverseEmpty, "unit/ListReverseEmpty");
 norm!(spec_normalization_success_unit_ListReverseTwo, "unit/ListReverseTwo");
-// norm!(spec_normalization_success_unit_Merge, "unit/Merge");
+norm!(spec_normalization_success_unit_Merge, "unit/Merge");
 norm!(spec_normalization_success_unit_MergeNormalizeArguments, "unit/MergeNormalizeArguments");
-// norm!(spec_normalization_success_unit_MergeWithType, "unit/MergeWithType");
+norm!(spec_normalization_success_unit_MergeWithType, "unit/MergeWithType");
 norm!(spec_normalization_success_unit_MergeWithTypeNormalizeArguments, "unit/MergeWithTypeNormalizeArguments");
 norm!(spec_normalization_success_unit_Natural, "unit/Natural");
 norm!(spec_normalization_success_unit_NaturalBuild, "unit/NaturalBuild");
@@ -302,9 +302,9 @@ norm!(spec_normalization_success_unit_OptionalFoldNone, "unit/OptionalFoldNone")
 norm!(spec_normalization_success_unit_OptionalFoldSome, "unit/OptionalFoldSome");
 norm!(spec_normalization_success_unit_Record, "unit/Record");
 norm!(spec_normalization_success_unit_RecordEmpty, "unit/RecordEmpty");
-// norm!(spec_normalization_success_unit_RecordProjection, "unit/RecordProjection");
-// norm!(spec_normalization_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
-// norm!(spec_normalization_success_unit_RecordProjectionNormalizeArguments, "unit/RecordProjectionNormalizeArguments");
+norm!(spec_normalization_success_unit_RecordProjection, "unit/RecordProjection");
+norm!(spec_normalization_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
+norm!(spec_normalization_success_unit_RecordProjectionNormalizeArguments, "unit/RecordProjectionNormalizeArguments");
 norm!(spec_normalization_success_unit_RecordSelection, "unit/RecordSelection");
 norm!(spec_normalization_success_unit_RecordSelectionNormalizeArguments, "unit/RecordSelectionNormalizeArguments");
 norm!(spec_normalization_success_unit_RecordType, "unit/RecordType");

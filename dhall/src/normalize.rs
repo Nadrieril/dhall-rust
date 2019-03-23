@@ -276,14 +276,45 @@ where
                 (o, _, _) => BinOp(*o, x, y),
             })
         }
-        Field(e, x) => {
+        Merge(x, y, t) => {
+            let x = normalize_whnf(x);
+            let y = normalize_whnf(y);
+            match (x.as_ref(), y.as_ref()) {
+                (RecordLit(handlers), UnionLit(k, v, _)) => {
+                    match handlers.get(&k) {
+                        Some(h) => {
+                            normalize_whnf(&rc(App(h.clone(), vec![v.clone()])))
+                        }
+                        None => rc(Merge(x, y, t.clone())),
+                    }
+                }
+                _ => rc(Merge(x, y, t.clone())),
+            }
+        }
+        Field(e, l) => {
             let e = normalize_whnf(e);
-            match (e.as_ref(), x) {
-                (RecordLit(kvs), x) => match kvs.get(&x) {
+            match e.as_ref() {
+                RecordLit(kvs) => match kvs.get(&l) {
                     Some(r) => normalize_whnf(r),
-                    None => rc(Field(e, x.clone())),
+                    None => rc(Field(e, l.clone())),
                 },
-                (_, x) => rc(Field(e, x.clone())),
+                _ => rc(Field(e, l.clone())),
+            }
+        }
+        Projection(_, ls) if ls.is_empty() => {
+            rc(RecordLit(std::collections::BTreeMap::new()))
+        }
+        Projection(e, ls) => {
+            let e = normalize_whnf(e);
+            match e.as_ref() {
+                RecordLit(kvs) => rc(RecordLit(
+                    ls.iter()
+                        .filter_map(|l| {
+                            kvs.get(l).map(|x| (l.clone(), x.clone()))
+                        })
+                        .collect(),
+                )),
+                _ => rc(Projection(e, ls.clone())),
             }
         }
         _ => Rc::clone(e),

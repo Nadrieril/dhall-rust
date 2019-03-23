@@ -19,6 +19,12 @@ pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
+#[derive(Debug)]
+enum Either<A, B> {
+    Left(A),
+    Right(B),
+}
+
 impl Builtin {
     pub fn parse(s: &str) -> Option<Self> {
         use self::Builtin::*;
@@ -649,13 +655,20 @@ make_parser! {
     rule!(selector_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), selector(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::Field(acc, e)))
+            rest.fold(first, |acc, e| match e {
+                Either::Left(l) => bx(Expr::Field(acc, l)),
+                Either::Right(ls) => bx(Expr::Projection(acc, ls)),
+            })
         }
     ));
 
-    // TODO: handle record projection
-    rule!(selector<Label>; children!(
-        [label(l)] => l
+    rule!(selector<Either<Label, Vec<Label>>>; children!(
+        [label(l)] => Either::Left(l),
+        [labels(ls)] => Either::Right(ls),
+    ));
+
+    rule!(labels<Vec<Label>>; children!(
+        [label(ls..)] => ls.collect(),
     ));
 
     rule!(literal_expression<ParsedExpr> as expression; children!(

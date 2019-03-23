@@ -241,8 +241,10 @@ pub enum Expr<Note, Embed> {
         SubExpr<Note, Embed>,
         Option<SubExpr<Note, Embed>>,
     ),
-    ///  `Field e x                                ~  e.x`
+    ///  e.x
     Field(SubExpr<Note, Embed>, Label),
+    ///  e.{ x, y, z }
+    Projection(SubExpr<Note, Embed>, Vec<Label>),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
     Note(Note, SubExpr<Note, Embed>),
     /// Embeds an import or the result of resolving the import
@@ -353,9 +355,9 @@ where
     };
     match e {
         Const(k) => Const(*k),
-        Var(V(x, n)) => Var(V(map_label(x), *n)),
-        Lam(x, t, b) => Lam(map_label(x), map(t), map_under_binder(x, b)),
-        Pi(x, t, b) => Pi(map_label(x), map(t), map_under_binder(x, b)),
+        Var(V(l, n)) => Var(V(map_label(l), *n)),
+        Lam(l, t, b) => Lam(map_label(l), map(t), map_under_binder(l, b)),
+        Pi(l, t, b) => Pi(map_label(l), map(t), map_under_binder(l, b)),
         App(f, args) => App(map(f), vec(args)),
         Let(l, t, a, b) => {
             Let(map_label(l), opt(t), map(a), map_under_binder(l, b))
@@ -378,7 +380,10 @@ where
         UnionType(kts) => UnionType(btmap(kts)),
         UnionLit(k, v, kvs) => UnionLit(map_label(k), map(v), btmap(kvs)),
         Merge(x, y, t) => Merge(map(x), map(y), opt(t)),
-        Field(r, x) => Field(map(r), map_label(x)),
+        Field(e, l) => Field(map(e), map_label(l)),
+        Projection(e, ls) => {
+            Projection(map(e), ls.iter().map(&map_label).collect())
+        }
         Note(n, e) => Note(map_note(n), map(e)),
         Embed(a) => Embed(map_embed(a)),
     }
