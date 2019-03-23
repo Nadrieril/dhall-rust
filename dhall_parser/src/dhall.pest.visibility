@@ -21,9 +21,7 @@ simple_label
 # quoted_label_char
 quoted_label
 label_raw
-# label
 # any_label_raw
-# any_label
 double_quote_chunk
 double_quote_escaped
 double_quote_literal

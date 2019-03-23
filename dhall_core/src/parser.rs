@@ -467,7 +467,7 @@ make_parser! {
 
     rule_group!(expression<ParsedExpr>);
 
-    rule!(Text_raw<()>; captured_str!(_) => ());
+    rule!(Text<()>; captured_str!(_) => ());
 
     rule!(import_raw<ParsedExpr> as expression; children!(
         [import_hashed_raw((location, hash))] => {
@@ -477,7 +477,7 @@ make_parser! {
                 location,
             }))
         },
-        [import_hashed_raw((location, hash)), Text_raw(_)] => {
+        [import_hashed_raw((location, hash)), Text(_)] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::RawText,
                 hash,
