@@ -152,16 +152,33 @@ HEXDIG = DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
 ; * as
 ; * using
 ; * merge
+; * missing
+; * Infinity
+; * Some
 simple-label-first-char = ALPHA / "_"
 simple-label-next-char = ALPHA / DIGIT / "-" / "/" / "_"
 simple-label = simple-label-first-char *simple-label-next-char
 
-quoted-label = 1*(ALPHA / DIGIT / "-" / "/" / "_" / ":" / "." / "$")
+quoted-label-char =
+      %x20-5F
+        ; %x60 = '`'
+    / %x61-7E
+
+quoted-label = 1*quoted-label-char
 
 ; NOTE: Dhall does not support Unicode labels, mainly to minimize the potential
 ; for code obfuscation
+; A label cannot not be any of the reserved identifiers for builtins (unless quoted).
+; Their list can be found in semantics.md. This is not enforced by the grammar but
+; should be checked by implementations. The only place where this restriction applies
+; is bound variables.
 label-raw = ("`" quoted-label "`" / simple-label)
 label = label-raw whitespace
+
+; An any-label is allowed to be one of the reserved identifiers.
+any-label = label
+any-label-raw = label-raw
+
 
 ; Dhall's double-quoted strings are equivalent to JSON strings except with
 ; support for string interpolation (and escaping string interpolation)
@@ -266,6 +283,7 @@ text-literal-raw = (double-quote-literal / single-quote-literal)
 ;
 ; If you don't feel like reading hex, these are all the same as the rule name,
 ; except without the '-raw' ending.
+; Keywords that should never be parsed as identifiers
 if-raw                = %x69.66
 then-raw              = %x74.68.65.6e
 else-raw              = %x65.6c.73.65
@@ -275,11 +293,14 @@ as-raw                = %x61.73
 using-raw             = %x75.73.69.6e.67
 merge-raw             = %x6d.65.72.67.65
 missing-raw           = %x6d.69.73.73.69.6e.67
+Infinity-raw          = %x49.6e.66.69.6e.69.74.79
+; Reserved identifiers, only needed for some special cases of parsing
 Optional-raw          = %x4f.70.74.69.6f.6e.61.6c
 Text-raw              = %x54.65.78.74
 List-raw              = %x4c.69.73.74
 Infinity-raw          = %x49.6e.66.69.6e.69.74.79
 NaN-raw               = %x4e.61.4e
+Some-raw              = %x53.6f.6d.65
 
 ; Whitespaced rules for reserved words, to be used when matching expressions
 if       = if-raw           nonempty-whitespace
@@ -290,38 +311,39 @@ in       = in-raw           nonempty-whitespace
 as       = as-raw           nonempty-whitespace
 using    = using-raw        nonempty-whitespace
 merge    = merge-raw        nonempty-whitespace
+Some     = Some-raw         nonempty-whitespace
 Optional = Optional-raw     whitespace
 Text     = Text-raw         whitespace
 List     = List-raw         whitespace
 
-equal             = "="  whitespace
-or                = "||" whitespace
-plus              = "+"  nonempty-whitespace  ; To disambiguate `f +2`
-text-append       = "++" whitespace
-list-append       = "#"  whitespace
-and               = "&&" whitespace
-times             = "*"  whitespace
-double-equal      = "==" whitespace
-not-equal         = "!=" whitespace
-dot               = "."  whitespace
-bar               = "|"  whitespace
-comma             = ","  whitespace
-at                = "@"  whitespace
-colon             = ":"  nonempty-whitespace  ; To disambiguate `env:VARIABLE` from type annotations
-import-alt        = "?"  nonempty-whitespace  ; To disambiguate `http://a/a?a`
-open-parens       = "("  whitespace
-close-parens-raw  = ")"
-close-parens      = ")"  whitespace
-open-brace        = "{"  whitespace
-close-brace-raw   = "}"
-close-brace       = "}"  whitespace
-open-bracket      = "["  whitespace
-close-bracket-raw = "]"
-close-bracket     = "]"  whitespace
-open-angle        = "<"  whitespace
-close-angle-raw   = ">"
-close-angle       = ">"  whitespace
 
+equal         = "="  whitespace
+or            = "||" whitespace
+plus          = "+"  nonempty-whitespace  ; To disambiguate `f +2`
+text-append   = "++" whitespace
+list-append   = "#"  whitespace
+and           = "&&" whitespace
+times         = "*"  whitespace
+double-equal  = "==" whitespace
+not-equal     = "!=" whitespace
+dot           = "."  whitespace
+bar           = "|"  whitespace
+comma         = ","  whitespace
+at            = "@"  whitespace
+open-parens   = "("  whitespace
+close-parens-raw  = ")"
+close-parens  = ")"  whitespace
+open-brace    = "{"  whitespace
+close-brace-raw   = "}"
+close-brace   = "}"  whitespace
+open-bracket  = "["  whitespace
+close-bracket-raw = "]"
+close-bracket = "]"  whitespace
+open-angle    = "<"  whitespace
+close-angle-raw   = ">"
+close-angle   = ">"  whitespace
+colon         = ":"  nonempty-whitespace  ; To disambiguate `env:VARIABLE` from type annotations
+import-alt    = "?"  nonempty-whitespace  ; To disambiguate `http://a/a?a`
 combine       = ( %x2227 / "/\"                ) whitespace
 combine-types = ( %x2A53 / "//\\"              ) whitespace
 prefer        = ( %x2AFD / "//"                ) whitespace
@@ -337,7 +359,9 @@ natural-literal-raw = 1*DIGIT
 
 integer-literal-raw = ( "+" / "-" ) natural-literal-raw
 
-identifier-raw = label-raw [ whitespace at natural-literal-raw ]
+; The implementation should recognize reserved names for builtins and treat them as special
+; values instead of variables.
+identifier-raw = any-label-raw [ whitespace at natural-literal-raw ]
 identifier = identifier-raw whitespace
 
 ; Printable characters other than " ()[]{}<>/\,"
@@ -406,8 +430,12 @@ absolute-path = path  ; Absolute path
 
 scheme = %x68.74.74.70 [ %x73 ]  ; "http" [ "s" ]
 
-; NOTE: This does not match the official grammar for a URI.  Specifically, this
-; replaces `path-abempty` with `path`
+; NOTE: This does not match the official grammar for a URI.  Specifically:
+;
+; * this replaces `path-abempty` with `path`, so an empty path is
+;   not valid
+; * this does not support fragment identifiers, which have no meaning within
+;   Dhall expressions and do not affect import resolution
 http-raw = scheme "://" authority path [ "?" query ]
 
 ; NOTE: Backtrack if parsing the optional user info prefix fails
@@ -544,8 +572,6 @@ import-raw = import-hashed-raw [ whitespace as Text-raw ]
 ; The exception is the rules ending in -raw, which should _not_ end in whitespace.
 ; This is important to avoid the need for sequential backtracking in application-expression.
 
-; An arbitrary dhall expression. Only use in a context where parentheses or
-; keywords prevent possible ambiguity. See also atomic-expression.
 expression =
     lambda-expression
     / ifthenelse-expression
@@ -580,14 +606,14 @@ arrow-expression = operator-expression arrow expression
 
 ; "merge e1 e2 : t"
 ; "merge e1 e2"
-merge-expression = merge atomic-expression atomic-expression [ colon application-expression ]
+merge-expression = merge import-expression import-expression [ colon application-expression ]
 
 ; "[]  : List     t"
 ; "[]  : Optional t"
 ; "[x] : Optional t"
 empty-list-or-optional = open-bracket (empty-collection / non-empty-optional)
-empty-collection = close-bracket colon (List / Optional) atomic-expression
-non-empty-optional = expression close-bracket colon Optional atomic-expression
+empty-collection = close-bracket colon (List / Optional) import-expression
+non-empty-optional = expression close-bracket colon Optional import-expression
 
 ; "x : t"
 annotated-expression = operator-expression [ colon expression ]
@@ -611,12 +637,11 @@ not-equal-expression     = application-expression   *(not-equal     application-
 ; Import expressions need to be separated by some whitespace, otherwise there
 ; would be ambiguity: `./ab` could be interpreted as "import the file `./ab`",
 ; or "apply the import `./a` to label `b`"
-; The -raw handling is important for greedy parsers, that can't do sequential backtracking.
-application-expression = atomic-expression-raw *(nonempty-whitespace atomic-expression-raw) whitespace
+application-expression =
+    import-expression-raw *(nonempty-whitespace import-expression-raw) whitespace
 
-; An expression that does not need to be surrounded by parentheses to disambiguate
-atomic-expression = atomic-expression-raw whitespace
-atomic-expression-raw =
+import-expression = import-expression-raw whitespace
+import-expression-raw =
       import-raw
     / selector-expression-raw
 
@@ -629,9 +654,9 @@ atomic-expression-raw =
 ; the function `foo` to the relative path `./bar`)
 selector-expression-raw = primitive-expression-raw *(whitespace dot selector-raw)
 
-selector-raw = label-raw / labels-raw
+selector-raw = any-label-raw / labels-raw
 
-labels-raw = open-brace [ label *(comma label) ] close-brace-raw
+labels-raw = open-brace [ any-label *(comma any-label) ] close-brace-raw
 
 
 primitive-expression-raw =
@@ -679,11 +704,11 @@ record-type-or-literal =
 empty-record-literal = equal
 empty-record-type = ""
 non-empty-record-type-or-literal =
-    label (non-empty-record-literal / non-empty-record-type)
+    any-label (non-empty-record-literal / non-empty-record-type)
 non-empty-record-type    = colon expression *(comma record-type-entry)
-record-type-entry = label colon expression
+record-type-entry = any-label colon expression
 non-empty-record-literal = equal expression *(comma record-literal-entry)
-record-literal-entry = label equal expression
+record-literal-entry = any-label equal expression
 
 ; "< Foo : Integer | Bar : Bool >"
 ; "< Foo : Integer | Bar = True >"
@@ -692,12 +717,12 @@ union-type-or-literal =
     / empty-union-type
 empty-union-type = ""
 non-empty-union-type-or-literal =
-    label
+    any-label
     ( equal expression union-type-entries
     / colon expression [ bar non-empty-union-type-or-literal ]
     )
 union-type-entries = *(bar union-type-entry)
-union-type-entry = label colon expression
+union-type-entry = any-label colon expression
 
 ; "[1, 2, 3]"
 ; `empty-list-or-optional` handles empty lists

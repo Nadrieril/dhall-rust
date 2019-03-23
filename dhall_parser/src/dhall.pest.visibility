@@ -18,9 +18,12 @@ end_of_line
 # simple_label_next_char
 # simple_label_start
 simple_label
+# quoted_label_char
 quoted_label
 label_raw
 # label
+# any_label_raw
+# any_label
 double_quote_chunk
 double_quote_escaped
 double_quote_literal
@@ -151,6 +154,8 @@ not_equal_expression
 application_expression
 # atomic_expression
 # atomic_expression_raw
+# import_expression
+# import_expression_raw
 selector_expression_raw
 selector_raw
 labels_raw
