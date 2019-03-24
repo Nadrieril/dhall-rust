@@ -22,3 +22,7 @@ dhall_generator = { path = "../dhall_generator" }
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
+
+[build-dependencies]
+walkdir = "2"
+

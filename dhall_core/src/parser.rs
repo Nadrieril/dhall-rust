@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::Parser;
 use std::collections::BTreeMap;
@@ -321,8 +322,24 @@ make_parser! {
     rule!(end_of_line<()>; captured_str!(_) => ());
 
     rule!(single_quote_literal<ParsedText>; children!(
-        [end_of_line(eol), single_quote_continue(contents)] => {
-            contents.into_iter().rev().collect::<ParsedText>()
+        [end_of_line(eol), single_quote_continue(lines)] => {
+            let space = InterpolatedTextContents::Text(" ".to_owned());
+            let newline = InterpolatedTextContents::Text("\n".to_owned());
+            let min_indent = lines
+                .iter()
+                .map(|l| {
+                    l.iter().rev().take_while(|c| **c == space).count()
+                })
+                .min()
+                .unwrap();
+
+            lines
+                .into_iter()
+                .rev()
+                .map(|mut l| { l.split_off(l.len() - min_indent); l })
+                .intersperse(vec![newline])
+                .flat_map(|x| x.into_iter().rev())
+                .collect::<ParsedText>()
         }
     ));
     rule!(single_quote_char<&'a str>;
@@ -338,25 +355,38 @@ make_parser! {
         [expression(e)] => e
     ));
 
-    rule!(single_quote_continue<Vec<ParsedTextContents>>; children!(
-        [interpolation(c), single_quote_continue(rest)] => {
-            let mut rest = rest;
-            rest.push(InterpolatedTextContents::Expr(c)); rest
+    rule!(single_quote_continue<Vec<Vec<ParsedTextContents>>>; children!(
+        [interpolation(c), single_quote_continue(lines)] => {
+            let c = InterpolatedTextContents::Expr(c);
+            let mut lines = lines;
+            lines.last_mut().unwrap().push(c);
+            lines
         },
-        [escaped_quote_pair(c), single_quote_continue(rest)] => {
-            let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
+        [escaped_quote_pair(c), single_quote_continue(lines)] => {
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            let mut lines = lines;
+            lines.last_mut().unwrap().push(c);
+            lines
         },
-        [escaped_interpolation(c), single_quote_continue(rest)] => {
-            let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
+        [escaped_interpolation(c), single_quote_continue(lines)] => {
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            let mut lines = lines;
+            lines.last_mut().unwrap().push(c);
+            lines
         },
-        [single_quote_char(c), single_quote_continue(rest)] => {
-            let mut rest = rest;
-            rest.push(InterpolatedTextContents::Text(c.to_owned())); rest
+        [single_quote_char("\n"), single_quote_continue(lines)] => {
+            let mut lines = lines;
+            lines.push(vec![]);
+            lines
+        },
+        [single_quote_char(c), single_quote_continue(lines)] => {
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            let mut lines = lines;
+            lines.last_mut().unwrap().push(c);
+            lines
         },
         [] => {
-            vec![]
+            vec![vec![]]
         },
     ));
 

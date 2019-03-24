@@ -29,7 +29,7 @@ impl<N, E> From<String> for InterpolatedText<N, E> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InterpolatedTextContents<Note, Embed> {
     Text(String),
     Expr(SubExpr<Note, Embed>),

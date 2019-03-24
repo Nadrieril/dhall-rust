@@ -14,14 +14,6 @@ norm!(spec_normalization_success_haskell_tutorial_access_0, "haskell-tutorial/ac
 // norm!(spec_normalization_success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
 // norm!(spec_normalization_success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
 norm!(spec_normalization_success_haskell_tutorial_projection_0, "haskell-tutorial/projection/0");
-// norm!(spec_normalization_success_multiline_escape, "multiline/escape");
-// norm!(spec_normalization_success_multiline_hangingIndent, "multiline/hangingIndent");
-// norm!(spec_normalization_success_multiline_interesting, "multiline/interesting");
-// norm!(spec_normalization_success_multiline_interiorIndent, "multiline/interiorIndent");
-// norm!(spec_normalization_success_multiline_interpolation, "multiline/interpolation");
-// norm!(spec_normalization_success_multiline_preserveComment, "multiline/preserveComment");
-// norm!(spec_normalization_success_multiline_singleLine, "multiline/singleLine");
-// norm!(spec_normalization_success_multiline_twoLines, "multiline/twoLines");
 
 
 norm!(spec_normalization_success_prelude_Bool_and_0, "prelude/Bool/and/0");
