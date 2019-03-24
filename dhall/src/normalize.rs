@@ -12,7 +12,6 @@ where
     S: fmt::Debug,
     A: fmt::Debug,
 {
-    use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::Expr::*;
     let f = rc(Builtin(b));

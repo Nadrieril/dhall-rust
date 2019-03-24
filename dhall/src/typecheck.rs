@@ -115,8 +115,6 @@ where
 
 fn type_of_builtin<S>(b: Builtin) -> Rc<Expr<S, X>> {
     use dhall_core::Builtin::*;
-    use dhall_core::Const::*;
-    use dhall_core::Expr::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall_expr!(Type),
         List | Optional => dhall_expr!(

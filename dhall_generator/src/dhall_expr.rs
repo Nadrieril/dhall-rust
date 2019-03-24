@@ -32,59 +32,59 @@ fn dhall_to_tokenstream(
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = label_to_tokenstream(x);
-            quote! { Pi(#x, #t, #b) }
+            quote! { dhall_core::Expr::Pi(#x, #t, #b) }
         }
         Lam(x, t, b) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = label_to_tokenstream(x);
-            quote! { Lam(#x, #t, #b) }
+            quote! { dhall_core::Expr::Lam(#x, #t, #b) }
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
             let a = vec_to_tokenstream(a, ctx);
-            quote! { App(#f, #a) }
+            quote! { dhall_core::Expr::App(#f, #a) }
         }
         Const(c) => {
             let c = const_to_tokenstream(*c);
-            quote! { Const(#c) }
+            quote! { dhall_core::Expr::Const(#c) }
         }
         Builtin(b) => {
             let b = builtin_to_tokenstream(*b);
-            quote! { Builtin(#b) }
+            quote! { dhall_core::Expr::Builtin(#b) }
         }
         BinOp(o, a, b) => {
             let o = binop_to_tokenstream(*o);
             let a = dhall_to_tokenstream_bx(a, ctx);
             let b = dhall_to_tokenstream_bx(b, ctx);
-            quote! { BinOp(#o, #a, #b) }
+            quote! { dhall_core::Expr::BinOp(#o, #a, #b) }
         }
         NaturalLit(n) => {
-            quote! { NaturalLit(#n) }
+            quote! { dhall_core::Expr::NaturalLit(#n) }
         }
         EmptyOptionalLit(x) => {
             let x = dhall_to_tokenstream_bx(x, ctx);
-            quote! { EmptyOptionalLit(#x) }
+            quote! { dhall_core::Expr::EmptyOptionalLit(#x) }
         }
         NEOptionalLit(x) => {
             let x = dhall_to_tokenstream_bx(x, ctx);
-            quote! { NEOptionalLit(#x) }
+            quote! { dhall_core::Expr::NEOptionalLit(#x) }
         }
         EmptyListLit(t) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
-            quote! { EmptyListLit(#t) }
+            quote! { dhall_core::Expr::EmptyListLit(#t) }
         }
         NEListLit(es) => {
             let es = vec_to_tokenstream(es, ctx);
-            quote! { NEListLit(#es) }
+            quote! { dhall_core::Expr::NEListLit(#es) }
         }
         RecordType(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { RecordType(#m) }
+            quote! { dhall_core::Expr::RecordType(#m) }
         }
         RecordLit(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { RecordLit(#m) }
+            quote! { dhall_core::Expr::RecordLit(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -102,7 +102,7 @@ fn dhall_to_tokenstream_bx(
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.into();
-                    quote! { bx(Var(V(#s.into(), #n))) }
+                    quote! { dhall_core::bx(dhall_core::Expr::Var(dhall_core::V(#s.into(), #n))) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
@@ -110,7 +110,7 @@ fn dhall_to_tokenstream_bx(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: Rc<Expr<_, _>> = #v.clone();
+                        let x: dhall_core::SubExpr<_, _> = #v.clone();
                         x
                     } }
                 }
@@ -121,15 +121,15 @@ fn dhall_to_tokenstream_bx(
 }
 
 fn builtin_to_tokenstream(b: Builtin) -> TokenStream {
-    format!("{:?}", b).parse().unwrap()
+    format!("dhall_core::Builtin::{:?}", b).parse().unwrap()
 }
 
 fn const_to_tokenstream(c: Const) -> TokenStream {
-    format!("{:?}", c).parse().unwrap()
+    format!("dhall_core::Const::{:?}", c).parse().unwrap()
 }
 
 fn binop_to_tokenstream(b: BinOp) -> TokenStream {
-    format!("{:?}", b).parse().unwrap()
+    format!("dhall_core::BinOp::{:?}", b).parse().unwrap()
 }
 
 fn label_to_tokenstream(l: &Label) -> TokenStream {
@@ -164,5 +164,5 @@ fn vec_to_tokenstream(
 }
 
 fn bx(x: TokenStream) -> TokenStream {
-    quote! { bx(#x) }
+    quote! { dhall_core::bx(#x) }
 }
