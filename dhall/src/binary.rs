@@ -323,13 +323,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
-            [U64(t), ..] => Err(DecodeError::WrongFormatError(format!(
-                "unknown tag: {}",
-                t
-            )))?,
-            _ => Err(DecodeError::WrongFormatError("array".to_owned()))?,
+            _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
         },
-        _ => Err(DecodeError::WrongFormatError("unknown type".to_owned()))?,
+        _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
     }))
 }
 
