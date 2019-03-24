@@ -62,7 +62,7 @@ parser_success!(spec_parser_success_whitespace, "whitespace");
 parser_success!(spec_parser_success_whitespaceBuffet, "whitespaceBuffet");
 
 parser_failure!(spec_parser_failure_annotation, "annotation");
-// parser_failure!(spec_parser_failure_builtins, "builtins");
+parser_failure!(spec_parser_failure_builtins, "builtins");
 parser_failure!(spec_parser_failure_doubleBoundsNeg, "doubleBoundsNeg");
 parser_failure!(spec_parser_failure_doubleBoundsPos, "doubleBoundsPos");
 parser_failure!(spec_parser_failure_importAccess, "importAccess");

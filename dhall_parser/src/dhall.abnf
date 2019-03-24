@@ -168,11 +168,13 @@ quoted-label = 1*quoted-label-char
 
 ; NOTE: Dhall does not support Unicode labels, mainly to minimize the potential
 ; for code obfuscation
-; A label cannot not be any of the reserved identifiers for builtins (unless quoted).
+label = ("`" quoted-label "`" / simple-label)
+
+; An unreserved-label cannot not be any of the reserved identifiers for builtins (unless quoted).
 ; Their list can be found in semantics.md. This is not enforced by the grammar but
 ; should be checked by implementations. The only place where this restriction applies
 ; is bound variables.
-label = ("`" quoted-label "`" / simple-label)
+unreserved-label = label
 
 ; An any-label is allowed to be one of the reserved identifiers.
 any-label = label
@@ -541,7 +543,7 @@ expression =
     / annotated-expression
 
 ; "\(x : a) -> b"
-lambda-expression = lambda whitespace "(" whitespace label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
+lambda-expression = lambda whitespace "(" whitespace unreserved-label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
 
 ; "if a then b else c"
 ifthenelse-expression = if nonempty-whitespace expression then nonempty-whitespace expression else nonempty-whitespace expression
@@ -550,10 +552,10 @@ ifthenelse-expression = if nonempty-whitespace expression then nonempty-whitespa
 ; "let x     = e1 in e2"
 ; "let x = e1 let y = e2 in e3"
 let-expression = 1*let-binding in nonempty-whitespace expression
-let-binding = let nonempty-whitespace label whitespace [ ":" nonempty-whitespace expression ] "=" whitespace expression
+let-binding = let nonempty-whitespace unreserved-label whitespace [ ":" nonempty-whitespace expression ] "=" whitespace expression
 
 ; "forall (x : a) -> b"
-forall-expression = forall whitespace "(" whitespace label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
+forall-expression = forall whitespace "(" whitespace unreserved-label whitespace ":" nonempty-whitespace expression ")" whitespace arrow whitespace expression
 
 ; "a -> b"
 arrow-expression = operator-expression arrow whitespace expression
