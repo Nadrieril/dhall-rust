@@ -2,269 +2,212 @@ use crate::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
 
-//  There used to be a one-to-one correspondence between the formatters in this section
-//  and the grammar.  Each formatter is named after the
-//  corresponding grammar rule and the relationship between formatters exactly matches
-//  the relationship between grammar rules.  This leads to the nice emergent property
-//  of automatically getting all the parentheses and precedences right.
-//
-//  WARNING: This approach has one major disadvantage: you can get an infinite loop if
-//  you add a new constructor to the syntax tree without adding a matching
-//  case the corresponding builder.
-
 impl<S, A: Display> Display for Expr<S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        // buildExprA
-        use crate::Expr::*;
-        match self {
-            &Annot(ref a, ref b) => {
-                a.fmt_b(f)?;
-                write!(f, " : ")?;
-                b.fmt(f)
-            }
-            &Note(_, ref b) => b.fmt(f),
-            a => a.fmt_b(f),
-        }
+        self.fmt_phase(f, PrintPhase::Base)
     }
 }
 
+//  There is a one-to-one correspondence between the formatter and the grammar. Each phase is
+//  named after a corresponding grammar group, and the structure of the formatter reflects
+//  the relationship between the corresponding grammar rules. This leads to the nice property
+//  of automatically getting all the parentheses and precedences right.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+enum PrintPhase {
+    Base,
+    Operator,
+    BinOp(core::BinOp),
+    App,
+    Import,
+    Primitive,
+    Paren,
+}
+
 impl<S, A: Display> Expr<S, A> {
-    fn fmt_b(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt_phase(
+        &self,
+        f: &mut fmt::Formatter,
+        phase: PrintPhase,
+    ) -> Result<(), fmt::Error> {
         use crate::Expr::*;
+        use PrintPhase::*;
         match self {
-            &Lam(ref a, ref b, ref c) => {
+            _ if phase == Paren => {
+                f.write_str("(")?;
+                self.fmt_phase(f, Base)?;
+                f.write_str(")")?;
+            }
+
+            Lam(a, b, c) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
                 write!(f, "λ({} : ", a)?;
                 b.fmt(f)?;
                 write!(f, ") → ")?;
-                c.fmt_b(f)
+                c.fmt(f)?;
             }
-            &BoolIf(ref a, ref b, ref c) => {
+            BoolIf(a, b, c) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
                 write!(f, "if ")?;
                 a.fmt(f)?;
                 write!(f, " then ")?;
-                b.fmt_b(f)?;
+                b.fmt(f)?;
                 write!(f, " else ")?;
-                c.fmt_c(f)
+                c.fmt(f)?;
             }
-            // TODO: wait for decision on label types
-            // &Pi("_", ref b, ref c) => {
-            //     b.fmt_c(f)?;
-            //     write!(f, " → ")?;
-            //     c.fmt_b(f)
-            // }
-            &Pi(ref a, ref b, ref c) => {
+            Pi(a, b, c) if &String::from(a) == "_" => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                b.fmt_phase(f, Operator)?;
+                write!(f, " → ")?;
+                c.fmt(f)?;
+            }
+            Pi(a, b, c) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
                 write!(f, "∀({} : ", a)?;
                 b.fmt(f)?;
                 write!(f, ") → ")?;
-                c.fmt_b(f)
-            }
-            &Let(ref a, None, ref c, ref d) => {
-                write!(f, "let {} = ", a)?;
                 c.fmt(f)?;
-                write!(f, " in ")?;
-                d.fmt_b(f)
             }
-            &Let(ref a, Some(ref b), ref c, ref d) => {
-                write!(f, "let {} : ", a)?;
-                b.fmt(f)?;
+            Let(a, b, c, d) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                write!(f, "let {}", a)?;
+                if let Some(b) = b {
+                    write!(f, " : ")?;
+                    b.fmt(f)?;
+                }
                 write!(f, " = ")?;
                 c.fmt(f)?;
                 write!(f, " in ")?;
-                d.fmt_b(f)
+                d.fmt(f)?;
             }
-            &EmptyListLit(ref t) => {
-                write!(f, "[] : List ")?;
-                t.fmt_e(f)
-            }
-            &NEListLit(ref es) => {
-                fmt_list("[", ", ", "]", es, f, |e, f| e.fmt(f))
-            }
-            &EmptyOptionalLit(ref t) => {
-                write!(f, "None ")?;
-                t.fmt_e(f)?;
-                Ok(())
-            }
-            &NEOptionalLit(ref e) => {
-                write!(f, "Some ")?;
-                e.fmt_e(f)?;
-                Ok(())
-            }
-            &Merge(ref a, ref b, ref c) => {
-                write!(f, "merge ")?;
-                a.fmt_e(f)?;
-                write!(f, " ")?;
-                b.fmt_e(f)?;
-                match c {
-                    Some(c) => {
-                        write!(f, " : ")?;
-                        c.fmt_d(f)?
-                    }
-                    None => {}
+            EmptyListLit(t) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
                 }
-                Ok(())
+                write!(f, "[] : List ")?;
+                t.fmt_phase(f, Import)?;
             }
-            &Note(_, ref b) => b.fmt_b(f),
-            a => a.fmt_c(f),
-        }
-    }
-
-    fn fmt_c(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::BinOp::*;
-        use crate::Expr::*;
-        match self {
-            // FIXME precedence
-            &BinOp(op, ref a, ref b) => {
-                write!(f, "(")?;
-                a.fmt_d(f)?;
-                write!(
-                    f,
-                    " {} ",
-                    match op {
-                        BoolOr => "||",
-                        TextAppend => "++",
-                        NaturalPlus => "+",
-                        BoolAnd => "&&",
-                        Combine => "/\\",
-                        NaturalTimes => "*",
-                        BoolEQ => "==",
-                        BoolNE => "!=",
-                        CombineTypes => "//\\\\",
-                        ImportAlt => "?",
-                        Prefer => "//",
-                        ListAppend => "#",
-                    }
-                )?;
-                b.fmt_c(f)?;
-                write!(f, ")")
+            NEListLit(es) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                fmt_list("[", ", ", "]", es, f, |e, f| e.fmt(f))?;
             }
-            &Note(_, ref b) => b.fmt_c(f),
-            a => a.fmt_d(f),
-        }
-    }
-
-    fn fmt_d(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
-        match self {
-            &App(ref a, ref args) => {
-                a.fmt_d(f)?;
+            EmptyOptionalLit(t) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                write!(f, "None ")?;
+                t.fmt_phase(f, Import)?;
+            }
+            NEOptionalLit(e) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                write!(f, "Some ")?;
+                e.fmt_phase(f, Import)?;
+            }
+            Merge(a, b, c) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                write!(f, "merge ")?;
+                a.fmt_phase(f, Import)?;
+                write!(f, " ")?;
+                b.fmt_phase(f, Import)?;
+                if let Some(c) = c {
+                    write!(f, " : ")?;
+                    c.fmt_phase(f, PrintPhase::App)?;
+                }
+            }
+            Annot(a, b) => {
+                if phase > Base {
+                    return self.fmt_phase(f, Paren);
+                }
+                a.fmt_phase(f, Operator)?;
+                write!(f, " : ")?;
+                b.fmt(f)?;
+            }
+            Expr::BinOp(op, a, b) => {
+                // Precedence is magically handled by the ordering of BinOps.
+                if phase >= PrintPhase::BinOp(*op) {
+                    return self.fmt_phase(f, Paren);
+                }
+                a.fmt_phase(f, PrintPhase::BinOp(*op))?;
+                write!(f, " {} ", op)?;
+                b.fmt_phase(f, PrintPhase::BinOp(*op))?;
+            }
+            Expr::App(a, args) => {
+                if phase > PrintPhase::App {
+                    return self.fmt_phase(f, Paren);
+                }
+                a.fmt_phase(f, Import)?;
                 for x in args {
                     f.write_str(" ")?;
-                    x.fmt_e(f)?;
+                    x.fmt_phase(f, Import)?;
                 }
-                Ok(())
             }
-            &Note(_, ref b) => b.fmt_d(f),
-            a => a.fmt_e(f),
-        }
-    }
-
-    fn fmt_e(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
-        match self {
-            &Field(ref a, ref b) => {
-                a.fmt_e(f)?;
-                write!(f, ".{}", b)
+            Field(a, b) => {
+                if phase > Import {
+                    return self.fmt_phase(f, Paren);
+                }
+                a.fmt_phase(f, Primitive)?;
+                write!(f, ".{}", b)?;
             }
-            &Projection(ref e, ref ls) => {
-                e.fmt_e(f)?;
+            Projection(e, ls) => {
+                if phase > Import {
+                    return self.fmt_phase(f, Paren);
+                }
+                e.fmt_phase(f, Primitive)?;
                 write!(f, ".")?;
-                fmt_list("{ ", ", ", " }", ls, f, |l, f| write!(f, "{}", l))
+                fmt_list("{ ", ", ", " }", ls, f, |l, f| write!(f, "{}", l))?;
             }
-            &Note(_, ref b) => b.fmt_e(f),
-            a => a.fmt_f(f),
-        }
-    }
-
-    fn fmt_f(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
-        match &self {
-            &Var(a) => a.fmt(f),
-            &Const(k) => k.fmt(f),
-            &Builtin(v) => v.fmt(f),
-            &BoolLit(true) => f.write_str("True"),
-            &BoolLit(false) => f.write_str("False"),
-            &NaturalLit(a) => a.fmt(f),
-            &IntegerLit(a) if *a >= 0 => {
+            Var(a) => a.fmt(f)?,
+            Const(k) => k.fmt(f)?,
+            Builtin(v) => v.fmt(f)?,
+            BoolLit(true) => f.write_str("True")?,
+            BoolLit(false) => f.write_str("False")?,
+            NaturalLit(a) => a.fmt(f)?,
+            IntegerLit(a) if *a >= 0 => {
                 f.write_str("+")?;
-                a.fmt(f)
+                a.fmt(f)?;
             }
-            &IntegerLit(a) => a.fmt(f),
-            &DoubleLit(a) => {
-                let a = f64::from(*a);
-                if a == std::f64::INFINITY {
-                    f.write_str("Infinity")
-                } else if a == std::f64::NEG_INFINITY {
-                    f.write_str("-Infinity")
-                } else if a.is_nan() {
-                    f.write_str("NaN")
-                } else {
-                    let s = format!("{}", a);
-                    if s.contains("e") || s.contains(".") {
-                        f.write_str(&s)
-                    } else {
-                        write!(f, "{}.0", s)
-                    }
-                }
-            }
-            &TextLit(ref a) => {
-                f.write_str("\"")?;
-                for x in a.iter() {
-                    match x {
-                        InterpolatedTextContents::Text(a) => {
-                            for c in a.chars() {
-                                match c {
-                                    '\\' => f.write_str("\\\\"),
-                                    '"' => f.write_str("\\\""),
-                                    '$' => f.write_str("\\$"),
-                                    '\u{0008}' => f.write_str("\\b"),
-                                    '\u{000C}' => f.write_str("\\f"),
-                                    '\n' => f.write_str("\\n"),
-                                    '\r' => f.write_str("\\r"),
-                                    '\t' => f.write_str("\\t"),
-                                    c => write!(f, "{}", c),
-                                }?;
-                            }
-                        }
-                        InterpolatedTextContents::Expr(e) => {
-                            f.write_str("${ ")?;
-                            e.fmt(f)?;
-                            f.write_str(" }")?;
-                        }
-                    }
-                }
-                f.write_str("\"")?;
-                Ok(())
-            }
-            &RecordType(ref a) if a.is_empty() => f.write_str("{}"),
-            &RecordType(ref a) => {
-                fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
-                    write!(f, "{} : {}", k, t)
-                })
-            }
-            &RecordLit(ref a) if a.is_empty() => f.write_str("{=}"),
-            &RecordLit(ref a) => {
-                fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
-                    write!(f, "{} = {}", k, v)
-                })
-            }
-            &UnionType(ref a) => {
-                fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
-                    write!(f, "{} : {}", k, v)
-                })
-            }
-            &UnionLit(ref a, ref b, ref c) => {
+            IntegerLit(a) => a.fmt(f)?,
+            DoubleLit(a) => a.fmt(f)?,
+            TextLit(a) => a.fmt(f)?,
+            RecordType(a) if a.is_empty() => f.write_str("{}")?,
+            RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
+                write!(f, "{} : {}", k, t)
+            })?,
+            RecordLit(a) if a.is_empty() => f.write_str("{=}")?,
+            RecordLit(a) => fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
+                write!(f, "{} = {}", k, v)
+            })?,
+            UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
+                write!(f, "{} : {}", k, v)
+            })?,
+            UnionLit(a, b, c) => {
                 f.write_str("< ")?;
                 write!(f, "{} = {}", a, b)?;
                 for (k, v) in c {
                     f.write_str(" | ")?;
                     write!(f, "{} : {}", k, v)?;
                 }
-                f.write_str(" >")
+                f.write_str(" >")?
             }
-            &Embed(ref a) => a.fmt(f),
-            &Note(_, ref b) => b.fmt_f(f),
-            a => write!(f, "({})", a),
+            Embed(a) => a.fmt(f)?,
+            Note(_, b) => b.fmt_phase(f, phase)?,
         }
+        Ok(())
     }
 }
 
@@ -290,15 +233,87 @@ where
     f.write_str(close)
 }
 
+impl<S, A: Display> Display for InterpolatedText<S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.write_str("\"")?;
+        for x in self.iter() {
+            match x {
+                InterpolatedTextContents::Text(a) => {
+                    for c in a.chars() {
+                        match c {
+                            '\\' => f.write_str("\\\\"),
+                            '"' => f.write_str("\\\""),
+                            '$' => f.write_str("\\$"),
+                            '\u{0008}' => f.write_str("\\b"),
+                            '\u{000C}' => f.write_str("\\f"),
+                            '\n' => f.write_str("\\n"),
+                            '\r' => f.write_str("\\r"),
+                            '\t' => f.write_str("\\t"),
+                            c => write!(f, "{}", c),
+                        }?;
+                    }
+                }
+                InterpolatedTextContents::Expr(e) => {
+                    f.write_str("${ ")?;
+                    e.fmt(f)?;
+                    f.write_str(" }")?;
+                }
+            }
+        }
+        f.write_str("\"")?;
+        Ok(())
+    }
+}
+
 impl Display for Const {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         <Self as fmt::Debug>::fmt(self, f)
     }
 }
 
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use crate::BinOp::*;
+        f.write_str(match self {
+            BoolOr => "||",
+            TextAppend => "++",
+            NaturalPlus => "+",
+            BoolAnd => "&&",
+            Combine => "/\\",
+            NaturalTimes => "*",
+            BoolEQ => "==",
+            BoolNE => "!=",
+            CombineTypes => "//\\\\",
+            ImportAlt => "?",
+            Prefer => "//",
+            ListAppend => "#",
+        })
+    }
+}
+
+impl Display for NaiveDouble {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let v = f64::from(*self);
+        if v == std::f64::INFINITY {
+            f.write_str("Infinity")
+        } else if v == std::f64::NEG_INFINITY {
+            f.write_str("-Infinity")
+        } else if v.is_nan() {
+            f.write_str("NaN")
+        } else {
+            let s = format!("{}", v);
+            if s.contains("e") || s.contains(".") {
+                f.write_str(&s)
+            } else {
+                write!(f, "{}.0", s)
+            }
+        }
+    }
+}
+
 impl Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let s = String::from(self.clone());
+        let s = String::from(self);
         let is_keyword = |s| match s {
             "let" | "in" | "if" | "then" | "else" => true,
             _ => false,
@@ -414,7 +429,7 @@ impl Display for Scheme {
 
 impl Display for V {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let V(ref x, ref n) = *self;
+        let V(x, n) = self;
         x.fmt(f)?;
         if *n != 0 {
             write!(f, "@{}", n)?;

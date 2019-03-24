@@ -685,7 +685,7 @@ make_parser! {
 
     rule!(identifier<ParsedExpr> as expression; children!(
         [label(l), natural_literal(idx)] => {
-            let name = String::from(l.clone());
+            let name = String::from(&l);
             match Builtin::parse(name.as_str()) {
                 Some(b) => bx(Expr::Builtin(b)),
                 None => match name.as_str() {
@@ -698,7 +698,7 @@ make_parser! {
             }
         },
         [label(l)] => {
-            let name = String::from(l.clone());
+            let name = String::from(&l);
             match Builtin::parse(name.as_str()) {
                 Some(b) => bx(Expr::Builtin(b)),
                 None => match name.as_str() {

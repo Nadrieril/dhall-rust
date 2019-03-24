@@ -102,32 +102,34 @@ pub enum Const {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct V(pub Label, pub usize);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+// Definition order must match precedence order for
+// pretty-printing to work correctly
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BinOp {
-    /// x && y`
-    BoolAnd,
+    /// x ? y
+    ImportAlt,
     /// x || y`
     BoolOr,
+    /// x + y`
+    NaturalPlus,
+    /// x ++ y`
+    TextAppend,
+    /// x # y
+    ListAppend,
+    /// x && y`
+    BoolAnd,
+    /// x ∧ y`
+    Combine,
+    /// x // y
+    Prefer,
+    /// x //\\ y
+    CombineTypes,
+    /// x * y`
+    NaturalTimes,
     /// x == y`
     BoolEQ,
     /// x != y`
     BoolNE,
-    /// x + y`
-    NaturalPlus,
-    /// x * y`
-    NaturalTimes,
-    /// x ++ y`
-    TextAppend,
-    /// x ∧ y`
-    Combine,
-    /// x //\\ y
-    CombineTypes,
-    /// x ? y
-    ImportAlt,
-    /// x // y
-    Prefer,
-    /// x # y
-    ListAppend,
 }
 
 /// Built-ins

@@ -18,8 +18,8 @@ impl<'a> From<&'a str> for Label {
     }
 }
 
-impl From<Label> for String {
-    fn from(x: Label) -> String {
+impl From<&Label> for String {
+    fn from(x: &Label) -> String {
         x.0.as_ref().to_owned()
     }
 }

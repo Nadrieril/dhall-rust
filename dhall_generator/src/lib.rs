@@ -102,12 +102,12 @@ fn dhall_to_tokenstream_bx(
             match ctx.lookup(&s, *n) {
                 // Non-free variable; interpolates as itself
                 Some(()) => {
-                    let s: String = s.clone().into();
+                    let s: String = s.into();
                     quote! { bx(Var(V(#s.into(), #n))) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
-                    let s: String = s.clone().into();
+                    let s: String = s.into();
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
@@ -134,7 +134,7 @@ fn binop_to_tokenstream(b: BinOp) -> TokenStream {
 }
 
 fn label_to_tokenstream(l: &Label) -> TokenStream {
-    let l = String::from(l.clone());
+    let l = String::from(l);
     quote! { #l.into() }
 }
 
