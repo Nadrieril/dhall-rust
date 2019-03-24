@@ -139,7 +139,7 @@ impl<S, A: Display> Expr<S, A> {
             }
             Expr::BinOp(op, a, b) => {
                 // Precedence is magically handled by the ordering of BinOps.
-                if phase >= PrintPhase::BinOp(*op) {
+                if phase > PrintPhase::BinOp(*op) {
                     return self.fmt_phase(f, Paren);
                 }
                 a.fmt_phase(f, PrintPhase::BinOp(*op))?;
