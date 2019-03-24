@@ -28,7 +28,7 @@ pub struct URL {
     pub authority: String,
     pub path: PathBuf,
     pub query: Option<String>,
-    // pub headers: Option<ImportHashed>,
+    pub headers: Option<Box<ImportHashed>>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -44,11 +44,21 @@ pub enum ImportMode {
     RawText,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hash {
+    pub protocol: String,
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportHashed {
+    pub location: ImportLocation,
+    pub hash: Option<Hash>,
+}
+
 /// Reference to an external resource
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Import {
     pub mode: ImportMode,
-    pub location: ImportLocation,
-    // TODO
-    pub hash: Option<()>,
+    pub location_hashed: ImportHashed,
 }

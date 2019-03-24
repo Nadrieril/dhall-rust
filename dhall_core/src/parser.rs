@@ -431,12 +431,14 @@ make_parser! {
             authority: auth,
             path: p,
             query: None,
+            headers: None,
         },
         [scheme(sch), authority(auth), path(p), query(q)] => URL {
             scheme: sch,
             authority: auth,
             path: p,
             query: Some(q),
+            headers: None,
         },
     ));
 
@@ -444,9 +446,10 @@ make_parser! {
 
     rule!(query<String>; captured_str!(s) => s.to_owned());
 
-    // TODO: headers
     rule!(http<URL>; children!(
-        [http_raw(url)] => url
+        [http_raw(url)] => url,
+        [http_raw(url), import_hashed(import_hashed)] =>
+            URL { headers: Some(Box::new(import_hashed)), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -458,7 +461,6 @@ make_parser! {
 
     rule!(missing<()>; captured_str!(_) => ());
 
-    // TODO: other import types
     rule!(import_type<ImportLocation>; children!(
         [missing(_)] => {
             ImportLocation::Missing
@@ -474,9 +476,16 @@ make_parser! {
         },
     ));
 
-    rule!(import_hashed<(ImportLocation, Option<()>)>; children!(
-        // TODO: handle hash
-        [import_type(import)] => (import, None)
+    rule!(hash<Hash>; captured_str!(s) =>
+        Hash {
+            protocol: s.trim()[..6].to_owned(),
+            hash: s.trim()[7..].to_owned(),
+        }
+    );
+
+    rule!(import_hashed<ImportHashed>; children!(
+        [import_type(location)] => ImportHashed { location, hash: None },
+        [import_type(location), hash(hash)] => ImportHashed { location, hash: Some(hash) },
     ));
 
     rule_group!(expression<ParsedExpr>);
@@ -484,18 +493,16 @@ make_parser! {
     rule!(Text<()>; captured_str!(_) => ());
 
     rule!(import<ParsedExpr> as expression; children!(
-        [import_hashed((location, hash))] => {
+        [import_hashed(location_hashed)] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::Code,
-                hash,
-                location,
+                location_hashed
             }))
         },
-        [import_hashed((location, hash)), Text(_)] => {
+        [import_hashed(location_hashed), Text(_)] => {
             bx(Expr::Embed(Import {
                 mode: ImportMode::RawText,
-                hash,
-                location,
+                location_hashed
             }))
         },
     ));

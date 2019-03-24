@@ -42,7 +42,7 @@ parser_success!(spec_parser_success_multilet, "multilet");
 parser_success!(spec_parser_success_natural, "natural");
 parser_success!(spec_parser_success_nestedBlockComment, "nestedBlockComment");
 parser_success!(spec_parser_success_operators, "operators");
-// parser_success!(spec_parser_success_parenthesizeUsing, "parenthesizeUsing");
+parser_success!(spec_parser_success_parenthesizeUsing, "parenthesizeUsing");
 parser_success!(spec_parser_success_pathTermination, "pathTermination");
 parser_success!(spec_parser_success_paths, "paths");
 parser_success!(spec_parser_success_quotedLabel, "quotedLabel");

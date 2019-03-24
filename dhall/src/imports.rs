@@ -29,7 +29,7 @@ fn resolve_import(
     let cwd = match root {
         LocalDir(cwd) => cwd,
     };
-    match &import.location {
+    match &import.location_hashed.location {
         Local(prefix, path) => {
             let path = match prefix {
                 Parent => cwd.parent().unwrap().join(path),

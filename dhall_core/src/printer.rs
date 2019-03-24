@@ -326,12 +326,16 @@ impl Display for Label {
     }
 }
 
-impl Display for Import {
+impl Display for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}:{}", self.protocol, self.hash)
+    }
+}
+impl Display for ImportHashed {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use std::path::PathBuf;
         use FilePrefix::*;
         use ImportLocation::*;
-        use ImportMode::*;
         let quoted = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
                 s.to_owned()
@@ -364,6 +368,9 @@ impl Display for Import {
                 if let Some(q) = &url.query {
                     write!(f, "?{}", q)?
                 }
+                if let Some(h) = &url.headers {
+                    write!(f, " using ({})", h)?
+                }
             }
             Env(e) => {
                 write!(f, "env:{}", quoted(e))?;
@@ -372,6 +379,18 @@ impl Display for Import {
                 write!(f, "missing")?;
             }
         }
+        if let Some(hash) = &self.hash {
+            write!(f, " ")?;
+            hash.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.location_hashed.fmt(f)?;
+        use ImportMode::*;
         match self.mode {
             Code => {}
             RawText => write!(f, " as Text")?,

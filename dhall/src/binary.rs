@@ -179,10 +179,25 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         .collect::<Result<_, _>>()?,
                 )))
             }
-            [U64(24), _hash, U64(mode), U64(scheme), rest..] => {
+            [U64(24), hash, U64(mode), U64(scheme), rest..] => {
                 let mode = match mode {
                     1 => ImportMode::RawText,
                     _ => ImportMode::Code,
+                };
+                let hash = match hash {
+                    Null => None,
+                    Array(vec) => match vec.as_slice() {
+                        [String(protocol), String(hash)] => Some(Hash {
+                            protocol: protocol.clone(),
+                            hash: hash.clone(),
+                        }),
+                        _ => Err(DecodeError::WrongFormatError(
+                            "import/hash".to_owned(),
+                        ))?,
+                    },
+                    _ => Err(DecodeError::WrongFormatError(
+                        "import/hash".to_owned(),
+                    ))?,
                 };
                 let mut rest = rest.iter();
                 let location = match scheme {
@@ -191,8 +206,18 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                             0 => Scheme::HTTP,
                             _ => Scheme::HTTPS,
                         };
-                        let _headers = match rest.next() {
-                            Some(Null) => (),
+                        let headers = match rest.next() {
+                            Some(Null) => None,
+                            Some(x) => {
+                                match cbor_value_to_dhall(&x)?.as_ref() {
+                                    Embed(import) => Some(Box::new(
+                                        import.location_hashed.clone(),
+                                    )),
+                                    _ => Err(DecodeError::WrongFormatError(
+                                        "import/remote/headers".to_owned(),
+                                    ))?,
+                                }
+                            }
                             _ => Err(DecodeError::WrongFormatError(
                                 "import/remote/headers".to_owned(),
                             ))?,
@@ -224,6 +249,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                             authority,
                             path,
                             query,
+                            headers,
                         })
                     }
                     2 | 3 | 4 | 5 => {
@@ -263,8 +289,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 };
                 Embed(Import {
                     mode,
-                    hash: None,
-                    location,
+                    location_hashed: ImportHashed { hash, location },
                 })
             }
             [U64(25), bindings..] => {
