@@ -3,6 +3,7 @@ name = "dhall"
 version = "0.1.0"
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 edition = "2018"
+build = "build.rs"
 
 [lib]
 doctest = false
