@@ -62,6 +62,9 @@ fn dhall_to_tokenstream(
         NaturalLit(n) => {
             quote! { dhall_core::Expr::NaturalLit(#n) }
         }
+        BoolLit(b) => {
+            quote! { dhall_core::Expr::BoolLit(#b) }
+        }
         EmptyOptionalLit(x) => {
             let x = dhall_to_tokenstream_bx(x, ctx);
             quote! { dhall_core::Expr::EmptyOptionalLit(#x) }
