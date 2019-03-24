@@ -7,6 +7,15 @@ This is a WIP implementation in Rust of the [dhall](https://dhall-lang.org) conf
 
 This language is defined by a [standard](https://github.com/dhall-lang/dhall-lang), and this implementation tries its best to respect it.
 
+## Standard-compliance
+
+- Parsing: 100%
+- Imports: 0%
+- Normalization: 74%
+- Typechecking: 77%
+
+You can see what's missing from the commented out tests in `dhall/tests`.
+
 ## Help wanted !
 
 This is a really fun project and there is a ton of things to do !
