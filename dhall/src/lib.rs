@@ -10,8 +10,10 @@
 mod normalize;
 pub use crate::normalize::*;
 pub mod binary;
+mod dhall_type;
 pub mod imports;
 pub mod typecheck;
+pub use dhall_type::*;
 
 pub use crate::imports::*;
 

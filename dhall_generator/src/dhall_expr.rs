@@ -89,6 +89,10 @@ fn dhall_to_tokenstream(
             let m = map_to_tokenstream(m, ctx);
             quote! { dhall_core::Expr::RecordLit(#m) }
         }
+        UnionType(m) => {
+            let m = map_to_tokenstream(m, ctx);
+            quote! { dhall_core::Expr::UnionType(#m) }
+        }
         e => unimplemented!("{:?}", e),
     }
 }

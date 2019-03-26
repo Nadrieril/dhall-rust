@@ -18,6 +18,4 @@ mod printer;
 pub use crate::printer::*;
 mod parser;
 pub use crate::parser::*;
-mod dhall_type;
-pub use dhall_type::*;
 pub mod context;
