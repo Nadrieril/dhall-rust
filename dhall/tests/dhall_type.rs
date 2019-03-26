@@ -29,4 +29,28 @@ fn test_dhall_type() {
         field2: Option<T>,
     }
     assert_eq!(<B<'static, bool>>::dhall_type(), A::dhall_type());
+
+    #[derive(DhallType)]
+    #[allow(dead_code)]
+    struct C<T>(T, Option<String>);
+    assert_eq!(
+        <C<bool>>::dhall_type(),
+        <(bool, Option<String>)>::dhall_type()
+    );
+
+    #[derive(DhallType)]
+    #[allow(dead_code)]
+    struct D();
+    assert_eq!(
+        <C<D>>::dhall_type(),
+        dhall_expr!({ _1: {}, _2: Optional Text })
+    );
+
+    #[derive(DhallType)]
+    #[allow(dead_code)]
+    enum E<T> {
+        A(T),
+        B(String),
+    };
+    assert_eq!(<E<bool>>::dhall_type(), dhall_expr!(< A: Bool | B: Text >));
 }
