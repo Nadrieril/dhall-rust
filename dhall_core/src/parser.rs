@@ -112,7 +112,7 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-macro_rules! match_pair {
+macro_rules! match_children {
     (@make_child_match,
         ($pair:expr, $($vars:tt)*),
         ($($outer_acc:tt)*),
@@ -120,7 +120,7 @@ macro_rules! match_pair {
         ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr,
         $($rest:tt)*
     ) => {
-        match_pair!(@make_child_match,
+        match_children!(@make_child_match,
             ($pair, $($vars)*),
             ($($outer_acc)*),
             ($($acc)*, xs..),
@@ -142,7 +142,7 @@ macro_rules! match_pair {
         ($(,)* $ty:ident ($x:pat)  $($rest_of_match:tt)*) => $body:expr,
         $($rest:tt)*
     ) => {
-        match_pair!(@make_child_match,
+        match_children!(@make_child_match,
             ($($vars)*),
             ($($outer_acc)*),
             ($($acc)*, ParsedValue::$ty($x)),
@@ -157,7 +157,7 @@ macro_rules! match_pair {
         ($(,)*) => $body:expr,
         $($rest:tt)*
     ) => {
-        match_pair!(@make_matches,
+        match_children!(@make_matches,
             ($($vars)*),
             ($($outer_acc)* [$($acc)*] => { $body },),
             $($rest)*
@@ -170,7 +170,7 @@ macro_rules! match_pair {
         ($(,)*) => $body:expr,
         $($rest:tt)*
     ) => {
-        match_pair!(@make_matches,
+        match_children!(@make_matches,
             ($($vars)*),
             ($($outer_acc)* [] => { $body },),
             $($rest)*
@@ -183,7 +183,7 @@ macro_rules! match_pair {
         [$($args:tt)*] => $body:expr,
         $($rest:tt)*
     ) => {
-        match_pair!(@make_child_match,
+        match_children!(@make_child_match,
             ($($vars)*),
             ($($acc)*),
             (),
@@ -204,7 +204,7 @@ macro_rules! match_pair {
     };
 
     (($($vars:tt)*); $( [$($args:tt)*] => $body:expr ),* $(,)*) => {
-        match_pair!(@make_matches,
+        match_children!(@make_matches,
             ($($vars)*),
             (),
             $( [$($args)*] => $body ),* ,
@@ -251,7 +251,7 @@ macro_rules! make_parser {
             children!( $($args:tt)* )
         )
     ) => ({
-        let res: $o = match_pair!(($pair, $children); $($args)*)?;
+        let res: $o = match_children!(($pair, $children); $($args)*)?;
         Ok(ParsedValue::$group(res))
     });
     (@body, $pair:expr, $children:expr, rule_group!( $name:ident<$o:ty> )) => (
