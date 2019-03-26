@@ -113,28 +113,83 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 macro_rules! match_pair {
-    (@make_child_match, ($pair:expr, $($vars:tt)*), ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_child_match, ($pair, $($vars)*), ($($outer_acc)*), ($($acc)*, xs..), ($($rest_of_match)*) => {
-            let xs = xs.map(|x| match x {
-                ParsedValue::$ty(y) => Ok(y),
-                x => Err(format!("Unexpected child: {:?}", x)),
-            }).collect::<Result<Vec<_>, _>>()?;
-            let $x = xs.into_iter();
-            $body
-        }, $($rest)*)
+    (@make_child_match,
+        ($pair:expr, $($vars:tt)*),
+        ($($outer_acc:tt)*),
+        ($($acc:tt)*),
+        ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr,
+        $($rest:tt)*
+    ) => {
+        match_pair!(@make_child_match,
+            ($pair, $($vars)*),
+            ($($outer_acc)*),
+            ($($acc)*, xs..),
+            ($($rest_of_match)*) => {
+                let xs = xs.map(|x| match x {
+                    ParsedValue::$ty(y) => Ok(y),
+                    x => Err(format!("Unexpected child: {:?}", x)),
+                }).collect::<Result<Vec<_>, _>>()?;
+                let $x = xs.into_iter();
+                $body
+            },
+            $($rest)*
+        )
     };
-    (@make_child_match, ($($vars:tt)*), ($($outer_acc:tt)*), ($($acc:tt)*), ($(,)* $ty:ident ($x:pat)  $($rest_of_match:tt)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_child_match, ($($vars)*), ($($outer_acc)*), ($($acc)*, ParsedValue::$ty($x)), ($($rest_of_match)*) => $body, $($rest)*)
+    (@make_child_match,
+        ($($vars:tt)*),
+        ($($outer_acc:tt)*),
+        ($($acc:tt)*),
+        ($(,)* $ty:ident ($x:pat)  $($rest_of_match:tt)*) => $body:expr,
+        $($rest:tt)*
+    ) => {
+        match_pair!(@make_child_match,
+            ($($vars)*),
+            ($($outer_acc)*),
+            ($($acc)*, ParsedValue::$ty($x)),
+            ($($rest_of_match)*) => $body,
+            $($rest)*
+        )
     };
-    (@make_child_match, ($($vars:tt)*), ($($outer_acc:tt)*), (, $($acc:tt)*), ($(,)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, ($($vars)*), ($($outer_acc)* [$($acc)*] => { $body },), $($rest)*)
+    (@make_child_match,
+        ($($vars:tt)*),
+        ($($outer_acc:tt)*),
+        (, $($acc:tt)*),
+        ($(,)*) => $body:expr,
+        $($rest:tt)*
+    ) => {
+        match_pair!(@make_matches,
+            ($($vars)*),
+            ($($outer_acc)* [$($acc)*] => { $body },),
+            $($rest)*
+        )
     };
-    (@make_child_match, ($($vars:tt)*), ($($outer_acc:tt)*), (), ($(,)*) => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_matches, ($($vars)*), ($($outer_acc)* [] => { $body },), $($rest)*)
+    (@make_child_match,
+        ($($vars:tt)*),
+        ($($outer_acc:tt)*),
+        (),
+        ($(,)*) => $body:expr,
+        $($rest:tt)*
+    ) => {
+        match_pair!(@make_matches,
+            ($($vars)*),
+            ($($outer_acc)* [] => { $body },),
+            $($rest)*
+        )
     };
 
-    (@make_matches, ($($vars:tt)*), ($($acc:tt)*), [$($args:tt)*] => $body:expr, $($rest:tt)*) => {
-        match_pair!(@make_child_match, ($($vars)*), ($($acc)*), (), ($($args)*) => $body, $($rest)*)
+    (@make_matches,
+        ($($vars:tt)*),
+        ($($acc:tt)*),
+        [$($args:tt)*] => $body:expr,
+        $($rest:tt)*
+    ) => {
+        match_pair!(@make_child_match,
+            ($($vars)*),
+            ($($acc)*),
+            (),
+            ($($args)*) => $body,
+            $($rest)*
+        )
     };
     (@make_matches, ($pair:expr, $children:expr), ($($acc:tt)*) $(,)*) => {
         {
@@ -149,7 +204,11 @@ macro_rules! match_pair {
     };
 
     (($($vars:tt)*); $( [$($args:tt)*] => $body:expr ),* $(,)*) => {
-        match_pair!(@make_matches, ($($vars)*), (), $( [$($args)*] => $body ),* ,)
+        match_pair!(@make_matches,
+            ($($vars)*),
+            (),
+            $( [$($args)*] => $body ),* ,
+        )
     };
 }
 
@@ -159,15 +218,39 @@ macro_rules! make_parser {
     (@filter, rule) => (true);
     (@filter, rule_group) => (false);
 
-    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty>; $($args:tt)* )) => (
-        make_parser!(@body, $pair, $children, rule!( $name<$o> as $name; $($args)* ))
+    (@body,
+        $pair:expr,
+        $children:expr,
+        rule!( $name:ident<$o:ty>; $($args:tt)* )
+    ) => (
+        make_parser!(@body,
+            $pair,
+            $children,
+            rule!( $name<$o> as $name; $($args)* )
+        )
     );
-    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty> as $group:ident; captured_str!($x:pat) => $body:expr )) => ( {
+    (@body,
+        $pair:expr,
+        $children:expr,
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            captured_str!($x:pat) => $body:expr
+        )
+    ) => ({
         let $x = $pair.as_str();
         let res: $o = $body;
         Ok(ParsedValue::$group(res))
     });
-    (@body, $pair:expr, $children:expr, rule!( $name:ident<$o:ty> as $group:ident; children!( $($args:tt)* ) )) => ( {
+    (@body,
+        $pair:expr,
+        $children:expr,
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            children!( $($args:tt)* )
+        )
+    ) => ({
         let res: $o = match_pair!(($pair, $children); $($args)*)?;
         Ok(ParsedValue::$group(res))
     });
@@ -182,57 +265,60 @@ macro_rules! make_parser {
             $( $name($o), )*
         }
 
-        fn parse_any<'a>(pair: Pair<'a, Rule>, children: Vec<ParsedValue<'a>>) -> Result<ParsedValue<'a>, String> {
+        fn parse_any<'a>(pair: Pair<'a, Rule>, children: Vec<ParsedValue<'a>>)
+                -> Result<ParsedValue<'a>, String> {
             match pair.as_rule() {
                 $(
                     make_parser!(@pattern, $submac, $name)
                     if make_parser!(@filter, $submac)
-                    => make_parser!(@body, pair, children, $submac!( $name<$o> $($args)* ))
+                    => make_parser!(@body, pair, children,
+                                           $submac!( $name<$o> $($args)* ))
                     ,
                 )*
                 r => Err(format!("Unexpected {:?}", r)),
             }
         }
-
-        // Non-recursive implementation to avoid stack overflows
-        fn do_parse<'a>(initial_pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
-            enum StackFrame<'a> {
-                Unprocessed(Pair<'a, Rule>),
-                Processed(Pair<'a, Rule>, usize),
-            }
-            use StackFrame::*;
-            let mut pairs_stack: Vec<StackFrame> = vec![Unprocessed(initial_pair.clone())];
-            let mut values_stack: Vec<ParsedValue> = vec![];
-            while let Some(p) = pairs_stack.pop() {
-                match p {
-                    Unprocessed(mut pair) => {
-                        loop {
-                            let mut pairs: Vec<_> = pair.clone().into_inner().collect();
-                            let n_children = pairs.len();
-                            if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
-                                pair = pairs.pop().unwrap();
-                                continue
-                            } else {
-                                pairs_stack.push(Processed(pair, n_children));
-                                pairs_stack.extend(pairs.into_iter().map(StackFrame::Unprocessed));
-                                break
-                            }
-                        }
-                    }
-                    Processed(pair, n) => {
-                        let mut children: Vec<_> = values_stack.split_off(values_stack.len() - n);
-                        children.reverse();
-                        let val = match parse_any(pair.clone(), children) {
-                            Ok(v) => v,
-                            Err(msg) => Err(custom_parse_error(&pair, msg))?,
-                        };
-                        values_stack.push(val);
-                    }
-                }
-            }
-            Ok(values_stack.pop().unwrap())
-        }
     );
+}
+
+// Non-recursive implementation to avoid stack overflows
+fn do_parse<'a>(initial_pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
+    enum StackFrame<'a> {
+        Unprocessed(Pair<'a, Rule>),
+        Processed(Pair<'a, Rule>, usize),
+    }
+    use StackFrame::*;
+    let mut pairs_stack: Vec<StackFrame> =
+        vec![Unprocessed(initial_pair.clone())];
+    let mut values_stack: Vec<ParsedValue> = vec![];
+    while let Some(p) = pairs_stack.pop() {
+        match p {
+            Unprocessed(mut pair) => loop {
+                let mut pairs: Vec<_> = pair.clone().into_inner().collect();
+                let n_children = pairs.len();
+                if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
+                    pair = pairs.pop().unwrap();
+                    continue;
+                } else {
+                    pairs_stack.push(Processed(pair, n_children));
+                    pairs_stack
+                        .extend(pairs.into_iter().map(StackFrame::Unprocessed));
+                    break;
+                }
+            },
+            Processed(pair, n) => {
+                let mut children: Vec<_> =
+                    values_stack.split_off(values_stack.len() - n);
+                children.reverse();
+                let val = match parse_any(pair.clone(), children) {
+                    Ok(v) => v,
+                    Err(msg) => Err(custom_parse_error(&pair, msg))?,
+                };
+                values_stack.push(val);
+            }
+        }
+    }
+    Ok(values_stack.pop().unwrap())
 }
 
 // List of rules that can be shortcutted if they have a single child
@@ -261,8 +347,12 @@ fn can_be_shortcutted(rule: Rule) -> bool {
 make_parser! {
     rule!(EOI<()>; captured_str!(_) => ());
 
-    rule!(simple_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
-    rule!(quoted_label<Label>; captured_str!(s) => Label::from(s.trim().to_owned()));
+    rule!(simple_label<Label>;
+        captured_str!(s) => Label::from(s.trim().to_owned())
+    );
+    rule!(quoted_label<Label>;
+        captured_str!(s) => Label::from(s.trim().to_owned())
+    );
     rule!(label<Label>; children!(
         [simple_label(l)] => l,
         [quoted_label(l)] => l,
@@ -270,7 +360,9 @@ make_parser! {
     rule!(unreserved_label<Label>; children!(
         [label(l)] => {
             if Builtin::parse(&String::from(&l)).is_some() {
-                Err(format!("Builtin names are not allowed as bound variables"))?
+                Err(
+                    format!("Builtin names are not allowed as bound variables")
+                )?
             }
             l
         },
@@ -514,8 +606,10 @@ make_parser! {
     );
 
     rule!(import_hashed<ImportHashed>; children!(
-        [import_type(location)] => ImportHashed { location, hash: None },
-        [import_type(location), hash(hash)] => ImportHashed { location, hash: Some(hash) },
+        [import_type(location)] =>
+            ImportHashed { location, hash: None },
+        [import_type(location), hash(hash)] =>
+            ImportHashed { location, hash: Some(hash) },
     ));
 
     rule_group!(expression<ParsedExpr>);
@@ -551,13 +645,18 @@ make_parser! {
 
     rule!(let_expression<ParsedExpr> as expression; children!(
         [let_binding(bindings..), expression(final_expr)] => {
-            bindings.fold(final_expr, |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc)))
+            bindings.fold(
+                final_expr,
+                |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc))
+            )
         }
     ));
 
     rule!(let_binding<(Label, Option<ParsedExpr>, ParsedExpr)>; children!(
-        [unreserved_label(name), expression(annot), expression(expr)] => (name, Some(annot), expr),
-        [unreserved_label(name), expression(expr)] => (name, None, expr),
+        [unreserved_label(name), expression(annot), expression(expr)] =>
+            (name, Some(annot), expr),
+        [unreserved_label(name), expression(expr)] =>
+            (name, None, expr),
     ));
 
     rule!(forall_expression<ParsedExpr> as expression; children!(
@@ -573,8 +672,10 @@ make_parser! {
     ));
 
     rule!(merge_expression<ParsedExpr> as expression; children!(
-        [expression(x), expression(y), expression(z)] => bx(Expr::Merge(x, y, Some(z))),
-        [expression(x), expression(y)] => bx(Expr::Merge(x, y, None)),
+        [expression(x), expression(y), expression(z)] =>
+            bx(Expr::Merge(x, y, Some(z))),
+        [expression(x), expression(y)] =>
+            bx(Expr::Merge(x, y, None)),
     ));
 
     rule!(List<()>; captured_str!(_) => ());
@@ -598,73 +699,85 @@ make_parser! {
     rule!(import_alt_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::ImportAlt, acc, e)))
+            let o = BinOp::ImportAlt;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(or_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::BoolOr, acc, e)))
+            let o = BinOp::BoolOr;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(plus_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::NaturalPlus, acc, e)))
+            let o = BinOp::NaturalPlus;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(text_append_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::TextAppend, acc, e)))
+            let o = BinOp::TextAppend;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(list_append_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::ListAppend, acc, e)))
+            let o = BinOp::ListAppend;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(and_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::BoolAnd, acc, e)))
+            let o = BinOp::BoolAnd;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(combine_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::Combine, acc, e)))
+            let o = BinOp::Combine;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(prefer_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::Prefer, acc, e)))
+            let o = BinOp::Prefer;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(combine_types_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::CombineTypes, acc, e)))
+            let o = BinOp::CombineTypes;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(times_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::NaturalTimes, acc, e)))
+            let o = BinOp::NaturalTimes;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(equal_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::BoolEQ, acc, e)))
+            let o = BinOp::BoolEQ;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(not_equal_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest..)] => {
-            rest.fold(first, |acc, e| bx(Expr::BinOp(BinOp::BoolNE, acc, e)))
+            let o = BinOp::BoolNE;
+            rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
 
@@ -689,10 +802,15 @@ make_parser! {
         [expression(first), expression(second), expression(rest..)] => {
             match first.as_ref() {
                 Expr::Builtin(Builtin::OptionalNone) =>
-                    bx(Expr::App(bx(Expr::EmptyOptionalLit(second)), rest.collect())),
+                    bx(Expr::App(bx(Expr::EmptyOptionalLit(second)),
+                                 rest.collect())),
                 Expr::Builtin(Builtin::OptionalSome) =>
-                    bx(Expr::App(bx(Expr::NEOptionalLit(second)), rest.collect())),
-                _ => bx(Expr::App(first, std::iter::once(second).chain(rest).collect())),
+                    bx(Expr::App(bx(Expr::NEOptionalLit(second)),
+                                 rest.collect())),
+                _ => bx(Expr::App(first,
+                                  std::iter::once(second)
+                                    .chain(rest)
+                                    .collect())),
             }
         },
     ));
@@ -718,8 +836,10 @@ make_parser! {
 
     rule!(literal_expression<ParsedExpr> as expression; children!(
         [double_literal(n)] => bx(Expr::DoubleLit(n)),
-        [minus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::NEG_INFINITY.into())),
-        [plus_infinity_literal(n)] => bx(Expr::DoubleLit(std::f64::INFINITY.into())),
+        [minus_infinity_literal(n)] =>
+            bx(Expr::DoubleLit(std::f64::NEG_INFINITY.into())),
+        [plus_infinity_literal(n)] =>
+            bx(Expr::DoubleLit(std::f64::INFINITY.into())),
         [NaN(n)] => bx(Expr::DoubleLit(std::f64::NAN.into())),
         [natural_literal(n)] => bx(Expr::NaturalLit(n)),
         [integer_literal(n)] => bx(Expr::IntegerLit(n)),
@@ -778,7 +898,8 @@ make_parser! {
         },
     ));
 
-    rule!(non_empty_record_type<(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
+    rule!(non_empty_record_type
+          <(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_type_entry(entries..)] => {
             (expr, entries.collect())
         }
@@ -788,7 +909,8 @@ make_parser! {
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(non_empty_record_literal<(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
+    rule!(non_empty_record_literal
+          <(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_literal_entry(entries..)] => {
             (expr, entries.collect())
         }
@@ -813,7 +935,8 @@ make_parser! {
     rule!(empty_union_type<()>; captured_str!(_) => ());
 
     rule!(non_empty_union_type_or_literal
-          <(Option<(Label, ParsedExpr)>, BTreeMap<Label, ParsedExpr>)>; children!(
+          <(Option<(Label, ParsedExpr)>, BTreeMap<Label, ParsedExpr>)>;
+            children!(
         [label(l), expression(e), union_type_entries(entries)] => {
             (Some((l, e)), entries)
         },

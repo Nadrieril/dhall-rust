@@ -104,7 +104,12 @@ where
                 let a0 = Rc::clone(a0);
                 let a1 = shift(1, &V("a".into(), 0), &a0);
                 // TODO: use Embed to avoid reevaluating g
-                break dhall_expr!(g (List a0) (λ(a : a0) -> λ(as : List a1) -> [ a ] # as) ([] : List a0));
+                break dhall_expr!(
+                    g
+                    (List a0)
+                    (λ(a : a0) -> λ(as : List a1) -> [ a ] # as)
+                    ([] : List a0)
+                );
             }
         }
         (OptionalBuild, _, [a0, g, ..]) => {
@@ -119,7 +124,12 @@ where
                 };
                 let a0 = Rc::clone(a0);
                 // TODO: use Embed to avoid reevaluating g
-                break dhall_expr!((g (Optional a0)) (λ(x: a0) -> Some x) (None a0));
+                break dhall_expr!(
+                    g
+                    (Optional a0)
+                    (λ(x: a0) -> Some x)
+                    (None a0)
+                );
             }
         }
         (ListFold, Some(EmptyListLit(_)), [_, _, _, _, nil, ..]) => {

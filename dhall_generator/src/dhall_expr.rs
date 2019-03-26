@@ -109,7 +109,8 @@ fn dhall_to_tokenstream_bx(
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.into();
-                    quote! { dhall_core::bx(dhall_core::Expr::Var(dhall_core::V(#s.into(), #n))) }
+                    let var = quote! { dhall_core::V(#s.into(), #n) };
+                    bx(quote! { dhall_core::Expr::Var(#var) })
                 }
                 // Free variable; interpolates as a rust variable
                 None => {

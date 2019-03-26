@@ -175,7 +175,8 @@ pub fn derive_dhall_type_inner(
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics dhall::DhallType for #ident #ty_generics #where_clause {
+        impl #impl_generics dhall::DhallType for #ident #ty_generics
+                #where_clause {
             fn dhall_type() -> dhall_core::DhallExpr {
                 #(#assertions)*
                 #dhall_type

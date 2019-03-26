@@ -26,19 +26,31 @@
 macro_rules! destructure_iter {
     // Variable length pattern
     (@match_forwards, $iter:expr, ($body:expr), $x:ident.., $($rest:tt)*) => {
-        $crate::destructure_iter!(@match_backwards, $iter, ({
-            let $x = $iter;
-            $body
-        }), $($rest)*)
+        $crate::destructure_iter!(@match_backwards,
+            $iter,
+            ({
+                let $x = $iter;
+                $body
+            }),
+            $($rest)*
+        )
     };
     // Variable length pattern without a binder
     (@match_forwards, $iter:expr, ($body:expr), .., $($rest:tt)*) => {
-        $crate::destructure_iter!(@match_backwards, $iter, ($body), $($rest)*)
+        $crate::destructure_iter!(@match_backwards,
+            $iter,
+            ($body),
+            $($rest)*
+        )
     };
     // Single item pattern
     (@match_forwards, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
         if let Some($x) = $iter.next() {
-            $crate::destructure_iter!(@match_forwards, $iter, ($body), $($rest)*)
+            $crate::destructure_iter!(@match_forwards,
+                $iter,
+                ($body),
+                $($rest)*
+            )
         } else {
             None
         }
@@ -71,7 +83,11 @@ macro_rules! destructure_iter {
         {
             #[allow(unused_mut)]
             let mut iter = $iter;
-            $crate::destructure_iter!(@match_forwards, iter, (Some($body)), $($args)*,)
+            $crate::destructure_iter!(@match_forwards,
+                iter,
+                (Some($body)),
+                $($args)*,
+            )
         }
     };
 }

@@ -36,12 +36,20 @@ fn main() -> std::io::Result<()> {
         if name == "largeExpression" {
             continue;
         }
-        writeln!(file, r#"make_spec_test!(ParserSuccess, spec_parser_success_{}, "{}");"#, name, path)?;
+        writeln!(
+            file,
+            r#"make_spec_test!(ParserSuccess, spec_parser_success_{}, "{}");"#,
+            name, path
+        )?;
     }
 
     for path in dhall_files_in_dir(&tests_dir.join("parser/failure/")) {
         let name = path.replace("/", "_");
-        writeln!(file, r#"make_spec_test!(ParserFailure, spec_parser_failure_{}, "{}");"#, name, path)?;
+        writeln!(
+            file,
+            r#"make_spec_test!(ParserFailure, spec_parser_failure_{}, "{}");"#,
+            name, path
+        )?;
     }
 
     Ok(())
