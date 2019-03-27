@@ -112,106 +112,6 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-macro_rules! match_children {
-    (@make_child_match,
-        ($pair:expr, $($vars:tt)*),
-        ($($outer_acc:tt)*),
-        ($($acc:tt)*),
-        ($(,)* $ty:ident ($x:ident..) $($rest_of_match:tt)*) => $body:expr,
-        $($rest:tt)*
-    ) => {
-        match_children!(@make_child_match,
-            ($pair, $($vars)*),
-            ($($outer_acc)*),
-            ($($acc)*, xs..),
-            ($($rest_of_match)*) => {
-                let xs = xs.map(|x| match x {
-                    ParsedValue::$ty(y) => Ok(y),
-                    x => Err(format!("Unexpected child: {:?}", x)),
-                }).collect::<Result<Vec<_>, _>>()?;
-                let $x = xs.into_iter();
-                $body
-            },
-            $($rest)*
-        )
-    };
-    (@make_child_match,
-        ($($vars:tt)*),
-        ($($outer_acc:tt)*),
-        ($($acc:tt)*),
-        ($(,)* $ty:ident ($x:pat)  $($rest_of_match:tt)*) => $body:expr,
-        $($rest:tt)*
-    ) => {
-        match_children!(@make_child_match,
-            ($($vars)*),
-            ($($outer_acc)*),
-            ($($acc)*, ParsedValue::$ty($x)),
-            ($($rest_of_match)*) => $body,
-            $($rest)*
-        )
-    };
-    (@make_child_match,
-        ($($vars:tt)*),
-        ($($outer_acc:tt)*),
-        (, $($acc:tt)*),
-        ($(,)*) => $body:expr,
-        $($rest:tt)*
-    ) => {
-        match_children!(@make_matches,
-            ($($vars)*),
-            ($($outer_acc)* [$($acc)*] => { $body },),
-            $($rest)*
-        )
-    };
-    (@make_child_match,
-        ($($vars:tt)*),
-        ($($outer_acc:tt)*),
-        (),
-        ($(,)*) => $body:expr,
-        $($rest:tt)*
-    ) => {
-        match_children!(@make_matches,
-            ($($vars)*),
-            ($($outer_acc)* [] => { $body },),
-            $($rest)*
-        )
-    };
-
-    (@make_matches,
-        ($($vars:tt)*),
-        ($($acc:tt)*),
-        [$($args:tt)*] => $body:expr,
-        $($rest:tt)*
-    ) => {
-        match_children!(@make_child_match,
-            ($($vars)*),
-            ($($acc)*),
-            (),
-            ($($args)*) => $body,
-            $($rest)*
-        )
-    };
-    (@make_matches, ($pair:expr, $children:expr), ($($acc:tt)*) $(,)*) => {
-        {
-            #[allow(unreachable_code)]
-            iter_patterns::match_vec!($children;
-                $($acc)*
-                [x..] => Err(
-                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-                )?,
-            ).ok_or_else(|| -> String { unreachable!() })
-        }
-    };
-
-    (($($vars:tt)*); $( [$($args:tt)*] => $body:expr ),* $(,)*) => {
-        match_children!(@make_matches,
-            ($($vars)*),
-            (),
-            $( [$($args)*] => $body ),* ,
-        )
-    };
-}
-
 macro_rules! make_parser {
     (@pattern, rule, $name:ident) => (Rule::$name);
     (@pattern, rule_group, $name:ident) => (_);
@@ -248,10 +148,18 @@ macro_rules! make_parser {
         rule!(
             $name:ident<$o:ty>
             as $group:ident;
-            children!( $($args:tt)* )
+            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
         )
     ) => ({
-        let res: $o = match_children!(($pair, $children); $($args)*)?;
+        #[allow(unused_imports)]
+        use ParsedValue::*;
+        #[allow(unreachable_code)]
+        let res: $o = iter_patterns::match_vec!($children;
+            $( [$($args)*] => $body, )*
+            [x..] => Err(
+                format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
+            )?,
+        ).ok_or_else(|| -> String { unreachable!() })?;
         Ok(ParsedValue::$group(res))
     });
     (@body, $pair:expr, $children:expr, rule_group!( $name:ident<$o:ty> )) => (
@@ -369,7 +277,7 @@ make_parser! {
     ));
 
     rule!(double_quote_literal<ParsedText>; children!(
-        [double_quote_chunk(chunks..)] => {
+        [double_quote_chunk(chunks)..] => {
             chunks.collect()
         }
     ));
@@ -521,7 +429,7 @@ make_parser! {
         [quoted_path_component(s)] => s,
     ));
     rule!(path<PathBuf>; children!(
-        [path_component(components..)] => {
+        [path_component(components)..] => {
             components.collect()
         }
     ));
@@ -570,8 +478,8 @@ make_parser! {
 
     rule!(http<URL>; children!(
         [http_raw(url)] => url,
-        [http_raw(url), import_hashed(import_hashed)] =>
-            URL { headers: Some(Box::new(import_hashed)), ..url },
+        [http_raw(url), import_hashed(ih)] =>
+            URL { headers: Some(Box::new(ih)), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -593,8 +501,8 @@ make_parser! {
         [http(url)] => {
             ImportLocation::Remote(url)
         },
-        [local((prefix, path))] => {
-            ImportLocation::Local(prefix, path)
+        [local((prefix, p))] => {
+            ImportLocation::Local(prefix, p)
         },
     ));
 
@@ -608,8 +516,8 @@ make_parser! {
     rule!(import_hashed<ImportHashed>; children!(
         [import_type(location)] =>
             ImportHashed { location, hash: None },
-        [import_type(location), hash(hash)] =>
-            ImportHashed { location, hash: Some(hash) },
+        [import_type(location), hash(h)] =>
+            ImportHashed { location, hash: Some(h) },
     ));
 
     rule_group!(expression<ParsedExpr>);
@@ -644,7 +552,7 @@ make_parser! {
     ));
 
     rule!(let_expression<ParsedExpr> as expression; children!(
-        [let_binding(bindings..), expression(final_expr)] => {
+        [let_binding(bindings).., expression(final_expr)] => {
             bindings.fold(
                 final_expr,
                 |acc, x| bx(Expr::Let(x.0, x.1, x.2, acc))
@@ -698,84 +606,84 @@ make_parser! {
 
     rule!(import_alt_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::ImportAlt;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(or_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::BoolOr;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(plus_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::NaturalPlus;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(text_append_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::TextAppend;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(list_append_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::ListAppend;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(and_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::BoolAnd;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(combine_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::Combine;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(prefer_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::Prefer;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(combine_types_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::CombineTypes;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(times_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::NaturalTimes;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(equal_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::BoolEQ;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
     ));
     rule!(not_equal_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(rest..)] => {
+        [expression(first), expression(rest)..] => {
             let o = BinOp::BoolNE;
             rest.fold(first, |acc, e| bx(Expr::BinOp(o, acc, e)))
         },
@@ -799,7 +707,7 @@ make_parser! {
                 _ => bx(Expr::App(first, vec![second])),
             }
         },
-        [expression(first), expression(second), expression(rest..)] => {
+        [expression(first), expression(second), expression(rest)..] => {
             match first.as_ref() {
                 Expr::Builtin(Builtin::OptionalNone) =>
                     bx(Expr::App(bx(Expr::EmptyOptionalLit(second)),
@@ -817,7 +725,7 @@ make_parser! {
 
     rule!(selector_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), selector(rest..)] => {
+        [expression(first), selector(rest)..] => {
             rest.fold(first, |acc, e| match e {
                 Either::Left(l) => bx(Expr::Field(acc, l)),
                 Either::Right(ls) => bx(Expr::Projection(acc, ls)),
@@ -831,7 +739,7 @@ make_parser! {
     ));
 
     rule!(labels<Vec<Label>>; children!(
-        [label(ls..)] => ls.collect(),
+        [label(ls)..] => ls.collect(),
     ));
 
     rule!(literal_expression<ParsedExpr> as expression; children!(
@@ -900,7 +808,7 @@ make_parser! {
 
     rule!(non_empty_record_type
           <(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
-        [expression(expr), record_type_entry(entries..)] => {
+        [expression(expr), record_type_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
@@ -911,7 +819,7 @@ make_parser! {
 
     rule!(non_empty_record_literal
           <(ParsedExpr, BTreeMap<Label, ParsedExpr>)>; children!(
-        [expression(expr), record_literal_entry(entries..)] => {
+        [expression(expr), record_literal_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
@@ -953,7 +861,7 @@ make_parser! {
     ));
 
     rule!(union_type_entries<BTreeMap<Label, ParsedExpr>>; children!(
-        [union_type_entry(entries..)] => entries.collect()
+        [union_type_entry(entries)..] => entries.collect()
     ));
 
     rule!(union_type_entry<(Label, ParsedExpr)>; children!(
@@ -961,7 +869,7 @@ make_parser! {
     ));
 
     rule!(non_empty_list_literal<ParsedExpr> as expression; children!(
-        [expression(items..)] => bx(Expr::NEListLit(items.collect()))
+        [expression(items)..] => bx(Expr::NEListLit(items.collect()))
     ));
 
     rule!(final_expression<ParsedExpr> as expression; children!(

@@ -1,4 +1,4 @@
-#![feature(slice_patterns)]
+#![feature(slice_patterns, bind_by_move_pattern_guards)]
 
 /* Destructure an iterator using the syntax of slice_patterns.
  * Wraps the match body in `Some` if there was a match; returns
@@ -30,6 +30,21 @@ macro_rules! destructure_iter {
             $iter,
             ({
                 let $x = $iter;
+                $body
+            }),
+            $($rest)*
+        )
+    };
+    // Special variable length pattern with a common unary variant
+    (@match_forwards, $iter:expr, ($body:expr), $variant:ident ($x:ident).., $($rest:tt)*) => {
+        $crate::destructure_iter!(@match_backwards,
+            $iter,
+            ({
+                let $x = $iter
+                    .map(|x| match x {
+                        $variant(y) => y,
+                        _ => unreachable!(),
+                    });
                 $body
             }),
             $($rest)*
@@ -117,6 +132,71 @@ macro_rules! destructure_iter {
 */
 #[macro_export]
 macro_rules! match_vec {
+    // Variable length pattern
+    (@make_pat; ($($acc:tt)*), $x:ident.., $($rest:tt)*) => {
+        $crate::match_vec!(@make_pat;
+            ($($acc)*, $x..),
+            $($rest)*
+        )
+    };
+    // Special variable length pattern with a common unary variant
+    (@make_pat; ($($acc:tt)*), $variant:ident ($x:ident).., $($rest:tt)*) => {
+        $crate::match_vec!(@make_pat;
+            ($($acc)*, $x..),
+            $($rest)*
+        )
+    };
+    // Variable length pattern without a binder
+    (@make_pat; ($($acc:tt)*), .., $($rest:tt)*) => {
+        $crate::match_vec!(@make_pat;
+            ($($acc)*, ..),
+            $($rest)*
+        )
+    };
+    // Single item pattern
+    (@make_pat; ($($acc:tt)*), $x:pat, $($rest:tt)*) => {
+        $crate::match_vec!(@make_pat;
+            ($($acc)*, $x),
+            $($rest)*
+        )
+    };
+    (@make_pat; (, $($acc:tt)*), $(,)*) => {
+        [$($acc)*]
+    };
+    (@make_pat; ($($acc:tt)*), $(,)*) => {
+        [$($acc)*]
+    };
+
+    (@make_filter; $x:ident.., $($rest:tt)*) => {
+        $crate::match_vec!(@make_filter;
+            $($rest)*
+        )
+    };
+    (@make_filter; $variant:ident ($x:ident).., $($rest:tt)*) => {
+        $x.iter()
+            .all(|x| match x {
+                $variant(_) => true,
+                _ => false,
+            })
+        &&
+        $crate::match_vec!(@make_filter;
+            $($rest)*
+        )
+    };
+    (@make_filter; .., $($rest:tt)*) => {
+        $crate::match_vec!(@make_filter;
+            $($rest)*
+        )
+    };
+    (@make_filter; $x:pat, $($rest:tt)*) => {
+        $crate::match_vec!(@make_filter;
+            $($rest)*
+        )
+    };
+    (@make_filter; $(,)*) => {
+        true
+    };
+
     ($arg:expr; $( [$($args:tt)*] => $body:expr ),* $(,)*) => {
         {
             let vec = $arg;
@@ -126,7 +206,10 @@ macro_rules! match_vec {
             #[allow(unused_variables, unreachable_patterns)]
             match vec.as_slice() {
                 $(
-                    [$($args)*] => {
+                    $crate::match_vec!(@make_pat; (), $($args)*,)
+                    if
+                    $crate::match_vec!(@make_filter; $($args)*,)
+                    => {
                         // Actually consume the values
                         #[allow(unused_mut)]
                         let mut iter = vec.into_iter();
@@ -179,7 +262,8 @@ fn test() {
             [Some(_x), None] => 2,
             [None, Some(y)] => 1,
             [None, _y..] => 3,
-            [_x.., Some(y), Some(z)] => y - z,
+            [_x.., Some(y), Some(z), None] => y - z,
+            [Some(ys)..] => ys.sum(),
             [] => 0,
             [..] => -1,
         )
@@ -189,10 +273,11 @@ fn test() {
     assert_eq!(test(vec![Some(0), None, None]), 4);
     assert_eq!(test(vec![Some(0), None]), 2);
     assert_eq!(test(vec![None, Some(0)]), 1);
-    assert_eq!(test(vec![Some(1), Some(2), Some(5), Some(14)]), -9);
+    assert_eq!(test(vec![Some(1), Some(2), Some(5), Some(14), None]), -9);
+    assert_eq!(test(vec![Some(1), Some(2), Some(3), Some(4)]), 10);
     assert_eq!(test(vec![None]), 3);
     assert_eq!(test(vec![]), 0);
-    assert_eq!(test(vec![Some(0)]), -1);
+    assert_eq!(test(vec![Some(0), None, Some(1)]), -1);
 
     // Test move out of pattern
     struct Foo;
