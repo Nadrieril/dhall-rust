@@ -100,7 +100,7 @@ pub enum Const {
 /// appear as a numeric suffix.
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct V(pub Label, pub usize);
+pub struct V<Label>(pub Label, pub usize);
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -173,19 +173,19 @@ pub type DhallExpr = ResolvedExpr;
 #[derive(Debug, PartialEq, Eq)]
 pub struct SubExpr<Note, Embed>(pub Rc<Expr<Note, Embed>>);
 
-pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Note, Embed>;
+pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Label, Note, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExprF<SubExpr, Note, Embed> {
+pub enum ExprF<SubExpr, Label, Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
     ///  `Var (V x n)                              ~  x@n`
-    Var(V),
+    Var(V<Label>),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
     Lam(Label, SubExpr, SubExpr),
     ///  `Pi "_" A B                               ~        A  -> B`
@@ -337,22 +337,24 @@ fn add_ui(u: usize, i: isize) -> usize {
 }
 
 /// Map over the immediate children of the passed Expr
-pub fn map_subexpr<SE1, SE2, S, T, A, B, F1, F2, F3, F4, F5>(
-    e: &ExprF<SE1, S, A>,
+pub fn map_subexpr<SE1, SE2, L1, L2, S, T, A, B, F1, F2, F3, F4, F5>(
+    e: &ExprF<SE1, L1, S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
     map_under_binder: F5,
-) -> ExprF<SE2, T, B>
+) -> ExprF<SE2, L2, T, B>
 where
+    L1: Ord,
+    L2: Ord,
     SE1: Clone,
     SE2: Clone,
     F1: Fn(&SE1) -> SE2,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
-    F4: Fn(&Label) -> Label,
-    F5: FnOnce(&Label, &SE1) -> SE2,
+    F4: Fn(&L1) -> L2,
+    F5: FnOnce(&L1, &SE1) -> SE2,
 {
     use crate::ExprF::*;
     let map = &map;
@@ -505,7 +507,7 @@ where
 ///
 pub fn shift<S, A>(
     delta: isize,
-    var: &V,
+    var: &V<Label>,
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
     use crate::ExprF::*;
@@ -534,7 +536,7 @@ pub fn shift<S, A>(
 /// ```
 ///
 pub fn subst<S, A>(
-    var: &V,
+    var: &V<Label>,
     value: &SubExpr<S, A>,
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {

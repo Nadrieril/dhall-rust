@@ -17,17 +17,20 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 // Returns an expression of type ExprF<T, _, _>, where T is the
 // type of the subexpressions after interpolation.
-pub fn quote_expr<TS>(expr: ExprF<TS, X, X>) -> TokenStream
+pub fn quote_expr<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
     let quote_map = |m: BTreeMap<Label, TS>| -> TokenStream {
-        let (keys, values): (Vec<TokenStream>, Vec<TS>) =
-            m.into_iter().map(|(k, v)| (quote_label(&k), v)).unzip();
+        let entries =
+            m.into_iter().map(|(k, v)| {
+                let k = quote_label(&k);
+                quote!(m.insert(#k, #v);)
+            });
         quote! { {
             use std::collections::BTreeMap;
             let mut m = BTreeMap::new();
-            #( m.insert(#keys, #values); )*
+            #( #entries )*
             m
         } }
     };
@@ -151,7 +154,7 @@ fn quote_binop(b: BinOp) -> TokenStream {
 
 fn quote_label(l: &Label) -> TokenStream {
     let l = String::from(l);
-    quote! { #l.into() }
+    quote! { dhall_core::Label::from(#l) }
 }
 
 fn bx(x: TokenStream) -> TokenStream {

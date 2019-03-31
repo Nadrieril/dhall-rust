@@ -462,7 +462,7 @@ impl Display for Scheme {
     }
 }
 
-impl Display for V {
+impl<Label: Display> Display for V<Label> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let V(x, n) = self;
         x.fmt(f)?;

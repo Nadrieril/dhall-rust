@@ -28,7 +28,7 @@ fn rule(a: Const, b: Const) -> Result<Const, ()> {
     }
 }
 
-fn match_vars(vl: &V, vr: &V, ctx: &[(Label, Label)]) -> bool {
+fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(Label, Label)]) -> bool {
     let mut vl = vl.clone();
     let mut vr = vr.clone();
     let mut ctx = ctx.to_vec();
