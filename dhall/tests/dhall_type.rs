@@ -33,10 +33,7 @@ fn test_dhall_type() {
     #[derive(Type)]
     #[allow(dead_code)]
     struct C<T>(T, Option<String>);
-    assert_eq!(
-        <C<bool>>::get_type(),
-        <(bool, Option<String>)>::get_type()
-    );
+    assert_eq!(<C<bool>>::get_type(), <(bool, Option<String>)>::get_type());
 
     #[derive(Type)]
     #[allow(dead_code)]

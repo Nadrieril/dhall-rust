@@ -168,9 +168,7 @@ pub fn derive_type_inner(
     // Ensure that all the fields have a Type impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
-        where_clause
-            .predicates
-            .push(parse_quote!(#ty: dhall::Type));
+        where_clause.predicates.push(parse_quote!(#ty: dhall::Type));
     }
 
     let ident = &input.ident;

@@ -36,7 +36,8 @@ macro_rules! destructure_iter {
         )
     };
     // Special variable length pattern with a common unary variant
-    (@match_forwards, $iter:expr, ($body:expr), $variant:ident ($x:ident).., $($rest:tt)*) => {
+    (@match_forwards, $iter:expr, ($body:expr),
+            $variant:ident ($x:ident).., $($rest:tt)*) => {
         $crate::destructure_iter!(@match_backwards,
             $iter,
             ({
