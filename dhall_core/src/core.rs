@@ -337,20 +337,22 @@ fn add_ui(u: usize, i: isize) -> usize {
 }
 
 /// Map over the immediate children of the passed Expr
-pub fn map_subexpr<S, T, A, B, F1, F2, F3, F4, F5>(
-    e: &Expr<S, A>,
+pub fn map_subexpr<SE1, SE2, S, T, A, B, F1, F2, F3, F4, F5>(
+    e: &ExprF<SE1, S, A>,
     map: F1,
     map_note: F2,
     map_embed: F3,
     map_label: F4,
     map_under_binder: F5,
-) -> Expr<T, B>
+) -> ExprF<SE2, T, B>
 where
-    F1: Fn(&SubExpr<S, A>) -> SubExpr<T, B>,
+    SE1: Clone,
+    SE2: Clone,
+    F1: Fn(&SE1) -> SE2,
     F2: FnOnce(&S) -> T,
     F3: FnOnce(&A) -> B,
     F4: Fn(&Label) -> Label,
-    F5: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<T, B>,
+    F5: FnOnce(&Label, &SE1) -> SE2,
 {
     use crate::ExprF::*;
     let map = &map;
