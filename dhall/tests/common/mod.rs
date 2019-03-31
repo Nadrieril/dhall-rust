@@ -111,7 +111,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let expected_file_path = base_path + "B.dhall";
             let expr = rc(read_dhall_file(&expr_file_path).unwrap());
             let expected = rc(read_dhall_file(&expected_file_path).unwrap());
-            typecheck::type_of(rc(Expr::Annot(expr, expected))).unwrap();
+            typecheck::type_of(rc(ExprF::Annot(expr, expected))).unwrap();
         }
     }
 }

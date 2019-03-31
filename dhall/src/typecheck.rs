@@ -12,7 +12,7 @@ use self::TypeMessage::*;
 
 fn axiom<S>(c: Const) -> Result<Const, TypeError<S>> {
     use dhall_core::Const::*;
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     match c {
         Type => Ok(Kind),
         Kind => Err(TypeError::new(&Context::new(), rc(Const(Kind)), Untyped)),
@@ -53,7 +53,7 @@ where
     S: ::std::fmt::Debug,
     T: ::std::fmt::Debug,
 {
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     fn go<S, T>(
         ctx: &mut Vec<(Label, Label)>,
         el: &Expr<S, X>,
@@ -192,7 +192,7 @@ where
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::Const::*;
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
     let ensure_const = |x: &SubExpr<_, _>, msg: TypeMessage<_>| match x.as_ref()
     {

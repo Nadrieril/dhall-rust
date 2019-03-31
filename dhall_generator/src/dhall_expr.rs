@@ -21,7 +21,7 @@ fn dhall_to_tokenstream(
     expr: &DhallExpr,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     match expr.as_ref() {
         Var(_) => {
             let v = dhall_to_tokenstream_bx(expr, ctx);
@@ -31,66 +31,66 @@ fn dhall_to_tokenstream(
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = label_to_tokenstream(x);
-            quote! { dhall_core::Expr::Pi(#x, #t, #b) }
+            quote! { dhall_core::ExprF::Pi(#x, #t, #b) }
         }
         Lam(x, t, b) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
             let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
             let x = label_to_tokenstream(x);
-            quote! { dhall_core::Expr::Lam(#x, #t, #b) }
+            quote! { dhall_core::ExprF::Lam(#x, #t, #b) }
         }
         App(f, a) => {
             let f = dhall_to_tokenstream_bx(f, ctx);
             let a = vec_to_tokenstream(a, ctx);
-            quote! { dhall_core::Expr::App(#f, #a) }
+            quote! { dhall_core::ExprF::App(#f, #a) }
         }
         Const(c) => {
             let c = const_to_tokenstream(*c);
-            quote! { dhall_core::Expr::Const(#c) }
+            quote! { dhall_core::ExprF::Const(#c) }
         }
         Builtin(b) => {
             let b = builtin_to_tokenstream(*b);
-            quote! { dhall_core::Expr::Builtin(#b) }
+            quote! { dhall_core::ExprF::Builtin(#b) }
         }
         BinOp(o, a, b) => {
             let o = binop_to_tokenstream(*o);
             let a = dhall_to_tokenstream_bx(a, ctx);
             let b = dhall_to_tokenstream_bx(b, ctx);
-            quote! { dhall_core::Expr::BinOp(#o, #a, #b) }
+            quote! { dhall_core::ExprF::BinOp(#o, #a, #b) }
         }
         NaturalLit(n) => {
-            quote! { dhall_core::Expr::NaturalLit(#n) }
+            quote! { dhall_core::ExprF::NaturalLit(#n) }
         }
         BoolLit(b) => {
-            quote! { dhall_core::Expr::BoolLit(#b) }
+            quote! { dhall_core::ExprF::BoolLit(#b) }
         }
         EmptyOptionalLit(x) => {
             let x = dhall_to_tokenstream_bx(x, ctx);
-            quote! { dhall_core::Expr::EmptyOptionalLit(#x) }
+            quote! { dhall_core::ExprF::EmptyOptionalLit(#x) }
         }
         NEOptionalLit(x) => {
             let x = dhall_to_tokenstream_bx(x, ctx);
-            quote! { dhall_core::Expr::NEOptionalLit(#x) }
+            quote! { dhall_core::ExprF::NEOptionalLit(#x) }
         }
         EmptyListLit(t) => {
             let t = dhall_to_tokenstream_bx(t, ctx);
-            quote! { dhall_core::Expr::EmptyListLit(#t) }
+            quote! { dhall_core::ExprF::EmptyListLit(#t) }
         }
         NEListLit(es) => {
             let es = vec_to_tokenstream(es, ctx);
-            quote! { dhall_core::Expr::NEListLit(#es) }
+            quote! { dhall_core::ExprF::NEListLit(#es) }
         }
         RecordType(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { dhall_core::Expr::RecordType(#m) }
+            quote! { dhall_core::ExprF::RecordType(#m) }
         }
         RecordLit(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { dhall_core::Expr::RecordLit(#m) }
+            quote! { dhall_core::ExprF::RecordLit(#m) }
         }
         UnionType(m) => {
             let m = map_to_tokenstream(m, ctx);
-            quote! { dhall_core::Expr::UnionType(#m) }
+            quote! { dhall_core::ExprF::UnionType(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -101,7 +101,7 @@ fn dhall_to_tokenstream_bx(
     expr: &DhallExpr,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     match expr.as_ref() {
         Var(V(s, n)) => {
             match ctx.lookup(&s, *n) {
@@ -109,7 +109,7 @@ fn dhall_to_tokenstream_bx(
                 Some(()) => {
                     let s: String = s.into();
                     let var = quote! { dhall_core::V(#s.into(), #n) };
-                    bx(quote! { dhall_core::Expr::Var(#var) })
+                    bx(quote! { dhall_core::ExprF::Var(#var) })
                 }
                 // Free variable; interpolates as a rust variable
                 None => {

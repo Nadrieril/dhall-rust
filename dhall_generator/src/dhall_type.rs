@@ -48,7 +48,7 @@ pub fn derive_for_struct(
             );
         }
     });
-    Ok(quote! { dhall_core::rc(dhall_core::Expr::RecordType({
+    Ok(quote! { dhall_core::rc(dhall_core::ExprF::RecordType({
         use std::collections::BTreeMap;
         let mut m = BTreeMap::new();
         #(#fields)*
@@ -101,7 +101,7 @@ pub fn derive_for_enum(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    Ok(quote! { dhall_core::rc(dhall_core::Expr::UnionType({
+    Ok(quote! { dhall_core::rc(dhall_core::ExprF::UnionType({
         use std::collections::BTreeMap;
         let mut m = BTreeMap::new();
         #(#variants)*

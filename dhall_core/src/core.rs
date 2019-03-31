@@ -173,43 +173,39 @@ pub type DhallExpr = ResolvedExpr;
 #[derive(Debug, PartialEq, Eq)]
 pub struct SubExpr<Note, Embed>(pub Rc<Expr<Note, Embed>>);
 
+pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Note, Embed>;
+
 /// Syntax tree for expressions
+// Having the recursion out of the enum definition enables writing
+// much more generic code and improves pattern-matching behind
+// smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr<Note, Embed> {
+pub enum ExprF<SubExpr, Note, Embed> {
     ///  `Const c                                  ~  c`
     Const(Const),
     ///  `Var (V x 0)                              ~  x`<br>
     ///  `Var (V x n)                              ~  x@n`
     Var(V),
     ///  `Lam x     A b                            ~  λ(x : A) -> b`
-    Lam(Label, SubExpr<Note, Embed>, SubExpr<Note, Embed>),
+    Lam(Label, SubExpr, SubExpr),
     ///  `Pi "_" A B                               ~        A  -> B`
     ///  `Pi x   A B                               ~  ∀(x : A) -> B`
-    Pi(Label, SubExpr<Note, Embed>, SubExpr<Note, Embed>),
+    Pi(Label, SubExpr, SubExpr),
     ///  `App f A                                  ~  f A`
-    App(SubExpr<Note, Embed>, Vec<SubExpr<Note, Embed>>),
+    App(SubExpr, Vec<SubExpr>),
     ///  `Let x Nothing  r e  ~  let x     = r in e`
     ///  `Let x (Just t) r e  ~  let x : t = r in e`
-    Let(
-        Label,
-        Option<SubExpr<Note, Embed>>,
-        SubExpr<Note, Embed>,
-        SubExpr<Note, Embed>,
-    ),
+    Let(Label, Option<SubExpr>, SubExpr, SubExpr),
     ///  `Annot x t                                ~  x : t`
-    Annot(SubExpr<Note, Embed>, SubExpr<Note, Embed>),
+    Annot(SubExpr, SubExpr),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
-    BinOp(BinOp, SubExpr<Note, Embed>, SubExpr<Note, Embed>),
+    BinOp(BinOp, SubExpr, SubExpr),
     ///  `BoolLit b                                ~  b`
     BoolLit(bool),
     ///  `BoolIf x y z                             ~  if x then y else z`
-    BoolIf(
-        SubExpr<Note, Embed>,
-        SubExpr<Note, Embed>,
-        SubExpr<Note, Embed>,
-    ),
+    BoolIf(SubExpr, SubExpr, SubExpr),
     ///  `NaturalLit n                             ~  +n`
     NaturalLit(Natural),
     ///  `IntegerLit n                             ~  n`
@@ -217,39 +213,31 @@ pub enum Expr<Note, Embed> {
     ///  `DoubleLit n                              ~  n`
     DoubleLit(Double),
     ///  `TextLit t                                ~  t`
-    TextLit(InterpolatedText<Note, Embed>),
+    TextLit(InterpolatedText<SubExpr>),
     ///  [] : List t`
-    EmptyListLit(SubExpr<Note, Embed>),
+    EmptyListLit(SubExpr),
     ///  [x, y, z]
-    NEListLit(Vec<SubExpr<Note, Embed>>),
+    NEListLit(Vec<SubExpr>),
     ///  None t
-    EmptyOptionalLit(SubExpr<Note, Embed>),
+    EmptyOptionalLit(SubExpr),
     ///  Some e
-    NEOptionalLit(SubExpr<Note, Embed>),
+    NEOptionalLit(SubExpr),
     ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
-    RecordType(BTreeMap<Label, SubExpr<Note, Embed>>),
+    RecordType(BTreeMap<Label, SubExpr>),
     ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, SubExpr<Note, Embed>>),
+    RecordLit(BTreeMap<Label, SubExpr>),
     ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
-    UnionType(BTreeMap<Label, SubExpr<Note, Embed>>),
+    UnionType(BTreeMap<Label, SubExpr>),
     ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
-    UnionLit(
-        Label,
-        SubExpr<Note, Embed>,
-        BTreeMap<Label, SubExpr<Note, Embed>>,
-    ),
+    UnionLit(Label, SubExpr, BTreeMap<Label, SubExpr>),
     ///  `Merge x y t                              ~  merge x y : t`
-    Merge(
-        SubExpr<Note, Embed>,
-        SubExpr<Note, Embed>,
-        Option<SubExpr<Note, Embed>>,
-    ),
+    Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  e.x
-    Field(SubExpr<Note, Embed>, Label),
+    Field(SubExpr, Label),
     ///  e.{ x, y, z }
-    Projection(SubExpr<Note, Embed>, Vec<Label>),
+    Projection(SubExpr, Vec<Label>),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
-    Note(Note, SubExpr<Note, Embed>),
+    Note(Note, SubExpr),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }
@@ -305,7 +293,7 @@ impl<S, A> Expr<S, A> {
 impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
     pub fn squash_embed(&self) -> Expr<S, A> {
         match self {
-            Expr::Embed(e) => e.clone(),
+            ExprF::Embed(e) => e.clone(),
             e => e.map_shallow(
                 |e| e.squash_embed(),
                 |x| x.clone(),
@@ -369,7 +357,7 @@ where
     F4: Fn(&Label) -> Label,
     F5: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<T, B>,
 {
-    use crate::Expr::*;
+    use crate::ExprF::*;
     let map = &map;
     let opt = |x: &Option<_>| x.as_ref().map(&map);
     let vec = |x: &Vec<_>| x.iter().map(&map).collect();
@@ -422,8 +410,8 @@ where
     F2: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<S, A>,
 {
     match e.as_ref() {
-        Expr::Embed(_) => SubExpr::clone(e),
-        Expr::Note(_, e) => {
+        ExprF::Embed(_) => SubExpr::clone(e),
+        ExprF::Note(_, e) => {
             map_subexpr_rc_binder(e, map_expr, map_under_binder)
         }
         _ => rc(map_subexpr(
@@ -523,7 +511,7 @@ pub fn shift<S, A>(
     var: &V,
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
-    use crate::Expr::*;
+    use crate::ExprF::*;
     let V(x, n) = var;
     let under_binder = |y: &Label, e: &SubExpr<_, _>| {
         let n = if x == y { n + 1 } else { *n };
@@ -553,7 +541,7 @@ pub fn subst<S, A>(
     value: &SubExpr<S, A>,
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
-    use crate::Expr::*;
+    use crate::ExprF::*;
     let under_binder = |y: &Label, e: &SubExpr<_, _>| {
         let V(x, n) = var;
         let n = if x == y { n + 1 } else { *n };

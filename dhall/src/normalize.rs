@@ -12,7 +12,7 @@ where
     A: fmt::Debug,
 {
     use dhall_core::Builtin::*;
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     let f = rc(Builtin(b));
     // How many arguments a builtin needs, and which argument
     // should be normalized and pattern-matched
@@ -199,7 +199,7 @@ where
     // Put the remaining arguments back and eval again. In most cases
     // ret will not be of a form that can be applied, so this won't go very deep.
     // In lots of cases, there are no remaining args so this cann will just return ret.
-    normalize_whnf(&rc(Expr::App(ret, args.split_off(len_consumption))))
+    normalize_whnf(&rc(ExprF::App(ret, args.split_off(len_consumption))))
 }
 
 /// Reduce an expression to its weak head normal form, i.e. normalize
@@ -213,7 +213,7 @@ where
     A: fmt::Debug,
 {
     use dhall_core::BinOp::*;
-    use dhall_core::Expr::*;
+    use dhall_core::ExprF::*;
     match e.as_ref() {
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
