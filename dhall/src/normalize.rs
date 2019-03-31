@@ -2,7 +2,6 @@
 use dhall_core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
-use std::rc::Rc;
 
 fn apply_builtin<S, A>(
     b: Builtin,
@@ -44,13 +43,13 @@ where
     }
     // Normalize the important argument
     if let Some(i) = arg_to_eval {
-        args[i] = Rc::clone(&normalize_whnf(&args[i]));
+        args[i] = SubExpr::clone(&normalize_whnf(&args[i]));
     }
     let evaled_arg = arg_to_eval.map(|i| args[i].as_ref());
 
     let ret = match (b, evaled_arg, args.as_slice()) {
-        (OptionalSome, _, [x, ..]) => rc(NEOptionalLit(Rc::clone(x))),
-        (OptionalNone, _, [t, ..]) => rc(EmptyOptionalLit(Rc::clone(t))),
+        (OptionalSome, _, [x, ..]) => rc(NEOptionalLit(SubExpr::clone(x))),
+        (OptionalNone, _, [t, ..]) => rc(EmptyOptionalLit(SubExpr::clone(t))),
         (NaturalIsZero, Some(NaturalLit(n)), _) => rc(BoolLit(*n == 0)),
         (NaturalEven, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 == 0)),
         (NaturalOdd, Some(NaturalLit(n)), _) => rc(BoolLit(*n % 2 != 0)),
@@ -76,7 +75,7 @@ where
             rc(NEListLit(ys))
         }
         (ListIndexed, Some(EmptyListLit(t)), _) => {
-            let t = Rc::clone(t);
+            let t = SubExpr::clone(t);
             dhall_expr!([] : List ({ index : Natural, value : t }))
         }
         (ListIndexed, Some(NEListLit(xs)), _) => {
@@ -101,7 +100,7 @@ where
                         break rc(App(x.clone(), rest.to_vec()));
                     }
                 };
-                let a0 = Rc::clone(a0);
+                let a0 = SubExpr::clone(a0);
                 let a1 = shift(1, &V("a".into(), 0), &a0);
                 // TODO: use Embed to avoid reevaluating g
                 break dhall_expr!(
@@ -122,7 +121,7 @@ where
                         break rc(App(x.clone(), rest.to_vec()));
                     }
                 };
-                let a0 = Rc::clone(a0);
+                let a0 = SubExpr::clone(a0);
                 // TODO: use Embed to avoid reevaluating g
                 break dhall_expr!(
                     g
@@ -133,13 +132,13 @@ where
             }
         }
         (ListFold, Some(EmptyListLit(_)), [_, _, _, _, nil, ..]) => {
-            Rc::clone(nil)
+            SubExpr::clone(nil)
         }
         (ListFold, Some(NEListLit(xs)), [_, _, _, cons, nil, ..]) => {
-            xs.iter().rev().fold(Rc::clone(nil), |acc, x| {
+            xs.iter().rev().fold(SubExpr::clone(nil), |acc, x| {
                 let x = x.clone();
                 let acc = acc.clone();
-                let cons = Rc::clone(cons);
+                let cons = SubExpr::clone(cons);
                 dhall_expr!(cons x acc)
             })
         }
@@ -149,14 +148,14 @@ where
         // }
         (OptionalFold, Some(NEOptionalLit(x)), [_, _, _, just, _, ..]) => {
             let x = x.clone();
-            let just = Rc::clone(just);
+            let just = SubExpr::clone(just);
             dhall_expr!(just x)
         }
         (
             OptionalFold,
             Some(EmptyOptionalLit(_)),
             [_, _, _, _, nothing, ..],
-        ) => Rc::clone(nothing),
+        ) => SubExpr::clone(nothing),
         // // fold/build fusion
         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
@@ -175,13 +174,15 @@ where
                 break dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0);
             }
         }
-        (NaturalFold, Some(NaturalLit(0)), [_, _, _, zero]) => Rc::clone(zero),
+        (NaturalFold, Some(NaturalLit(0)), [_, _, _, zero]) => {
+            SubExpr::clone(zero)
+        }
         (NaturalFold, Some(NaturalLit(n)), [_, t, succ, zero]) => {
             let fold = rc(Builtin(NaturalFold));
             let n = rc(NaturalLit(n - 1));
-            let t = Rc::clone(t);
-            let succ = Rc::clone(succ);
-            let zero = Rc::clone(zero);
+            let t = SubExpr::clone(t);
+            let succ = SubExpr::clone(succ);
+            let zero = SubExpr::clone(zero);
             dhall_expr!(succ (fold n t succ zero))
         }
         // (NaturalFold, Some(App(f2, args2)), _) => {
@@ -273,7 +274,7 @@ where
                 }
                 (TextAppend, TextLit(x), TextLit(y)) => TextLit(x + y),
                 (ListAppend, EmptyListLit(t), EmptyListLit(_)) => {
-                    EmptyListLit(Rc::clone(t))
+                    EmptyListLit(SubExpr::clone(t))
                 }
                 (ListAppend, EmptyListLit(_), _) => return y,
                 (ListAppend, _, EmptyListLit(_)) => return x,
@@ -326,7 +327,7 @@ where
                 _ => rc(Projection(e, ls.clone())),
             }
         }
-        _ => Rc::clone(e),
+        _ => SubExpr::clone(e),
     }
 }
 
@@ -344,5 +345,5 @@ where
     S: fmt::Debug,
     A: fmt::Debug,
 {
-    map_subexpr_rc(&normalize_whnf(&e), |x| normalize(Rc::clone(x)))
+    map_subexpr_rc(&normalize_whnf(&e), |x| normalize(SubExpr::clone(x)))
 }

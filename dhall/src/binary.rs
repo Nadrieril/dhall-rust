@@ -1,9 +1,8 @@
 use dhall_core::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
-use std::rc::Rc;
 
-type ParsedExpr = Rc<Expr<X, Import>>;
+type ParsedExpr = SubExpr<X, Import>;
 
 #[derive(Debug)]
 pub enum DecodeError {

@@ -4,7 +4,6 @@ use dhall_core::*;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::BTreeMap;
-use std::rc::Rc;
 
 pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
@@ -17,7 +16,7 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 // Returns an expression of type Expr<_, _>. Expects interpolated variables
-// to be of type Rc<Expr<_, _>>.
+// to be of type SubExpr<_, _>.
 fn dhall_to_tokenstream(
     expr: &DhallExpr,
     ctx: &Context<Label, ()>,
@@ -97,7 +96,7 @@ fn dhall_to_tokenstream(
     }
 }
 
-// Returns an expression of type Rc<Expr<_, _>>
+// Returns an expression of type SubExpr<_, _>
 fn dhall_to_tokenstream_bx(
     expr: &DhallExpr,
     ctx: &Context<Label, ()>,
@@ -146,7 +145,7 @@ fn label_to_tokenstream(l: &Label) -> TokenStream {
 }
 
 fn map_to_tokenstream(
-    m: &BTreeMap<Label, Rc<Expr<X, X>>>,
+    m: &BTreeMap<Label, SubExpr<X, X>>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     let (keys, values): (Vec<TokenStream>, Vec<TokenStream>) = m

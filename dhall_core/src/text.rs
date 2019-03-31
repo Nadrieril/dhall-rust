@@ -1,18 +1,17 @@
 use crate::*;
 use std::iter::FromIterator;
 use std::ops::Add;
-use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterpolatedText<Note, Embed> {
     head: String,
-    tail: Vec<(Rc<Expr<Note, Embed>>, String)>,
+    tail: Vec<(SubExpr<Note, Embed>, String)>,
 }
 
-impl<N, E> From<(String, Vec<(Rc<Expr<N, E>>, String)>)>
+impl<N, E> From<(String, Vec<(SubExpr<N, E>, String)>)>
     for InterpolatedText<N, E>
 {
-    fn from(x: (String, Vec<(Rc<Expr<N, E>>, String)>)) -> Self {
+    fn from(x: (String, Vec<(SubExpr<N, E>, String)>)) -> Self {
         InterpolatedText {
             head: x.0,
             tail: x.1,
@@ -38,7 +37,7 @@ pub enum InterpolatedTextContents<Note, Embed> {
 impl<N, E> InterpolatedText<N, E> {
     pub fn map<N2, E2, F>(&self, mut f: F) -> InterpolatedText<N2, E2>
     where
-        F: FnMut(&Rc<Expr<N, E>>) -> Rc<Expr<N2, E2>>,
+        F: FnMut(&SubExpr<N, E>) -> SubExpr<N2, E2>,
     {
         InterpolatedText {
             head: self.head.clone(),
@@ -52,7 +51,7 @@ impl<N, E> InterpolatedText<N, E> {
         use std::iter::once;
         once(InterpolatedTextContents::Text(self.head.clone())).chain(
             self.tail.iter().flat_map(|(e, s)| {
-                once(InterpolatedTextContents::Expr(Rc::clone(e)))
+                once(InterpolatedTextContents::Expr(SubExpr::clone(e)))
                     .chain(once(InterpolatedTextContents::Text(s.clone())))
             }),
         )

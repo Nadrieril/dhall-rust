@@ -8,6 +8,12 @@ impl<S, A: Display> Display for Expr<S, A> {
     }
 }
 
+impl<S, A: Display> Display for SubExpr<S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.as_ref().fmt(f)
+    }
+}
+
 //  There is a one-to-one correspondence between the formatter and the grammar. Each phase is
 //  named after a corresponding grammar group, and the structure of the formatter reflects
 //  the relationship between the corresponding grammar rules. This leads to the nice property

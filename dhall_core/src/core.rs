@@ -170,7 +170,8 @@ pub type ParsedExpr = SubExpr<X, Import>;
 pub type ResolvedExpr = SubExpr<X, X>;
 pub type DhallExpr = ResolvedExpr;
 
-pub type SubExpr<Note, Embed> = Rc<Expr<Note, Embed>>;
+#[derive(Debug, PartialEq, Eq)]
+pub struct SubExpr<Note, Embed>(pub Rc<Expr<Note, Embed>>);
 
 /// Syntax tree for expressions
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,13 +316,33 @@ impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
     }
 }
 
-// Remains of a previous life, where everything was in Boxes
-pub fn bx<T>(x: T) -> Rc<T> {
-    Rc::new(x)
+impl<N, E> Clone for SubExpr<N, E> {
+    fn clone(&self) -> Self {
+        SubExpr(Rc::clone(&self.0))
+    }
 }
 
-pub fn rc<T>(x: T) -> Rc<T> {
-    Rc::new(x)
+impl<N, E> std::ops::Deref for SubExpr<N, E> {
+    type Target = Rc<Expr<N, E>>;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// impl<N, E> SubExpr<N, E> {
+//     pub fn as_ref(&self) -> &Expr<N, E> {
+//         self.0.as_ref()
+//     }
+// }
+
+// Remains of a previous life, where everything was in Boxes
+pub fn bx<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
+    SubExpr(Rc::new(x))
+}
+
+pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
+    SubExpr(Rc::new(x))
 }
 
 fn add_ui(u: usize, i: isize) -> usize {
@@ -401,7 +422,7 @@ where
     F2: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<S, A>,
 {
     match e.as_ref() {
-        Expr::Embed(_) => Rc::clone(e),
+        Expr::Embed(_) => SubExpr::clone(e),
         Expr::Note(_, e) => {
             map_subexpr_rc_binder(e, map_expr, map_under_binder)
         }
@@ -500,8 +521,8 @@ where
 pub fn shift<S, A>(
     delta: isize,
     var: &V,
-    in_expr: &Rc<Expr<S, A>>,
-) -> Rc<Expr<S, A>> {
+    in_expr: &SubExpr<S, A>,
+) -> SubExpr<S, A> {
     use crate::Expr::*;
     let V(x, n) = var;
     let under_binder = |y: &Label, e: &SubExpr<_, _>| {
@@ -529,9 +550,9 @@ pub fn shift<S, A>(
 ///
 pub fn subst<S, A>(
     var: &V,
-    value: &Rc<Expr<S, A>>,
-    in_expr: &Rc<Expr<S, A>>,
-) -> Rc<Expr<S, A>> {
+    value: &SubExpr<S, A>,
+    in_expr: &SubExpr<S, A>,
+) -> SubExpr<S, A> {
     use crate::Expr::*;
     let under_binder = |y: &Label, e: &SubExpr<_, _>| {
         let V(x, n) = var;
@@ -540,7 +561,7 @@ pub fn subst<S, A>(
         subst(newvar, &shift(1, &V(y.clone(), 0), value), e)
     };
     match in_expr.as_ref() {
-        Var(v) if var == v => Rc::clone(value),
+        Var(v) if var == v => SubExpr::clone(value),
         _ => map_subexpr_rc_binder(
             in_expr,
             |e| subst(var, value, e),

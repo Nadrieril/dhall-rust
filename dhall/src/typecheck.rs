@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 use std::collections::HashSet;
 use std::fmt;
-use std::rc::Rc;
 
 use crate::normalize::normalize;
 use dhall_core;
@@ -113,7 +112,7 @@ where
     go::<S, T>(&mut ctx, eL0, eR0)
 }
 
-fn type_of_builtin<S>(b: Builtin) -> Rc<Expr<S, X>> {
+fn type_of_builtin<S>(b: Builtin) -> SubExpr<S, X> {
     use dhall_core::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall_expr!(Type),
@@ -184,16 +183,15 @@ fn type_of_builtin<S>(b: Builtin) -> Rc<Expr<S, X>> {
 /// is not necessary for just type-checking.  If you actually care about the
 /// returned type then you may want to `normalize` it afterwards.
 pub fn type_with<S>(
-    ctx: &Context<Label, Rc<Expr<S, X>>>,
-    e: Rc<Expr<S, X>>,
-) -> Result<Rc<Expr<S, X>>, TypeError<S>>
+    ctx: &Context<Label, SubExpr<S, X>>,
+    e: SubExpr<S, X>,
+) -> Result<SubExpr<S, X>, TypeError<S>>
 where
     S: ::std::fmt::Debug,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::Const::*;
-    use dhall_core::Expr;
     use dhall_core::Expr::*;
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
     let ensure_const = |x: &SubExpr<_, _>, msg: TypeMessage<_>| match x.as_ref()
@@ -266,7 +264,7 @@ where
                     return Err(mkerr(NotAFunction(f.clone(), tf)));
                 }
             };
-            let tA = normalize(Rc::clone(tA));
+            let tA = normalize(SubExpr::clone(tA));
             let tA2 = normalized_type_with(ctx, a.clone())?;
             if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
@@ -280,9 +278,9 @@ where
         }
         Let(f, mt, r, b) => {
             let r = if let Some(t) = mt {
-                rc(Annot(Rc::clone(r), Rc::clone(t)))
+                rc(Annot(SubExpr::clone(r), SubExpr::clone(t)))
             } else {
-                Rc::clone(r)
+                SubExpr::clone(r)
             };
 
             let tR = type_with(ctx, r)?;
@@ -351,7 +349,7 @@ where
         EmptyListLit(t) => {
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;
-            let t = normalize(Rc::clone(t));
+            let t = normalize(SubExpr::clone(t));
             return Ok(dhall_expr!(List t));
         }
         NEListLit(xs) => {
@@ -377,7 +375,7 @@ where
             return Ok(dhall_expr!(Optional t));
         }
         NEOptionalLit(x) => {
-            let t: Rc<Expr<_, _>> = type_with(ctx, x.clone())?;
+            let t: SubExpr<_, _> = type_with(ctx, x.clone())?;
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
             let t = normalize(t);
@@ -451,9 +449,9 @@ where
 }
 
 pub fn normalized_type_with<S>(
-    ctx: &Context<Label, Rc<Expr<S, X>>>,
-    e: Rc<Expr<S, X>>,
-) -> Result<Rc<Expr<S, X>>, TypeError<S>>
+    ctx: &Context<Label, SubExpr<S, X>>,
+    e: SubExpr<S, X>,
+) -> Result<SubExpr<S, X>, TypeError<S>>
 where
     S: ::std::fmt::Debug,
 {
@@ -464,8 +462,8 @@ where
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
 pub fn type_of<S: ::std::fmt::Debug>(
-    e: Rc<Expr<S, X>>,
-) -> Result<Rc<Expr<S, X>>, TypeError<S>> {
+    e: SubExpr<S, X>,
+) -> Result<SubExpr<S, X>, TypeError<S>> {
     let ctx = Context::new();
     type_with(&ctx, e) //.map(|e| e.into_owned())
 }
@@ -474,63 +472,58 @@ pub fn type_of<S: ::std::fmt::Debug>(
 #[derive(Debug)]
 pub enum TypeMessage<S> {
     UnboundVariable,
-    InvalidInputType(Rc<Expr<S, X>>),
-    InvalidOutputType(Rc<Expr<S, X>>),
-    NotAFunction(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    TypeMismatch(
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
-    ),
-    AnnotMismatch(Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    InvalidInputType(SubExpr<S, X>),
+    InvalidOutputType(SubExpr<S, X>),
+    NotAFunction(SubExpr<S, X>, SubExpr<S, X>),
+    TypeMismatch(SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>),
+    AnnotMismatch(SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>),
     Untyped,
-    InvalidListElement(usize, Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    InvalidListType(Rc<Expr<S, X>>),
-    InvalidOptionalElement(Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    InvalidListElement(usize, SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>),
+    InvalidListType(SubExpr<S, X>),
+    InvalidOptionalElement(SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>),
     InvalidOptionalLiteral(usize),
-    InvalidOptionalType(Rc<Expr<S, X>>),
-    InvalidPredicate(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    InvalidOptionalType(SubExpr<S, X>),
+    InvalidPredicate(SubExpr<S, X>, SubExpr<S, X>),
     IfBranchMismatch(
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
-        Rc<Expr<S, X>>,
+        SubExpr<S, X>,
+        SubExpr<S, X>,
+        SubExpr<S, X>,
+        SubExpr<S, X>,
     ),
-    IfBranchMustBeTerm(bool, Rc<Expr<S, X>>, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    InvalidField(Label, Rc<Expr<S, X>>),
-    InvalidFieldType(Label, Rc<Expr<S, X>>),
-    InvalidAlternative(Label, Rc<Expr<S, X>>),
-    InvalidAlternativeType(Label, Rc<Expr<S, X>>),
+    IfBranchMustBeTerm(bool, SubExpr<S, X>, SubExpr<S, X>, SubExpr<S, X>),
+    InvalidField(Label, SubExpr<S, X>),
+    InvalidFieldType(Label, SubExpr<S, X>),
+    InvalidAlternative(Label, SubExpr<S, X>),
+    InvalidAlternativeType(Label, SubExpr<S, X>),
     DuplicateAlternative(Label),
-    MustCombineARecord(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    MustCombineARecord(SubExpr<S, X>, SubExpr<S, X>),
     FieldCollision(Label),
-    MustMergeARecord(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    MustMergeUnion(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    MustMergeARecord(SubExpr<S, X>, SubExpr<S, X>),
+    MustMergeUnion(SubExpr<S, X>, SubExpr<S, X>),
     UnusedHandler(HashSet<Label>),
     MissingHandler(HashSet<Label>),
-    HandlerInputTypeMismatch(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    HandlerOutputTypeMismatch(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    HandlerNotAFunction(Label, Rc<Expr<S, X>>),
-    NotARecord(Label, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    MissingField(Label, Rc<Expr<S, X>>),
-    BinOpTypeMismatch(BinOp, Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    NoDependentLet(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
-    NoDependentTypes(Rc<Expr<S, X>>, Rc<Expr<S, X>>),
+    HandlerInputTypeMismatch(Label, SubExpr<S, X>, SubExpr<S, X>),
+    HandlerOutputTypeMismatch(Label, SubExpr<S, X>, SubExpr<S, X>),
+    HandlerNotAFunction(Label, SubExpr<S, X>),
+    NotARecord(Label, SubExpr<S, X>, SubExpr<S, X>),
+    MissingField(Label, SubExpr<S, X>),
+    BinOpTypeMismatch(BinOp, SubExpr<S, X>, SubExpr<S, X>),
+    NoDependentLet(SubExpr<S, X>, SubExpr<S, X>),
+    NoDependentTypes(SubExpr<S, X>, SubExpr<S, X>),
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<S> {
-    pub context: Context<Label, Rc<Expr<S, X>>>,
-    pub current: Rc<Expr<S, X>>,
+    pub context: Context<Label, SubExpr<S, X>>,
+    pub current: SubExpr<S, X>,
     pub type_message: TypeMessage<S>,
 }
 
 impl<S> TypeError<S> {
     pub fn new(
-        context: &Context<Label, Rc<Expr<S, X>>>,
-        current: Rc<Expr<S, X>>,
+        context: &Context<Label, SubExpr<S, X>>,
+        current: SubExpr<S, X>,
         type_message: TypeMessage<S>,
     ) -> Self {
         TypeError {
