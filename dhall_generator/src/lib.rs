@@ -10,7 +10,7 @@ pub fn dhall_expr(input: TokenStream) -> TokenStream {
     dhall_expr::dhall_expr(input)
 }
 
-#[proc_macro_derive(DhallType)]
-pub fn derive_dhall_type(input: TokenStream) -> TokenStream {
-    dhall_type::derive_dhall_type(input)
+#[proc_macro_derive(Type)]
+pub fn derive_type(input: TokenStream) -> TokenStream {
+    dhall_type::derive_type(input)
 }

@@ -6,8 +6,8 @@ use syn::spanned::Spanned;
 use syn::Error;
 use syn::{parse_quote, DeriveInput};
 
-pub fn derive_dhall_type(input: TokenStream) -> TokenStream {
-    TokenStream::from(match derive_dhall_type_inner(input) {
+pub fn derive_type(input: TokenStream) -> TokenStream {
+    TokenStream::from(match derive_type_inner(input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })
@@ -44,7 +44,7 @@ pub fn derive_for_struct(
         quote! {
             m.insert(
                 dhall_core::Label::from(#name),
-                <#ty as dhall::DhallType>::dhall_type()
+                <#ty as dhall::Type>::get_type()
             );
         }
     });
@@ -95,7 +95,7 @@ pub fn derive_for_enum(
             Ok(quote! {
                 m.insert(
                     dhall_core::Label::from(#name),
-                    <#ty as dhall::DhallType>::dhall_type()
+                    <#ty as dhall::Type>::get_type()
                 );
             })
         })
@@ -109,15 +109,15 @@ pub fn derive_for_enum(
     })) })
 }
 
-pub fn derive_dhall_type_inner(
+pub fn derive_type_inner(
     input: TokenStream,
 ) -> Result<proc_macro2::TokenStream, Error> {
     let input: DeriveInput = syn::parse_macro_input::parse(input)?;
 
-    // List of types that must impl DhallType
+    // List of types that must impl Type
     let mut constraints = vec![];
 
-    let dhall_type = match &input.data {
+    let get_type = match &input.data {
         syn::Data::Struct(data) => derive_for_struct(data, &mut constraints)?,
         syn::Data::Enum(data) if data.variants.is_empty() => {
             return Err(Error::new(
@@ -142,13 +142,13 @@ pub fn derive_dhall_type_inner(
 
     // Hygienic errors
     let assertions = constraints.iter().enumerate().map(|(i, ty)| {
-        // Ensure that ty: DhallType, with an appropriate span
+        // Ensure that ty: Type, with an appropriate span
         let assert_name =
-            syn::Ident::new(&format!("_AssertDhallType{}", i), ty.span());
+            syn::Ident::new(&format!("_AssertType{}", i), ty.span());
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::DhallType));
+            .push(parse_quote!(#ty: dhall::Type));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -165,21 +165,21 @@ pub fn derive_dhall_type_inner(
         }
     });
 
-    // Ensure that all the fields have a DhallType impl
+    // Ensure that all the fields have a Type impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::DhallType));
+            .push(parse_quote!(#ty: dhall::Type));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics dhall::DhallType for #ident #ty_generics
+        impl #impl_generics dhall::Type for #ident #ty_generics
                 #where_clause {
-            fn dhall_type() -> dhall_core::DhallExpr {
+            fn get_type() -> dhall_core::DhallExpr {
                 #(#assertions)*
-                #dhall_type
+                #get_type
             }
         }
     };

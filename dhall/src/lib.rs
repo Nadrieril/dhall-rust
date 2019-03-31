@@ -13,7 +13,8 @@ pub mod binary;
 mod dhall_type;
 pub mod imports;
 pub mod typecheck;
-pub use dhall_type::*;
+pub use crate::dhall_type::*;
+pub use dhall_generator::Type;
 
 pub use crate::imports::*;
 
