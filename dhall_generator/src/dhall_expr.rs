@@ -11,51 +11,56 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
     let expr = rc(expr.as_ref().map_embed(&no_import));
-    let output = dhall_to_tokenstream_bx(&expr, &Context::new());
+    let output = quote_subexpr(&expr, &Context::new());
     output.into()
 }
 
-// Returns an expression of type Expr<_, _>. Expects interpolated variables
-// to be of type SubExpr<_, _>.
-fn dhall_to_tokenstream(
-    expr: &DhallExpr,
-    ctx: &Context<Label, ()>,
-) -> TokenStream {
+// Returns an expression of type ExprF<T, _, _>, where T is the
+// type of the subexpressions after interpolation.
+pub fn quote_expr<TS>(expr: ExprF<TS, X, X>) -> TokenStream
+where
+    TS: quote::ToTokens + std::fmt::Debug,
+{
+    let quote_map = |m: BTreeMap<Label, TS>| -> TokenStream {
+        let (keys, values): (Vec<TokenStream>, Vec<TS>) =
+            m.into_iter().map(|(k, v)| (quote_label(&k), v)).unzip();
+        quote! { {
+            use std::collections::BTreeMap;
+            let mut m = BTreeMap::new();
+            #( m.insert(#keys, #values); )*
+            m
+        } }
+    };
+
+    let quote_vec = |e: Vec<TS>| -> TokenStream {
+        quote! { vec![ #(#e),* ] }
+    };
+
     use dhall_core::ExprF::*;
-    match expr.as_ref() {
-        Var(_) => {
-            let v = dhall_to_tokenstream_bx(expr, ctx);
-            quote! { *#v }
-        }
+    match expr {
+        Var(_) => unreachable!(),
         Pi(x, t, b) => {
-            let t = dhall_to_tokenstream_bx(t, ctx);
-            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
-            let x = label_to_tokenstream(x);
+            let x = quote_label(&x);
             quote! { dhall_core::ExprF::Pi(#x, #t, #b) }
         }
         Lam(x, t, b) => {
-            let t = dhall_to_tokenstream_bx(t, ctx);
-            let b = dhall_to_tokenstream_bx(b, &ctx.insert(x.clone(), ()));
-            let x = label_to_tokenstream(x);
+            let x = quote_label(&x);
             quote! { dhall_core::ExprF::Lam(#x, #t, #b) }
         }
         App(f, a) => {
-            let f = dhall_to_tokenstream_bx(f, ctx);
-            let a = vec_to_tokenstream(a, ctx);
+            let a = quote_vec(a);
             quote! { dhall_core::ExprF::App(#f, #a) }
         }
         Const(c) => {
-            let c = const_to_tokenstream(*c);
+            let c = quote_const(c);
             quote! { dhall_core::ExprF::Const(#c) }
         }
         Builtin(b) => {
-            let b = builtin_to_tokenstream(*b);
+            let b = quote_builtin(b);
             quote! { dhall_core::ExprF::Builtin(#b) }
         }
         BinOp(o, a, b) => {
-            let o = binop_to_tokenstream(*o);
-            let a = dhall_to_tokenstream_bx(a, ctx);
-            let b = dhall_to_tokenstream_bx(b, ctx);
+            let o = quote_binop(o);
             quote! { dhall_core::ExprF::BinOp(#o, #a, #b) }
         }
         NaturalLit(n) => {
@@ -65,46 +70,51 @@ fn dhall_to_tokenstream(
             quote! { dhall_core::ExprF::BoolLit(#b) }
         }
         EmptyOptionalLit(x) => {
-            let x = dhall_to_tokenstream_bx(x, ctx);
             quote! { dhall_core::ExprF::EmptyOptionalLit(#x) }
         }
         NEOptionalLit(x) => {
-            let x = dhall_to_tokenstream_bx(x, ctx);
             quote! { dhall_core::ExprF::NEOptionalLit(#x) }
         }
         EmptyListLit(t) => {
-            let t = dhall_to_tokenstream_bx(t, ctx);
             quote! { dhall_core::ExprF::EmptyListLit(#t) }
         }
         NEListLit(es) => {
-            let es = vec_to_tokenstream(es, ctx);
+            let es = quote_vec(es);
             quote! { dhall_core::ExprF::NEListLit(#es) }
         }
         RecordType(m) => {
-            let m = map_to_tokenstream(m, ctx);
+            let m = quote_map(m);
             quote! { dhall_core::ExprF::RecordType(#m) }
         }
         RecordLit(m) => {
-            let m = map_to_tokenstream(m, ctx);
+            let m = quote_map(m);
             quote! { dhall_core::ExprF::RecordLit(#m) }
         }
         UnionType(m) => {
-            let m = map_to_tokenstream(m, ctx);
+            let m = quote_map(m);
             quote! { dhall_core::ExprF::UnionType(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
 }
 
-// Returns an expression of type SubExpr<_, _>
-fn dhall_to_tokenstream_bx(
-    expr: &DhallExpr,
+// Returns an expression of type SubExpr<_, _>. Expects interpolated variables
+// to be of type SubExpr<_, _>.
+fn quote_subexpr(
+    expr: &SubExpr<X, X>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::ExprF::*;
-    match expr.as_ref() {
-        Var(V(s, n)) => {
-            match ctx.lookup(&s, *n) {
+    match map_subexpr(
+        expr.as_ref(),
+        |e| quote_subexpr(e, ctx),
+        |_| unreachable!(),
+        |_| unreachable!(),
+        |l| l.clone(),
+        |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
+    ) {
+        Var(V(ref s, n)) => {
+            match ctx.lookup(s, n) {
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.into();
@@ -123,51 +133,25 @@ fn dhall_to_tokenstream_bx(
                 }
             }
         }
-        _ => bx(dhall_to_tokenstream(expr, ctx)),
+        e => bx(quote_expr(e)),
     }
 }
 
-fn builtin_to_tokenstream(b: Builtin) -> TokenStream {
+fn quote_builtin(b: Builtin) -> TokenStream {
     format!("dhall_core::Builtin::{:?}", b).parse().unwrap()
 }
 
-fn const_to_tokenstream(c: Const) -> TokenStream {
+fn quote_const(c: Const) -> TokenStream {
     format!("dhall_core::Const::{:?}", c).parse().unwrap()
 }
 
-fn binop_to_tokenstream(b: BinOp) -> TokenStream {
+fn quote_binop(b: BinOp) -> TokenStream {
     format!("dhall_core::BinOp::{:?}", b).parse().unwrap()
 }
 
-fn label_to_tokenstream(l: &Label) -> TokenStream {
+fn quote_label(l: &Label) -> TokenStream {
     let l = String::from(l);
     quote! { #l.into() }
-}
-
-fn map_to_tokenstream(
-    m: &BTreeMap<Label, SubExpr<X, X>>,
-    ctx: &Context<Label, ()>,
-) -> TokenStream {
-    let (keys, values): (Vec<TokenStream>, Vec<TokenStream>) = m
-        .iter()
-        .map(|(k, v)| {
-            (label_to_tokenstream(k), dhall_to_tokenstream_bx(&*v, ctx))
-        })
-        .unzip();
-    quote! { {
-        use std::collections::BTreeMap;
-        let mut m = BTreeMap::new();
-        #( m.insert(#keys, #values); )*
-        m
-    } }
-}
-
-fn vec_to_tokenstream(
-    e: &Vec<DhallExpr>,
-    ctx: &Context<Label, ()>,
-) -> TokenStream {
-    let e = e.iter().map(|x| dhall_to_tokenstream_bx(x, ctx));
-    quote! { vec![ #(#e),* ] }
 }
 
 fn bx(x: TokenStream) -> TokenStream {
