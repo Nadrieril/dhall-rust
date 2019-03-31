@@ -305,30 +305,25 @@ impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
 }
 
 impl<N, E> Clone for SubExpr<N, E> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         SubExpr(Rc::clone(&self.0))
     }
 }
 
-impl<N, E> std::ops::Deref for SubExpr<N, E> {
-    type Target = Rc<Expr<N, E>>;
+impl<N, E> SubExpr<N, E> {
     #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn as_ref(&self) -> &Expr<N, E> {
+        self.0.as_ref()
     }
 }
-
-// impl<N, E> SubExpr<N, E> {
-//     pub fn as_ref(&self) -> &Expr<N, E> {
-//         self.0.as_ref()
-//     }
-// }
 
 // Remains of a previous life, where everything was in Boxes
 pub fn bx<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
     SubExpr(Rc::new(x))
 }
 
+// Should probably rename this too
 pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
     SubExpr(Rc::new(x))
 }
@@ -414,7 +409,7 @@ where
         ExprF::Note(_, e) => {
             map_subexpr_rc_binder(e, map_expr, map_under_binder)
         }
-        _ => rc(map_subexpr(
+        e => rc(map_subexpr(
             e,
             map_expr,
             |_| unreachable!(),

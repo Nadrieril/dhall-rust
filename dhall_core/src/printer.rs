@@ -217,6 +217,16 @@ impl<S, A: Display> Expr<S, A> {
     }
 }
 
+impl<S, A: Display> SubExpr<S, A> {
+    fn fmt_phase(
+        &self,
+        f: &mut fmt::Formatter,
+        phase: PrintPhase,
+    ) -> Result<(), fmt::Error> {
+        self.0.as_ref().fmt_phase(f, phase)
+    }
+}
+
 fn fmt_list<T, I, F>(
     open: &str,
     sep: &str,

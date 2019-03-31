@@ -10,7 +10,7 @@ pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let expr: SubExpr<X, Import> = parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall!()") };
-    let expr = rc(expr.map_embed(&no_import));
+    let expr = rc(expr.as_ref().map_embed(&no_import));
     let output = dhall_to_tokenstream_bx(&expr, &Context::new());
     output.into()
 }

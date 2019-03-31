@@ -65,7 +65,7 @@ fn main() {
         }
     };
 
-    let expr: SubExpr<_, _> = rc(imports::panic_imports(&expr));
+    let expr: SubExpr<_, _> = rc(imports::panic_imports(expr.as_ref()));
 
     let type_expr = match typecheck::type_of(expr.clone()) {
         Err(e) => {
