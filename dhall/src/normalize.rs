@@ -345,5 +345,5 @@ where
     S: fmt::Debug,
     A: fmt::Debug,
 {
-    map_subexpr_rc(&normalize_whnf(&e), |x| normalize(SubExpr::clone(x)))
+    normalize_whnf(&e).map_ref_simple(|x| normalize(SubExpr::clone(x)))
 }

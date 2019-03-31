@@ -259,13 +259,12 @@ impl<S, A> Expr<S, A> {
         F3: FnOnce(&A) -> B,
         F4: Fn(&Label) -> Label,
     {
-        map_subexpr(
-            self,
+        self.map_ref(
             |x| rc(map_expr(x.as_ref())),
+            |_, x| rc(map_expr(x.as_ref())),
             map_note,
             map_embed,
             map_label,
-            |_, x| rc(map_expr(x.as_ref())),
         )
     }
 
@@ -304,17 +303,245 @@ impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
     }
 }
 
-impl<N, E> Clone for SubExpr<N, E> {
+impl<SE, L, N, E> ExprF<SE, L, N, E> {
     #[inline(always)]
-    fn clone(&self) -> Self {
-        SubExpr(Rc::clone(&self.0))
+    pub fn as_ref(&self) -> ExprF<&SE, &L, &N, &E>
+    where
+        L: Ord,
+    {
+        fn opt<T>(x: &Option<T>) -> Option<&T> {
+            x.as_ref()
+        }
+        fn vec<T>(x: &Vec<T>) -> Vec<&T> {
+            x.iter().collect()
+        }
+        fn btmap<L: Ord, SE>(x: &BTreeMap<L, SE>) -> BTreeMap<&L, &SE> {
+            x.iter().collect()
+        }
+
+        use crate::ExprF::*;
+        match self {
+            Var(V(l, n)) => Var(V(l, *n)),
+            Lam(l, t, b) => Lam(l, t, b),
+            Pi(l, t, b) => Pi(l, t, b),
+            Let(l, t, a, b) => Let(l, opt(t), a, b),
+            App(f, args) => App(f, vec(args)),
+            Annot(x, t) => Annot(x, t),
+            Const(k) => Const(*k),
+            Builtin(v) => Builtin(*v),
+            BoolLit(b) => BoolLit(*b),
+            NaturalLit(n) => NaturalLit(*n),
+            IntegerLit(n) => IntegerLit(*n),
+            DoubleLit(n) => DoubleLit(*n),
+            TextLit(t) => TextLit(t.as_ref()),
+            BinOp(o, x, y) => BinOp(*o, x, y),
+            BoolIf(b, t, f) => BoolIf(b, t, f),
+            EmptyListLit(t) => EmptyListLit(t),
+            NEListLit(es) => NEListLit(vec(es)),
+            EmptyOptionalLit(t) => EmptyOptionalLit(t),
+            NEOptionalLit(e) => NEOptionalLit(e),
+            RecordType(kts) => RecordType(btmap(kts)),
+            RecordLit(kvs) => RecordLit(btmap(kvs)),
+            UnionType(kts) => UnionType(btmap(kts)),
+            UnionLit(k, v, kvs) => UnionLit(k, v, btmap(kvs)),
+            Merge(x, y, t) => Merge(x, y, opt(t)),
+            Field(e, l) => Field(e, l),
+            Projection(e, ls) => Projection(e, vec(ls)),
+            Note(n, e) => Note(n, e),
+            Embed(a) => Embed(a),
+        }
     }
+
+    #[inline(always)]
+    pub fn map<SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+        self,
+        map_subexpr: F1,
+        map_under_binder: F2,
+        map_note: F3,
+        map_embed: F4,
+        mut map_label: F5,
+    ) -> ExprF<SE2, L2, N2, E2>
+    where
+        L: Ord,
+        L2: Ord,
+        F1: FnMut(SE) -> SE2,
+        F2: FnOnce(&L, SE) -> SE2,
+        F3: FnOnce(N) -> N2,
+        F4: FnOnce(E) -> E2,
+        F5: FnMut(L) -> L2,
+    {
+        let mut map = map_subexpr;
+        fn vec<T, U, F: FnMut(T) -> U>(x: Vec<T>, f: F) -> Vec<U> {
+            x.into_iter().map(f).collect()
+        }
+        fn btmap<K, L, T, U, FK, FV>(
+            x: BTreeMap<K, T>,
+            mut fk: FK,
+            mut fv: FV,
+        ) -> BTreeMap<L, U>
+        where
+            K: Ord,
+            L: Ord,
+            FK: FnMut(K) -> L,
+            FV: FnMut(T) -> U,
+        {
+            x.into_iter().map(|(k, v)| (fk(k), fv(v))).collect()
+        }
+
+        use crate::ExprF::*;
+        match self {
+            Var(V(l, n)) => Var(V(map_label(l), n)),
+            Lam(l, t, b) => {
+                let b = map_under_binder(&l, b);
+                Lam(map_label(l), map(t), b)
+            }
+            Pi(l, t, b) => {
+                let b = map_under_binder(&l, b);
+                Pi(map_label(l), map(t), b)
+            }
+            Let(l, t, a, b) => {
+                let b = map_under_binder(&l, b);
+                Let(map_label(l), t.map(&mut map), map(a), b)
+            }
+            App(f, args) => App(map(f), vec(args, map)),
+            Annot(x, t) => Annot(map(x), map(t)),
+            Const(k) => Const(k),
+            Builtin(v) => Builtin(v),
+            BoolLit(b) => BoolLit(b),
+            NaturalLit(n) => NaturalLit(n),
+            IntegerLit(n) => IntegerLit(n),
+            DoubleLit(n) => DoubleLit(n),
+            TextLit(t) => TextLit(t.map(map)),
+            BinOp(o, x, y) => BinOp(o, map(x), map(y)),
+            BoolIf(b, t, f) => BoolIf(map(b), map(t), map(f)),
+            EmptyListLit(t) => EmptyListLit(map(t)),
+            NEListLit(es) => NEListLit(vec(es, map)),
+            EmptyOptionalLit(t) => EmptyOptionalLit(map(t)),
+            NEOptionalLit(e) => NEOptionalLit(map(e)),
+            RecordType(kts) => RecordType(btmap(kts, map_label, map)),
+            RecordLit(kvs) => RecordLit(btmap(kvs, map_label, map)),
+            UnionType(kts) => UnionType(btmap(kts, map_label, map)),
+            UnionLit(k, v, kvs) => {
+                UnionLit(map_label(k), map(v), btmap(kvs, map_label, map))
+            }
+            Merge(x, y, t) => Merge(map(x), map(y), t.map(map)),
+            Field(e, l) => Field(map(e), map_label(l)),
+            Projection(e, ls) => Projection(map(e), vec(ls, map_label)),
+            Note(n, e) => Note(map_note(n), map(e)),
+            Embed(a) => Embed(map_embed(a)),
+        }
+    }
+
+    #[inline(always)]
+    pub fn map_ref<SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+        &self,
+        map_subexpr: F1,
+        map_under_binder: F2,
+        map_note: F3,
+        map_embed: F4,
+        map_label: F5,
+    ) -> ExprF<SE2, L2, N2, E2>
+    where
+        L: Ord,
+        L2: Ord,
+        F1: FnMut(&SE) -> SE2,
+        F2: FnOnce(&L, &SE) -> SE2,
+        F3: FnOnce(&N) -> N2,
+        F4: FnOnce(&E) -> E2,
+        F5: FnMut(&L) -> L2,
+    {
+        // Not optimal: reallocates all the Vecs and BTreeMaps for nothing.
+        self.as_ref().map(
+            map_subexpr,
+            |l, e| map_under_binder(*l, e),
+            map_note,
+            map_embed,
+            map_label,
+        )
+    }
+
+    // #[inline(always)]
+    // pub fn zip<SE2, L2, N2, E2>(
+    //     self,
+    //     other: ExprF<SE2, L2, N2, E2>
+    // ) -> Option<ExprF<(SE, SE2), (L, L2), (N, N2), (E, E2)>>
+    // where
+    //     L: Ord,
+    //     L2: Ord,
+    // {
+    //     // What to do with Var ?
+    //     use crate::ExprF::*;
+    //     match (self, other) {
+    //         // Var(V(l, n)) => Var(V(map_label(l), n)),
+    //         // Lam(l, t, b) => {
+    //         // Pi(l, t, b) => {
+    //         // Let(l, t, a, b) => {
+    //         // App(f, args) => App(map(f), vec(args, map)),
+    //         // Annot(x, t) => Annot(map(x), map(t)),
+    //         (Const(x), Const(y)) if x == y => Some(Const(x)),
+    //         (Builtin(x), Builtin(y)) if x == y => Some(Builtin(x)),
+    //         (BoolLit(x), BoolLit(y)) if x == y => Some(BoolLit(x)),
+    //         (NaturalLit(x), NaturalLit(y)) if x == y => Some(NaturalLit(x)),
+    //         (IntegerLit(x), IntegerLit(y)) if x == y => Some(IntegerLit(x)),
+    //         (DoubleLit(x), DoubleLit(y)) if x == y => Some(DoubleLit(x)),
+    //         // TextLit(t) => TextLit(t.map(map)),
+    //         // BinOp(o, x, y) => BinOp(o, map(x), map(y)),
+    //         // BoolIf(b, t, f) => BoolIf(map(b), map(t), map(f)),
+    //         // EmptyListLit(t) => EmptyListLit(map(t)),
+    //         // NEListLit(es) => NEListLit(vec(es, map)),
+    //         // EmptyOptionalLit(t) => EmptyOptionalLit(map(t)),
+    //         // NEOptionalLit(e) => NEOptionalLit(map(e)),
+    //         // RecordType(kts) => RecordType(btmap(kts, map_label, map)),
+    //         // RecordLit(kvs) => RecordLit(btmap(kvs, map_label, map)),
+    //         // UnionType(kts) => UnionType(btmap(kts, map_label, map)),
+    //         // UnionLit(k, v, kvs) => {
+    //         // Merge(x, y, t) => Merge(map(x), map(y), t.map(map)),
+    //         // Field(e, l) => Field(map(e), map_label(l)),
+    //         // Projection(e, ls) => Projection(map(e), vec(ls, map_label)),
+    //         // Note(n, e) => Note(map_note(n), map(e)),
+    //         // Embed(a) => Embed(map_embed(a)),
+    //     }
+    // }
 }
 
 impl<N, E> SubExpr<N, E> {
     #[inline(always)]
     pub fn as_ref(&self) -> &Expr<N, E> {
         self.0.as_ref()
+    }
+
+    pub fn map_ref<F1, F2>(&self, map_expr: F1, map_under_binder: F2) -> Self
+    where
+        F1: FnMut(&Self) -> Self,
+        F2: FnOnce(&Label, &Self) -> Self,
+    {
+        match self.as_ref() {
+            ExprF::Embed(_) => SubExpr::clone(self),
+            // Recursive call
+            ExprF::Note(_, e) => e.map_ref(map_expr, map_under_binder),
+            // Call ExprF::map_ref
+            e => rc(e.map_ref(
+                map_expr,
+                map_under_binder,
+                |_| unreachable!(),
+                |_| unreachable!(),
+                Label::clone,
+            )),
+        }
+    }
+
+    pub fn map_ref_simple<F1>(&self, map_expr: F1) -> Self
+    where
+        F1: Fn(&Self) -> Self,
+    {
+        self.map_ref(&map_expr, |_, e| map_expr(e))
+    }
+}
+
+impl<N, E> Clone for SubExpr<N, E> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        SubExpr(Rc::clone(&self.0))
     }
 }
 
@@ -334,104 +561,6 @@ fn add_ui(u: usize, i: isize) -> usize {
     } else {
         u.checked_add(i as usize).unwrap()
     }
-}
-
-/// Map over the immediate children of the passed Expr
-pub fn map_subexpr<SE1, SE2, L1, L2, S, T, A, B, F1, F2, F3, F4, F5>(
-    e: &ExprF<SE1, L1, S, A>,
-    map: F1,
-    map_note: F2,
-    map_embed: F3,
-    map_label: F4,
-    map_under_binder: F5,
-) -> ExprF<SE2, L2, T, B>
-where
-    L1: Ord,
-    L2: Ord,
-    SE1: Clone,
-    SE2: Clone,
-    F1: Fn(&SE1) -> SE2,
-    F2: FnOnce(&S) -> T,
-    F3: FnOnce(&A) -> B,
-    F4: Fn(&L1) -> L2,
-    F5: FnOnce(&L1, &SE1) -> SE2,
-{
-    use crate::ExprF::*;
-    let map = &map;
-    let opt = |x: &Option<_>| x.as_ref().map(&map);
-    let vec = |x: &Vec<_>| x.iter().map(&map).collect();
-    let btmap = |x: &BTreeMap<_, _>| {
-        x.into_iter().map(|(k, v)| (map_label(k), map(v))).collect()
-    };
-    match e {
-        Const(k) => Const(*k),
-        Var(V(l, n)) => Var(V(map_label(l), *n)),
-        Lam(l, t, b) => Lam(map_label(l), map(t), map_under_binder(l, b)),
-        Pi(l, t, b) => Pi(map_label(l), map(t), map_under_binder(l, b)),
-        App(f, args) => App(map(f), vec(args)),
-        Let(l, t, a, b) => {
-            Let(map_label(l), opt(t), map(a), map_under_binder(l, b))
-        }
-        Annot(x, t) => Annot(map(x), map(t)),
-        Builtin(v) => Builtin(*v),
-        BoolLit(b) => BoolLit(*b),
-        BoolIf(b, t, f) => BoolIf(map(b), map(t), map(f)),
-        NaturalLit(n) => NaturalLit(*n),
-        IntegerLit(n) => IntegerLit(*n),
-        DoubleLit(n) => DoubleLit(*n),
-        TextLit(t) => TextLit(t.map(&map)),
-        BinOp(o, x, y) => BinOp(*o, map(x), map(y)),
-        EmptyListLit(t) => EmptyListLit(map(t)),
-        NEListLit(es) => NEListLit(vec(es)),
-        EmptyOptionalLit(t) => EmptyOptionalLit(map(t)),
-        NEOptionalLit(e) => NEOptionalLit(map(e)),
-        RecordType(kts) => RecordType(btmap(kts)),
-        RecordLit(kvs) => RecordLit(btmap(kvs)),
-        UnionType(kts) => UnionType(btmap(kts)),
-        UnionLit(k, v, kvs) => UnionLit(map_label(k), map(v), btmap(kvs)),
-        Merge(x, y, t) => Merge(map(x), map(y), opt(t)),
-        Field(e, l) => Field(map(e), map_label(l)),
-        Projection(e, ls) => {
-            Projection(map(e), ls.iter().map(&map_label).collect())
-        }
-        Note(n, e) => Note(map_note(n), map(e)),
-        Embed(a) => Embed(map_embed(a)),
-    }
-}
-
-pub fn map_subexpr_rc_binder<S, A, F1, F2>(
-    e: &SubExpr<S, A>,
-    map_expr: F1,
-    map_under_binder: F2,
-) -> SubExpr<S, A>
-where
-    F1: Fn(&SubExpr<S, A>) -> SubExpr<S, A>,
-    F2: FnOnce(&Label, &SubExpr<S, A>) -> SubExpr<S, A>,
-{
-    match e.as_ref() {
-        ExprF::Embed(_) => SubExpr::clone(e),
-        ExprF::Note(_, e) => {
-            map_subexpr_rc_binder(e, map_expr, map_under_binder)
-        }
-        e => rc(map_subexpr(
-            e,
-            map_expr,
-            |_| unreachable!(),
-            |_| unreachable!(),
-            Label::clone,
-            map_under_binder,
-        )),
-    }
-}
-
-pub fn map_subexpr_rc<S, A, F1>(
-    e: &SubExpr<S, A>,
-    map_expr: F1,
-) -> SubExpr<S, A>
-where
-    F1: Fn(&SubExpr<S, A>) -> SubExpr<S, A>,
-{
-    map_subexpr_rc_binder(e, &map_expr, |_, e| map_expr(e))
 }
 
 /// `shift` is used by both normalization and type-checking to avoid variable
@@ -521,11 +650,7 @@ pub fn shift<S, A>(
         Var(V(y, m)) if x == y && n <= m => {
             rc(Var(V(y.clone(), add_ui(*m, delta))))
         }
-        _ => map_subexpr_rc_binder(
-            in_expr,
-            |e| shift(delta, var, e),
-            under_binder,
-        ),
+        _ => in_expr.map_ref(|e| shift(delta, var, e), under_binder),
     }
 }
 
@@ -549,10 +674,6 @@ pub fn subst<S, A>(
     };
     match in_expr.as_ref() {
         Var(v) if var == v => SubExpr::clone(value),
-        _ => map_subexpr_rc_binder(
-            in_expr,
-            |e| subst(var, value, e),
-            under_binder,
-        ),
+        _ => in_expr.map_ref(|e| subst(var, value, e), under_binder),
     }
 }

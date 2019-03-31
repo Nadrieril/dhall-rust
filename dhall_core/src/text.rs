@@ -33,20 +33,34 @@ pub enum InterpolatedTextContents<SubExpr> {
     Expr(SubExpr),
 }
 
-impl<SubExpr: Clone> InterpolatedText<SubExpr> {
-    pub fn map<SubExpr2, F>(&self, mut f: F) -> InterpolatedText<SubExpr2>
+impl<SubExpr> InterpolatedText<SubExpr> {
+    pub fn map<SubExpr2, F>(self, mut f: F) -> InterpolatedText<SubExpr2>
     where
-        F: FnMut(&SubExpr) -> SubExpr2,
+        F: FnMut(SubExpr) -> SubExpr2,
     {
         InterpolatedText {
             head: self.head.clone(),
-            tail: self.tail.iter().map(|(e, s)| (f(e), s.clone())).collect(),
+            tail: self
+                .tail
+                .into_iter()
+                .map(|(e, s)| (f(e), s.clone()))
+                .collect(),
+        }
+    }
+
+    pub fn as_ref(&self) -> InterpolatedText<&SubExpr> {
+        InterpolatedText {
+            head: self.head.clone(),
+            tail: self.tail.iter().map(|(e, s)| (e, s.clone())).collect(),
         }
     }
 
     pub fn iter<'a>(
         &'a self,
-    ) -> impl Iterator<Item = InterpolatedTextContents<SubExpr>> + 'a {
+    ) -> impl Iterator<Item = InterpolatedTextContents<SubExpr>> + 'a
+    where
+        SubExpr: Clone,
+    {
         use std::iter::once;
         once(InterpolatedTextContents::Text(self.head.clone())).chain(
             self.tail.iter().flat_map(|(e, s)| {

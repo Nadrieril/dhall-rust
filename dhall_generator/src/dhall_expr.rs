@@ -22,11 +22,10 @@ where
     TS: quote::ToTokens + std::fmt::Debug,
 {
     let quote_map = |m: BTreeMap<Label, TS>| -> TokenStream {
-        let entries =
-            m.into_iter().map(|(k, v)| {
-                let k = quote_label(&k);
-                quote!(m.insert(#k, #v);)
-            });
+        let entries = m.into_iter().map(|(k, v)| {
+            let k = quote_label(&k);
+            quote!(m.insert(#k, #v);)
+        });
         quote! { {
             use std::collections::BTreeMap;
             let mut m = BTreeMap::new();
@@ -108,13 +107,12 @@ fn quote_subexpr(
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::ExprF::*;
-    match map_subexpr(
-        expr.as_ref(),
+    match expr.as_ref().map_ref(
         |e| quote_subexpr(e, ctx),
+        |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
         |_| unreachable!(),
         |l| l.clone(),
-        |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
     ) {
         Var(V(ref s, n)) => {
             match ctx.lookup(s, n) {
