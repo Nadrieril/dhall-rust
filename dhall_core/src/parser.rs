@@ -406,7 +406,7 @@ make_parser! {
     token_rule!(minus_infinity_literal<()>);
     token_rule!(plus_infinity_literal<()>);
 
-    rule!(double_literal<core::Double>;
+    rule!(numeric_double_literal<core::Double>;
         captured_str!(s) => {
             let s = s.trim();
             match s.parse::<f64>() {
@@ -417,6 +417,13 @@ make_parser! {
             }
         }
     );
+
+    rule!(double_literal<core::Double>; children!(
+        [numeric_double_literal(n)] => n,
+        [minus_infinity_literal(n)] => std::f64::NEG_INFINITY.into(),
+        [plus_infinity_literal(n)] => std::f64::INFINITY.into(),
+        [NaN(n)] => std::f64::NAN.into(),
+    ));
 
     rule!(natural_literal<core::Natural>;
         captured_str!(s) => {
@@ -737,11 +744,6 @@ make_parser! {
 
     rule!(literal_expression<ParsedExpr> as expression; children!(
         [double_literal(n)] => Expr::DoubleLit(n),
-        [minus_infinity_literal(n)] =>
-            Expr::DoubleLit(std::f64::NEG_INFINITY.into()),
-        [plus_infinity_literal(n)] =>
-            Expr::DoubleLit(std::f64::INFINITY.into()),
-        [NaN(n)] => Expr::DoubleLit(std::f64::NAN.into()),
         [natural_literal(n)] => Expr::NaturalLit(n),
         [integer_literal(n)] => Expr::IntegerLit(n),
         [double_quote_literal(s)] => Expr::TextLit(s),

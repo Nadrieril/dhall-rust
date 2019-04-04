@@ -305,7 +305,20 @@ arrow         = %x2192 / "->"
 
 exponent = "e" [ "+" / "-" ] 1*DIGIT
 
-double-literal = [ "+" / "-" ] 1*DIGIT ( "." 1*DIGIT [ exponent ] / exponent)
+numeric-double-literal = [ "+" / "-" ] 1*DIGIT ( "." 1*DIGIT [ exponent ] / exponent)
+
+minus-infinity-literal = "-" Infinity
+plus-infinity-literal = Infinity
+
+double-literal =
+    ; "2.0"
+      numeric-double-literal
+    ; "-Infinity"
+    / minus-infinity-literal
+    ; "Infinity"
+    / plus-infinity-literal
+    ; "NaN"
+    / NaN
 
 natural-literal = 1*DIGIT
 
@@ -626,13 +639,6 @@ literal-expression =
     
     ; "+2"
     / integer-literal
-    
-    ; "-Infinity"
-    / minus-infinity-literal
-    ; "Infinity"
-    / plus-infinity-literal
-    ; "NaN"
-    / NaN
     
     ; '"ABC"'
     / text-literal
