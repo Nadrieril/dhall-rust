@@ -107,7 +107,7 @@ where
                 break dhall_expr!(
                     g
                     (List a0)
-                    (λ(a : a0) -> λ(as : List a1) -> [ a ] # as)
+                    (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
                     ([] : List a0)
                 );
             }
