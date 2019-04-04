@@ -67,8 +67,16 @@
 # next if /^ *;/; s/\b(?<!-)union-type-or-literal\b(?!-)/union-type-or-literal whsp/g;
 # next if /^ *;/; s/\b(?<!-)non-empty-union-type-or-literal\b(?!-)/non-empty-union-type-or-literal whsp/g;
 # next if /^ *;/; s/\b(?<!-)non-empty-list-literal\b(?!-)/non-empty-list-literal whsp/g;
+#
 # next if /^ *;/; s/\b(?<!-)expression\b(?!-)/expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)lambda-expression\b(?!-)/lambda-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)ifthenelse-expression\b(?!-)/ifthenelse-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)let-expression\b(?!-)/let-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)forall-expression\b(?!-)/forall-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)arrow-expression\b(?!-)/arrow-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)merge-expression\b(?!-)/merge-expression whsp/g;
 # next if /^ *;/; s/\b(?<!-)annotated-expression\b(?!-)/annotated-expression whsp/g;
+# next if /^ *;/; s/\b(?<!-)empty-list-or-optional\b(?!-)/empty-list-or-optional whsp/g;
 # next if /^ *;/; s/\b(?<!-)empty-collection\b(?!-)/empty-collection whsp/g;
 # next if /^ *;/; s/\b(?<!-)non-empty-optional\b(?!-)/non-empty-optional whsp/g;
 # next if /^ *;/; s/\b(?<!-)operator-expression\b(?!-)/operator-expression whsp/g;
@@ -85,6 +93,7 @@
 # next if /^ *;/; s/\b(?<!-)equal-expression\b(?!-)/equal-expression whsp/g;
 # next if /^ *;/; s/\b(?<!-)not-equal-expression\b(?!-)/not-equal-expression whsp/g;
 # next if /^ *;/; s/\b(?<!-)application-expression\b(?!-)/application-expression whsp/g;
+#
 # next if /^ *;/; s/\b(?<!-)import-expression\b(?!-)/import-expression whsp/g;
 # next if /^ *;/; s/\b(?<!-)selector-expression\b(?!-)/selector-expression whsp/g;
 # next if /^ *;/; s/\b(?<!-)primitive-expression\b(?!-)/primitive-expression whsp/g;
