@@ -688,17 +688,18 @@ union-type-or-literal =
 empty-union-type = ""
 
 non-empty-union-type-or-literal =
-    any-label whsp
-    ( "=" whsp expression union-type-entries
-    / ":" whsp1 expression [ whsp "|" whsp non-empty-union-type-or-literal ]
-    )
-union-type-entries = *(whsp "|" whsp union-type-entry)
+    any-label [ whsp ( union-literal-variant-value / union-type-or-literal-variant-type) ]
+
+; = True | ...
+union-literal-variant-value = "=" whsp expression *(whsp "|" whsp union-type-entry)
 union-type-entry = any-label whsp ":" whsp1 expression
 
-; "[1, 2, 3]"
-; `empty-list-or-optional` handles empty lists
-non-empty-list-literal = "[" whsp expression whsp *("," whsp expression whsp) "]"
+; : Integer | ...
+; | ...
+union-type-or-literal-variant-type = [ ":" whsp1 expression ] [ whsp "|" whsp non-empty-union-type-or-literal ]
 
+
+non-empty-list-literal = "[" whsp expression whsp *("," whsp expression whsp) "]"
 
 ; This just adds surrounding whitespace for the top-level of the program
 complete-expression = whsp expression whsp
