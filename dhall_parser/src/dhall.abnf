@@ -620,7 +620,8 @@ selector = any-label / labels
 
 labels = "{" whsp [ any-label whsp *("," whsp any-label whsp) ] "}"
 
-
+; NOTE: Backtrack when parsing the first three alternatives (i.e. the numeric
+; literals).  This is because they share leading characters in common
 primitive-expression =
     ; "2.0"
       double-literal
@@ -634,27 +635,27 @@ primitive-expression =
     ; '"ABC"'
     / text-literal
     
+    / "{" whsp record-type-or-literal whsp "}"
+    / "<" whsp union-type-or-literal whsp ">"
+    / non-empty-list-literal
     ; "x"
     ; "x@2"
     / identifier
-    / "{" whsp record-type-or-literal "}"
-    / "<" whsp union-type-or-literal ">"
-    / non-empty-list-literal
-    / parenthesized-expression
+    / "(" whsp expression whsp ")"
 
 record-type-or-literal =
       empty-record-literal
     / non-empty-record-type-or-literal
     / empty-record-type
-empty-record-literal = "=" whsp
+empty-record-literal = "="
 empty-record-type = ""
 
 non-empty-record-type-or-literal =
     any-label whsp (non-empty-record-literal / non-empty-record-type)
-non-empty-record-type    = ":" whsp1 expression whsp *("," whsp record-type-entry)
-record-type-entry = any-label whsp ":" whsp1 expression whsp
-non-empty-record-literal = "=" whsp expression whsp *("," whsp record-literal-entry)
-record-literal-entry = any-label whsp "=" whsp expression whsp
+non-empty-record-type    = ":" whsp1 expression *(whsp "," whsp record-type-entry)
+record-type-entry = any-label whsp ":" whsp1 expression
+non-empty-record-literal = "=" whsp expression *(whsp "," whsp record-literal-entry)
+record-literal-entry = any-label whsp "=" whsp expression
 
 ; "< Foo : Integer | Bar : Bool >"
 ; "< Foo : Integer | Bar = True >"
@@ -666,18 +667,15 @@ empty-union-type = ""
 
 non-empty-union-type-or-literal =
     any-label whsp
-    ( "=" whsp expression whsp union-type-entries
-    / ":" whsp1 expression whsp [ "|" whsp non-empty-union-type-or-literal ]
+    ( "=" whsp expression union-type-entries
+    / ":" whsp1 expression [ whsp "|" whsp non-empty-union-type-or-literal ]
     )
-union-type-entries = *("|" whsp union-type-entry)
-union-type-entry = any-label whsp ":" whsp1 expression whsp
+union-type-entries = *(whsp "|" whsp union-type-entry)
+union-type-entry = any-label whsp ":" whsp1 expression
 
 ; "[1, 2, 3]"
 ; `empty-list-or-optional` handles empty lists
 non-empty-list-literal = "[" whsp expression whsp *("," whsp expression whsp) "]"
-
-; "( e )"
-parenthesized-expression = "(" whsp expression whsp ")"
 
 
 ; This just adds surrounding whitespace for the top-level of the program
