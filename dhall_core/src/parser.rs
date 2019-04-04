@@ -116,8 +116,10 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 
 macro_rules! make_parser {
     (@pattern, rule, $name:ident) => (Rule::$name);
+    (@pattern, token_rule, $name:ident) => (Rule::$name);
     (@pattern, rule_group, $name:ident) => (_);
     (@filter, rule) => (true);
+    (@filter, token_rule) => (true);
     (@filter, rule_group) => (false);
 
     (@body,
@@ -163,6 +165,13 @@ macro_rules! make_parser {
             )?,
         ).ok_or_else(|| -> String { unreachable!() })?;
         Ok(ParsedValue::$group(res))
+    });
+    (@body,
+        $pair:expr,
+        $children:expr,
+        token_rule!($name:ident<$o:ty>)
+    ) => ({
+        Ok(ParsedValue::$name(()))
     });
     (@body, $pair:expr, $children:expr, rule_group!( $name:ident<$o:ty> )) => (
         unreachable!()
@@ -235,7 +244,8 @@ fn do_parse<'a>(initial_pair: Pair<'a, Rule>) -> ParseResult<ParsedValue<'a>> {
 fn can_be_shortcutted(rule: Rule) -> bool {
     use Rule::*;
     match rule {
-        import_alt_expression
+        expression
+        | import_alt_expression
         | or_expression
         | plus_expression
         | text_append_expression
@@ -255,7 +265,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
 }
 
 make_parser! {
-    rule!(EOI<()>; captured_str!(_) => ());
+    token_rule!(EOI<()>);
 
     rule!(simple_label<Label>;
         captured_str!(s) => Label::from(s.trim().to_owned())
@@ -321,7 +331,7 @@ make_parser! {
         captured_str!(s) => s
     );
 
-    rule!(end_of_line<()>; captured_str!(_) => ());
+    token_rule!(end_of_line<()>);
 
     rule!(single_quote_literal<ParsedText>; children!(
         [end_of_line(eol), single_quote_continue(lines)] => {
@@ -392,9 +402,9 @@ make_parser! {
         },
     ));
 
-    rule!(NaN<()>; captured_str!(_) => ());
-    rule!(minus_infinity_literal<()>; captured_str!(_) => ());
-    rule!(plus_infinity_literal<()>; captured_str!(_) => ());
+    token_rule!(NaN<()>);
+    token_rule!(minus_infinity_literal<()>);
+    token_rule!(plus_infinity_literal<()>);
 
     rule!(double_literal<core::Double>;
         captured_str!(s) => {
@@ -491,7 +501,7 @@ make_parser! {
     rule!(bash_environment_variable<String>; captured_str!(s) => s.to_owned());
     rule!(posix_environment_variable<String>; captured_str!(s) => s.to_owned());
 
-    rule!(missing<()>; captured_str!(_) => ());
+    token_rule!(missing<()>);
 
     rule!(import_type<ImportLocation>; children!(
         [missing(_)] => {
@@ -522,9 +532,7 @@ make_parser! {
             ImportHashed { location, hash: Some(h) },
     ));
 
-    rule_group!(expression<ParsedExpr>);
-
-    rule!(Text<()>; captured_str!(_) => ());
+    token_rule!(Text<()>);
 
     rule!(import<ParsedExpr> as expression; children!(
         [import_hashed(location_hashed)] => {
@@ -541,25 +549,39 @@ make_parser! {
         },
     ));
 
-    rule!(lambda_expression<ParsedExpr> as expression; children!(
-        [nonreserved_label(l), expression(typ), expression(body)] => {
+    token_rule!(lambda<()>);
+    token_rule!(forall<()>);
+    token_rule!(arrow<()>);
+    token_rule!(merge<()>);
+    token_rule!(if_<()>);
+    token_rule!(in_<()>);
+
+    rule!(expression<ParsedExpr> as expression; children!(
+        [lambda(()), nonreserved_label(l), expression(typ), arrow(()), expression(body)] => {
             Expr::Lam(l, rc(typ), rc(body))
-        }
-    ));
-
-    rule!(ifthenelse_expression<ParsedExpr> as expression; children!(
-        [expression(cond), expression(left), expression(right)] => {
+        },
+        [if_(()), expression(cond), expression(left), expression(right)] => {
             Expr::BoolIf(rc(cond), rc(left), rc(right))
-        }
-    ));
-
-    rule!(let_expression<ParsedExpr> as expression; children!(
-        [let_binding(bindings).., expression(final_expr)] => {
+        },
+        [let_binding(bindings).., in_(()), expression(final_expr)] => {
             bindings.fold(
                 final_expr,
                 |acc, x| Expr::Let(x.0, x.1, x.2, rc(acc))
             )
-        }
+        },
+        [forall(()), nonreserved_label(l), expression(typ), arrow(()), expression(body)] => {
+            Expr::Pi(l, rc(typ), rc(body))
+        },
+        [expression(typ), arrow(()), expression(body)] => {
+            Expr::Pi("_".into(), rc(typ), rc(body))
+        },
+        [merge(()), expression(x), expression(y), expression(z)] => {
+            Expr::Merge(rc(x), rc(y), Some(rc(z)))
+        },
+        [merge(()), expression(x), expression(y)] => {
+            Expr::Merge(rc(x), rc(y), None)
+        },
+        [expression(e)] => e,
     ));
 
     rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>; children!(
@@ -569,27 +591,8 @@ make_parser! {
             (name, None, rc(expr)),
     ));
 
-    rule!(forall_expression<ParsedExpr> as expression; children!(
-        [nonreserved_label(l), expression(typ), expression(body)] => {
-            Expr::Pi(l, rc(typ), rc(body))
-        }
-    ));
-
-    rule!(arrow_expression<ParsedExpr> as expression; children!(
-        [expression(typ), expression(body)] => {
-            Expr::Pi("_".into(), rc(typ), rc(body))
-        }
-    ));
-
-    rule!(merge_expression<ParsedExpr> as expression; children!(
-        [expression(x), expression(y), expression(z)] =>
-            Expr::Merge(rc(x), rc(y), Some(rc(z))),
-        [expression(x), expression(y)] =>
-            Expr::Merge(rc(x), rc(y), None),
-    ));
-
-    rule!(List<()>; captured_str!(_) => ());
-    rule!(Optional<()>; captured_str!(_) => ());
+    token_rule!(List<()>);
+    token_rule!(Optional<()>);
 
     rule!(empty_collection<ParsedExpr> as expression; children!(
         [List(_), expression(t)] => {
@@ -830,7 +833,7 @@ make_parser! {
         },
     ));
 
-    rule!(empty_union_type<()>; captured_str!(_) => ());
+    token_rule!(empty_union_type<()>);
 
     rule!(non_empty_union_type_or_literal
           <(Option<(Label, ParsedSubExpr)>, BTreeMap<Label, ParsedSubExpr>)>;

@@ -34,16 +34,15 @@ single_quote_literal
 # in
 # as
 # using
-# merge
 missing
-# if_
+if_
 # then
 # else_
 # let_
-# in_
+in_
 # as_
 # using
-# merge
+merge
 # Infinity
 Optional
 Text
@@ -78,9 +77,9 @@ List
 # combine
 # combine_types
 # prefer
-# lambda
-# forall
-# arrow
+lambda
+forall
+arrow
 # exponent
 double_literal
 natural_literal
@@ -120,14 +119,7 @@ import_type
 hash
 import_hashed
 import
-# expression
-lambda_expression
-ifthenelse_expression
-let_expression
-forall_expression
-arrow_expression
-merge_expression
-# empty_list_or_optional
+expression
 empty_collection
 non_empty_optional
 annotated_expression

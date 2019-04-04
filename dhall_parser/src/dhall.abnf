@@ -529,51 +529,45 @@ import = import-hashed [ whsp as whsp1 Text ]
 ; This is important to avoid the need for sequential backtracking in application-expression.
 
 expression =
-    lambda-expression
-    / ifthenelse-expression
-    / let-expression
-    / forall-expression
+    ; "\(x : a) -> b"
+      lambda whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
+    
+    ; "if a then b else c"
+    / if whsp1 expression whsp then whsp1 expression whsp else whsp1 expression
+    
+    ; "let x : t = e1 in e2"
+    ; "let x     = e1 in e2"
+    ; "let x = e1 let y = e2 in e3"
+    / 1*let-binding in whsp1 expression
+    
+    ; "forall (x : a) -> b"
+    / forall whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
+    
+    ; "a -> b"
     ; NOTE: Backtrack if parsing this alternative fails
-    / arrow-expression
-    / merge-expression
+    / operator-expression whsp arrow whsp expression
+    
+    ; "merge e1 e2 : t"
+    ; "merge e1 e2"
+    / merge whsp1 import-expression whsp import-expression [ whsp ":" whsp1 application-expression ]
+    
+    ; "[]  : List     t"
+    ; "[]  : Optional t"
+    ; "[x] : Optional t"
     ; NOTE: Backtrack if parsing this alternative fails since we can't tell
     ; from the opening bracket whether or not this will be an empty list or
     ; a non-empty list
-    / empty-list-or-optional
+    / "[" whsp (empty-collection / non-empty-optional)
+    
+    ; "x : t"
     / annotated-expression
-
-; "\(x : a) -> b"
-lambda-expression = lambda whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
-
-; "if a then b else c"
-ifthenelse-expression = if whsp1 expression whsp then whsp1 expression whsp else whsp1 expression
-
-; "let x : t = e1 in e2"
-; "let x     = e1 in e2"
-; "let x = e1 let y = e2 in e3"
-let-expression = 1*let-binding in whsp1 expression
-let-binding = let whsp1 nonreserved-label whsp [ ":" whsp1 expression whsp ] "=" whsp expression whsp
-
-; "forall (x : a) -> b"
-forall-expression = forall whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
-
-; "a -> b"
-arrow-expression = operator-expression whsp arrow whsp expression
-
-; "merge e1 e2 : t"
-; "merge e1 e2"
-merge-expression = merge whsp1 import-expression whsp import-expression [ whsp ":" whsp1 application-expression ]
-
-; "[]  : List     t"
-; "[]  : Optional t"
-; "[x] : Optional t"
-empty-list-or-optional = "[" whsp (empty-collection / non-empty-optional)
-empty-collection = "]" whsp ":" whsp1 (List / Optional) whsp import-expression
-non-empty-optional = expression whsp "]" whsp ":" whsp1 Optional whsp import-expression
 
 ; "x : t"
 annotated-expression = operator-expression [ whsp ":" whsp1 expression ]
 
+let-binding = let whsp1 nonreserved-label whsp [ ":" whsp1 expression whsp ] "=" whsp expression whsp
+empty-collection = "]" whsp ":" whsp1 (List / Optional) whsp import-expression
+non-empty-optional = expression whsp "]" whsp ":" whsp1 Optional whsp import-expression
 
 operator-expression = import-alt-expression
 
