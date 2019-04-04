@@ -42,13 +42,6 @@ fn main() -> std::io::Result<()> {
     )?;
     writeln!(
         &mut file,
-        "keyword = _{{
-            let_ | in_ | if_ | then
-                | else_ | Infinity | NaN
-    }}"
-    )?;
-    writeln!(
-        &mut file,
         "final_expression = ${{ SOI ~ complete_expression ~ EOI }}"
     )?;
 

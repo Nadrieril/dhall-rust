@@ -291,6 +291,15 @@ Infinity              = %x49.6e.66.69.6e.69.74.79
 NaN                   = %x4e.61.4e
 Some                  = %x53.6f.6d.65
 
+; Unused rule that could be used as negative lookahead in the
+; `simple-label` rule for parsers that support this.
+keyword =
+      if / then / else
+    / let / in
+    / using / missing / as
+    / Infinity / NaN
+    / merge / Some
+
 ; Reserved identifiers, only needed for some special cases of parsing
 Optional              = %x4f.70.74.69.6f.6e.61.6c
 Text                  = %x54.65.78.74
