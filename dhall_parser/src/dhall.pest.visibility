@@ -12,28 +12,24 @@
 # DIGIT
 # HEXDIG
 # simple_label_first_char
-# simple_label_next_other_char
 # simple_label_next_char
-# simple_label_start
 simple_label
 # quoted_label_char
 quoted_label
 label
+nonreserved_label
 # any_label
 double_quote_chunk
 double_quote_escaped
+double_quote_char
 double_quote_literal
 single_quote_continue
+escaped_quote_pair
+escaped_interpolation
+single_quote_char
 single_quote_literal
+interpolation
 # text_literal
-# if
-# then
-# else
-# let
-# in
-# as
-# using
-missing
 if_
 # then
 # else_
@@ -42,38 +38,14 @@ in_
 # as_
 # using
 merge
+missing
 # Infinity
+NaN
+Some
 # keyword
 Optional
 Text
 List
-# equal
-# or
-# plus
-# text_append
-# list_append
-# and
-# times
-# double_equal
-# not_equal
-# dot
-# bar
-# comma
-# at
-# colon
-# import_alt
-# open_parens
-# close_parens
-# close_parens
-# open_brace
-# close_brace
-# close_brace
-# open_bracket
-# close_bracket
-# close_bracket
-# open_angle
-# close_angle
-# close_angle
 # combine
 # combine_types
 # prefer
@@ -81,15 +53,24 @@ lambda
 forall
 arrow
 # exponent
+numeric_double_literal
+minus_infinity_literal
+plus_infinity_literal
 double_literal
 natural_literal
 integer_literal
 identifier
 # path_character
 # quoted_path_character
+unquoted_path_component
+quoted_path_component
 path_component
 path
 # local
+parent_path
+here_path
+home_path
+absolute_path
 scheme
 http_raw
 authority
@@ -106,7 +87,6 @@ authority
 # reg_name
 # pchar
 query
-fragment
 # pct_encoded
 # unreserved
 # sub_delims
@@ -120,9 +100,10 @@ hash
 import_hashed
 import
 expression
+annotated_expression
+let_binding
 empty_collection
 non_empty_optional
-annotated_expression
 # operator_expression
 import_alt_expression
 or_expression
@@ -137,7 +118,6 @@ times_expression
 equal_expression
 not_equal_expression
 application_expression
-# atomic_expression
 # import_expression
 selector_expression
 selector
@@ -148,10 +128,14 @@ empty_record_literal
 empty_record_type
 non_empty_record_type_or_literal
 non_empty_record_type
+record_type_entry
 non_empty_record_literal
+record_literal_entry
 union_type_or_literal
 empty_union_type
 non_empty_union_type_or_literal
+union_literal_variant_value
+union_type_entry
+union_type_or_literal_variant_type
 non_empty_list_literal
-# parenthesized_expression
 # complete_expression
