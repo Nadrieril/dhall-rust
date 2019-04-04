@@ -100,10 +100,9 @@
 ;
 ; For simplicity this supports Unix and Windows line-endings, which are the most
 ; common
-end-of-line-silent =
+end-of-line =
       %x0A     ; "\n"
     / %x0D.0A  ; "\r\n"
-end-of-line = end-of-line-silent
 
 tab = %x09  ; "\t"
 
@@ -113,7 +112,7 @@ block-comment-chunk =
       block-comment
     / %x20-10FFFF
     / tab
-    / end-of-line-silent
+    / end-of-line
 
 block-comment-continue = "-}" / block-comment-chunk block-comment-continue
 
@@ -121,12 +120,12 @@ not-end-of-line = %x20-10FFFF / tab
 
 ; NOTE: Slightly different from Haskell-style single-line comments because this
 ; does not require a space after the dashes
-line-comment = "--" *not-end-of-line end-of-line-silent
+line-comment = "--" *not-end-of-line end-of-line
 
 whitespace-chunk =
       " "
     / tab
-    / end-of-line-silent
+    / end-of-line
     / line-comment
     / block-comment
 

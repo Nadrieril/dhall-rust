@@ -331,10 +331,8 @@ make_parser! {
         captured_str!(s) => s
     );
 
-    token_rule!(end_of_line<()>);
-
     rule!(single_quote_literal<ParsedText>; children!(
-        [end_of_line(eol), single_quote_continue(lines)] => {
+        [single_quote_continue(lines)] => {
             let space = InterpolatedTextContents::Text(" ".to_owned());
             let newline = InterpolatedTextContents::Text("\n".to_owned());
             let min_indent = lines
