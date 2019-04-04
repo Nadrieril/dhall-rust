@@ -622,15 +622,6 @@ labels = "{" whsp [ any-label whsp *("," whsp any-label whsp) ] "}"
 
 
 primitive-expression =
-      literal-expression
-    / "{" whsp record-type-or-literal "}"
-    / "<" whsp union-type-or-literal ">"
-    / non-empty-list-literal
-    / parenthesized-expression
-
-; NOTE: Backtrack when parsing the first three alternatives (i.e. the numeric
-; literals).  This is because they share leading characters in common
-literal-expression =
     ; "2.0"
       double-literal
     
@@ -646,9 +637,10 @@ literal-expression =
     ; "x"
     ; "x@2"
     / identifier
-
-minus-infinity-literal = "-" Infinity
-plus-infinity-literal = Infinity
+    / "{" whsp record-type-or-literal "}"
+    / "<" whsp union-type-or-literal ">"
+    / non-empty-list-literal
+    / parenthesized-expression
 
 record-type-or-literal =
       empty-record-literal

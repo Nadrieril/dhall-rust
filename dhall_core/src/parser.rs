@@ -742,7 +742,7 @@ make_parser! {
         [label(ls)..] => ls.collect(),
     ));
 
-    rule!(literal_expression<ParsedExpr> as expression; children!(
+    rule!(primitive_expression<ParsedExpr> as expression; children!(
         [double_literal(n)] => Expr::DoubleLit(n),
         [natural_literal(n)] => Expr::NaturalLit(n),
         [integer_literal(n)] => Expr::IntegerLit(n),

@@ -142,8 +142,7 @@ application_expression
 selector_expression
 selector
 labels
-# primitive_expression
-literal_expression
+primitive_expression
 # record_type_or_literal
 empty_record_literal
 empty_record_type
