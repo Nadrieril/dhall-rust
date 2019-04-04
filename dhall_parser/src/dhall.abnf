@@ -132,6 +132,7 @@ whitespace-chunk =
 
 whsp = *whitespace-chunk
 
+; nonempty whitespace
 whsp1 = 1*whitespace-chunk
 
 ; Uppercase or lowercase ASCII letter
@@ -142,19 +143,13 @@ DIGIT = %x30-39  ; 0-9
 
 HEXDIG = DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
 
-; A simple label cannot be one of the following reserved keywords:
-;
-; * if
-; * then
-; * else
-; * let
-; * in
-; * as
-; * using
-; * merge
-; * missing
-; * Infinity
-; * Some
+; A simple label cannot be one of the reserved keywords
+; listed in the `keyword` rule.
+; A PEG parser could use negative lookahead to
+; enforce this, e.g. as follows:
+; simple-label =
+;       keyword 1*simple-label-next-char
+;     / !keyword (simple-label-first-char *simple-label-next-char)
 simple-label-first-char = ALPHA / "_"
 simple-label-next-char = ALPHA / DIGIT / "-" / "/" / "_"
 simple-label = simple-label-first-char *simple-label-next-char
@@ -174,6 +169,7 @@ label = ("`" quoted-label "`" / simple-label)
 ; Their list can be found in semantics.md. This is not enforced by the grammar but
 ; should be checked by implementations. The only place where this restriction applies
 ; is bound variables.
+; A PEG parser could use negative lookahead to avoid parsing those identifiers.
 nonreserved-label = label
 
 ; An any-label is allowed to be one of the reserved identifiers.
@@ -216,8 +212,8 @@ any-label = label
 ; > "\uD834\uDD1E".
 double-quote-chunk =
       interpolation
-      ; '\'
-    / %x5C double-quote-escaped 
+      ; '\'    Beginning of escape sequence
+    / %x5C double-quote-escaped
     / double-quote-char
 
 double-quote-escaped =
@@ -273,7 +269,6 @@ single-quote-char =
 
 single-quote-literal = "''" end-of-line single-quote-continue
 
-; Interpolation
 interpolation = "${" complete-expression "}"
 
 text-literal = (double-quote-literal / single-quote-literal)
@@ -281,25 +276,25 @@ text-literal = (double-quote-literal / single-quote-literal)
 ; RFC 5234 interprets string literals as case-insensitive and recommends using
 ; hex instead for case-sensitive strings
 ;
-; If you don't feel like reading hex, these are all the same as the rule name,
-; except without the '' ending.
+; If you don't feel like reading hex, these are all the same as the rule name.
 ; Keywords that should never be parsed as identifiers
-if                = %x69.66
-then              = %x74.68.65.6e
-else              = %x65.6c.73.65
-let               = %x6c.65.74
-in                = %x69.6e
-as                = %x61.73
-using             = %x75.73.69.6e.67
-merge             = %x6d.65.72.67.65
-missing           = %x6d.69.73.73.69.6e.67
-Infinity          = %x49.6e.66.69.6e.69.74.79
+if                    = %x69.66
+then                  = %x74.68.65.6e
+else                  = %x65.6c.73.65
+let                   = %x6c.65.74
+in                    = %x69.6e
+as                    = %x61.73
+using                 = %x75.73.69.6e.67
+merge                 = %x6d.65.72.67.65
+missing               = %x6d.69.73.73.69.6e.67
+Infinity              = %x49.6e.66.69.6e.69.74.79
+NaN                   = %x4e.61.4e
+Some                  = %x53.6f.6d.65
+
 ; Reserved identifiers, only needed for some special cases of parsing
 Optional              = %x4f.70.74.69.6f.6e.61.6c
 Text                  = %x54.65.78.74
 List                  = %x4c.69.73.74
-NaN               = %x4e.61.4e
-Some              = %x53.6f.6d.65
 
 combine       = %x2227 / "/\"
 combine-types = %x2A53 / "//\\"
@@ -363,6 +358,8 @@ quoted-path-component = 1*quoted-path-character
 
 path-component = "/" ( unquoted-path-component / %x22 quoted-path-component %x22 )
 
+; The last path-component matched by this rule is referred to as "file" in the semantics,
+; and the other path-components as "directory".
 path = 1*path-component
 
 local =
@@ -513,7 +510,7 @@ posix-environment-variable-character =
 
 import-type = missing / local / http / env
 
-hash = %x73.68.61.32.35.36.3a 64HEXDIG  ; "sha256:XXX...XXX"
+hash = %x73.68.61.32.35.36.3a 64HEXDIG ; "sha256:XXX...XXX"
 
 import-hashed = import-type [ whsp hash ]
 
@@ -521,12 +518,6 @@ import-hashed = import-type [ whsp hash ]
 ; "./foo/bar"
 ; "env:FOO"
 import = import-hashed [ whsp as whsp1 Text ]
-
-; NOTE: Every rule past this point should only reference rules that end with
-; whitespace.  This ensures consistent handling of whitespace in the absence of
-; a separate lexing step.
-; The exception is the rules ending in , which should _not_ end in whitespace.
-; This is important to avoid the need for sequential backtracking in application-expression.
 
 expression =
     ; "\(x : a) -> b"
@@ -544,6 +535,7 @@ expression =
     / forall whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
     
     ; "a -> b"
+    ;
     ; NOTE: Backtrack if parsing this alternative fails
     / operator-expression whsp arrow whsp expression
     
@@ -554,6 +546,7 @@ expression =
     ; "[]  : List     t"
     ; "[]  : Optional t"
     ; "[x] : Optional t"
+    ;
     ; NOTE: Backtrack if parsing this alternative fails since we can't tell
     ; from the opening bracket whether or not this will be an empty list or
     ; a non-empty list
@@ -562,11 +555,17 @@ expression =
     ; "x : t"
     / annotated-expression
 
-; "x : t"
+; Nonempty-whitespace to disambiguate `env:VARIABLE` from type annotations
 annotated-expression = operator-expression [ whsp ":" whsp1 expression ]
 
+; "let x = e1"
 let-binding = let whsp1 nonreserved-label whsp [ ":" whsp1 expression whsp ] "=" whsp expression whsp
+
+; "]  : List     t"
+; "]  : Optional t"
 empty-collection = "]" whsp ":" whsp1 (List / Optional) whsp import-expression
+
+; "x] : Optional t"
 non-empty-optional = expression whsp "]" whsp ":" whsp1 Optional whsp import-expression
 
 operator-expression = import-alt-expression
@@ -592,14 +591,13 @@ not-equal-expression     = application-expression   *(whsp "!=" whsp application
 application-expression =
     import-expression *(whsp1 import-expression)
 
-import-expression =
-      import
-    / selector-expression
+import-expression = import / selector-expression
 
 ; `record.field` extracts one field of a record
+;
 ; `record.{ field0, field1, field2 }` projects out several fields of a record
 ;
-; NOTE: Backtrack when parsing the `*(dot ...)`.  The reason why is that you
+; NOTE: Backtrack when parsing the `*("." ...)`.  The reason why is that you
 ; can't tell from parsing just the period whether "foo." will become "foo.bar"
 ; (i.e. accessing field `bar` of the record `foo`) or `foo./bar` (i.e. applying
 ; the function `foo` to the relative path `./bar`)
@@ -646,14 +644,13 @@ literal-expression =
 minus-infinity-literal = "-" Infinity
 plus-infinity-literal = Infinity
 
-; "{ foo = 1      , bar = True }"
-; "{ foo : Integer, bar : Bool }"
 record-type-or-literal =
       empty-record-literal
     / non-empty-record-type-or-literal
     / empty-record-type
 empty-record-literal = "=" whsp
 empty-record-type = ""
+
 non-empty-record-type-or-literal =
     any-label whsp (non-empty-record-literal / non-empty-record-type)
 non-empty-record-type    = ":" whsp1 expression whsp *("," whsp record-type-entry)
@@ -666,7 +663,9 @@ record-literal-entry = any-label whsp "=" whsp expression whsp
 union-type-or-literal =
       non-empty-union-type-or-literal
     / empty-union-type
+
 empty-union-type = ""
+
 non-empty-union-type-or-literal =
     any-label whsp
     ( "=" whsp expression whsp union-type-entries
@@ -683,6 +682,5 @@ non-empty-list-literal = "[" whsp expression whsp *("," whsp expression whsp) "]
 parenthesized-expression = "(" whsp expression whsp ")"
 
 
-; All expressions end with trailing whitespace.  This just adds a final
-; whitespace prefix for the top-level of the program
+; This just adds surrounding whitespace for the top-level of the program
 complete-expression = whsp expression whsp
