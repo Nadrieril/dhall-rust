@@ -170,11 +170,11 @@ quoted-label = 1*quoted-label-char
 ; for code obfuscation
 label = ("`" quoted-label "`" / simple-label)
 
-; An unreserved-label cannot not be any of the reserved identifiers for builtins (unless quoted).
+; A nonreserved-label cannot not be any of the reserved identifiers for builtins (unless quoted).
 ; Their list can be found in semantics.md. This is not enforced by the grammar but
 ; should be checked by implementations. The only place where this restriction applies
 ; is bound variables.
-unreserved-label = label
+nonreserved-label = label
 
 ; An any-label is allowed to be one of the reserved identifiers.
 any-label = label
@@ -543,7 +543,7 @@ expression =
     / annotated-expression
 
 ; "\(x : a) -> b"
-lambda-expression = lambda whsp "(" whsp unreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
+lambda-expression = lambda whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
 
 ; "if a then b else c"
 ifthenelse-expression = if whsp1 expression whsp then whsp1 expression whsp else whsp1 expression
@@ -552,10 +552,10 @@ ifthenelse-expression = if whsp1 expression whsp then whsp1 expression whsp else
 ; "let x     = e1 in e2"
 ; "let x = e1 let y = e2 in e3"
 let-expression = 1*let-binding in whsp1 expression
-let-binding = let whsp1 unreserved-label whsp [ ":" whsp1 expression whsp ] "=" whsp expression whsp
+let-binding = let whsp1 nonreserved-label whsp [ ":" whsp1 expression whsp ] "=" whsp expression whsp
 
 ; "forall (x : a) -> b"
-forall-expression = forall whsp "(" whsp unreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
+forall-expression = forall whsp "(" whsp nonreserved-label whsp ":" whsp1 expression whsp ")" whsp arrow whsp expression
 
 ; "a -> b"
 arrow-expression = operator-expression whsp arrow whsp expression

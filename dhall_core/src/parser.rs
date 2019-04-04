@@ -265,7 +265,7 @@ make_parser! {
         [simple_label(l)] => l,
         [quoted_label(l)] => l,
     ));
-    rule!(unreserved_label<Label>; children!(
+    rule!(nonreserved_label<Label>; children!(
         [label(l)] => {
             if Builtin::parse(&String::from(&l)).is_some() {
                 Err(
@@ -540,7 +540,7 @@ make_parser! {
     ));
 
     rule!(lambda_expression<ParsedExpr> as expression; children!(
-        [unreserved_label(l), expression(typ), expression(body)] => {
+        [nonreserved_label(l), expression(typ), expression(body)] => {
             bx(Expr::Lam(l, typ, body))
         }
     ));
@@ -561,14 +561,14 @@ make_parser! {
     ));
 
     rule!(let_binding<(Label, Option<ParsedExpr>, ParsedExpr)>; children!(
-        [unreserved_label(name), expression(annot), expression(expr)] =>
+        [nonreserved_label(name), expression(annot), expression(expr)] =>
             (name, Some(annot), expr),
-        [unreserved_label(name), expression(expr)] =>
+        [nonreserved_label(name), expression(expr)] =>
             (name, None, expr),
     ));
 
     rule!(forall_expression<ParsedExpr> as expression; children!(
-        [unreserved_label(l), expression(typ), expression(body)] => {
+        [nonreserved_label(l), expression(typ), expression(body)] => {
             bx(Expr::Pi(l, typ, body))
         }
     ));
