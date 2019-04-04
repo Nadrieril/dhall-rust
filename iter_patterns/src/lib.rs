@@ -60,23 +60,23 @@ macro_rules! destructure_iter {
     };
     // Single item pattern
     (@match_forwards, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
-        if let Some($x) = $iter.next() {
+        if let std::option::Option::Some($x) = $iter.next() {
             $crate::destructure_iter!(@match_forwards,
                 $iter,
                 ($body),
                 $($rest)*
             )
         } else {
-            None
+            std::option::Option::None
         }
     };
     // Single item pattern after a variable length one: declare reversed and take from the end
     (@match_backwards, $iter:expr, ($body:expr), $x:pat, $($rest:tt)*) => {
         $crate::destructure_iter!(@match_backwards, $iter, (
-            if let Some($x) = $iter.next_back() {
+            if let std::option::Option::Some($x) = $iter.next_back() {
                 $body
             } else {
-                None
+                std::option::Option::None
             }
         ), $($rest)*)
     };
@@ -84,7 +84,7 @@ macro_rules! destructure_iter {
     // Check no elements remain
     (@match_forwards, $iter:expr, ($body:expr) $(,)*) => {
         if $iter.next().is_some() {
-            None
+            std::option::Option::None
         } else {
             $body
         }
@@ -100,7 +100,7 @@ macro_rules! destructure_iter {
             let mut iter = $iter;
             $crate::destructure_iter!(@match_forwards,
                 iter,
-                (Some($body)),
+                (std::option::Option::Some($body)),
                 $($args)*,
             )
         }
@@ -216,7 +216,7 @@ macro_rules! match_vec {
                         $crate::destructure_iter!(iter; [$($args)*] => $body)
                     }
                 )*
-                _ => None,
+                _ => std::option::Option::None,
             }
         }
     };

@@ -479,15 +479,15 @@ make_parser! {
             scheme: sch,
             authority: auth,
             path: p,
-            query: None,
-            headers: None,
+            query: Option::None,
+            headers: Option::None,
         },
         [scheme(sch), authority(auth), path(p), query(q)] => URL {
             scheme: sch,
             authority: auth,
             path: p,
-            query: Some(q),
-            headers: None,
+            query: Option::Some(q),
+            headers: Option::None,
         },
     ));
 
@@ -498,7 +498,7 @@ make_parser! {
     rule!(http<URL>; children!(
         [http_raw(url)] => url,
         [http_raw(url), import_hashed(ih)] =>
-            URL { headers: Some(Box::new(ih)), ..url },
+            URL { headers: Option::Some(Box::new(ih)), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -534,9 +534,9 @@ make_parser! {
 
     rule!(import_hashed<ImportHashed>; children!(
         [import_type(location)] =>
-            ImportHashed { location, hash: None },
+            ImportHashed { location, hash: Option::None },
         [import_type(location), hash(h)] =>
-            ImportHashed { location, hash: Some(h) },
+            ImportHashed { location, hash: Option::Some(h) },
     ));
 
     token_rule!(Text<()>);
@@ -583,19 +583,19 @@ make_parser! {
             Expr::Pi("_".into(), rc(typ), rc(body))
         },
         [merge(()), expression(x), expression(y), expression(z)] => {
-            Expr::Merge(rc(x), rc(y), Some(rc(z)))
+            Expr::Merge(rc(x), rc(y), Option::Some(rc(z)))
         },
         [merge(()), expression(x), expression(y)] => {
-            Expr::Merge(rc(x), rc(y), None)
+            Expr::Merge(rc(x), rc(y), Option::None)
         },
         [expression(e)] => e,
     ));
 
     rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>; children!(
         [nonreserved_label(name), expression(annot), expression(expr)] =>
-            (name, Some(rc(annot)), rc(expr)),
+            (name, Option::Some(rc(annot)), rc(expr)),
         [nonreserved_label(name), expression(expr)] =>
-            (name, None, rc(expr)),
+            (name, Option::None, rc(expr)),
     ));
 
     token_rule!(List<()>);
@@ -708,14 +708,15 @@ make_parser! {
         },
     ));
 
+    token_rule!(Some<()>);
+
     rule!(application_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
         [expression(Expr::Builtin(Builtin::OptionalNone)),
                 expression(e), expression(rest)..] => {
             app(Expr::EmptyOptionalLit(rc(e)), rest.map(rc).collect())
         },
-        [expression(Expr::Builtin(Builtin::OptionalSome)),
-                expression(e), expression(rest)..] => {
+        [Some(()), expression(e), expression(rest)..] => {
             app(Expr::NEOptionalLit(rc(e)), rest.map(rc).collect())
         },
         [expression(first), expression(rest)..] => {
@@ -755,8 +756,8 @@ make_parser! {
         [label(l), natural_literal(idx)] => {
             let name = String::from(&l);
             match Builtin::parse(name.as_str()) {
-                Some(b) => Expr::Builtin(b),
-                None => match name.as_str() {
+                Option::Some(b) => Expr::Builtin(b),
+                Option::None => match name.as_str() {
                     "True" => Expr::BoolLit(true),
                     "False" => Expr::BoolLit(false),
                     "Type" => Expr::Const(Const::Type),
@@ -768,8 +769,8 @@ make_parser! {
         [label(l)] => {
             let name = String::from(&l);
             match Builtin::parse(name.as_str()) {
-                Some(b) => Expr::Builtin(b),
-                None => match name.as_str() {
+                Option::Some(b) => Expr::Builtin(b),
+                Option::None => match name.as_str() {
                     "True" => Expr::BoolLit(true),
                     "False" => Expr::BoolLit(false),
                     "Type" => Expr::Const(Const::Type),
@@ -827,10 +828,10 @@ make_parser! {
         [empty_union_type(_)] => {
             Expr::UnionType(BTreeMap::new())
         },
-        [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
+        [non_empty_union_type_or_literal((Option::Some((l, e)), entries))] => {
             Expr::UnionLit(l, e, entries)
         },
-        [non_empty_union_type_or_literal((None, entries))] => {
+        [non_empty_union_type_or_literal((Option::None, entries))] => {
             Expr::UnionType(entries)
         },
     ));
@@ -841,7 +842,7 @@ make_parser! {
           <(Option<(Label, ParsedSubExpr)>, BTreeMap<Label, ParsedSubExpr>)>;
             children!(
         [label(l), expression(e), union_type_entries(entries)] => {
-            (Some((l, rc(e))), entries)
+            (Option::Some((l, rc(e))), entries)
         },
         [label(l), expression(e), non_empty_union_type_or_literal(rest)] => {
             let (x, mut entries) = rest;
@@ -851,7 +852,7 @@ make_parser! {
         [label(l), expression(e)] => {
             let mut entries = BTreeMap::new();
             entries.insert(l, rc(e));
-            (None, entries)
+            (Option::None, entries)
         },
     ));
 
