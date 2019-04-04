@@ -1,0 +1,94 @@
+#!/usr/bin/env -S perl -i -p
+# next if /^ *;/; s/\b(?<!-)if\b(?!-)/if-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)then\b(?!-)/then-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)else\b(?!-)/else-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)let\b(?!-)/let-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)in\b(?!-)/in-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)as\b(?!-)/as-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)using\b(?!-)/using-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)merge\b(?!-)/merge-raw nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)Some\b(?!-)/Some-raw nonempty-whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)Optional\b(?!-)/Optional whitespace/g;
+# next if /^ *;/; s/\b(?<!-)Text\b(?!-)/Text whitespace/g;
+# next if /^ *;/; s/\b(?<!-)List\b(?!-)/List whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)or\b(?!-)/"||" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)plus\b(?!-)/"+" nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)text-append\b(?!-)/"++" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)list-append\b(?!-)/"#" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)and\b(?!-)/"&&" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)times\b(?!-)/"*" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)double-equal\b(?!-)/"==" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)not-equal\b(?!-)/"!=" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)equal\b(?!-)/"=" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)dot\b(?!-)/"." whitespace/g;
+# next if /^ *;/; s/\b(?<!-)bar\b(?!-)/"|" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)comma\b(?!-)/"," whitespace/g;
+# next if /^ *;/; s/\b(?<!-)at\b(?!-)/"@" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)open-parens\b(?!-)/"(" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)close-parens\b(?!-)/")" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)open-brace\b(?!-)/"{" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)close-brace\b(?!-)/"}" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)open-bracket\b(?!-)/"[" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)close-bracket\b(?!-)/"]" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)open-angle\b(?!-)/"<" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)close-angle\b(?!-)/">" whitespace/g;
+# next if /^ *;/; s/\b(?<!-)colon\b(?!-)/":" nonempty-whitespace/g;
+# next if /^ *;/; s/\b(?<!-)import-alt\b(?!-)/"?" nonempty-whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)combine-types\b(?!-)/combine-types whitespace/g;
+# next if /^ *;/; s/\b(?<!-)combine\b(?!-)/combine whitespace/g;
+# next if /^ *;/; s/\b(?<!-)prefer\b(?!-)/prefer whitespace/g;
+# next if /^ *;/; s/\b(?<!-)lambda\b(?!-)/lambda whitespace/g;
+# next if /^ *;/; s/\b(?<!-)forall\b(?!-)/forall whitespace/g;
+# next if /^ *;/; s/\b(?<!-)arrow\b(?!-)/arrow whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)label\b(?!-)/label whitespace/g;
+# next if /^ *;/; s/\b(?<!-)identifier\b(?!-)/identifier whitespace/g;
+# next if /^ *;/; s/\b(?<!-)text-literal\b(?!-)/text-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)double-literal\b(?!-)/double-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)integer-literal\b(?!-)/integer-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)natural-literal\b(?!-)/natural-literal whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)import-hashed\b(?!-)/import-hashed whitespace/g;
+# next if /^ *;/; s/\b(?<!-)import-type\b(?!-)/import-type whitespace/g;
+# next if /^ *;/; s/\b(?<!-)import\b(?!-)/import whitespace/g;
+# next if /^ *;/; s/\b(?<!-)local\b(?!-)/local whitespace/g;
+# next if /^ *;/; s/\b(?<!-)env\b(?!-)/env whitespace/g;
+# next if /^ *;/; s/\b(?<!-)http\b(?!-)/http whitespace/g;
+# next if /^ *;/; s/\b(?<!-)missing\b(?!-)/missing whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)labels\b(?!-)/labels whitespace/g;
+# next if /^ *;/; s/\b(?<!-)record-type-or-literal\b(?!-)/record-type-or-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-record-type-or-literal\b(?!-)/non-empty-record-type-or-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-record-type\b(?!-)/non-empty-record-type whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-record-literal\b(?!-)/non-empty-record-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)union-type-or-literal\b(?!-)/union-type-or-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-union-type-or-literal\b(?!-)/non-empty-union-type-or-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-list-literal\b(?!-)/non-empty-list-literal whitespace/g;
+# next if /^ *;/; s/\b(?<!-)expression\b(?!-)/expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)annotated-expression\b(?!-)/annotated-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)empty-collection\b(?!-)/empty-collection whitespace/g;
+# next if /^ *;/; s/\b(?<!-)non-empty-optional\b(?!-)/non-empty-optional whitespace/g;
+# next if /^ *;/; s/\b(?<!-)operator-expression\b(?!-)/operator-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)import-alt-expression\b(?!-)/import-alt-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)or-expression\b(?!-)/or-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)plus-expression\b(?!-)/plus-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)text-append-expression\b(?!-)/text-append-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)list-append-expression\b(?!-)/list-append-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)and-expression\b(?!-)/and-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)combine-expression\b(?!-)/combine-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)prefer-expression\b(?!-)/prefer-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)combine-types-expression\b(?!-)/combine-types-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)times-expression\b(?!-)/times-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)equal-expression\b(?!-)/equal-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)not-equal-expression\b(?!-)/not-equal-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)application-expression\b(?!-)/application-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)import-expression\b(?!-)/import-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)selector-expression\b(?!-)/selector-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)primitive-expression\b(?!-)/primitive-expression whitespace/g;
+# next if /^ *;/; s/\b(?<!-)complete-expression\b(?!-)/complete-expression whitespace/g;
+
+# next if /^ *;/; s/\b(?<!-)whitespace\b(?!-)/whsp/g;
+# next if /^ *;/; s/\b(?<!-)nonempty-whitespace\b(?!-)/whsp1/g;
