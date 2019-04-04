@@ -635,30 +635,43 @@ primitive-expression =
     ; '"ABC"'
     / text-literal
     
+    ; "{ foo = 1      , bar = True }"
+    ; "{ foo : Integer, bar : Bool }"
     / "{" whsp record-type-or-literal whsp "}"
+    
+    ; "< Foo : Integer | Bar : Bool >"
+    ; "< Foo : Integer | Bar = True | Baz : Bool >"
+    ; "< Foo | Bar : Bool >"
     / "<" whsp union-type-or-literal whsp ">"
+    
+    ; "[1, 2, 3]"
+    ; `empty-collection` handles empty lists
     / non-empty-list-literal
+    
     ; "x"
     ; "x@2"
     / identifier
-    / "(" whsp expression whsp ")"
+    
+    ; "( e )"
+    / "(" complete-expression ")"
 
 record-type-or-literal =
       empty-record-literal
     / non-empty-record-type-or-literal
     / empty-record-type
+
 empty-record-literal = "="
 empty-record-type = ""
 
 non-empty-record-type-or-literal =
     any-label whsp (non-empty-record-literal / non-empty-record-type)
-non-empty-record-type    = ":" whsp1 expression *(whsp "," whsp record-type-entry)
+
+non-empty-record-type = ":" whsp1 expression *(whsp "," whsp record-type-entry)
 record-type-entry = any-label whsp ":" whsp1 expression
+
 non-empty-record-literal = "=" whsp expression *(whsp "," whsp record-literal-entry)
 record-literal-entry = any-label whsp "=" whsp expression
 
-; "< Foo : Integer | Bar : Bool >"
-; "< Foo : Integer | Bar = True >"
 union-type-or-literal =
       non-empty-union-type-or-literal
     / empty-union-type
