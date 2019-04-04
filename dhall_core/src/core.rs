@@ -324,6 +324,25 @@ pub fn rc<T>(x: T) -> Rc<T> {
     Rc::new(x)
 }
 
+pub fn app<N, E>(f: Expr<N, E>, args: Vec<SubExpr<N, E>>) -> Expr<N, E> {
+    if args.is_empty() {
+        f
+    } else {
+        Expr::App(rc(f), args)
+    }
+}
+
+pub fn app_rc<N, E>(
+    f: SubExpr<N, E>,
+    args: Vec<SubExpr<N, E>>,
+) -> SubExpr<N, E> {
+    if args.is_empty() {
+        f
+    } else {
+        rc(Expr::App(f, args))
+    }
+}
+
 fn add_ui(u: usize, i: isize) -> usize {
     if i < 0 {
         u.checked_sub(i.checked_neg().unwrap() as usize).unwrap()

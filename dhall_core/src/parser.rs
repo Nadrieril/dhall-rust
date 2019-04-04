@@ -700,28 +700,16 @@ make_parser! {
 
     rule!(application_expression<ParsedExpr> as expression; children!(
         [expression(e)] => e,
-        [expression(first), expression(second)] => {
-            match first {
-                Expr::Builtin(Builtin::OptionalNone) =>
-                    Expr::EmptyOptionalLit(rc(second)),
-                Expr::Builtin(Builtin::OptionalSome) =>
-                    Expr::NEOptionalLit(rc(second)),
-                _ => Expr::App(rc(first), vec![rc(second)]),
-            }
+        [expression(Expr::Builtin(Builtin::OptionalNone)),
+                expression(e), expression(rest)..] => {
+            app(Expr::EmptyOptionalLit(rc(e)), rest.map(rc).collect())
         },
-        [expression(first), expression(second), expression(rest)..] => {
-            match first {
-                Expr::Builtin(Builtin::OptionalNone) =>
-                    Expr::App(rc(Expr::EmptyOptionalLit(rc(second))),
-                                 rest.map(rc).collect()),
-                Expr::Builtin(Builtin::OptionalSome) =>
-                    Expr::App(rc(Expr::NEOptionalLit(rc(second))),
-                                 rest.map(rc).collect()),
-                _ => Expr::App(rc(first),
-                                  std::iter::once(rc(second))
-                                    .chain(rest.map(rc))
-                                    .collect()),
-            }
+        [expression(Expr::Builtin(Builtin::OptionalSome)),
+                expression(e), expression(rest)..] => {
+            app(Expr::NEOptionalLit(rc(e)), rest.map(rc).collect())
+        },
+        [expression(first), expression(rest)..] => {
+            app(first, rest.map(rc).collect())
         },
     ));
 
