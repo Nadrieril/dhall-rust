@@ -564,7 +564,8 @@ make_parser! {
     token_rule!(in_<()>);
 
     rule!(expression<ParsedExpr> as expression; children!(
-        [lambda(()), nonreserved_label(l), expression(typ), arrow(()), expression(body)] => {
+        [lambda(()), nonreserved_label(l), expression(typ),
+                arrow(()), expression(body)] => {
             Lam(l, rc(typ), rc(body))
         },
         [if_(()), expression(cond), expression(left), expression(right)] => {
@@ -576,7 +577,8 @@ make_parser! {
                 |acc, x| Let(x.0, x.1, x.2, rc(acc))
             )
         },
-        [forall(()), nonreserved_label(l), expression(typ), arrow(()), expression(body)] => {
+        [forall(()), nonreserved_label(l), expression(typ),
+                arrow(()), expression(body)] => {
             Pi(l, rc(typ), rc(body))
         },
         [expression(typ), arrow(()), expression(body)] => {

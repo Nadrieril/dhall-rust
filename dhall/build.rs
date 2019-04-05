@@ -23,7 +23,9 @@ fn dhall_files_in_dir<'a>(dir: &'a Path) -> impl Iterator<Item = String> + 'a {
 
 fn main() -> std::io::Result<()> {
     println!("cargo:rerun-if-changed=../dhall-lang/.git");
-    println!("cargo:rerun-if-changed=../.git/modules/dhall-lang/refs/heads/master");
+    println!(
+        "cargo:rerun-if-changed=../.git/modules/dhall-lang/refs/heads/master"
+    );
     let out_dir = env::var("OUT_DIR").unwrap();
     let tests_dir = Path::new("../dhall-lang/tests/");
 
