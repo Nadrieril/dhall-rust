@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::io::{self, Read};
-use std::rc::Rc;
 use term_painter::ToStyle;
 
 use dhall::*;
@@ -66,7 +65,7 @@ fn main() {
         }
     };
 
-    let expr: Rc<Expr<_, _>> = rc(imports::panic_imports(&expr));
+    let expr: SubExpr<_, _> = rc(imports::panic_imports(expr.as_ref()));
 
     let type_expr = match typecheck::type_of(expr.clone()) {
         Err(e) => {

@@ -8,6 +8,12 @@ impl<S, A: Display> Display for Expr<S, A> {
     }
 }
 
+impl<S, A: Display> Display for SubExpr<S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.as_ref().fmt(f)
+    }
+}
+
 //  There is a one-to-one correspondence between the formatter and the grammar. Each phase is
 //  named after a corresponding grammar group, and the structure of the formatter reflects
 //  the relationship between the corresponding grammar rules. This leads to the nice property
@@ -29,7 +35,7 @@ impl<S, A: Display> Expr<S, A> {
         f: &mut fmt::Formatter,
         phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
-        use crate::Expr::*;
+        use crate::ExprF::*;
         use PrintPhase::*;
         match self {
             _ if phase == Paren => {
@@ -137,7 +143,7 @@ impl<S, A: Display> Expr<S, A> {
                 write!(f, " : ")?;
                 b.fmt(f)?;
             }
-            Expr::BinOp(op, a, b) => {
+            ExprF::BinOp(op, a, b) => {
                 // Precedence is magically handled by the ordering of BinOps.
                 if phase > PrintPhase::BinOp(*op) {
                     return self.fmt_phase(f, Paren);
@@ -146,7 +152,7 @@ impl<S, A: Display> Expr<S, A> {
                 write!(f, " {} ", op)?;
                 b.fmt_phase(f, PrintPhase::BinOp(*op))?;
             }
-            Expr::App(a, args) => {
+            ExprF::App(a, args) => {
                 if phase > PrintPhase::App {
                     return self.fmt_phase(f, Paren);
                 }
@@ -211,6 +217,16 @@ impl<S, A: Display> Expr<S, A> {
     }
 }
 
+impl<S, A: Display> SubExpr<S, A> {
+    fn fmt_phase(
+        &self,
+        f: &mut fmt::Formatter,
+        phase: PrintPhase,
+    ) -> Result<(), fmt::Error> {
+        self.0.as_ref().fmt_phase(f, phase)
+    }
+}
+
 fn fmt_list<T, I, F>(
     open: &str,
     sep: &str,
@@ -233,7 +249,7 @@ where
     f.write_str(close)
 }
 
-impl<S, A: Display> Display for InterpolatedText<S, A> {
+impl<SubExpr: Display + Clone> Display for InterpolatedText<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         f.write_str("\"")?;
         for x in self.iter() {
@@ -446,7 +462,7 @@ impl Display for Scheme {
     }
 }
 
-impl Display for V {
+impl<Label: Display> Display for V<Label> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let V(x, n) = self;
         x.fmt(f)?;

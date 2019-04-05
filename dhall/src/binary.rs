@@ -1,9 +1,8 @@
 use dhall_core::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
-use std::rc::Rc;
 
-type ParsedExpr = Rc<Expr<X, Import>>;
+type ParsedExpr = SubExpr<X, Import>;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -21,10 +20,10 @@ pub fn decode(data: &[u8]) -> Result<ParsedExpr, DecodeError> {
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
     use cbor::Value::*;
     use dhall_core::{BinOp, Builtin, Const};
-    use Expr::*;
+    use ExprF::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
-            Some(b) => Expr::Builtin(b),
+            Some(b) => ExprF::Builtin(b),
             None => match s.as_str() {
                 "True" => BoolLit(true),
                 "False" => BoolLit(false),

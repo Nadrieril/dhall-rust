@@ -39,21 +39,17 @@ pub fn derive_for_struct(
             .collect(),
         syn::Fields::Unit => vec![],
     };
-    let fields = fields.into_iter().map(|(name, ty)| {
-        constraints.push(ty.clone());
-        quote! {
-            m.insert(
-                dhall_core::Label::from(#name),
-                <#ty as dhall::Type>::get_type()
-            );
-        }
-    });
-    Ok(quote! { dhall_core::rc(dhall_core::Expr::RecordType({
-        use std::collections::BTreeMap;
-        let mut m = BTreeMap::new();
-        #(#fields)*
-        m
-    })) })
+    let fields = fields
+        .into_iter()
+        .map(|(name, ty)| {
+            let name = dhall_core::Label::from(name);
+            constraints.push(ty.clone());
+            (name, quote!(<#ty as dhall::Type>::get_type()))
+        })
+        .collect();
+    let record =
+        crate::dhall_expr::quote_expr(dhall_core::ExprF::RecordType(fields));
+    Ok(quote! { dhall_core::rc(#record) })
 }
 
 pub fn derive_for_enum(
@@ -64,7 +60,7 @@ pub fn derive_for_enum(
         .variants
         .iter()
         .map(|v| {
-            let name = v.ident.to_string();
+            let name = dhall_core::Label::from(v.ident.to_string());
             let ty = match &v.fields {
                 syn::Fields::Unnamed(fields) if fields.unnamed.is_empty() => {
                     Err(Error::new(
@@ -92,21 +88,13 @@ pub fn derive_for_enum(
             };
             let ty = ty?;
             constraints.push(ty.clone());
-            Ok(quote! {
-                m.insert(
-                    dhall_core::Label::from(#name),
-                    <#ty as dhall::Type>::get_type()
-                );
-            })
+            Ok((name, quote!(<#ty as dhall::Type>::get_type())))
         })
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect::<Result<_, Error>>()?;
 
-    Ok(quote! { dhall_core::rc(dhall_core::Expr::UnionType({
-        use std::collections::BTreeMap;
-        let mut m = BTreeMap::new();
-        #(#variants)*
-        m
-    })) })
+    let union =
+        crate::dhall_expr::quote_expr(dhall_core::ExprF::UnionType(variants));
+    Ok(quote! { dhall_core::rc(#union) })
 }
 
 pub fn derive_type_inner(
@@ -168,9 +156,7 @@ pub fn derive_type_inner(
     // Ensure that all the fields have a Type impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
-        where_clause
-            .predicates
-            .push(parse_quote!(#ty: dhall::Type));
+        where_clause.predicates.push(parse_quote!(#ty: dhall::Type));
     }
 
     let ident = &input.ident;
