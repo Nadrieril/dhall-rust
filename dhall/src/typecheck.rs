@@ -187,7 +187,7 @@ pub fn type_with<S>(
     e: SubExpr<S, X>,
 ) -> Result<SubExpr<S, X>, TypeError<S>>
 where
-    S: ::std::fmt::Debug,
+    S: ::std::fmt::Debug + Clone,
 {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
@@ -453,7 +453,7 @@ pub fn normalized_type_with<S>(
     e: SubExpr<S, X>,
 ) -> Result<SubExpr<S, X>, TypeError<S>>
 where
-    S: ::std::fmt::Debug,
+    S: ::std::fmt::Debug + Clone,
 {
     Ok(normalize(type_with(ctx, e)?))
 }
@@ -461,7 +461,7 @@ where
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of<S: ::std::fmt::Debug>(
+pub fn type_of<S: ::std::fmt::Debug + Clone>(
     e: SubExpr<S, X>,
 ) -> Result<SubExpr<S, X>, TypeError<S>> {
     let ctx = Context::new();

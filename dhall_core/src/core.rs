@@ -287,6 +287,15 @@ impl<S, A> Expr<S, A> {
         let recurse = |e: &Self| -> Self { e.map_label(map_label) };
         self.map_shallow(recurse, |x| x.clone(), |x| x.clone(), map_label)
     }
+
+    #[inline(always)]
+    pub fn roll(&self) -> SubExpr<S, A>
+    where
+        S: Clone,
+        A: Clone,
+    {
+        rc(ExprF::clone(self))
+    }
 }
 
 impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
@@ -433,8 +442,8 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
     }
 
     #[inline(always)]
-    pub fn map_ref<SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
-        &self,
+    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+        &'a self,
         map_subexpr: F1,
         map_under_binder: F2,
         map_note: F3,
@@ -444,11 +453,11 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
     where
         L: Ord,
         L2: Ord,
-        F1: FnMut(&SE) -> SE2,
-        F2: FnOnce(&L, &SE) -> SE2,
-        F3: FnOnce(&N) -> N2,
-        F4: FnOnce(&E) -> E2,
-        F5: FnMut(&L) -> L2,
+        F1: FnMut(&'a SE) -> SE2,
+        F2: FnOnce(&'a L, &'a SE) -> SE2,
+        F3: FnOnce(&'a N) -> N2,
+        F4: FnOnce(&'a E) -> E2,
+        F5: FnMut(&'a L) -> L2,
     {
         // Not optimal: reallocates all the Vecs and BTreeMaps for nothing.
         self.as_ref().map(
@@ -457,6 +466,27 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
             map_note,
             map_embed,
             map_label,
+        )
+    }
+
+    #[inline(always)]
+    pub fn map_ref_simple<'a, SE2, F1>(
+        &'a self,
+        map_subexpr: F1,
+    ) -> ExprF<SE2, L, N, E>
+    where
+        L: Ord,
+        L: Clone,
+        N: Clone,
+        E: Clone,
+        F1: Fn(&'a SE) -> SE2,
+    {
+        self.map_ref(
+            &map_subexpr,
+            |_, e| map_subexpr(e),
+            N::clone,
+            E::clone,
+            L::clone,
         )
     }
 
@@ -510,10 +540,14 @@ impl<N, E> SubExpr<N, E> {
         self.0.as_ref()
     }
 
-    pub fn map_ref<F1, F2>(&self, map_expr: F1, map_under_binder: F2) -> Self
+    pub fn map_ref<'a, F1, F2>(
+        &'a self,
+        map_expr: F1,
+        map_under_binder: F2,
+    ) -> Self
     where
-        F1: FnMut(&Self) -> Self,
-        F2: FnOnce(&Label, &Self) -> Self,
+        F1: FnMut(&'a Self) -> Self,
+        F2: FnOnce(&'a Label, &'a Self) -> Self,
     {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
@@ -535,6 +569,15 @@ impl<N, E> SubExpr<N, E> {
         F1: Fn(&Self) -> Self,
     {
         self.map_ref(&map_expr, |_, e| map_expr(e))
+    }
+
+    #[inline(always)]
+    pub fn unroll(&self) -> Expr<N, E>
+    where
+        N: Clone,
+        E: Clone,
+    {
+        ExprF::clone(self.as_ref())
     }
 }
 
