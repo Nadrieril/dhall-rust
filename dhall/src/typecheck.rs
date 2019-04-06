@@ -279,14 +279,14 @@ where
                 SubExpr::clone(r)
             };
 
-            let tR = type_with(ctx, r)?;
+            let tR = normalized_type_with(ctx, r)?;
             let ttR = normalized_type_with(ctx, tR.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
             let kR = ensure_const(&ttR, InvalidInputType(tR.clone()))?;
 
             let ctx2 = ctx.insert(f.clone(), tR.clone());
-            let tB = type_with(&ctx2, b.clone())?;
+            let tB = normalized_type_with(&ctx2, b.clone())?;
             let ttB = normalized_type_with(ctx, tB.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
@@ -351,11 +351,9 @@ where
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
             let (_, first_x) = iter.next().unwrap();
-            let t = type_with(ctx, first_x.clone())?;
-
+            let t = normalized_type_with(ctx, first_x.clone())?;
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;
-            let t = normalize(t);
             for (i, x) in iter {
                 let t2 = normalized_type_with(ctx, x.clone())?;
                 if !prop_equal(t.as_ref(), t2.as_ref()) {
@@ -371,10 +369,9 @@ where
             return Ok(dhall_expr!(Optional t));
         }
         NEOptionalLit(x) => {
-            let t: SubExpr<_, _> = type_with(ctx, x.clone())?;
+            let t = normalized_type_with(ctx, x.clone())?;
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
-            let t = normalize(t);
             return Ok(dhall_expr!(Optional t));
         }
         RecordType(kts) => {
