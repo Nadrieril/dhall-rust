@@ -5,19 +5,29 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::BTreeMap;
 
-pub fn dhall_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
     let expr: SubExpr<X, Import> = parse_expr(&input_str).unwrap();
     let no_import =
-        |_: &Import| -> X { panic!("Don't use import in dhall!()") };
-    let expr = rc(expr.as_ref().map_embed(&no_import));
-    let output = quote_subexpr(&expr, &Context::new());
+        |_: &Import| -> X { panic!("Don't use import in dhall::expr!()") };
+    let expr = expr.as_ref().map_embed(&no_import);
+    let output = quote_expr(&expr, &Context::new());
+    output.into()
+}
+
+pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input_str = input.to_string();
+    let expr: SubExpr<X, Import> = parse_expr(&input_str).unwrap();
+    let no_import =
+        |_: &Import| -> X { panic!("Don't use import in dhall::subexpr!()") };
+    let expr = expr.as_ref().map_embed(&no_import);
+    let output = quote_subexpr(&rc(expr), &Context::new());
     output.into()
 }
 
 // Returns an expression of type ExprF<T, _, _>, where T is the
 // type of the subexpressions after interpolation.
-pub fn quote_expr<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
+pub fn quote_exprf<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
@@ -134,7 +144,42 @@ fn quote_subexpr(
                 }
             }
         }
-        e => bx(quote_expr(e)),
+        e => bx(quote_exprf(e)),
+    }
+}
+
+// Returns an expression of type Expr<_, _>. Expects interpolated variables
+// to be of type SubExpr<_, _>.
+fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
+    use dhall_core::ExprF::*;
+    match expr.map_ref(
+        |e| quote_subexpr(e, ctx),
+        |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
+        |_| unreachable!(),
+        |_| unreachable!(),
+        |l| l.clone(),
+    ) {
+        Var(V(ref s, n)) => {
+            match ctx.lookup(s, n) {
+                // Non-free variable; interpolates as itself
+                Some(()) => {
+                    let s: String = s.into();
+                    let var = quote! { dhall_core::V(#s.into(), #n) };
+                    quote! { dhall_core::ExprF::Var(#var) }
+                }
+                // Free variable; interpolates as a rust variable
+                None => {
+                    let s: String = s.into();
+                    // TODO: insert appropriate shifts ?
+                    let v: TokenStream = s.parse().unwrap();
+                    quote! { {
+                        let x: dhall_core::SubExpr<_, _> = #v.clone();
+                        x.unroll()
+                    } }
+                }
+            }
+        }
+        e => quote_exprf(e),
     }
 }
 
