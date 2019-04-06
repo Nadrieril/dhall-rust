@@ -36,16 +36,19 @@ fn axiom<S>(c: Const) -> Result<Const, TypeError<S>> {
     use dhall_core::ExprF::*;
     match c {
         Type => Ok(Kind),
-        Kind => Err(TypeError::new(&Context::new(), rc(Const(Kind)), Untyped)),
+        Kind => Ok(Sort),
+        Sort => Err(TypeError::new(&Context::new(), rc(Const(Sort)), Untyped)),
     }
 }
 
 fn rule(a: Const, b: Const) -> Result<Const, ()> {
     use dhall_core::Const::*;
     match (a, b) {
-        (Type, Kind) => Err(()),
+        (_, Type) => Ok(Type),
         (Kind, Kind) => Ok(Kind),
-        (Type, Type) | (Kind, Type) => Ok(Type),
+        (Sort, Sort) => Ok(Sort),
+        (Sort, Kind) => Ok(Sort),
+        _ => Err(()),
     }
 }
 

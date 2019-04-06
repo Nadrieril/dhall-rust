@@ -7,11 +7,11 @@ macro_rules! tc_success {
         make_spec_test!(TypecheckSuccess, $name, $path);
     };
 }
-macro_rules! tc_failure {
-    ($name:ident, $path:expr) => {
-        make_spec_test!(TypecheckFailure, $name, $path);
-    };
-}
+// macro_rules! tc_failure {
+//     ($name:ident, $path:expr) => {
+//         make_spec_test!(TypecheckFailure, $name, $path);
+//     };
+// }
 
 macro_rules! ti_success {
     ($name:ident, $path:expr) => {
@@ -176,7 +176,7 @@ tc_success!(spec_typecheck_success_prelude_Text_concat_1, "prelude/Text/concat/1
 
 // tc_failure!(spec_typecheck_failure_combineMixedRecords, "combineMixedRecords");
 // tc_failure!(spec_typecheck_failure_duplicateFields, "duplicateFields");
-tc_failure!(spec_typecheck_failure_hurkensParadox, "hurkensParadox");
+// tc_failure!(spec_typecheck_failure_hurkensParadox, "hurkensParadox");
 
 // ti_success!(spec_typeinference_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
 // ti_success!(spec_typeinference_success_simple_kindParameter, "simple/kindParameter");

@@ -68,6 +68,7 @@ impl From<NaiveDouble> for f64 {
 pub enum Const {
     Type,
     Kind,
+    Sort,
 }
 
 /// Bound variable
