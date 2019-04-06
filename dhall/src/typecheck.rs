@@ -215,19 +215,19 @@ where
             let ctx2 = ctx
                 .insert(x.clone(), tA.clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
-            let tB = normalized_type_with(&ctx2, b.clone())?;
+            let tB = type_with(&ctx2, b.clone())?;
             let p = Pi(x.clone(), tA.clone(), tB);
-            let _ = normalized_type_with(ctx, rc(p.clone()))?;
+            let _ = type_with(ctx, rc(p.clone()))?;
             Ok(p)
         }
         Pi(x, tA, tB) => {
-            let tA2 = normalized_type_with(ctx, tA.clone())?;
+            let tA2 = type_with(ctx, tA.clone())?;
             let kA = ensure_const(&tA2, InvalidInputType(tA.clone()))?;
 
             let ctx2 = ctx
                 .insert(x.clone(), tA.clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
-            let tB = normalized_type_with(&ctx2, tB.clone())?;
+            let tB = type_with(&ctx2, tB.clone())?;
             let kB = match tB.as_ref() {
                 Const(k) => *k,
                 _ => {
@@ -247,14 +247,10 @@ where
         App(f, args) => {
             // Recurse on args
             let (a, tf) = match args.split_last() {
-                None => return normalized_type_with(ctx, f.clone()),
-                Some((a, args)) => (
-                    a,
-                    normalized_type_with(
-                        ctx,
-                        rc(App(f.clone(), args.to_vec())),
-                    )?,
-                ),
+                None => return type_with(ctx, f.clone()),
+                Some((a, args)) => {
+                    (a, type_with(ctx, rc(App(f.clone(), args.to_vec())))?)
+                }
             };
             let (x, tA, tB) = match tf.as_ref() {
                 Pi(x, tA, tB) => (x, tA, tB),
@@ -262,7 +258,7 @@ where
                     return Err(mkerr(NotAFunction(f.clone(), tf)));
                 }
             };
-            let tA2 = normalized_type_with(ctx, a.clone())?;
+            let tA2 = type_with(ctx, a.clone())?;
             if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
                 Ok(subst_shift(vx0, &a, &tB).unroll())
@@ -277,15 +273,15 @@ where
                 SubExpr::clone(r)
             };
 
-            let tR = normalized_type_with(ctx, r)?;
-            let ttR = normalized_type_with(ctx, tR.clone())?;
+            let tR = type_with(ctx, r)?;
+            let ttR = type_with(ctx, tR.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
             let kR = ensure_const(&ttR, InvalidInputType(tR.clone()))?;
 
             let ctx2 = ctx.insert(f.clone(), tR.clone());
-            let tB = normalized_type_with(&ctx2, b.clone())?;
-            let ttB = normalized_type_with(ctx, tB.clone())?;
+            let tB = type_with(&ctx2, b.clone())?;
+            let ttB = type_with(ctx, tB.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
             let kB = ensure_const(&ttB, InvalidOutputType(tB.clone()))?;
@@ -298,9 +294,9 @@ where
         }
         Annot(x, t) => {
             // This is mainly just to check that `t` is not `Kind`
-            let _ = normalized_type_with(ctx, t.clone())?;
+            let _ = type_with(ctx, t.clone())?;
 
-            let t2 = normalized_type_with(ctx, x.clone())?;
+            let t2 = type_with(ctx, x.clone())?;
             let t = normalize(t.clone());
             if prop_equal(t.as_ref(), t2.as_ref()) {
                 Ok(t.unroll())
@@ -309,22 +305,22 @@ where
             }
         }
         BoolIf(x, y, z) => {
-            let tx = normalized_type_with(ctx, x.clone())?;
+            let tx = type_with(ctx, x.clone())?;
             match tx.as_ref() {
                 Builtin(Bool) => {}
                 _ => {
                     return Err(mkerr(InvalidPredicate(x.clone(), tx)));
                 }
             }
-            let ty = normalized_type_with(ctx, y.clone())?;
-            let tty = normalized_type_with(ctx, ty.clone())?;
+            let ty = type_with(ctx, y.clone())?;
+            let tty = type_with(ctx, ty.clone())?;
             ensure_is_type(
                 tty.clone(),
                 IfBranchMustBeTerm(true, y.clone(), ty.clone(), tty.clone()),
             )?;
 
-            let tz = normalized_type_with(ctx, z.clone())?;
-            let ttz = normalized_type_with(ctx, tz.clone())?;
+            let tz = type_with(ctx, z.clone())?;
+            let ttz = type_with(ctx, tz.clone())?;
             ensure_is_type(
                 ttz.clone(),
                 IfBranchMustBeTerm(false, z.clone(), tz.clone(), ttz.clone()),
@@ -341,7 +337,7 @@ where
             Ok(ty.unroll())
         }
         EmptyListLit(t) => {
-            let s = normalized_type_with(ctx, t.clone())?;
+            let s = type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;
             let t = normalize(SubExpr::clone(t));
             Ok(dhall::expr!(List t))
@@ -349,11 +345,11 @@ where
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
             let (_, first_x) = iter.next().unwrap();
-            let t = normalized_type_with(ctx, first_x.clone())?;
-            let s = normalized_type_with(ctx, t.clone())?;
+            let t = type_with(ctx, first_x.clone())?;
+            let s = type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;
             for (i, x) in iter {
-                let t2 = normalized_type_with(ctx, x.clone())?;
+                let t2 = type_with(ctx, x.clone())?;
                 if !prop_equal(t.as_ref(), t2.as_ref()) {
                     return Err(mkerr(InvalidListElement(i, t, x.clone(), t2)));
                 }
@@ -361,20 +357,20 @@ where
             Ok(dhall::expr!(List t))
         }
         EmptyOptionalLit(t) => {
-            let s = normalized_type_with(ctx, t.clone())?;
+            let s = type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
             let t = normalize(t.clone());
             Ok(dhall::expr!(Optional t))
         }
         NEOptionalLit(x) => {
-            let t = normalized_type_with(ctx, x.clone())?;
-            let s = normalized_type_with(ctx, t.clone())?;
+            let t = type_with(ctx, x.clone())?;
+            let s = type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
             Ok(dhall::expr!(Optional t))
         }
         RecordType(kts) => {
             for (k, t) in kts {
-                let s = normalized_type_with(ctx, t.clone())?;
+                let s = type_with(ctx, t.clone())?;
                 ensure_is_type(s, InvalidFieldType(k.clone(), t.clone()))?;
             }
             Ok(Const(Type))
@@ -383,8 +379,8 @@ where
             let kts = kvs
                 .iter()
                 .map(|(k, v)| {
-                    let t = normalized_type_with(ctx, v.clone())?;
-                    let s = normalized_type_with(ctx, t.clone())?;
+                    let t = type_with(ctx, v.clone())?;
+                    let s = type_with(ctx, t.clone())?;
                     ensure_is_type(s, InvalidField(k.clone(), v.clone()))?;
                     Ok((k.clone(), t))
                 })
@@ -392,7 +388,7 @@ where
             Ok(RecordType(kts))
         }
         Field(r, x) => {
-            let t = normalized_type_with(ctx, r.clone())?;
+            let t = type_with(ctx, r.clone())?;
             match t.as_ref() {
                 RecordType(kts) => match kts.get(x) {
                     Some(e) => Ok(e.unroll()),
@@ -418,13 +414,13 @@ where
                 TextAppend => Text,
                 _ => panic!("Unimplemented typecheck case: {:?}", e),
             };
-            let tl = normalized_type_with(ctx, l.clone())?;
+            let tl = type_with(ctx, l.clone())?;
             match tl.as_ref() {
                 Builtin(lt) if *lt == t => {}
                 _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone(), tl))),
             }
 
-            let tr = normalized_type_with(ctx, r.clone())?;
+            let tr = type_with(ctx, r.clone())?;
             match tr.as_ref() {
                 Builtin(rt) if *rt == t => {}
                 _ => return Err(mkerr(BinOpTypeMismatch(*o, r.clone(), tr))),
@@ -435,17 +431,7 @@ where
         Embed(p) => match *p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }?;
-    Ok(rc(ret))
-}
-
-pub fn normalized_type_with<S>(
-    ctx: &Context<Label, SubExpr<S, X>>,
-    e: SubExpr<S, X>,
-) -> Result<SubExpr<S, X>, TypeError<S>>
-where
-    S: ::std::fmt::Debug + Clone,
-{
-    Ok(normalize(type_with(ctx, e)?))
+    Ok(normalize(rc(ret)))
 }
 
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
@@ -455,7 +441,7 @@ pub fn type_of<S: ::std::fmt::Debug + Clone>(
     e: SubExpr<S, X>,
 ) -> Result<SubExpr<S, X>, TypeError<S>> {
     let ctx = Context::new();
-    normalized_type_with(&ctx, e) //.map(|e| e.into_owned())
+    type_with(&ctx, e) //.map(|e| e.into_owned())
 }
 
 /// The specific type error
