@@ -54,6 +54,12 @@ pub fn read_dhall_file_no_resolve_imports<'i>(
     load_dhall_file_no_resolve_imports(&PathBuf::from(file_path))
 }
 
+pub fn load_from_file_str<'i>(
+    file_path: &str,
+) -> Result<dhall::Parsed, ImportError> {
+    load_from_file(&PathBuf::from(file_path))
+}
+
 pub fn run_test(base_path: &str, feature: Feature) {
     use self::Feature::*;
     let base_path_prefix = match feature {
@@ -90,8 +96,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
         }
         ParserFailure => {
             let file_path = base_path + ".dhall";
-            let err =
-                read_dhall_file_no_resolve_imports(&file_path).unwrap_err();
+            let err = load_from_file_str(&file_path).unwrap_err();
             match err {
                 ImportError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),

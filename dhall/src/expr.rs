@@ -1,17 +1,27 @@
+use crate::imports::ImportError;
+use crate::imports::ImportRoot;
 use crate::typecheck::TypeError;
 use dhall_core::*;
 
-pub struct Parsed(SubExpr<X, Import>);
-pub struct Resolved(SubExpr<X, X>);
-pub struct Typed(SubExpr<X, X>, Type);
-pub struct Type(Box<Normalized>);
-pub struct Normalized(SubExpr<X, X>);
+#[derive(Debug, Clone)]
+pub struct Parsed(pub(crate) SubExpr<X, Import>, pub(crate) ImportRoot);
+#[derive(Debug, Clone)]
+pub struct Resolved(pub(crate) SubExpr<X, X>);
+#[derive(Debug, Clone)]
+pub struct Typed(pub(crate) SubExpr<X, X>, Type);
+#[derive(Debug, Clone)]
+pub struct Type(pub(crate) Box<Normalized>);
+#[derive(Debug, Clone)]
+pub struct Normalized(pub(crate) SubExpr<X, X>);
 
-// impl Parsed {
-//     pub fn resolve(self) -> Result<Resolved, ImportError> {
-//         Ok(Resolved(crate::imports::resolve(self.0)?))
-//     }
-// }
+impl Parsed {
+    pub fn resolve(self) -> Result<Resolved, ImportError> {
+        crate::imports::resolve_expr(self, true)
+    }
+    pub fn resolve_no_imports(self) -> Result<Resolved, ImportError> {
+        crate::imports::resolve_expr(self, false)
+    }
+}
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
         let typ = Type(Box::new(Normalized(crate::typecheck::type_of(
