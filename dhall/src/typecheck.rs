@@ -205,11 +205,6 @@ where
         };
 
     let ret = match e.as_ref() {
-        Const(c) => axiom(*c).map(Const),
-        Var(V(x, n)) => match ctx.lookup(x, *n) {
-            Some(e) => Ok(e.unroll()),
-            None => Err(mkerr(UnboundVariable)),
-        },
         Lam(x, t, b) => {
             let t2 = normalize(SubExpr::clone(t));
             let ctx2 = ctx
@@ -244,35 +239,6 @@ where
                 Ok(_) => Ok(Const(kB)),
             }
         }
-        App(f, args) => {
-            let mut iter = args.iter().cloned();
-            let mut tf: SubExpr<_, _> = type_with(ctx, f.clone())?;
-            let mut seen_args: Vec<SubExpr<_, _>> = vec![];
-            while let Some(a) = iter.next() {
-                seen_args.push(a.clone());
-                let (x, tA, tB) = match tf.as_ref() {
-                    Pi(x, tA, tB) => (x, tA, tB),
-                    _ => {
-                        return Err(mkerr(NotAFunction(
-                            rc(App(f.clone(), seen_args)),
-                            tf,
-                        )));
-                    }
-                };
-                let tA2 = type_with(ctx, a.clone())?;
-                if !prop_equal(tA.as_ref(), tA2.as_ref()) {
-                    return Err(mkerr(TypeMismatch(
-                        rc(App(f.clone(), seen_args)),
-                        tA.clone(),
-                        a.clone(),
-                        tA2,
-                    )));
-                }
-                let vx0 = &V(x.clone(), 0);
-                tf = normalize(subst_shift(vx0, &a, &tB));
-            }
-            Ok(tf.unroll())
-        }
         Let(f, mt, r, b) => {
             let r = if let Some(t) = mt {
                 rc(Annot(SubExpr::clone(r), SubExpr::clone(t)))
@@ -303,6 +269,40 @@ where
             .as_ref()
             .traverse_ref_simple(|e| Ok((e, type_with(ctx, e.clone())?)))?
         {
+            Lam(_, _, _) => unreachable!(),
+            Pi(_, _, _) => unreachable!(),
+            Let(_, _, _, _) => unreachable!(),
+            Const(c) => axiom(c).map(Const),
+            Var(V(x, n)) => match ctx.lookup(&x, n) {
+                Some(e) => Ok(e.unroll()),
+                None => Err(mkerr(UnboundVariable)),
+            },
+            App((f, mut tf), args) => {
+                let mut iter = args.into_iter();
+                let mut seen_args: Vec<SubExpr<_, _>> = vec![];
+                while let Some((a, ta)) = iter.next() {
+                    seen_args.push(a.clone());
+                    let (x, tx, tb) = match tf.as_ref() {
+                        Pi(x, tx, tb) => (x, tx, tb),
+                        _ => {
+                            return Err(mkerr(NotAFunction(
+                                rc(App(f.clone(), seen_args)),
+                                tf,
+                            )));
+                        }
+                    };
+                    if !prop_equal(tx.as_ref(), ta.as_ref()) {
+                        return Err(mkerr(TypeMismatch(
+                            rc(App(f.clone(), seen_args)),
+                            tx.clone(),
+                            a.clone(),
+                            ta,
+                        )));
+                    }
+                    tf = normalize(subst_shift(&V(x.clone(), 0), &a, &tb));
+                }
+                Ok(tf.unroll())
+            }
             Annot((x, tx), (t, _)) => {
                 let t = normalize(t.clone());
                 if prop_equal(t.as_ref(), tx.as_ref()) {
