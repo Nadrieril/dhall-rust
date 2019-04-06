@@ -17,40 +17,50 @@ impl Resolved {
     }
 }
 impl Typed {
+    #[inline(always)]
     fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
+    #[inline(always)]
     fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
+    #[inline(always)]
     pub fn get_type<'a>(&'a self) -> Type<'a> {
         self.1.reborrow()
     }
 }
 impl Normalized {
+    #[inline(always)]
     fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
+    #[inline(always)]
     fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
+    #[inline(always)]
     pub fn get_type<'a>(&'a self) -> Type<'a> {
         self.1.reborrow()
     }
+    #[inline(always)]
     fn into_type(self) -> Type<'static> {
         crate::expr::Type(Cow::Owned(TypeInternal::Expr(Box::new(self))))
     }
 }
 impl<'a> Type<'a> {
+    #[inline(always)]
     fn into_owned(self) -> Type<'static> {
         Type(Cow::Owned(self.0.into_owned()))
     }
+    #[inline(always)]
     fn reborrow<'b>(&'b self) -> Type<'b> {
         match &self.0 {
             Cow::Owned(x) => crate::expr::Type(Cow::Borrowed(x)),
             Cow::Borrowed(x) => crate::expr::Type(Cow::Borrowed(x)),
         }
     }
+    #[inline(always)]
     fn as_expr(&'a self) -> Result<&'a SubExpr<X, X>, TypeError<X>> {
         use TypeInternal::*;
         match self.0.as_ref() {
@@ -62,6 +72,7 @@ impl<'a> Type<'a> {
             )),
         }
     }
+    #[inline(always)]
     fn into_expr(self) -> Result<SubExpr<X, X>, TypeError<X>> {
         use TypeInternal::*;
         match self.0.into_owned() {
@@ -73,6 +84,7 @@ impl<'a> Type<'a> {
             )),
         }
     }
+    #[inline(always)]
     pub fn get_type<'b>(&'b self) -> Type<'b> {
         use TypeInternal::*;
         match self.0.as_ref() {

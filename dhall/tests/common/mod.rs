@@ -113,11 +113,21 @@ pub fn run_test(base_path: &str, feature: Feature) {
             typecheck::type_of(expr).unwrap_err();
         }
         TypecheckSuccess => {
-            let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhall";
-            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
-            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
-            typecheck::type_of(rc(ExprF::Annot(expr, expected))).unwrap();
+            // Many tests stack overflow in debug mode
+            std::thread::Builder::new()
+                .stack_size(4 * 1024 * 1024)
+                .spawn(|| {
+                    let expr_file_path = base_path.clone() + "A.dhall";
+                    let expected_file_path = base_path + "B.dhall";
+                    let expr = rc(read_dhall_file(&expr_file_path).unwrap());
+                    let expected =
+                        rc(read_dhall_file(&expected_file_path).unwrap());
+                    typecheck::type_of(rc(ExprF::Annot(expr, expected)))
+                        .unwrap();
+                })
+                .unwrap()
+                .join()
+                .unwrap();
         }
         TypeInferenceFailure => {
             let file_path = base_path + ".dhall";
