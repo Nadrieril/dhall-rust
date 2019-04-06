@@ -739,3 +739,13 @@ pub fn subst<S, A>(
         _ => in_expr.map_ref(|e| subst(var, value, e), under_binder),
     }
 }
+
+pub fn subst_shift<S, A>(
+    var: &V<Label>,
+    value: &SubExpr<S, A>,
+    in_expr: &SubExpr<S, A>,
+) -> SubExpr<S, A> {
+    let value = shift(1, var, value);
+    let expr = subst(var, &value, in_expr);
+    shift(-1, var, &expr)
+}

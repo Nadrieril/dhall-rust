@@ -217,13 +217,8 @@ where
     let what_next = match &expr {
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
-            let r2 = shift(1, vf0, &r.roll());
             // TODO: use a context
-            let b2 = subst(vf0, &r2, &b.roll());
-            // TODO: add tests sensitive to shift errors before
-            // trying anything
-            let b3 = shift(-1, vf0, &b2);
-            ContinueSub(b3)
+            ContinueSub(subst_shift(vf0, &r.roll(), &b.roll()))
         }
         Annot(x, _) => DoneRef(x),
         Note(_, e) => DoneRef(e),
@@ -243,10 +238,8 @@ where
             let a = iter.next().unwrap();
             // Beta reduce
             let vx0 = &V(x.clone(), 0);
-            let a2 = shift(1, vx0, &a.roll());
-            let b2 = subst(vx0, &a2, &b);
-            let b3 = shift(-1, vx0, &b2);
-            Continue(App(b3, iter.map(ExprF::roll).collect()))
+            let b2 = subst_shift(vx0, &a.roll(), &b);
+            Continue(App(b2, iter.map(ExprF::roll).collect()))
         }
         BoolIf(BoolLit(true), t, _) => DoneRef(t),
         BoolIf(BoolLit(false), _, f) => DoneRef(f),
