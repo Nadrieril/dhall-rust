@@ -61,10 +61,10 @@ impl<'a> Type<'a> {
         }
     }
     #[inline(always)]
-    fn as_expr(&'a self) -> Result<&'a SubExpr<X, X>, TypeError<X>> {
+    fn as_expr(&'a self) -> Result<&'a Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0.as_ref() {
-            Expr(e) => Ok(e.as_expr()),
+            Expr(e) => Ok(e),
             Universe(_) => Err(TypeError::new(
                 &Context::new(),
                 rc(ExprF::Const(Const::Sort)),
@@ -73,10 +73,10 @@ impl<'a> Type<'a> {
         }
     }
     #[inline(always)]
-    fn into_expr(self) -> Result<SubExpr<X, X>, TypeError<X>> {
+    fn into_expr(self) -> Result<Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0.into_owned() {
-            Expr(e) => Ok(e.into_expr()),
+            Expr(e) => Ok(*e),
             Universe(_) => Err(TypeError::new(
                 &Context::new(),
                 rc(ExprF::Const(Const::Sort)),
@@ -292,6 +292,7 @@ pub fn type_with(
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
     let ensure_const = |x: &crate::expr::Type, msg: TypeMessage<_>| match x
         .as_expr()?
+        .as_expr()
         .as_ref()
     {
         Const(k) => Ok(*k),
@@ -299,6 +300,7 @@ pub fn type_with(
     };
     let ensure_is_type = |x: &crate::expr::Type, msg: TypeMessage<_>| match x
         .as_expr()?
+        .as_expr()
         .as_ref()
     {
         Const(Type) => Ok(()),
@@ -317,43 +319,51 @@ pub fn type_with(
         Lam(x, t, b) => {
             let t2 = mktype(ctx, t.clone())?;
             let ctx2 = ctx
-                .insert(x.clone(), t2.as_expr()?.clone())
+                .insert(x.clone(), t2.as_expr()?.as_expr().clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
             let b = type_with(&ctx2, b.clone())?;
             let _ = type_with(
                 ctx,
-                rc(Pi(x.clone(), t.clone(), b.get_type().as_expr()?.clone())),
+                rc(Pi(
+                    x.clone(),
+                    t.clone(),
+                    b.get_type().as_expr()?.as_expr().clone(),
+                )),
             )?;
             Ok(RetExpr(Pi(
                 x.clone(),
-                t2.as_expr()?.clone(),
-                b.get_type().into_expr()?,
+                t2.as_expr()?.as_expr().clone(),
+                b.get_type().into_expr()?.into_expr(),
             )))
         }
         Pi(x, tA, tB) => {
             let tA = mktype(ctx, tA.clone())?;
-            let kA =
-                ensure_const(&tA.get_type(), InvalidInputType(tA.clone()))?;
+            let kA = ensure_const(
+                &tA.get_type(),
+                InvalidInputType(tA.clone().into_expr()?),
+            )?;
 
             let ctx2 = ctx
-                .insert(x.clone(), tA.as_expr()?.clone())
+                .insert(x.clone(), tA.as_expr()?.as_expr().clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
             let tB = type_with(&ctx2, tB.clone())?;
-            let kB = match tB.get_type().as_expr()?.as_ref() {
+            let kB = match tB.get_type().as_expr()?.as_expr().as_ref() {
                 Const(k) => *k,
                 _ => {
                     return Err(TypeError::new(
                         &ctx2,
                         e.clone(),
-                        InvalidOutputType(tB.get_type().into_owned()),
+                        InvalidOutputType(
+                            tB.get_type().into_owned().into_expr()?,
+                        ),
                     ));
                 }
             };
 
             match rule(kA, kB) {
                 Err(()) => Err(mkerr(NoDependentTypes(
-                    tA.clone(),
-                    tB.get_type().into_owned(),
+                    tA.clone().into_expr()?,
+                    tB.get_type().into_owned().into_expr()?,
                 ))),
                 Ok(k) => Ok(RetExpr(Const(k))),
             }
@@ -370,22 +380,23 @@ pub fn type_with(
             // message because this should never happen anyway
             let kR = ensure_const(
                 &r.get_type().get_type(),
-                InvalidInputType(r.get_type().into_owned()),
+                InvalidInputType(r.get_type().into_owned().into_expr()?),
             )?;
 
-            let ctx2 = ctx.insert(f.clone(), r.get_type().as_expr()?.clone());
+            let ctx2 = ctx
+                .insert(f.clone(), r.get_type().as_expr()?.as_expr().clone());
             let b = type_with(&ctx2, b.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
             let kB = ensure_const(
                 &b.get_type().get_type(),
-                InvalidOutputType(b.get_type().into_owned()),
+                InvalidOutputType(b.get_type().into_owned().into_expr()?),
             )?;
 
             if let Err(()) = rule(kR, kB) {
                 return Err(mkerr(NoDependentLet(
-                    r.get_type().into_owned(),
-                    b.get_type().into_owned(),
+                    r.get_type().into_owned().into_expr()?,
+                    b.get_type().into_owned().into_expr()?,
                 )));
             }
 
@@ -411,7 +422,7 @@ pub fn type_with(
                 let mut tf = f.get_type().into_owned();
                 while let Some(a) = iter.next() {
                     seen_args.push(a.as_expr().clone());
-                    let (x, tx, tb) = match tf.as_expr()?.as_ref() {
+                    let (x, tx, tb) = match tf.as_expr()?.as_expr().as_ref() {
                         Pi(x, tx, tb) => (x, tx, tb),
                         _ => {
                             return Err(mkerr(NotAFunction(Typed(
@@ -427,7 +438,7 @@ pub fn type_with(
                                 rc(App(f.as_expr().clone(), seen_args.clone())),
                                 tf.clone(),
                             ),
-                            tx.clone(),
+                            tx.clone().into_expr().unwrap(),
                             a.clone(),
                         )
                     })?;
@@ -441,7 +452,7 @@ pub fn type_with(
             Annot(x, t) => {
                 let t = t.normalize().into_type();
                 ensure_equal(&t, &x.get_type(), mkerr, || {
-                    AnnotMismatch(x.clone(), t.clone())
+                    AnnotMismatch(x.clone(), t.clone().into_expr().unwrap())
                 })?;
                 Ok(RetType(x.get_type().into_owned()))
             }
@@ -470,8 +481,11 @@ pub fn type_with(
             }
             EmptyListLit(t) => {
                 let t = t.normalize().into_type();
-                ensure_is_type(&t.get_type(), InvalidListType(t.clone()))?;
-                let t = t.into_expr()?;
+                ensure_is_type(
+                    &t.get_type(),
+                    InvalidListType(t.clone().into_expr()?),
+                )?;
+                let t = t.into_expr()?.into_expr();
                 Ok(RetExpr(dhall::expr!(List t)))
             }
             NEListLit(xs) => {
@@ -479,32 +493,35 @@ pub fn type_with(
                 let (_, x) = iter.next().unwrap();
                 ensure_is_type(
                     &x.get_type().get_type(),
-                    InvalidListType(x.get_type().into_owned()),
+                    InvalidListType(x.get_type().into_owned().into_expr()?),
                 )?;
                 for (i, y) in iter {
                     ensure_equal(&x.get_type(), &y.get_type(), mkerr, || {
                         InvalidListElement(
                             i,
-                            x.get_type().into_owned(),
+                            x.get_type().into_owned().into_expr().unwrap(),
                             y.clone(),
                         )
                     })?;
                 }
-                let t = x.get_type().into_expr()?;
+                let t = x.get_type().into_expr()?.into_expr();
                 Ok(RetExpr(dhall::expr!(List t)))
             }
             EmptyOptionalLit(t) => {
                 let t = t.normalize().into_type();
-                ensure_is_type(&t.get_type(), InvalidOptionalType(t.clone()))?;
-                let t = t.into_expr()?;
+                ensure_is_type(
+                    &t.get_type(),
+                    InvalidOptionalType(t.clone().into_expr()?),
+                )?;
+                let t = t.into_expr()?.into_expr();
                 Ok(RetExpr(dhall::expr!(Optional t)))
             }
             NEOptionalLit(x) => {
                 ensure_is_type(
                     &x.get_type().get_type(),
-                    InvalidOptionalType(x.get_type().into_owned()),
+                    InvalidOptionalType(x.get_type().into_owned().into_expr()?),
                 )?;
-                let t = x.get_type().into_expr()?;
+                let t = x.get_type().into_expr()?.into_expr();
                 Ok(RetExpr(dhall::expr!(Optional t)))
             }
             RecordType(kts) => {
@@ -524,12 +541,12 @@ pub fn type_with(
                             &v.get_type().get_type(),
                             InvalidField(k.clone(), v.clone()),
                         )?;
-                        Ok((k.clone(), v.get_type().into_expr()?))
+                        Ok((k.clone(), v.get_type().into_expr()?.into_expr()))
                     })
                     .collect::<Result<_, _>>()?;
                 Ok(RetExpr(RecordType(kts)))
             }
-            Field(r, x) => match r.get_type().as_expr()?.as_ref() {
+            Field(r, x) => match r.get_type().as_expr()?.as_expr().as_ref() {
                 RecordType(kts) => match kts.get(&x) {
                     Some(e) => Ok(RetExpr(e.unroll())),
                     None => Err(mkerr(MissingField(x.clone(), r.clone()))),
@@ -584,7 +601,7 @@ pub fn type_with(
 pub fn type_of(e: SubExpr<X, X>) -> Result<SubExpr<X, X>, TypeError<X>> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
-    e.get_type().into_expr()
+    Ok(e.get_type().into_expr()?.into_expr())
 }
 
 pub fn type_of_(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
@@ -596,15 +613,15 @@ pub fn type_of_(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
 #[derive(Debug)]
 pub enum TypeMessage<S> {
     UnboundVariable,
-    InvalidInputType(Type<'static>),
-    InvalidOutputType(Type<'static>),
+    InvalidInputType(Normalized),
+    InvalidOutputType(Normalized),
     NotAFunction(Typed),
-    TypeMismatch(Typed, Type<'static>, Typed),
-    AnnotMismatch(Typed, Type<'static>),
+    TypeMismatch(Typed, Normalized, Typed),
+    AnnotMismatch(Typed, Normalized),
     Untyped,
-    InvalidListElement(usize, Type<'static>, Typed),
-    InvalidListType(Type<'static>),
-    InvalidOptionalType(Type<'static>),
+    InvalidListElement(usize, Normalized, Typed),
+    InvalidListType(Normalized),
+    InvalidOptionalType(Normalized),
     InvalidPredicate(Typed),
     IfBranchMismatch(Typed, Typed),
     IfBranchMustBeTerm(bool, Typed),
@@ -615,8 +632,8 @@ pub enum TypeMessage<S> {
     NotARecord(Label, Typed),
     MissingField(Label, Typed),
     BinOpTypeMismatch(BinOp, Typed),
-    NoDependentLet(Type<'static>, Type<'static>),
-    NoDependentTypes(Type<'static>, Type<'static>),
+    NoDependentLet(Normalized, Normalized),
+    NoDependentTypes(Normalized, Normalized),
     MustCombineARecord(SubExpr<S, X>, SubExpr<S, X>),
 }
 
@@ -665,11 +682,14 @@ impl<S> fmt::Display for TypeMessage<S> {
                 let template = include_str!("errors/TypeMismatch.txt");
                 let s = template
                     .replace("$txt0", &format!("{}", e0.as_expr()))
-                    .replace("$txt1", &format!("{}", e1.as_expr().unwrap()))
+                    .replace("$txt1", &format!("{}", e1.as_expr()))
                     .replace("$txt2", &format!("{}", e2.as_expr()))
                     .replace(
                         "$txt3",
-                        &format!("{}", e2.get_type().as_expr().unwrap()),
+                        &format!(
+                            "{}",
+                            e2.get_type().as_expr().unwrap().as_expr()
+                        ),
                     );
                 f.write_str(&s)
             }
