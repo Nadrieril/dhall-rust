@@ -264,13 +264,12 @@ where
                     return Err(mkerr(NotAFunction(f.clone(), tf)));
                 }
             };
-            let tA = normalize(SubExpr::clone(tA));
             let tA2 = normalized_type_with(ctx, a.clone())?;
             if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
                 return Ok(subst_shift(vx0, &a, &tB));
             } else {
-                Err(mkerr(TypeMismatch(f.clone(), tA, a.clone(), tA2)))
+                Err(mkerr(TypeMismatch(f.clone(), tA.clone(), a.clone(), tA2)))
             }
         }
         Let(f, mt, r, b) => {
