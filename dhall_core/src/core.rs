@@ -536,6 +536,27 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         )
     }
 
+    #[inline(always)]
+    pub fn traverse_ref_simple<'a, SE2, Err, F1>(
+        &'a self,
+        map_subexpr: F1,
+    ) -> Result<ExprF<SE2, L, N, E>, Err>
+    where
+        L: Ord,
+        L: Clone,
+        N: Clone,
+        E: Clone,
+        F1: Fn(&'a SE) -> Result<SE2, Err>,
+    {
+        self.as_ref().traverse(
+            &map_subexpr,
+            |_, e| map_subexpr(e),
+            |x| Ok(N::clone(x)),
+            |x| Ok(E::clone(x)),
+            |x| Ok(L::clone(x)),
+        )
+    }
+
     // #[inline(always)]
     // pub fn zip<SE2, L2, N2, E2>(
     //     self,

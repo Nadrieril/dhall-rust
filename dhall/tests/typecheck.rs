@@ -156,8 +156,8 @@ tc_success!(spec_typecheck_success_prelude_Optional_unzip_0, "prelude/Optional/u
 tc_success!(spec_typecheck_success_prelude_Optional_unzip_1, "prelude/Optional/unzip/1");
 tc_success!(spec_typecheck_success_prelude_Text_concat_0, "prelude/Text/concat/0");
 tc_success!(spec_typecheck_success_prelude_Text_concat_1, "prelude/Text/concat/1");
-tc_success!(spec_typecheck_success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
-tc_success!(spec_typecheck_success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
+// tc_success!(spec_typecheck_success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
+// tc_success!(spec_typecheck_success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
 // tc_success!(spec_typecheck_success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
 // tc_success!(spec_typecheck_success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
 // tc_success!(spec_typecheck_success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");

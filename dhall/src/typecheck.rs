@@ -292,144 +292,150 @@ where
 
             Ok(tB.unroll())
         }
-        Annot(x, t) => {
-            // This is mainly just to check that `t` is not `Kind`
-            let _ = type_with(ctx, t.clone())?;
-
-            let tx = type_with(ctx, x.clone())?;
-            let t = normalize(t.clone());
-            if prop_equal(t.as_ref(), tx.as_ref()) {
-                Ok(t.unroll())
-            } else {
-                Err(mkerr(AnnotMismatch(x.clone(), t, tx)))
-            }
-        }
-        BoolIf(x, y, z) => {
-            let tx = type_with(ctx, x.clone())?;
-            match tx.as_ref() {
-                Builtin(Bool) => {}
-                _ => {
-                    return Err(mkerr(InvalidPredicate(x.clone(), tx)));
+        _ => match e
+            .as_ref()
+            .traverse_ref_simple(|e| Ok((e, type_with(ctx, e.clone())?)))?
+        {
+            Annot((x, tx), (t, _)) => {
+                let t = normalize(t.clone());
+                if prop_equal(t.as_ref(), tx.as_ref()) {
+                    Ok(t.unroll())
+                } else {
+                    Err(mkerr(AnnotMismatch(x.clone(), t, tx)))
                 }
             }
-            let ty = type_with(ctx, y.clone())?;
-            let tty = type_with(ctx, ty.clone())?;
-            ensure_is_type(
-                tty.clone(),
-                IfBranchMustBeTerm(true, y.clone(), ty.clone(), tty.clone()),
-            )?;
-
-            let tz = type_with(ctx, z.clone())?;
-            let ttz = type_with(ctx, tz.clone())?;
-            ensure_is_type(
-                ttz.clone(),
-                IfBranchMustBeTerm(false, z.clone(), tz.clone(), ttz.clone()),
-            )?;
-
-            if !prop_equal(ty.as_ref(), tz.as_ref()) {
-                return Err(mkerr(IfBranchMismatch(
-                    y.clone(),
-                    z.clone(),
-                    ty,
-                    tz,
-                )));
-            }
-            Ok(ty.unroll())
-        }
-        EmptyListLit(t) => {
-            let s = type_with(ctx, t.clone())?;
-            ensure_is_type(s, InvalidListType(t.clone()))?;
-            let t = normalize(SubExpr::clone(t));
-            Ok(dhall::expr!(List t))
-        }
-        NEListLit(xs) => {
-            let mut iter = xs.iter().enumerate();
-            let (_, first_x) = iter.next().unwrap();
-            let t = type_with(ctx, first_x.clone())?;
-            let s = type_with(ctx, t.clone())?;
-            ensure_is_type(s, InvalidListType(t.clone()))?;
-            for (i, x) in iter {
-                let t2 = type_with(ctx, x.clone())?;
-                if !prop_equal(t.as_ref(), t2.as_ref()) {
-                    return Err(mkerr(InvalidListElement(i, t, x.clone(), t2)));
+            BoolIf((x, tx), (y, ty), (z, tz)) => {
+                match tx.as_ref() {
+                    Builtin(Bool) => {}
+                    _ => {
+                        return Err(mkerr(InvalidPredicate(x.clone(), tx)));
+                    }
                 }
+                let tty = type_with(ctx, ty.clone())?;
+                ensure_is_type(
+                    tty.clone(),
+                    IfBranchMustBeTerm(
+                        true,
+                        y.clone(),
+                        ty.clone(),
+                        tty.clone(),
+                    ),
+                )?;
+
+                let ttz = type_with(ctx, tz.clone())?;
+                ensure_is_type(
+                    ttz.clone(),
+                    IfBranchMustBeTerm(
+                        false,
+                        z.clone(),
+                        tz.clone(),
+                        ttz.clone(),
+                    ),
+                )?;
+
+                if !prop_equal(ty.as_ref(), tz.as_ref()) {
+                    return Err(mkerr(IfBranchMismatch(
+                        y.clone(),
+                        z.clone(),
+                        ty,
+                        tz,
+                    )));
+                }
+                Ok(ty.unroll())
             }
-            Ok(dhall::expr!(List t))
-        }
-        EmptyOptionalLit(t) => {
-            let s = type_with(ctx, t.clone())?;
-            ensure_is_type(s, InvalidOptionalType(t.clone()))?;
-            let t = normalize(t.clone());
-            Ok(dhall::expr!(Optional t))
-        }
-        NEOptionalLit(x) => {
-            let t = type_with(ctx, x.clone())?;
-            let s = type_with(ctx, t.clone())?;
-            ensure_is_type(s, InvalidOptionalType(t.clone()))?;
-            Ok(dhall::expr!(Optional t))
-        }
-        RecordType(kts) => {
-            for (k, t) in kts {
+            EmptyListLit((t, tt)) => {
+                ensure_is_type(tt, InvalidListType(t.clone()))?;
+                let t = normalize(SubExpr::clone(t));
+                Ok(dhall::expr!(List t))
+            }
+            NEListLit(xs) => {
+                let mut iter = xs.into_iter().enumerate();
+                let (_, (_, t)) = iter.next().unwrap();
                 let s = type_with(ctx, t.clone())?;
-                ensure_is_type(s, InvalidFieldType(k.clone(), t.clone()))?;
+                ensure_is_type(s, InvalidListType(t.clone()))?;
+                for (i, (y, ty)) in iter {
+                    if !prop_equal(t.as_ref(), ty.as_ref()) {
+                        return Err(mkerr(InvalidListElement(
+                            i,
+                            t,
+                            y.clone(),
+                            ty,
+                        )));
+                    }
+                }
+                Ok(dhall::expr!(List t))
             }
-            Ok(Const(Type))
-        }
-        RecordLit(kvs) => {
-            let kts = kvs
-                .iter()
-                .map(|(k, v)| {
-                    let t = type_with(ctx, v.clone())?;
-                    let s = type_with(ctx, t.clone())?;
-                    ensure_is_type(s, InvalidField(k.clone(), v.clone()))?;
-                    Ok((k.clone(), t))
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(RecordType(kts))
-        }
-        Field(r, x) => {
-            let t = type_with(ctx, r.clone())?;
-            match t.as_ref() {
-                RecordType(kts) => match kts.get(x) {
+            EmptyOptionalLit((t, tt)) => {
+                ensure_is_type(tt, InvalidOptionalType(t.clone()))?;
+                let t = normalize(t.clone());
+                Ok(dhall::expr!(Optional t))
+            }
+            NEOptionalLit((_, t)) => {
+                let s = type_with(ctx, t.clone())?;
+                ensure_is_type(s, InvalidOptionalType(t.clone()))?;
+                Ok(dhall::expr!(Optional t))
+            }
+            RecordType(kts) => {
+                for (k, (t, tt)) in kts {
+                    ensure_is_type(tt, InvalidFieldType(k.clone(), t.clone()))?;
+                }
+                Ok(Const(Type))
+            }
+            RecordLit(kvs) => {
+                let kts = kvs
+                    .into_iter()
+                    .map(|(k, (v, t))| {
+                        let s = type_with(ctx, t.clone())?;
+                        ensure_is_type(s, InvalidField(k.clone(), v.clone()))?;
+                        Ok((k.clone(), t))
+                    })
+                    .collect::<Result<_, _>>()?;
+                Ok(RecordType(kts))
+            }
+            Field((r, tr), x) => match tr.as_ref() {
+                RecordType(kts) => match kts.get(&x) {
                     Some(e) => Ok(e.unroll()),
-                    None => Err(mkerr(MissingField(x.clone(), t.clone()))),
+                    None => Err(mkerr(MissingField(x.clone(), tr.clone()))),
                 },
-                _ => Err(mkerr(NotARecord(x.clone(), r.clone(), t.clone()))),
-            }
-        }
-        Builtin(b) => Ok(type_of_builtin(*b)),
-        BoolLit(_) => Ok(Builtin(Bool)),
-        NaturalLit(_) => Ok(Builtin(Natural)),
-        IntegerLit(_) => Ok(Builtin(Integer)),
-        DoubleLit(_) => Ok(Builtin(Double)),
-        TextLit(_) => Ok(Builtin(Text)),
-        BinOp(o, l, r) => {
-            let t = match o {
-                BoolAnd => Bool,
-                BoolOr => Bool,
-                BoolEQ => Bool,
-                BoolNE => Bool,
-                NaturalPlus => Natural,
-                NaturalTimes => Natural,
-                TextAppend => Text,
-                _ => panic!("Unimplemented typecheck case: {:?}", e),
-            };
-            let tl = type_with(ctx, l.clone())?;
-            match tl.as_ref() {
-                Builtin(lt) if *lt == t => {}
-                _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone(), tl))),
-            }
+                _ => Err(mkerr(NotARecord(x.clone(), r.clone(), tr.clone()))),
+            },
+            Builtin(b) => Ok(type_of_builtin(b)),
+            BoolLit(_) => Ok(Builtin(Bool)),
+            NaturalLit(_) => Ok(Builtin(Natural)),
+            IntegerLit(_) => Ok(Builtin(Integer)),
+            DoubleLit(_) => Ok(Builtin(Double)),
+            // TODO: check type of interpolations
+            TextLit(_) => Ok(Builtin(Text)),
+            BinOp(o, (l, tl), (r, tr)) => {
+                let t = match o {
+                    BoolAnd => Bool,
+                    BoolOr => Bool,
+                    BoolEQ => Bool,
+                    BoolNE => Bool,
+                    NaturalPlus => Natural,
+                    NaturalTimes => Natural,
+                    TextAppend => Text,
+                    _ => panic!("Unimplemented typecheck case: {:?}", e),
+                };
+                match tl.as_ref() {
+                    Builtin(lt) if *lt == t => {}
+                    _ => {
+                        return Err(mkerr(BinOpTypeMismatch(o, l.clone(), tl)))
+                    }
+                }
 
-            let tr = type_with(ctx, r.clone())?;
-            match tr.as_ref() {
-                Builtin(rt) if *rt == t => {}
-                _ => return Err(mkerr(BinOpTypeMismatch(*o, r.clone(), tr))),
-            }
+                match tr.as_ref() {
+                    Builtin(rt) if *rt == t => {}
+                    _ => {
+                        return Err(mkerr(BinOpTypeMismatch(o, r.clone(), tr)))
+                    }
+                }
 
-            Ok(Builtin(t))
-        }
-        Embed(p) => match *p {},
-        _ => panic!("Unimplemented typecheck case: {:?}", e),
+                Ok(Builtin(t))
+            }
+            Embed(p) => match p {},
+            _ => panic!("Unimplemented typecheck case: {:?}", e),
+        },
     }?;
     Ok(rc(ret))
 }
