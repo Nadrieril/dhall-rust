@@ -245,26 +245,33 @@ where
             }
         }
         App(f, args) => {
-            // Recurse on args
-            let (a, tf) = match args.split_last() {
-                None => return type_with(ctx, f.clone()),
-                Some((a, args)) => {
-                    (a, type_with(ctx, rc(App(f.clone(), args.to_vec())))?)
+            let mut iter = args.iter().cloned();
+            let mut tf: SubExpr<_, _> = type_with(ctx, f.clone())?;
+            let mut seen_args: Vec<SubExpr<_, _>> = vec![];
+            while let Some(a) = iter.next() {
+                seen_args.push(a.clone());
+                let (x, tA, tB) = match tf.as_ref() {
+                    Pi(x, tA, tB) => (x, tA, tB),
+                    _ => {
+                        return Err(mkerr(NotAFunction(
+                            rc(App(f.clone(), seen_args)),
+                            tf,
+                        )));
+                    }
+                };
+                let tA2 = type_with(ctx, a.clone())?;
+                if !prop_equal(tA.as_ref(), tA2.as_ref()) {
+                    return Err(mkerr(TypeMismatch(
+                        rc(App(f.clone(), seen_args)),
+                        tA.clone(),
+                        a.clone(),
+                        tA2,
+                    )));
                 }
-            };
-            let (x, tA, tB) = match tf.as_ref() {
-                Pi(x, tA, tB) => (x, tA, tB),
-                _ => {
-                    return Err(mkerr(NotAFunction(f.clone(), tf)));
-                }
-            };
-            let tA2 = type_with(ctx, a.clone())?;
-            if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
-                Ok(normalize(subst_shift(vx0, &a, &tB)).unroll())
-            } else {
-                Err(mkerr(TypeMismatch(f.clone(), tA.clone(), a.clone(), tA2)))
+                tf = normalize(subst_shift(vx0, &a, &tB));
             }
+            Ok(tf.unroll())
         }
         Let(f, mt, r, b) => {
             let r = if let Some(t) = mt {
