@@ -48,7 +48,7 @@ pub fn derive_for_struct(
         })
         .collect();
     let record =
-        crate::dhall_expr::quote_exprf(dhall_core::ExprF::RecordType(fields));
+        crate::quote::quote_exprf(dhall_core::ExprF::RecordType(fields));
     Ok(quote! { dhall_core::rc(#record) })
 }
 
@@ -93,7 +93,7 @@ pub fn derive_for_enum(
         .collect::<Result<_, Error>>()?;
 
     let union =
-        crate::dhall_expr::quote_exprf(dhall_core::ExprF::UnionType(variants));
+        crate::quote::quote_exprf(dhall_core::ExprF::UnionType(variants));
     Ok(quote! { dhall_core::rc(#union) })
 }
 
@@ -156,7 +156,9 @@ pub fn derive_type_inner(
     // Ensure that all the fields have a Type impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
-        where_clause.predicates.push(parse_quote!(#ty: dhall::StaticType));
+        where_clause
+            .predicates
+            .push(parse_quote!(#ty: dhall::StaticType));
     }
 
     let ident = &input.ident;

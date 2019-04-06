@@ -10,14 +10,14 @@
 mod normalize;
 pub use crate::normalize::*;
 pub mod binary;
-mod dhall_type;
 pub mod imports;
+mod traits;
 pub mod typecheck;
-pub use crate::dhall_type::*;
+pub use crate::imports::*;
+pub use crate::traits::*;
 pub use dhall_generator::expr;
 pub use dhall_generator::subexpr;
 pub use dhall_generator::StaticType;
-pub use crate::imports::*;
 
 // pub struct DhallExpr(dhall_core::DhallExpr);
 
