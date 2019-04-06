@@ -18,11 +18,5 @@ pub use crate::traits::*;
 pub use dhall_generator::expr;
 pub use dhall_generator::subexpr;
 pub use dhall_generator::StaticType;
-
-// pub struct DhallExpr(dhall_core::DhallExpr);
-
-// impl DhallExpr {
-//     pub fn normalize(self) -> Self {
-//         DhallExpr(crate::normalize::normalize(self.0))
-//     }
-// }
+pub mod expr;
+pub use crate::expr::*;
