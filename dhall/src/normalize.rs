@@ -6,10 +6,7 @@ use std::fmt;
 
 impl Typed {
     pub fn normalize(self) -> Normalized {
-        Normalized(normalize(self.0))
-    }
-    pub fn get_type(&self) -> &Type {
-        &self.1
+        Normalized(normalize(self.0), self.1)
     }
 }
 

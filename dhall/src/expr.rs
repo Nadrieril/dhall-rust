@@ -15,7 +15,7 @@ pub struct Typed(pub(crate) SubExpr<X, X>, pub(crate) Type);
 pub type Type = SubExpr<X, X>;
 
 #[derive(Debug, Clone)]
-pub struct Normalized(pub(crate) SubExpr<X, X>);
+pub struct Normalized(pub(crate) SubExpr<X, X>, pub(crate) Type);
 
 impl PartialEq for Parsed {
     fn eq(&self, other: &Self) -> bool {
