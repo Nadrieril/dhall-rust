@@ -12,7 +12,7 @@ This language is defined by a [standard](https://github.com/dhall-lang/dhall-lan
 - Parsing: 100%
 - Imports: 0%
 - Normalization: 74%
-- Typechecking: 78%
+- Typechecking: 66%
 
 You can see what's missing from the commented out tests in `dhall/tests`.
 

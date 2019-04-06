@@ -48,7 +48,7 @@ pub fn derive_for_struct(
         })
         .collect();
     let record =
-        crate::dhall_expr::quote_expr(dhall_core::ExprF::RecordType(fields));
+        crate::dhall_expr::quote_exprf(dhall_core::ExprF::RecordType(fields));
     Ok(quote! { dhall_core::rc(#record) })
 }
 
@@ -93,7 +93,7 @@ pub fn derive_for_enum(
         .collect::<Result<_, Error>>()?;
 
     let union =
-        crate::dhall_expr::quote_expr(dhall_core::ExprF::UnionType(variants));
+        crate::dhall_expr::quote_exprf(dhall_core::ExprF::UnionType(variants));
     Ok(quote! { dhall_core::rc(#union) })
 }
 
