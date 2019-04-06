@@ -44,13 +44,13 @@ pub enum Feature {
     TypeInferenceFailure,
 }
 
-pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, DhallError> {
+pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
     load_dhall_file(&PathBuf::from(file_path), true)
 }
 
 pub fn read_dhall_file_no_resolve_imports<'i>(
     file_path: &str,
-) -> Result<ParsedExpr, DhallError> {
+) -> Result<dhall_core::ParsedExpr, ImportError> {
     load_dhall_file_no_resolve_imports(&PathBuf::from(file_path))
 }
 
@@ -93,7 +93,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let err =
                 read_dhall_file_no_resolve_imports(&file_path).unwrap_err();
             match err {
-                DhallError::ParseError(_) => {}
+                ImportError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
