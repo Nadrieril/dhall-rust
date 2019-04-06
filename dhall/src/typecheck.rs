@@ -6,7 +6,7 @@ use crate::normalize::normalize;
 use dhall_core;
 use dhall_core::context::Context;
 use dhall_core::*;
-use dhall_generator::dhall_expr;
+use dhall_generator as dhall;
 
 use self::TypeMessage::*;
 
@@ -112,31 +112,31 @@ where
     go::<S, T>(&mut ctx, eL0, eR0)
 }
 
-fn type_of_builtin<S>(b: Builtin) -> SubExpr<S, X> {
+fn type_of_builtin<S>(b: Builtin) -> Expr<S, X> {
     use dhall_core::Builtin::*;
     match b {
-        Bool | Natural | Integer | Double | Text => dhall_expr!(Type),
-        List | Optional => dhall_expr!(
+        Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
+        List | Optional => dhall::expr!(
             Type -> Type
         ),
-        NaturalFold => dhall_expr!(
+        NaturalFold => dhall::expr!(
             Natural ->
             forall (natural: Type) ->
             forall (succ: natural -> natural) ->
             forall (zero: natural) ->
             natural
         ),
-        NaturalBuild => dhall_expr!(
+        NaturalBuild => dhall::expr!(
             (forall (natural: Type) ->
                 forall (succ: natural -> natural) ->
                 forall (zero: natural) ->
                 natural) ->
             Natural
         ),
-        NaturalIsZero | NaturalEven | NaturalOdd => dhall_expr!(
+        NaturalIsZero | NaturalEven | NaturalOdd => dhall::expr!(
             Natural -> Bool
         ),
-        ListBuild => dhall_expr!(
+        ListBuild => dhall::expr!(
             forall (a: Type) ->
             (forall (list: Type) ->
                 forall (cons: a -> list -> list) ->
@@ -144,7 +144,7 @@ fn type_of_builtin<S>(b: Builtin) -> SubExpr<S, X> {
                 list) ->
             List a
         ),
-        ListFold => dhall_expr!(
+        ListFold => dhall::expr!(
             forall (a: Type) ->
             List a ->
             forall (list: Type) ->
@@ -152,19 +152,19 @@ fn type_of_builtin<S>(b: Builtin) -> SubExpr<S, X> {
             forall (nil: list) ->
             list
         ),
-        ListLength => dhall_expr!(forall (a: Type) -> List a -> Natural),
+        ListLength => dhall::expr!(forall (a: Type) -> List a -> Natural),
         ListHead | ListLast => {
-            dhall_expr!(forall (a: Type) -> List a -> Optional a)
+            dhall::expr!(forall (a: Type) -> List a -> Optional a)
         }
-        ListIndexed => dhall_expr!(
+        ListIndexed => dhall::expr!(
             forall (a: Type) ->
             List a ->
             List { index: Natural, value: a }
         ),
-        ListReverse => dhall_expr!(
+        ListReverse => dhall::expr!(
             forall (a: Type) -> List a -> List a
         ),
-        OptionalFold => dhall_expr!(
+        OptionalFold => dhall::expr!(
             forall (a: Type) ->
             Optional a ->
             forall (optional: Type) ->
@@ -205,22 +205,20 @@ where
             _ => Err(mkerr(msg)),
         };
 
-    match e.as_ref() {
+    let ret = match e.as_ref() {
         Const(c) => axiom(*c).map(Const),
-        Var(V(x, n)) => {
-            return ctx
-                .lookup(x, *n)
-                .cloned()
-                .ok_or_else(|| mkerr(UnboundVariable))
-        }
+        Var(V(x, n)) => match ctx.lookup(x, *n) {
+            Some(e) => Ok(e.unroll()),
+            None => Err(mkerr(UnboundVariable)),
+        },
         Lam(x, tA, b) => {
             let ctx2 = ctx
                 .insert(x.clone(), tA.clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
             let tB = normalized_type_with(&ctx2, b.clone())?;
-            let p = rc(Pi(x.clone(), tA.clone(), tB));
-            let _ = type_with(ctx, p.clone())?;
-            return Ok(p);
+            let p = Pi(x.clone(), tA.clone(), tB);
+            let _ = normalized_type_with(ctx, rc(p.clone()))?;
+            Ok(p)
         }
         Pi(x, tA, tB) => {
             let tA2 = normalized_type_with(ctx, tA.clone())?;
@@ -267,7 +265,7 @@ where
             let tA2 = normalized_type_with(ctx, a.clone())?;
             if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
-                return Ok(subst_shift(vx0, &a, &tB));
+                Ok(subst_shift(vx0, &a, &tB).unroll())
             } else {
                 Err(mkerr(TypeMismatch(f.clone(), tA.clone(), a.clone(), tA2)))
             }
@@ -296,16 +294,16 @@ where
                 return Err(mkerr(NoDependentLet(tR, tB)));
             }
 
-            return Ok(tB);
+            Ok(tB.unroll())
         }
         Annot(x, t) => {
             // This is mainly just to check that `t` is not `Kind`
-            let _ = type_with(ctx, t.clone())?;
+            let _ = normalized_type_with(ctx, t.clone())?;
 
             let t2 = normalized_type_with(ctx, x.clone())?;
             let t = normalize(t.clone());
             if prop_equal(t.as_ref(), t2.as_ref()) {
-                return Ok(t.clone());
+                Ok(t.unroll())
             } else {
                 Err(mkerr(AnnotMismatch(x.clone(), t, t2)))
             }
@@ -340,13 +338,13 @@ where
                     tz,
                 )));
             }
-            return Ok(ty);
+            Ok(ty.unroll())
         }
         EmptyListLit(t) => {
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidListType(t.clone()))?;
             let t = normalize(SubExpr::clone(t));
-            return Ok(dhall_expr!(List t));
+            Ok(dhall::expr!(List t))
         }
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
@@ -360,19 +358,19 @@ where
                     return Err(mkerr(InvalidListElement(i, t, x.clone(), t2)));
                 }
             }
-            return Ok(dhall_expr!(List t));
+            Ok(dhall::expr!(List t))
         }
         EmptyOptionalLit(t) => {
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
             let t = normalize(t.clone());
-            return Ok(dhall_expr!(Optional t));
+            Ok(dhall::expr!(Optional t))
         }
         NEOptionalLit(x) => {
             let t = normalized_type_with(ctx, x.clone())?;
             let s = normalized_type_with(ctx, t.clone())?;
             ensure_is_type(s, InvalidOptionalType(t.clone()))?;
-            return Ok(dhall_expr!(Optional t));
+            Ok(dhall::expr!(Optional t))
         }
         RecordType(kts) => {
             for (k, t) in kts {
@@ -396,15 +394,14 @@ where
         Field(r, x) => {
             let t = normalized_type_with(ctx, r.clone())?;
             match t.as_ref() {
-                RecordType(kts) => {
-                    return kts.get(x).cloned().ok_or_else(|| {
-                        mkerr(MissingField(x.clone(), t.clone()))
-                    })
-                }
+                RecordType(kts) => match kts.get(x) {
+                    Some(e) => Ok(e.unroll()),
+                    None => Err(mkerr(MissingField(x.clone(), t.clone()))),
+                },
                 _ => Err(mkerr(NotARecord(x.clone(), r.clone(), t.clone()))),
             }
         }
-        Builtin(b) => return Ok(type_of_builtin(*b)),
+        Builtin(b) => Ok(type_of_builtin(*b)),
         BoolLit(_) => Ok(Builtin(Bool)),
         NaturalLit(_) => Ok(Builtin(Natural)),
         IntegerLit(_) => Ok(Builtin(Integer)),
@@ -437,8 +434,8 @@ where
         }
         Embed(p) => match *p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
-    }
-    .map(rc)
+    }?;
+    Ok(rc(ret))
 }
 
 pub fn normalized_type_with<S>(
