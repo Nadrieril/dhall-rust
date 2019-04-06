@@ -40,6 +40,8 @@ pub enum Feature {
     Normalization,
     TypecheckSuccess,
     TypecheckFailure,
+    TypeInferenceSuccess,
+    TypeInferenceFailure,
 }
 
 pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, DhallError> {
@@ -60,6 +62,8 @@ pub fn run_test(base_path: &str, feature: Feature) {
         Normalization => "normalization/success/",
         TypecheckSuccess => "typecheck/success/",
         TypecheckFailure => "typecheck/failure/",
+        TypeInferenceSuccess => "type-inference/success/",
+        TypeInferenceFailure => "type-inference/failure/",
     };
     let base_path =
         "../dhall-lang/tests/".to_owned() + base_path_prefix + base_path;
@@ -112,6 +116,18 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let expr = rc(read_dhall_file(&expr_file_path).unwrap());
             let expected = rc(read_dhall_file(&expected_file_path).unwrap());
             typecheck::type_of(rc(ExprF::Annot(expr, expected))).unwrap();
+        }
+        TypeInferenceFailure => {
+            let file_path = base_path + ".dhall";
+            let expr = rc(read_dhall_file(&file_path).unwrap());
+            typecheck::type_of(expr).unwrap_err();
+        }
+        TypeInferenceSuccess => {
+            let expr_file_path = base_path.clone() + "A.dhall";
+            let expected_file_path = base_path + "B.dhall";
+            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
+            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
+            assert_eq_display!(typecheck::type_of(expr).unwrap(), expected);
         }
     }
 }
