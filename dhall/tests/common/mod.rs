@@ -44,20 +44,20 @@ pub enum Feature {
     TypeInferenceFailure,
 }
 
-pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
+fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
     load_dhall_file(&PathBuf::from(file_path), true)
 }
 
-pub fn read_dhall_file_no_resolve_imports<'i>(
-    file_path: &str,
-) -> Result<dhall_core::ParsedExpr, ImportError> {
-    load_dhall_file_no_resolve_imports(&PathBuf::from(file_path))
-}
-
-pub fn load_from_file_str<'i>(
+fn load_from_file_str<'i>(
     file_path: &str,
 ) -> Result<dhall::Parsed, ImportError> {
-    load_from_file(&PathBuf::from(file_path))
+    Parsed::load_from_file(&PathBuf::from(file_path))
+}
+
+fn load_from_binary_file_str<'i>(
+    file_path: &str,
+) -> Result<dhall::Parsed, ImportError> {
+    Parsed::load_from_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test(base_path: &str, feature: Feature) {
@@ -77,21 +77,18 @@ pub fn run_test(base_path: &str, feature: Feature) {
         ParserSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhallb";
-            let expr = read_dhall_file_no_resolve_imports(&expr_file_path)
+            let expr = load_from_file_str(&expr_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
 
-            use std::fs::File;
-            use std::io::Read;
-            let mut file = File::open(expected_file_path).unwrap();
-            let mut data = Vec::new();
-            file.read_to_end(&mut data).unwrap();
-            let expected = dhall::binary::decode(&data).unwrap();
+            let expected = load_from_binary_file_str(&expected_file_path)
+                .map_err(|e| println!("{}", e))
+                .unwrap();
 
             assert_eq_pretty!(expr, expected);
 
             // Round-trip pretty-printer
-            let expr = parse_expr(&expr.to_string()).unwrap();
+            let expr = Parsed::load_from_str(&expr.to_string()).unwrap();
             assert_eq!(expr, expected);
         }
         ParserFailure => {

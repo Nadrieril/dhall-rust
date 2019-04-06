@@ -9,7 +9,7 @@
 
 mod normalize;
 pub use crate::normalize::*;
-pub mod binary;
+mod binary;
 pub mod imports;
 mod traits;
 pub mod typecheck;
