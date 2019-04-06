@@ -217,7 +217,7 @@ where
             let ctx2 = ctx
                 .insert(x.clone(), tA.clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
-            let tB = type_with(&ctx2, b.clone())?;
+            let tB = normalized_type_with(&ctx2, b.clone())?;
             let p = rc(Pi(x.clone(), tA.clone(), tB));
             let _ = type_with(ctx, p.clone())?;
             return Ok(p);
@@ -249,7 +249,7 @@ where
         App(f, args) => {
             // Recurse on args
             let (a, tf) = match args.split_last() {
-                None => return type_with(ctx, f.clone()),
+                None => return normalized_type_with(ctx, f.clone()),
                 Some((a, args)) => (
                     a,
                     normalized_type_with(
@@ -385,7 +385,7 @@ where
             let kts = kvs
                 .iter()
                 .map(|(k, v)| {
-                    let t = type_with(ctx, v.clone())?;
+                    let t = normalized_type_with(ctx, v.clone())?;
                     let s = normalized_type_with(ctx, t.clone())?;
                     ensure_is_type(s, InvalidField(k.clone(), v.clone()))?;
                     Ok((k.clone(), t))
@@ -458,7 +458,7 @@ pub fn type_of<S: ::std::fmt::Debug + Clone>(
     e: SubExpr<S, X>,
 ) -> Result<SubExpr<S, X>, TypeError<S>> {
     let ctx = Context::new();
-    type_with(&ctx, e) //.map(|e| e.into_owned())
+    normalized_type_with(&ctx, e) //.map(|e| e.into_owned())
 }
 
 /// The specific type error
