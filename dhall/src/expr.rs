@@ -10,9 +10,14 @@ pub struct Resolved(pub(crate) SubExpr<X, X>);
 #[derive(Debug, Clone)]
 pub struct Typed(pub(crate) SubExpr<X, X>, pub(crate) Type);
 
-// #[derive(Debug, Clone)]
-// pub struct Type(pub(crate) Box<Normalized>);
-pub type Type = SubExpr<X, X>;
+#[derive(Debug, Clone)]
+pub struct Type(pub(crate) TypeInternal);
+
+#[derive(Debug, Clone)]
+pub(crate) enum TypeInternal {
+    Expr(Box<Normalized>),
+    Universe(usize),
+}
 
 #[derive(Debug, Clone)]
 pub struct Normalized(pub(crate) SubExpr<X, X>, pub(crate) Type);
@@ -27,9 +32,3 @@ impl std::fmt::Display for Parsed {
         self.0.fmt(f)
     }
 }
-
-// impl Type {
-//     pub fn as_expr(&self) -> &Normalized {
-//         &*self.0
-//     }
-// }
