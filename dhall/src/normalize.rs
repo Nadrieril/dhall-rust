@@ -1,7 +1,17 @@
 #![allow(non_snake_case)]
+use crate::expr::*;
 use dhall_core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
+
+impl Typed {
+    pub fn normalize(self) -> Normalized {
+        Normalized(normalize(self.0))
+    }
+    pub fn get_type(&self) -> &Type {
+        &self.1
+    }
+}
 
 fn apply_builtin<S, A>(b: Builtin, args: &Vec<Expr<S, A>>) -> WhatNext<S, A>
 where
