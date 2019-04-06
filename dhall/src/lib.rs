@@ -16,8 +16,7 @@ pub mod typecheck;
 pub use crate::dhall_type::*;
 pub use dhall_generator::expr;
 pub use dhall_generator::subexpr;
-pub use dhall_generator::Type;
-
+pub use dhall_generator::StaticType;
 pub use crate::imports::*;
 
 // pub struct DhallExpr(dhall_core::DhallExpr);

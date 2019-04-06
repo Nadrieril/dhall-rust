@@ -21,7 +21,7 @@ pub fn subexpr(input: TokenStream) -> TokenStream {
     dhall_expr::subexpr(input)
 }
 
-#[proc_macro_derive(Type)]
+#[proc_macro_derive(StaticType)]
 pub fn derive_type(input: TokenStream) -> TokenStream {
     dhall_type::derive_type(input)
 }
