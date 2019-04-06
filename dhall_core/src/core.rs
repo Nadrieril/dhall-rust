@@ -716,36 +716,32 @@ pub fn shift<S, A>(
     }
 }
 
-/// Substitute all occurrences of a variable with an expression
+/// Substitute all occurrences of a variable with an expression, and
+/// removes the variable from the environment by shifting the indices
+/// of other variables appropriately.
 ///
 /// ```c
-/// subst x C B  ~  B[x := C]
+/// subst_shift(x, v, e)  ~ ↑(-1, x, e[x := ↑(1, x, v)])
 /// ```
 ///
-pub fn subst<S, A>(
-    var: &V<Label>,
-    value: &SubExpr<S, A>,
-    in_expr: &SubExpr<S, A>,
-) -> SubExpr<S, A> {
-    use crate::ExprF::*;
-    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
-        let V(x, n) = var;
-        let n = if x == y { n + 1 } else { *n };
-        let newvar = &V(x.clone(), n);
-        subst(newvar, &shift(1, &V(y.clone(), 0), value), e)
-    };
-    match in_expr.as_ref() {
-        Var(v) if var == v => SubExpr::clone(value),
-        _ => in_expr.map_ref(|e| subst(var, value, e), under_binder),
-    }
-}
-
 pub fn subst_shift<S, A>(
     var: &V<Label>,
     value: &SubExpr<S, A>,
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
-    let value = shift(1, var, value);
-    let expr = subst(var, &value, in_expr);
-    shift(-1, var, &expr)
+    use crate::ExprF::*;
+    let V(x, n) = var;
+    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
+        let n = if x == y { n + 1 } else { *n };
+        let newvar = &V(x.clone(), n);
+        subst_shift(newvar, &shift(1, &V(y.clone(), 0), value), e)
+    };
+    match in_expr.as_ref() {
+        Var(V(y, m)) if x == y && m == n => SubExpr::clone(value),
+        Var(V(y, m)) if x == y && m > n => {
+            let m = add_ui(*m, -1);
+            rc(Var(V(x.clone(), m)))
+        }
+        _ => in_expr.map_ref(|e| subst_shift(var, &value, e), under_binder),
+    }
 }
