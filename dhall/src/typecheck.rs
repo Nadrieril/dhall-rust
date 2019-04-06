@@ -176,12 +176,11 @@ fn type_of_builtin<S>(b: Builtin) -> Expr<S, X> {
     }
 }
 
-/// Type-check an expression and return the expression'i type if type-checking
-/// suceeds or an error if type-checking fails
+/// Type-check an expression and return the expression's type if type-checking
+/// succeeds or an error if type-checking fails
 ///
-/// `type_with` does not necessarily normalize the type since full normalization
-/// is not necessary for just type-checking.  If you actually care about the
-/// returned type then you may want to `normalize` it afterwards.
+/// `type_with` normalizes the type since while type-checking. It expects the
+/// context to contain only normalized expressions.
 pub fn type_with<S>(
     ctx: &Context<Label, SubExpr<S, X>>,
     e: SubExpr<S, X>,
@@ -211,18 +210,19 @@ where
             Some(e) => Ok(e.unroll()),
             None => Err(mkerr(UnboundVariable)),
         },
-        Lam(x, tA, b) => {
+        Lam(x, t, b) => {
+            let t2 = normalize(SubExpr::clone(t));
             let ctx2 = ctx
-                .insert(x.clone(), tA.clone())
+                .insert(x.clone(), t2.clone())
                 .map(|e| shift(1, &V(x.clone(), 0), e));
             let tB = type_with(&ctx2, b.clone())?;
-            let p = Pi(x.clone(), tA.clone(), tB);
-            let _ = type_with(ctx, rc(p.clone()))?;
-            Ok(p)
+            let _ = type_with(ctx, rc(Pi(x.clone(), t.clone(), tB.clone())))?;
+            Ok(Pi(x.clone(), t2, tB))
         }
         Pi(x, tA, tB) => {
-            let tA2 = type_with(ctx, tA.clone())?;
-            let kA = ensure_const(&tA2, InvalidInputType(tA.clone()))?;
+            let ttA = type_with(ctx, tA.clone())?;
+            let tA = normalize(SubExpr::clone(tA));
+            let kA = ensure_const(&ttA, InvalidInputType(tA.clone()))?;
 
             let ctx2 = ctx
                 .insert(x.clone(), tA.clone())
@@ -261,7 +261,7 @@ where
             let tA2 = type_with(ctx, a.clone())?;
             if prop_equal(tA.as_ref(), tA2.as_ref()) {
                 let vx0 = &V(x.clone(), 0);
-                Ok(subst_shift(vx0, &a, &tB).unroll())
+                Ok(normalize(subst_shift(vx0, &a, &tB)).unroll())
             } else {
                 Err(mkerr(TypeMismatch(f.clone(), tA.clone(), a.clone(), tA2)))
             }
@@ -296,12 +296,12 @@ where
             // This is mainly just to check that `t` is not `Kind`
             let _ = type_with(ctx, t.clone())?;
 
-            let t2 = type_with(ctx, x.clone())?;
+            let tx = type_with(ctx, x.clone())?;
             let t = normalize(t.clone());
-            if prop_equal(t.as_ref(), t2.as_ref()) {
+            if prop_equal(t.as_ref(), tx.as_ref()) {
                 Ok(t.unroll())
             } else {
-                Err(mkerr(AnnotMismatch(x.clone(), t, t2)))
+                Err(mkerr(AnnotMismatch(x.clone(), t, tx)))
             }
         }
         BoolIf(x, y, z) => {
@@ -431,7 +431,7 @@ where
         Embed(p) => match *p {},
         _ => panic!("Unimplemented typecheck case: {:?}", e),
     }?;
-    Ok(normalize(rc(ret)))
+    Ok(rc(ret))
 }
 
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
