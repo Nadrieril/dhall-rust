@@ -8,10 +8,10 @@ pub struct Parsed(pub(crate) SubExpr<X, Import>, pub(crate) ImportRoot);
 pub struct Resolved(pub(crate) SubExpr<X, X>);
 
 #[derive(Debug, Clone)]
-pub struct Typed(pub(crate) SubExpr<X, X>, pub(crate) Type);
+pub struct Typed(pub(crate) SubExpr<X, X>, pub(crate) Type<'static>);
 
 #[derive(Debug, Clone)]
-pub struct Type(pub(crate) TypeInternal);
+pub struct Type<'a>(pub(crate) std::borrow::Cow<'a, TypeInternal>);
 
 #[derive(Debug, Clone)]
 pub(crate) enum TypeInternal {
@@ -20,7 +20,7 @@ pub(crate) enum TypeInternal {
 }
 
 #[derive(Debug, Clone)]
-pub struct Normalized(pub(crate) SubExpr<X, X>, pub(crate) Type);
+pub struct Normalized(pub(crate) SubExpr<X, X>, pub(crate) Type<'static>);
 
 impl PartialEq for Parsed {
     fn eq(&self, other: &Self) -> bool {
