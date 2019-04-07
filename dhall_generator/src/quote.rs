@@ -63,6 +63,9 @@ where
             let a = quote_vec(a);
             quote! { dhall_core::ExprF::App(#f, #a) }
         }
+        Annot(x, t) => {
+            quote! { dhall_core::ExprF::Annot(#x, #t) }
+        }
         Const(c) => {
             let c = quote_const(c);
             quote! { dhall_core::ExprF::Const(#c) }

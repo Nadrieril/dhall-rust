@@ -44,14 +44,21 @@ pub enum Feature {
     TypeInferenceFailure,
 }
 
-pub fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, DhallError> {
-    load_dhall_file(&PathBuf::from(file_path), true)
+// Deprecated
+fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
+    dhall::load_dhall_file(&PathBuf::from(file_path), true)
 }
 
-pub fn read_dhall_file_no_resolve_imports<'i>(
+fn load_from_file_str<'i>(
     file_path: &str,
-) -> Result<ParsedExpr, DhallError> {
-    load_dhall_file_no_resolve_imports(&PathBuf::from(file_path))
+) -> Result<dhall::expr::Parsed, ImportError> {
+    dhall::expr::Parsed::load_from_file(&PathBuf::from(file_path))
+}
+
+fn load_from_binary_file_str<'i>(
+    file_path: &str,
+) -> Result<dhall::expr::Parsed, ImportError> {
+    dhall::expr::Parsed::load_from_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test(base_path: &str, feature: Feature) {
@@ -71,63 +78,99 @@ pub fn run_test(base_path: &str, feature: Feature) {
         ParserSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhallb";
-            let expr = read_dhall_file_no_resolve_imports(&expr_file_path)
+            let expr = load_from_file_str(&expr_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
 
-            use std::fs::File;
-            use std::io::Read;
-            let mut file = File::open(expected_file_path).unwrap();
-            let mut data = Vec::new();
-            file.read_to_end(&mut data).unwrap();
-            let expected = dhall::binary::decode(&data).unwrap();
+            let expected = load_from_binary_file_str(&expected_file_path)
+                .map_err(|e| println!("{}", e))
+                .unwrap();
 
             assert_eq_pretty!(expr, expected);
 
             // Round-trip pretty-printer
-            let expr = parse_expr(&expr.to_string()).unwrap();
+            let expr =
+                dhall::expr::Parsed::load_from_str(&expr.to_string()).unwrap();
             assert_eq!(expr, expected);
         }
         ParserFailure => {
             let file_path = base_path + ".dhall";
-            let err =
-                read_dhall_file_no_resolve_imports(&file_path).unwrap_err();
+            let err = load_from_file_str(&file_path).unwrap_err();
             match err {
-                DhallError::ParseError(_) => {}
+                ImportError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
         Normalization => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
-            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
+            let expr = load_from_file_str(&expr_file_path)
+                .unwrap()
+                .resolve()
+                .unwrap()
+                .skip_typecheck()
+                .normalize();
+            let expected = load_from_file_str(&expected_file_path)
+                .unwrap()
+                .resolve()
+                .unwrap()
+                .skip_typecheck()
+                .normalize();
 
-            assert_eq_display!(normalize(expr), normalize(expected));
+            assert_eq_display!(expr, expected);
         }
         TypecheckFailure => {
             let file_path = base_path + ".dhall";
-            let expr = rc(read_dhall_file(&file_path).unwrap());
-            typecheck::type_of(expr).unwrap_err();
+            load_from_file_str(&file_path)
+                .unwrap()
+                .skip_resolve()
+                .unwrap()
+                .typecheck()
+                .unwrap_err();
         }
         TypecheckSuccess => {
-            let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhall";
-            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
-            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
-            typecheck::type_of(rc(ExprF::Annot(expr, expected))).unwrap();
+            // Many tests stack overflow in debug mode
+            std::thread::Builder::new()
+                .stack_size(4 * 1024 * 1024)
+                .spawn(|| {
+                    let expr_file_path = base_path.clone() + "A.dhall";
+                    let expected_file_path = base_path + "B.dhall";
+                    let expr = rc(read_dhall_file(&expr_file_path).unwrap());
+                    let expected =
+                        rc(read_dhall_file(&expected_file_path).unwrap());
+                    typecheck::type_of(dhall::subexpr!(expr: expected))
+                        .unwrap();
+                })
+                .unwrap()
+                .join()
+                .unwrap();
         }
         TypeInferenceFailure => {
             let file_path = base_path + ".dhall";
-            let expr = rc(read_dhall_file(&file_path).unwrap());
-            typecheck::type_of(expr).unwrap_err();
+            load_from_file_str(&file_path)
+                .unwrap()
+                .skip_resolve()
+                .unwrap()
+                .typecheck()
+                .unwrap_err();
         }
         TypeInferenceSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = rc(read_dhall_file(&expr_file_path).unwrap());
-            let expected = rc(read_dhall_file(&expected_file_path).unwrap());
-            assert_eq_display!(typecheck::type_of(expr).unwrap(), expected);
+            let expr = load_from_file_str(&expr_file_path)
+                .unwrap()
+                .skip_resolve()
+                .unwrap()
+                .typecheck()
+                .unwrap();
+            let ty = expr.get_type().as_normalized().unwrap();
+            let expected = load_from_file_str(&expected_file_path)
+                .unwrap()
+                .skip_resolve()
+                .unwrap()
+                .skip_typecheck()
+                .skip_normalize();
+            assert_eq_display!(ty, &expected);
         }
     }
 }

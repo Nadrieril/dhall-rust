@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
-mod dhall_expr;
-mod dhall_type;
+mod derive;
+mod quote;
 
 use proc_macro::TokenStream;
 
@@ -13,15 +13,15 @@ pub fn dhall_expr(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn expr(input: TokenStream) -> TokenStream {
-    dhall_expr::expr(input)
+    quote::expr(input)
 }
 
 #[proc_macro]
 pub fn subexpr(input: TokenStream) -> TokenStream {
-    dhall_expr::subexpr(input)
+    quote::subexpr(input)
 }
 
-#[proc_macro_derive(Type)]
+#[proc_macro_derive(StaticType)]
 pub fn derive_type(input: TokenStream) -> TokenStream {
-    dhall_type::derive_type(input)
+    derive::derive_type(input)
 }

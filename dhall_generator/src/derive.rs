@@ -44,11 +44,11 @@ pub fn derive_for_struct(
         .map(|(name, ty)| {
             let name = dhall_core::Label::from(name);
             constraints.push(ty.clone());
-            (name, quote!(<#ty as dhall::Type>::get_type()))
+            (name, quote!(<#ty as dhall::StaticType>::get_type()))
         })
         .collect();
     let record =
-        crate::dhall_expr::quote_exprf(dhall_core::ExprF::RecordType(fields));
+        crate::quote::quote_exprf(dhall_core::ExprF::RecordType(fields));
     Ok(quote! { dhall_core::rc(#record) })
 }
 
@@ -88,12 +88,12 @@ pub fn derive_for_enum(
             };
             let ty = ty?;
             constraints.push(ty.clone());
-            Ok((name, quote!(<#ty as dhall::Type>::get_type())))
+            Ok((name, quote!(<#ty as dhall::StaticType>::get_type())))
         })
         .collect::<Result<_, Error>>()?;
 
     let union =
-        crate::dhall_expr::quote_exprf(dhall_core::ExprF::UnionType(variants));
+        crate::quote::quote_exprf(dhall_core::ExprF::UnionType(variants));
     Ok(quote! { dhall_core::rc(#union) })
 }
 
@@ -136,7 +136,7 @@ pub fn derive_type_inner(
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::Type));
+            .push(parse_quote!(#ty: dhall::StaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -156,12 +156,14 @@ pub fn derive_type_inner(
     // Ensure that all the fields have a Type impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
-        where_clause.predicates.push(parse_quote!(#ty: dhall::Type));
+        where_clause
+            .predicates
+            .push(parse_quote!(#ty: dhall::StaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics dhall::Type for #ident #ty_generics
+        impl #impl_generics dhall::StaticType for #ident #ty_generics
                 #where_clause {
             fn get_type() -> dhall_core::DhallExpr {
                 #(#assertions)*

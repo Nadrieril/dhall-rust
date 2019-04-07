@@ -1,7 +1,18 @@
 #![allow(non_snake_case)]
+use crate::expr::*;
 use dhall_core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
+
+impl Typed {
+    pub fn normalize(self) -> Normalized {
+        Normalized(normalize(self.0), self.1)
+    }
+    /// Pretends this expression is normalized. Use with care.
+    pub fn skip_normalize(self) -> Normalized {
+        Normalized(self.0, self.1)
+    }
+}
 
 fn apply_builtin<S, A>(b: Builtin, args: &Vec<Expr<S, A>>) -> WhatNext<S, A>
 where
@@ -202,7 +213,7 @@ enum WhatNext<'a, S, A> {
     DoneAsIs,
 }
 
-pub fn normalize_ref<S, A>(expr: &Expr<S, A>) -> Expr<S, A>
+fn normalize_ref<S, A>(expr: &Expr<S, A>) -> Expr<S, A>
 where
     S: fmt::Debug + Clone,
     A: fmt::Debug + Clone,
@@ -306,7 +317,7 @@ where
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-pub fn normalize<S, A>(e: SubExpr<S, A>) -> SubExpr<S, A>
+fn normalize<S, A>(e: SubExpr<S, A>) -> SubExpr<S, A>
 where
     S: fmt::Debug + Clone,
     A: fmt::Debug + Clone,

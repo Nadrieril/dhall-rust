@@ -68,6 +68,7 @@ impl From<NaiveDouble> for f64 {
 pub enum Const {
     Type,
     Kind,
+    Sort,
 }
 
 /// Bound variable
@@ -285,6 +286,28 @@ impl<S, A> Expr<S, A> {
         self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
     }
 
+    #[inline(always)]
+    pub fn traverse_embed<B, Err, F>(
+        &self,
+        map_embed: &F,
+    ) -> Result<Expr<S, B>, Err>
+    where
+        S: Clone,
+        B: Clone,
+        F: Fn(&A) -> Result<B, Err>,
+    {
+        let recurse = |e: &SubExpr<S, A>| -> Result<SubExpr<S, B>, Err> {
+            Ok(e.as_ref().traverse_embed(map_embed)?.roll())
+        };
+        self.as_ref().traverse(
+            |e| recurse(e),
+            |_, e| recurse(e),
+            |x| Ok(S::clone(x)),
+            map_embed,
+            |x| Ok(Label::clone(x)),
+        )
+    }
+
     pub fn map_label<F>(&self, map_label: &F) -> Self
     where
         A: Clone,
@@ -315,6 +338,23 @@ impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
                 |_| unreachable!(),
                 |x| x.clone(),
             ),
+        }
+    }
+}
+
+impl<S: Clone, A: Clone> Expr<S, SubExpr<S, A>> {
+    pub fn squash_embed(&self) -> SubExpr<S, A> {
+        match self.as_ref() {
+            ExprF::Embed(e) => e.clone(),
+            e => e
+                .map(
+                    |e| e.as_ref().squash_embed(),
+                    |_, e| e.as_ref().squash_embed(),
+                    S::clone,
+                    |_| unreachable!(),
+                    Label::clone,
+                )
+                .roll(),
         }
     }
 }
