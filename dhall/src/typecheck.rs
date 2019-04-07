@@ -47,6 +47,16 @@ impl Normalized {
     fn into_type(self) -> Type<'static> {
         crate::expr::Type(Cow::Owned(TypeInternal::Expr(Box::new(self))))
     }
+    // Expose the outermost constructor
+    #[inline(always)]
+    fn unroll_ref(&self) -> &Expr<X, X> {
+        self.as_expr().as_ref()
+    }
+    #[inline(always)]
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        // shift the type too ?
+        Normalized(shift(delta, var, &self.0), self.1.clone())
+    }
 }
 impl<'a> Type<'a> {
     #[inline(always)]
@@ -61,7 +71,7 @@ impl<'a> Type<'a> {
         }
     }
     #[inline(always)]
-    fn as_expr(&'a self) -> Result<&'a Normalized, TypeError<X>> {
+    fn as_normalized(&'a self) -> Result<&'a Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0.as_ref() {
             Expr(e) => Ok(e),
@@ -73,7 +83,7 @@ impl<'a> Type<'a> {
         }
     }
     #[inline(always)]
-    fn into_expr(self) -> Result<Normalized, TypeError<X>> {
+    fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0.into_owned() {
             Expr(e) => Ok(*e),
@@ -84,6 +94,11 @@ impl<'a> Type<'a> {
             )),
         }
     }
+    // Expose the outermost constructor
+    #[inline(always)]
+    fn unroll_ref(&'a self) -> Result<&'a Expr<X, X>, TypeError<X>> {
+        Ok(self.as_normalized()?.unroll_ref())
+    }
     #[inline(always)]
     pub fn get_type<'b>(&'b self) -> Type<'b> {
         use TypeInternal::*;
@@ -91,6 +106,15 @@ impl<'a> Type<'a> {
             Expr(e) => e.get_type(),
             Universe(n) => crate::expr::Type(Cow::Owned(Universe(n + 1))),
         }
+    }
+    #[inline(always)]
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        use TypeInternal::*;
+        crate::expr::Type(Cow::Owned(match self.reborrow().0 {
+            Cow::Borrowed(Expr(e)) => Expr(Box::new(e.shift(delta, var))),
+            Cow::Borrowed(Universe(n)) => Universe(*n),
+            Cow::Owned(_) => unreachable!(),
+        }))
     }
 }
 
@@ -189,7 +213,7 @@ fn prop_equal(eL0: &Type, eR0: &Type) -> bool {
         }
         (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
             let mut ctx = vec![];
-            go(&mut ctx, l.as_expr().as_ref(), r.as_expr().as_ref())
+            go(&mut ctx, l.unroll_ref(), r.unroll_ref())
         }
         _ => false,
     }
@@ -279,10 +303,8 @@ where
 
 /// Type-check an expression and return the expression alongside its type
 /// if type-checking succeeded, or an error if type-checking failed
-///
-/// `type_with` expects the context to contain only normalized expressions.
 pub fn type_with(
-    ctx: &Context<Label, SubExpr<X, X>>,
+    ctx: &Context<Label, Type<'static>>,
     e: SubExpr<X, X>,
 ) -> Result<Typed, TypeError<X>> {
     use dhall_core::BinOp::*;
@@ -290,22 +312,16 @@ pub fn type_with(
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
-    let ensure_const = |x: &crate::expr::Type, msg: TypeMessage<_>| match x
-        .as_expr()?
-        .as_expr()
-        .as_ref()
-    {
-        Const(k) => Ok(*k),
-        _ => Err(mkerr(msg)),
-    };
-    let ensure_is_type = |x: &crate::expr::Type, msg: TypeMessage<_>| match x
-        .as_expr()?
-        .as_expr()
-        .as_ref()
-    {
-        Const(Type) => Ok(()),
-        _ => Err(mkerr(msg)),
-    };
+    let ensure_const =
+        |x: &crate::expr::Type, msg: TypeMessage<_>| match x.unroll_ref()? {
+            Const(k) => Ok(*k),
+            _ => Err(mkerr(msg)),
+        };
+    let ensure_is_type =
+        |x: &crate::expr::Type, msg: TypeMessage<_>| match x.unroll_ref()? {
+            Const(Type) => Ok(()),
+            _ => Err(mkerr(msg)),
+        };
 
     let mktype =
         |ctx, x: SubExpr<X, X>| Ok(type_with(ctx, x)?.normalize().into_type());
@@ -317,44 +333,39 @@ pub fn type_with(
     use Ret::*;
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
-            let t2 = mktype(ctx, t.clone())?;
+            let t = mktype(ctx, t.clone())?;
             let ctx2 = ctx
-                .insert(x.clone(), t2.as_expr()?.as_expr().clone())
-                .map(|e| shift(1, &V(x.clone(), 0), e));
+                .insert(x.clone(), t.clone())
+                .map(|e| e.shift(1, &V(x.clone(), 0)));
             let b = type_with(&ctx2, b.clone())?;
-            let _ = type_with(
+            Ok(RetType(mktype(
                 ctx,
                 rc(Pi(
                     x.clone(),
-                    t.clone(),
-                    b.get_type().as_expr()?.as_expr().clone(),
+                    t.into_normalized()?.into_expr(),
+                    b.get_type().into_normalized()?.into_expr(),
                 )),
-            )?;
-            Ok(RetExpr(Pi(
-                x.clone(),
-                t2.as_expr()?.as_expr().clone(),
-                b.get_type().into_expr()?.into_expr(),
-            )))
+            )?))
         }
         Pi(x, tA, tB) => {
             let tA = mktype(ctx, tA.clone())?;
             let kA = ensure_const(
                 &tA.get_type(),
-                InvalidInputType(tA.clone().into_expr()?),
+                InvalidInputType(tA.clone().into_normalized()?),
             )?;
 
             let ctx2 = ctx
-                .insert(x.clone(), tA.as_expr()?.as_expr().clone())
-                .map(|e| shift(1, &V(x.clone(), 0), e));
+                .insert(x.clone(), tA.clone())
+                .map(|e| e.shift(1, &V(x.clone(), 0)));
             let tB = type_with(&ctx2, tB.clone())?;
-            let kB = match tB.get_type().as_expr()?.as_expr().as_ref() {
+            let kB = match tB.get_type().unroll_ref()? {
                 Const(k) => *k,
                 _ => {
                     return Err(TypeError::new(
                         &ctx2,
                         e.clone(),
                         InvalidOutputType(
-                            tB.get_type().into_owned().into_expr()?,
+                            tB.get_type().into_owned().into_normalized()?,
                         ),
                     ));
                 }
@@ -362,8 +373,8 @@ pub fn type_with(
 
             match rule(kA, kB) {
                 Err(()) => Err(mkerr(NoDependentTypes(
-                    tA.clone().into_expr()?,
-                    tB.get_type().into_owned().into_expr()?,
+                    tA.clone().into_normalized()?,
+                    tB.get_type().into_owned().into_normalized()?,
                 ))),
                 Ok(k) => Ok(RetExpr(Const(k))),
             }
@@ -382,23 +393,22 @@ pub fn type_with(
             // message because this should never happen anyway
             let kR = ensure_const(
                 &r.get_type().get_type(),
-                InvalidInputType(r.get_type().into_owned().into_expr()?),
+                InvalidInputType(r.get_type().into_owned().into_normalized()?),
             )?;
 
-            let ctx2 = ctx
-                .insert(f.clone(), r.get_type().as_expr()?.as_expr().clone());
+            let ctx2 = ctx.insert(f.clone(), r.get_type().into_owned());
             let b = type_with(&ctx2, b.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
             let kB = ensure_const(
                 &b.get_type().get_type(),
-                InvalidOutputType(b.get_type().into_owned().into_expr()?),
+                InvalidOutputType(b.get_type().into_owned().into_normalized()?),
             )?;
 
             if let Err(()) = rule(kR, kB) {
                 return Err(mkerr(NoDependentLet(
-                    r.get_type().into_owned().into_expr()?,
-                    b.get_type().into_owned().into_expr()?,
+                    r.get_type().into_owned().into_normalized()?,
+                    b.get_type().into_owned().into_normalized()?,
                 )));
             }
 
@@ -415,7 +425,7 @@ pub fn type_with(
             Const(Kind) => Ok(RetExpr(dhall::expr!(Sort))),
             Const(Sort) => Ok(RetType(TYPE_OF_SORT)),
             Var(V(x, n)) => match ctx.lookup(&x, n) {
-                Some(e) => Ok(RetExpr(e.unroll())),
+                Some(e) => Ok(RetType(e.clone())),
                 None => Err(mkerr(UnboundVariable)),
             },
             App(f, args) => {
@@ -424,7 +434,7 @@ pub fn type_with(
                 let mut tf = f.get_type().into_owned();
                 while let Some(a) = iter.next() {
                     seen_args.push(a.as_expr().clone());
-                    let (x, tx, tb) = match tf.as_expr()?.as_expr().as_ref() {
+                    let (x, tx, tb) = match tf.unroll_ref()? {
                         Pi(x, tx, tb) => (x, tx, tb),
                         _ => {
                             return Err(mkerr(NotAFunction(Typed(
@@ -440,7 +450,7 @@ pub fn type_with(
                                 rc(App(f.as_expr().clone(), seen_args.clone())),
                                 tf.clone(),
                             ),
-                            tx.clone().into_expr().unwrap(),
+                            tx.clone().into_normalized().unwrap(),
                             a.clone(),
                         )
                     })?;
@@ -454,7 +464,10 @@ pub fn type_with(
             Annot(x, t) => {
                 let t = t.normalize().into_type();
                 ensure_equal(&t, &x.get_type(), mkerr, || {
-                    AnnotMismatch(x.clone(), t.clone().into_expr().unwrap())
+                    AnnotMismatch(
+                        x.clone(),
+                        t.clone().into_normalized().unwrap(),
+                    )
                 })?;
                 Ok(RetType(x.get_type().into_owned()))
             }
@@ -485,9 +498,9 @@ pub fn type_with(
                 let t = t.normalize().into_type();
                 ensure_is_type(
                     &t.get_type(),
-                    InvalidListType(t.clone().into_expr()?),
+                    InvalidListType(t.clone().into_normalized()?),
                 )?;
-                let t = t.into_expr()?.into_expr();
+                let t = t.into_normalized()?.into_expr();
                 Ok(RetExpr(dhall::expr!(List t)))
             }
             NEListLit(xs) => {
@@ -495,35 +508,42 @@ pub fn type_with(
                 let (_, x) = iter.next().unwrap();
                 ensure_is_type(
                     &x.get_type().get_type(),
-                    InvalidListType(x.get_type().into_owned().into_expr()?),
+                    InvalidListType(
+                        x.get_type().into_owned().into_normalized()?,
+                    ),
                 )?;
                 for (i, y) in iter {
                     ensure_equal(&x.get_type(), &y.get_type(), mkerr, || {
                         InvalidListElement(
                             i,
-                            x.get_type().into_owned().into_expr().unwrap(),
+                            x.get_type()
+                                .into_owned()
+                                .into_normalized()
+                                .unwrap(),
                             y.clone(),
                         )
                     })?;
                 }
-                let t = x.get_type().into_expr()?.into_expr();
+                let t = x.get_type().into_normalized()?.into_expr();
                 Ok(RetExpr(dhall::expr!(List t)))
             }
             EmptyOptionalLit(t) => {
                 let t = t.normalize().into_type();
                 ensure_is_type(
                     &t.get_type(),
-                    InvalidOptionalType(t.clone().into_expr()?),
+                    InvalidOptionalType(t.clone().into_normalized()?),
                 )?;
-                let t = t.into_expr()?.into_expr();
+                let t = t.into_normalized()?.into_expr();
                 Ok(RetExpr(dhall::expr!(Optional t)))
             }
             NEOptionalLit(x) => {
                 ensure_is_type(
                     &x.get_type().get_type(),
-                    InvalidOptionalType(x.get_type().into_owned().into_expr()?),
+                    InvalidOptionalType(
+                        x.get_type().into_owned().into_normalized()?,
+                    ),
                 )?;
-                let t = x.get_type().into_expr()?.into_expr();
+                let t = x.get_type().into_normalized()?.into_expr();
                 Ok(RetExpr(dhall::expr!(Optional t)))
             }
             RecordType(kts) => {
@@ -543,12 +563,15 @@ pub fn type_with(
                             &v.get_type().get_type(),
                             InvalidField(k.clone(), v.clone()),
                         )?;
-                        Ok((k.clone(), v.get_type().into_expr()?.into_expr()))
+                        Ok((
+                            k.clone(),
+                            v.get_type().into_normalized()?.into_expr(),
+                        ))
                     })
                     .collect::<Result<_, _>>()?;
                 Ok(RetExpr(RecordType(kts)))
             }
-            Field(r, x) => match r.get_type().as_expr()?.as_expr().as_ref() {
+            Field(r, x) => match r.get_type().unroll_ref()? {
                 RecordType(kts) => match kts.get(&x) {
                     Some(e) => Ok(RetExpr(e.unroll())),
                     None => Err(mkerr(MissingField(x.clone(), r.clone()))),
@@ -603,7 +626,7 @@ pub fn type_with(
 pub fn type_of(e: SubExpr<X, X>) -> Result<SubExpr<X, X>, TypeError<X>> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
-    Ok(e.get_type().into_expr()?.into_expr())
+    Ok(e.get_type().into_normalized()?.into_expr())
 }
 
 pub fn type_of_(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
@@ -642,14 +665,14 @@ pub enum TypeMessage<S> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError<S> {
-    pub context: Context<Label, SubExpr<S, X>>,
+    pub context: Context<Label, Type<'static>>,
     pub current: SubExpr<S, X>,
     pub type_message: TypeMessage<S>,
 }
 
 impl<S> TypeError<S> {
     pub fn new(
-        context: &Context<Label, SubExpr<S, X>>,
+        context: &Context<Label, Type<'static>>,
         current: SubExpr<S, X>,
         type_message: TypeMessage<S>,
     ) -> Self {
@@ -690,7 +713,7 @@ impl<S> fmt::Display for TypeMessage<S> {
                         "$txt3",
                         &format!(
                             "{}",
-                            e2.get_type().as_expr().unwrap().as_expr()
+                            e2.get_type().as_normalized().unwrap().as_expr()
                         ),
                     );
                 f.write_str(&s)
