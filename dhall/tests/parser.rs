@@ -1,3 +1,4 @@
+#![feature(proc_macro_hygiene)]
 #![feature(custom_inner_attributes)]
 #![rustfmt::skip]
 mod common;

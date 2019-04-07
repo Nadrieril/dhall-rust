@@ -764,6 +764,7 @@ make_parser! {
                     "False" => BoolLit(false),
                     "Type" => Const(crate::Const::Type),
                     "Kind" => Const(crate::Const::Kind),
+                    "Sort" => Const(crate::Const::Sort),
                     _ => Var(V(l, idx)),
                 }
             }
@@ -777,6 +778,7 @@ make_parser! {
                     "False" => BoolLit(false),
                     "Type" => Const(crate::Const::Type),
                     "Kind" => Const(crate::Const::Kind),
+                    "Sort" => Const(crate::Const::Sort),
                     _ => Var(V(l, 0)),
                 }
             }

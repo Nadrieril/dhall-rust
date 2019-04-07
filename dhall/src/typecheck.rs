@@ -370,7 +370,9 @@ pub fn type_with(
         }
         Let(f, mt, r, b) => {
             let r = if let Some(t) = mt {
-                rc(Annot(SubExpr::clone(r), SubExpr::clone(t)))
+                let r = SubExpr::clone(r);
+                let t = SubExpr::clone(t);
+                dhall::subexpr!(r: t)
             } else {
                 SubExpr::clone(r)
             };
@@ -409,8 +411,8 @@ pub fn type_with(
             Lam(_, _, _) => unreachable!(),
             Pi(_, _, _) => unreachable!(),
             Let(_, _, _, _) => unreachable!(),
-            Const(Type) => Ok(RetExpr(Const(Kind))),
-            Const(Kind) => Ok(RetExpr(Const(Sort))),
+            Const(Type) => Ok(RetExpr(dhall::expr!(Kind))),
+            Const(Kind) => Ok(RetExpr(dhall::expr!(Sort))),
             Const(Sort) => Ok(RetType(TYPE_OF_SORT)),
             Var(V(x, n)) => match ctx.lookup(&x, n) {
                 Some(e) => Ok(RetExpr(e.unroll())),
@@ -531,7 +533,7 @@ pub fn type_with(
                         InvalidFieldType(k.clone(), t.clone()),
                     )?;
                 }
-                Ok(RetExpr(Const(Type)))
+                Ok(RetExpr(dhall::expr!(Type)))
             }
             RecordLit(kvs) => {
                 let kts = kvs
@@ -554,25 +556,25 @@ pub fn type_with(
                 _ => Err(mkerr(NotARecord(x.clone(), r.clone()))),
             },
             Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
-            BoolLit(_) => Ok(RetExpr(Builtin(Bool))),
-            NaturalLit(_) => Ok(RetExpr(Builtin(Natural))),
-            IntegerLit(_) => Ok(RetExpr(Builtin(Integer))),
-            DoubleLit(_) => Ok(RetExpr(Builtin(Double))),
+            BoolLit(_) => Ok(RetExpr(dhall::expr!(Bool))),
+            NaturalLit(_) => Ok(RetExpr(dhall::expr!(Natural))),
+            IntegerLit(_) => Ok(RetExpr(dhall::expr!(Integer))),
+            DoubleLit(_) => Ok(RetExpr(dhall::expr!(Double))),
             // TODO: check type of interpolations
-            TextLit(_) => Ok(RetExpr(Builtin(Text))),
+            TextLit(_) => Ok(RetExpr(dhall::expr!(Text))),
             BinOp(o, l, r) => {
                 let t = mktype(
                     ctx,
-                    rc(Builtin(match o {
-                        BoolAnd => Bool,
-                        BoolOr => Bool,
-                        BoolEQ => Bool,
-                        BoolNE => Bool,
-                        NaturalPlus => Natural,
-                        NaturalTimes => Natural,
-                        TextAppend => Text,
+                    match o {
+                        BoolAnd => dhall::subexpr!(Bool),
+                        BoolOr => dhall::subexpr!(Bool),
+                        BoolEQ => dhall::subexpr!(Bool),
+                        BoolNE => dhall::subexpr!(Bool),
+                        NaturalPlus => dhall::subexpr!(Natural),
+                        NaturalTimes => dhall::subexpr!(Natural),
+                        TextAppend => dhall::subexpr!(Text),
                         _ => panic!("Unimplemented typecheck case: {:?}", e),
-                    })),
+                    },
                 )?;
 
                 ensure_equal(&l.get_type(), &t, mkerr, || {
