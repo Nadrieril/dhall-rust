@@ -267,9 +267,6 @@ where
             Done(NaturalLit(x * y))
         }
         BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
-        BinOp(ListAppend, EmptyListLit(t), EmptyListLit(_)) => {
-            Done(EmptyListLit(SubExpr::clone(t)))
-        }
         BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
         BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
         BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {

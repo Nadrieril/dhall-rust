@@ -144,7 +144,7 @@ fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(Label, Label)]) -> bool {
     vl == vr
 }
 
-// Takes normalized expressions as input
+// Equality up to alpha-equivalence (renaming of bound variables)
 fn prop_equal(eL0: &Type, eR0: &Type) -> bool {
     use dhall_core::ExprF::*;
     fn go<S, T>(
@@ -202,6 +202,7 @@ fn prop_equal(eL0: &Type, eR0: &Type) -> bool {
         }
     }
     match (&eL0.0, &eR0.0) {
+        // Note: Untyped != Untyped, to avoid soundness issues
         (TypeInternal::Untyped, TypeInternal::Untyped) => false,
         (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
             let mut ctx = vec![];
