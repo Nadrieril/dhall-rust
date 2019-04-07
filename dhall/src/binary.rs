@@ -29,6 +29,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 "False" => BoolLit(false),
                 "Type" => Const(Const::Type),
                 "Kind" => Const(Const::Kind),
+                "Sort" => Const(Const::Sort),
                 s => Var(V(Label::from(s), 0)),
             },
         },
