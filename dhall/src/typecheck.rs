@@ -11,8 +11,11 @@ use self::TypeMessage::*;
 
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
-        let typ = crate::typecheck::type_of_(self.0.clone())?;
-        Ok(typ)
+        type_of_(self.0.clone())
+    }
+    /// Pretends this expression has been typechecked. Use with care.
+    pub fn skip_typecheck(self) -> Typed {
+        Typed(self.0, UNTYPE)
     }
 }
 impl Typed {
@@ -63,7 +66,7 @@ impl Normalized {
 }
 impl Type {
     #[inline(always)]
-    fn as_normalized(&self) -> Result<&Normalized, TypeError<X>> {
+    pub fn as_normalized(&self) -> Result<&Normalized, TypeError<X>> {
         use TypeInternal::*;
         match &self.0 {
             Expr(e) => Ok(e),

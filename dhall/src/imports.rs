@@ -44,12 +44,6 @@ impl fmt::Display for ImportError {
     }
 }
 
-// Deprecated
-pub fn panic_imports<S: Clone>(expr: &Expr<S, Import>) -> Expr<S, X> {
-    let no_import = |i: &Import| -> X { panic!("ahhh import: {:?}", i) };
-    expr.map_embed(&no_import)
-}
-
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportRoot {
@@ -121,7 +115,7 @@ impl Parsed {
     pub fn resolve(self) -> Result<Resolved, ImportError> {
         crate::imports::resolve_expr(self, true)
     }
-    pub fn resolve_no_imports(self) -> Result<Resolved, ImportError> {
+    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
         crate::imports::resolve_expr(self, false)
     }
 }
@@ -134,11 +128,4 @@ pub fn load_dhall_file(
     let expr = Parsed::load_from_file(f)?;
     let expr = resolve_expr(expr, resolve_imports)?;
     Ok(expr.0.unroll())
-}
-
-// Deprecated
-pub fn load_dhall_file_no_resolve_imports(
-    f: &Path,
-) -> Result<ParsedExpr, ImportError> {
-    Ok(Parsed::load_from_file(f)?.0)
 }

@@ -7,16 +7,14 @@
     clippy::many_single_char_names
 )]
 
-mod normalize;
-pub use crate::normalize::*;
 mod binary;
-pub mod imports;
-mod traits;
+mod imports;
+mod normalize;
+pub mod traits;
 pub mod typecheck;
-pub use crate::imports::*;
-pub use crate::traits::*;
+pub use crate::imports::{load_dhall_file, ImportError};
+pub use crate::traits::StaticType;
 pub use dhall_generator::expr;
 pub use dhall_generator::subexpr;
 pub use dhall_generator::StaticType;
 pub mod expr;
-pub use crate::expr::*;

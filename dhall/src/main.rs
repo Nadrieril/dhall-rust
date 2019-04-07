@@ -2,9 +2,6 @@ use std::error::Error;
 use std::io::{self, Read};
 use term_painter::ToStyle;
 
-use dhall::*;
-use dhall_core::*;
-
 const ERROR_STYLE: term_painter::Color = term_painter::Color::Red;
 const BOLD: term_painter::Attr = term_painter::Attr::Bold;
 
@@ -57,17 +54,19 @@ fn print_error(message: &str, source: &str, start: usize, end: usize) {
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
-    let expr = match parse_expr(&buffer) {
-        Ok(e) => e,
+
+    let expr = match dhall::expr::Parsed::load_from_str(&buffer) {
+        Ok(expr) => expr,
         Err(e) => {
             print_error(&format!("Parse error {}", e), &buffer, 0, 0);
             return;
         }
     };
 
-    let expr: SubExpr<_, _> = rc(imports::panic_imports(expr.as_ref()));
+    let expr = expr.resolve().unwrap();
 
-    let type_expr = match typecheck::type_of(expr.clone()) {
+    let expr = match expr.typecheck() {
+        Ok(expr) => expr,
         Err(e) => {
             let explain = ::std::env::args().any(|s| s == "--explain");
             if !explain {
@@ -84,10 +83,9 @@ fn main() {
             // FIXME Print source position
             return;
         }
-        Ok(type_expr) => type_expr,
     };
 
-    println!("{}", type_expr);
-    println!();
-    println!("{}", normalize(expr));
+    let expr = expr.normalize();
+
+    println!("{}", expr);
 }
