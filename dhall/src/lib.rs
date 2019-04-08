@@ -1,11 +1,19 @@
 #![feature(trace_macros)]
 #![feature(proc_macro_hygiene)]
 #![feature(slice_patterns)]
+#![cfg_attr(test, feature(custom_inner_attributes))]
 #![allow(
     clippy::type_complexity,
     clippy::infallible_destructuring_match,
     clippy::many_single_char_names
 )]
+
+#[cfg(test)]
+#[macro_use]
+mod tests;
+
+#[cfg(test)]
+mod parser;
 
 mod binary;
 mod imports;

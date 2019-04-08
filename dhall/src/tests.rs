@@ -23,13 +23,13 @@ macro_rules! make_spec_test {
         #[test]
         #[allow(non_snake_case)]
         fn $name() {
-            use crate::common::*;
+            use crate::tests::*;
             run_test($path, Feature::$type);
         }
     };
 }
 
-use dhall::*;
+use crate::*;
 use dhall_core::*;
 use std::path::PathBuf;
 
@@ -46,19 +46,19 @@ pub enum Feature {
 
 // Deprecated
 fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
-    dhall::load_dhall_file(&PathBuf::from(file_path), true)
+    crate::load_dhall_file(&PathBuf::from(file_path), true)
 }
 
 fn load_from_file_str<'i>(
     file_path: &str,
-) -> Result<dhall::expr::Parsed, ImportError> {
-    dhall::expr::Parsed::load_from_file(&PathBuf::from(file_path))
+) -> Result<crate::expr::Parsed, ImportError> {
+    crate::expr::Parsed::load_from_file(&PathBuf::from(file_path))
 }
 
 fn load_from_binary_file_str<'i>(
     file_path: &str,
-) -> Result<dhall::expr::Parsed, ImportError> {
-    dhall::expr::Parsed::load_from_binary_file(&PathBuf::from(file_path))
+) -> Result<crate::expr::Parsed, ImportError> {
+    crate::expr::Parsed::load_from_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test(base_path: &str, feature: Feature) {
@@ -90,7 +90,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
 
             // Round-trip pretty-printer
             let expr =
-                dhall::expr::Parsed::load_from_str(&expr.to_string()).unwrap();
+                crate::expr::Parsed::load_from_str(&expr.to_string()).unwrap();
             assert_eq!(expr, expected);
         }
         ParserFailure => {
@@ -138,7 +138,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
                     let expr = rc(read_dhall_file(&expr_file_path).unwrap());
                     let expected =
                         rc(read_dhall_file(&expected_file_path).unwrap());
-                    typecheck::type_of(dhall::subexpr!(expr: expected))
+                    typecheck::type_of(crate::subexpr!(expr: expected))
                         .unwrap();
                 })
                 .unwrap()

@@ -41,7 +41,7 @@ fn main() -> std::io::Result<()> {
         }
         writeln!(
             file,
-            r#"make_spec_test!(ParserSuccess, spec_parser_success_{}, "{}");"#,
+            r#"make_spec_test!(ParserSuccess, spec_success_{}, "{}");"#,
             name, path
         )?;
     }
@@ -50,7 +50,7 @@ fn main() -> std::io::Result<()> {
         let name = path.replace("/", "_");
         writeln!(
             file,
-            r#"make_spec_test!(ParserFailure, spec_parser_failure_{}, "{}");"#,
+            r#"make_spec_test!(ParserFailure, spec_failure_{}, "{}");"#,
             name, path
         )?;
     }
