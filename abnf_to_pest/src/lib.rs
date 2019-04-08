@@ -81,9 +81,11 @@ impl Pretty for Range {
         use abnf::abnf::Range::*;
         Doc::text(match self {
             Range(x, y) => {
-                format!("'{}'..'{}'", format_char(x), format_char(y))
+                format!("'{}'..'{}'", format_char(*x), format_char(*y))
             }
-            OneOf(v) => format!("\"{}\"", v.iter().map(format_char).join("")),
+            OneOf(v) => {
+                format!("\"{}\"", v.iter().map(|x| format_char(*x)).join(""))
+            }
         })
     }
 }
@@ -105,9 +107,9 @@ pub fn escape_rulename(x: &str) -> String {
     }
 }
 
-fn format_char(x: &u64) -> String {
-    if *x <= u64::from(u8::max_value()) {
-        let x: u8 = *x as u8;
+fn format_char(x: u64) -> String {
+    if x <= u64::from(u8::max_value()) {
+        let x: u8 = x as u8;
         if x.is_ascii_graphic() {
             let x: char = x as char;
             if x != '"' && x != '\'' && x != '\\' {

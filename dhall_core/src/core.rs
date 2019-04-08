@@ -25,7 +25,7 @@ pub struct NaiveDouble(f64);
 
 impl PartialEq for NaiveDouble {
     fn eq(&self, other: &Self) -> bool {
-        return self.0.to_bits() == other.0.to_bits();
+        self.0.to_bits() == other.0.to_bits()
     }
 }
 
@@ -283,7 +283,7 @@ impl<S, A> Expr<S, A> {
         F: Fn(&A) -> B,
     {
         let recurse = |e: &Expr<S, A>| -> Expr<S, B> { e.map_embed(map_embed) };
-        self.map_shallow(recurse, |x| x.clone(), map_embed, |x| x.clone())
+        self.map_shallow(recurse, S::clone, map_embed, Label::clone)
     }
 
     #[inline(always)]
@@ -315,7 +315,7 @@ impl<S, A> Expr<S, A> {
         F: Fn(&Label) -> Label,
     {
         let recurse = |e: &Self| -> Self { e.map_label(map_label) };
-        self.map_shallow(recurse, |x| x.clone(), |x| x.clone(), map_label)
+        self.map_shallow(recurse, S::clone, A::clone, map_label)
     }
 
     #[inline(always)]
@@ -333,10 +333,10 @@ impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
         match self {
             ExprF::Embed(e) => e.clone(),
             e => e.map_shallow(
-                |e| e.squash_embed(),
-                |x| x.clone(),
+                <Expr<S, Expr<S, A>>>::squash_embed,
+                S::clone,
                 |_| unreachable!(),
-                |x| x.clone(),
+                Label::clone,
             ),
         }
     }
@@ -368,7 +368,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         fn opt<T>(x: &Option<T>) -> Option<&T> {
             x.as_ref()
         }
-        fn vec<T>(x: &Vec<T>) -> Vec<&T> {
+        fn vec<T>(x: &[T]) -> Vec<&T> {
             x.iter().collect()
         }
         fn btmap<L: Ord, SE>(x: &BTreeMap<L, SE>) -> BTreeMap<&L, &SE> {

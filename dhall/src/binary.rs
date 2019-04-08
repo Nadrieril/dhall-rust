@@ -237,11 +237,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         };
                         let path = rest
                             .map(|s| {
-                                s.as_string().ok_or(
+                                s.as_string().ok_or_else(|| {
                                     DecodeError::WrongFormatError(
                                         "import/remote/path".to_owned(),
-                                    ),
-                                )
+                                    )
+                                })
                             })
                             .collect::<Result<_, _>>()?;
                         ImportLocation::Remote(URL {
@@ -264,11 +264,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         };
                         let path = rest
                             .map(|s| {
-                                s.as_string().ok_or(
+                                s.as_string().ok_or_else(|| {
                                     DecodeError::WrongFormatError(
                                         "import/local/path".to_owned(),
-                                    ),
-                                )
+                                    )
+                                })
                             })
                             .collect::<Result<_, _>>()?;
                         ImportLocation::Local(prefix, path)
@@ -296,11 +296,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let mut tuples = bindings.iter().tuples();
                 let bindings = (&mut tuples)
                     .map(|(x, t, v)| {
-                        let x = x.as_string().ok_or(
+                        let x = x.as_string().ok_or_else(|| {
                             DecodeError::WrongFormatError(
                                 "let/label".to_owned(),
-                            ),
-                        )?;
+                            )
+                        })?;
                         let x = Label::from(x.as_str());
                         let t = match t {
                             Null => None,
@@ -310,9 +310,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         Ok((x, t, v))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let expr = tuples.into_buffer().next().ok_or(
-                    DecodeError::WrongFormatError("let/expr".to_owned()),
-                )?;
+                let expr = tuples.into_buffer().next().ok_or_else(|| {
+                    DecodeError::WrongFormatError("let/expr".to_owned())
+                })?;
                 let expr = cbor_value_to_dhall(expr)?;
                 return Ok(bindings
                     .into_iter()
@@ -334,9 +334,9 @@ fn cbor_map_to_dhall_map(
 ) -> Result<std::collections::BTreeMap<Label, ParsedExpr>, DecodeError> {
     map.iter()
         .map(|(k, v)| -> Result<(_, _), _> {
-            let k = k
-                .as_string()
-                .ok_or(DecodeError::WrongFormatError("map/key".to_owned()))?;
+            let k = k.as_string().ok_or_else(|| {
+                DecodeError::WrongFormatError("map/key".to_owned())
+            })?;
             let v = cbor_value_to_dhall(v)?;
             Ok((Label::from(k.as_ref()), v))
         })

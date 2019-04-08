@@ -419,10 +419,9 @@ pub fn type_with(
                 None => Err(mkerr(UnboundVariable)),
             },
             App(f, args) => {
-                let mut iter = args.into_iter();
                 let mut seen_args: Vec<SubExpr<_, _>> = vec![];
                 let mut tf = f.get_type().clone();
-                while let Some(a) = iter.next() {
+                for a in args {
                     seen_args.push(a.as_expr().clone());
                     let (x, tx, tb) = ensure_matches!(tf,
                         Pi(x, tx, tb) => (x, tx, tb),
@@ -656,7 +655,7 @@ impl<S> TypeError<S> {
     ) -> Self {
         TypeError {
             context: context.clone(),
-            current: current,
+            current,
             type_message,
         }
     }

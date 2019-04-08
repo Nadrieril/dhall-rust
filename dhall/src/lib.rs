@@ -1,6 +1,7 @@
 #![feature(trace_macros)]
 #![feature(proc_macro_hygiene)]
 #![feature(slice_patterns)]
+#![feature(label_break_value)]
 #![cfg_attr(test, feature(custom_inner_attributes))]
 #![allow(
     clippy::type_complexity,

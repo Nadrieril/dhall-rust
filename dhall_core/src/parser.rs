@@ -180,7 +180,7 @@ macro_rules! make_parser {
     );
 
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
-        #[allow(non_camel_case_types, dead_code)]
+        #[allow(non_camel_case_types, dead_code, clippy::large_enum_variant)]
         #[derive(Debug)]
         enum ParsedValue<'a> {
             $( $name($o), )*
@@ -283,7 +283,7 @@ make_parser! {
         [label(l)] => {
             if crate::Builtin::parse(&String::from(&l)).is_some() {
                 Err(
-                    format!("Builtin names are not allowed as bound variables")
+                    "Builtin names are not allowed as bound variables".to_string()
                 )?
             }
             l
@@ -323,7 +323,7 @@ make_parser! {
                     // "uXXXX"
                     use std::convert::TryFrom;
                     let c = u16::from_str_radix(&s[1..5], 16).unwrap();
-                    let c = char::try_from(c as u32).unwrap();
+                    let c = char::try_from(u32::from(c)).unwrap();
                     std::iter::once(c).collect()
                 }
             }

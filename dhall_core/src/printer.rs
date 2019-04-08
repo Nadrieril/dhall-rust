@@ -318,7 +318,7 @@ impl Display for NaiveDouble {
             f.write_str("NaN")
         } else {
             let s = format!("{}", v);
-            if s.contains("e") || s.contains(".") {
+            if s.contains('e') || s.contains('.') {
                 f.write_str(&s)
             } else {
                 write!(f, "{}.0", s)

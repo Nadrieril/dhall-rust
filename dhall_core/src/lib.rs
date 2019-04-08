@@ -4,7 +4,8 @@
 #![allow(
     clippy::many_single_char_names,
     clippy::should_implement_trait,
-    clippy::new_without_default
+    clippy::new_without_default,
+    clippy::type_complexity
 )]
 
 mod core;

@@ -14,7 +14,7 @@ impl Typed {
     }
 }
 
-fn apply_builtin<S, A>(b: Builtin, args: &Vec<Expr<S, A>>) -> WhatNext<S, A>
+fn apply_builtin<S, A>(b: Builtin, args: &[Expr<S, A>]) -> WhatNext<S, A>
 where
     S: fmt::Debug + Clone,
     A: fmt::Debug + Clone,
@@ -22,7 +22,7 @@ where
     use dhall_core::Builtin::*;
     use dhall_core::ExprF::*;
     use WhatNext::*;
-    let (ret, rest) = match (b, args.as_slice()) {
+    let (ret, rest) = match (b, args) {
         (OptionalSome, [x, rest..]) => (rc(NEOptionalLit(x.roll())), rest),
         (OptionalNone, [t, rest..]) => (rc(EmptyOptionalLit(t.roll())), rest),
         (NaturalIsZero, [NaturalLit(n), rest..]) => {
@@ -80,19 +80,22 @@ where
             (rc(NEListLit(xs)), rest)
         }
         (ListBuild, [a0, g, rest..]) => {
-            loop {
+            'ret: {
                 if let App(f2, args2) = g {
                     if let (Builtin(ListFold), [_, x, rest_inner..]) =
                         (f2.as_ref(), args2.as_slice())
                     {
                         // fold/build fusion
-                        break (rc(App(x.clone(), rest_inner.to_vec())), rest);
+                        break 'ret (
+                            rc(App(x.clone(), rest_inner.to_vec())),
+                            rest,
+                        );
                     }
                 };
                 let a0 = a0.roll();
                 let a1 = shift(1, &V("a".into(), 0), &a0);
                 let g = g.roll();
-                break (
+                break 'ret (
                     dhall_expr!(
                         g
                         (List a0)
@@ -104,18 +107,21 @@ where
             }
         }
         (OptionalBuild, [a0, g, rest..]) => {
-            loop {
+            'ret: {
                 if let App(f2, args2) = g {
                     if let (Builtin(OptionalFold), [_, x, rest_inner..]) =
                         (f2.as_ref(), args2.as_slice())
                     {
                         // fold/build fusion
-                        break (rc(App(x.clone(), rest_inner.to_vec())), rest);
+                        break 'ret (
+                            rc(App(x.clone(), rest_inner.to_vec())),
+                            rest,
+                        );
                     }
                 };
                 let a0 = a0.roll();
                 let g = g.roll();
-                break (
+                break 'ret (
                     dhall_expr!(
                         g
                         (Optional a0)
@@ -155,17 +161,20 @@ where
         //     normalize_ref(&App(bx(x.clone()), rest.to_vec()))
         // }
         (NaturalBuild, [g, rest..]) => {
-            loop {
+            'ret: {
                 if let App(f2, args2) = g {
                     if let (Builtin(NaturalFold), [x, rest_inner..]) =
                         (f2.as_ref(), args2.as_slice())
                     {
                         // fold/build fusion
-                        break (rc(App(x.clone(), rest_inner.to_vec())), rest);
+                        break 'ret (
+                            rc(App(x.clone(), rest_inner.to_vec())),
+                            rest,
+                        );
                     }
                 };
                 let g = g.roll();
-                break (
+                break 'ret (
                     dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0),
                     rest,
                 );
@@ -270,8 +279,8 @@ where
         BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
         BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
         BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {
-            let xs = xs.into_iter().cloned();
-            let ys = ys.into_iter().cloned();
+            let xs = xs.iter().cloned();
+            let ys = ys.iter().cloned();
             Done(NEListLit(xs.chain(ys).collect()))
         }
         Merge(RecordLit(handlers), UnionLit(k, v, _), _) => {

@@ -125,7 +125,7 @@ fn quote_subexpr(
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
         |_| unreachable!(),
-        |l| l.clone(),
+        Label::clone,
     ) {
         Var(V(ref s, n)) => {
             match ctx.lookup(s, n) {
@@ -160,7 +160,7 @@ fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
         |_| unreachable!(),
-        |l| l.clone(),
+        Label::clone,
     ) {
         Var(V(ref s, n)) => {
             match ctx.lookup(s, n) {
