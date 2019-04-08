@@ -1,4 +1,4 @@
-#![feature(slice_patterns, bind_by_move_pattern_guards)]
+#![feature(slice_patterns)]
 
 /* Destructure an iterator using the syntax of slice_patterns.
  * Wraps the match body in `Some` if there was a match; returns
@@ -174,11 +174,15 @@ macro_rules! match_vec {
         )
     };
     (@make_filter; $variant:ident ($x:ident).., $($rest:tt)*) => {
-        $x.iter()
-            .all(|x| match x {
-                $variant(_) => true,
-                _ => false,
-            })
+        {
+            // Circumvent https://github.com/rust-lang/rust/issues/59803
+            let is_all_variant = || $x.iter()
+                .all(|x| match x {
+                    $variant(_) => true,
+                    _ => false,
+                });
+            is_all_variant()
+        }
         &&
         $crate::match_vec!(@make_filter;
             $($rest)*
