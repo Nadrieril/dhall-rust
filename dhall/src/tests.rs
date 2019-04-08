@@ -29,8 +29,10 @@ macro_rules! make_spec_test {
     };
 }
 
+use crate::imports::ImportError;
 use crate::*;
 use dhall_core::*;
+use dhall_generator as dhall;
 use std::path::PathBuf;
 
 #[allow(dead_code)]
@@ -46,7 +48,7 @@ pub enum Feature {
 
 // Deprecated
 fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
-    crate::load_dhall_file(&PathBuf::from(file_path), true)
+    crate::imports::load_dhall_file(&PathBuf::from(file_path), true)
 }
 
 fn load_from_file_str<'i>(
@@ -138,7 +140,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
                     let expr = rc(read_dhall_file(&expr_file_path).unwrap());
                     let expected =
                         rc(read_dhall_file(&expected_file_path).unwrap());
-                    typecheck::type_of(crate::subexpr!(expr: expected))
+                    typecheck::type_of(dhall::subexpr!(expr: expected))
                         .unwrap();
                 })
                 .unwrap()

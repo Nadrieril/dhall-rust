@@ -11,7 +11,7 @@ use self::TypeMessage::*;
 
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
-        type_of_(self.0.clone())
+        type_of(self.0.clone())
     }
     /// Pretends this expression has been typechecked. Use with care.
     pub fn skip_typecheck(self) -> Typed {
@@ -604,12 +604,7 @@ pub fn type_with(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of(e: SubExpr<X, X>) -> Result<SubExpr<X, X>, TypeError<X>> {
-    let e = type_of_(e)?;
-    Ok(e.get_type_move().into_normalized()?.into_expr())
-}
-
-pub fn type_of_(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
+pub fn type_of(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
     // Ensure the inferred type isn't UNTYPE
