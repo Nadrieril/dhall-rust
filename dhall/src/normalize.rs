@@ -663,7 +663,6 @@ mod spec_tests {
     // norm!(success_unit_UnionNormalizeAlternatives, "unit/UnionNormalizeAlternatives");
     norm!(success_unit_UnionNormalizeArguments, "unit/UnionNormalizeArguments");
     // norm!(success_unit_UnionProjectConstructor, "unit/UnionProjectConstructor");
-    norm!(success_unit_UnionProjectConstructorNormalizeArguments, "unit/UnionProjectConstructorNormalizeArguments");
     // norm!(success_unit_UnionSortAlternatives, "unit/UnionSortAlternatives");
     // norm!(success_unit_UnionType, "unit/UnionType");
     norm!(success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
