@@ -42,7 +42,7 @@ impl Normalized {
         &self.0
     }
     #[inline(always)]
-    fn into_expr(self) -> SubExpr<X, X> {
+    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
     #[inline(always)]
@@ -50,7 +50,7 @@ impl Normalized {
         &self.1
     }
     #[inline(always)]
-    fn into_type(self) -> Type {
+    pub(crate) fn into_type(self) -> Type {
         crate::expr::Type(TypeInternal::Expr(Box::new(self)))
     }
     // Expose the outermost constructor
@@ -78,7 +78,7 @@ impl Type {
         }
     }
     #[inline(always)]
-    fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
+    pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0 {
             Expr(e) => Ok(*e),
@@ -109,6 +109,21 @@ impl Type {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
             Untyped => Untyped,
         })
+    }
+
+    #[inline(always)]
+    pub fn const_sort() -> Self {
+        Normalized(rc(ExprF::Const(Const::Sort)), UNTYPE).into_type()
+    }
+    #[inline(always)]
+    pub fn const_kind() -> Self {
+        Normalized(rc(ExprF::Const(Const::Kind)), Type::const_sort())
+            .into_type()
+    }
+    #[inline(always)]
+    pub fn const_type() -> Self {
+        Normalized(rc(ExprF::Const(Const::Type)), Type::const_kind())
+            .into_type()
     }
 }
 

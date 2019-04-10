@@ -36,6 +36,11 @@ derive_other_traits!(Typed);
 pub struct Normalized(pub(crate) SubExpr<X, X>, pub(crate) Type);
 derive_other_traits!(Normalized);
 
+/// An expression of type `Type` (like `Bool` or `Natural -> Text`, but not `Type`)
+#[derive(Debug, Clone, Eq)]
+pub struct SimpleType(pub(crate) SubExpr<X, X>);
+derive_other_traits!(SimpleType);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type(pub(crate) TypeInternal);
 
@@ -43,4 +48,20 @@ pub struct Type(pub(crate) TypeInternal);
 pub(crate) enum TypeInternal {
     Expr(Box<Normalized>),
     Untyped,
+}
+
+// Exposed for the macros
+#[doc(hidden)]
+impl From<SimpleType> for SubExpr<X, X> {
+    fn from(x: SimpleType) -> SubExpr<X, X> {
+        x.0
+    }
+}
+
+// Exposed for the macros
+#[doc(hidden)]
+impl From<SubExpr<X, X>> for SimpleType {
+    fn from(x: SubExpr<X, X>) -> SimpleType {
+        SimpleType(x)
+    }
 }

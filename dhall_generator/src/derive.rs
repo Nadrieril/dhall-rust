@@ -6,14 +6,23 @@ use syn::spanned::Spanned;
 use syn::Error;
 use syn::{parse_quote, DeriveInput};
 
-pub fn derive_type(input: TokenStream) -> TokenStream {
-    TokenStream::from(match derive_type_inner(input) {
+pub fn derive_simple_static_type(input: TokenStream) -> TokenStream {
+    TokenStream::from(match derive_simple_static_type_inner(input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })
 }
 
-pub fn derive_for_struct(
+fn get_simple_static_type<T>(ty: T) -> proc_macro2::TokenStream
+where
+    T: quote::ToTokens,
+{
+    quote!(
+        <#ty as dhall::SimpleStaticType>::get_simple_static_type()
+    )
+}
+
+fn derive_for_struct(
     data: &syn::DataStruct,
     constraints: &mut Vec<syn::Type>,
 ) -> Result<proc_macro2::TokenStream, Error> {
@@ -44,7 +53,8 @@ pub fn derive_for_struct(
         .map(|(name, ty)| {
             let name = dhall_core::Label::from(name);
             constraints.push(ty.clone());
-            (name, quote!(<#ty as dhall::StaticType>::get_type()))
+            let ty = get_simple_static_type(ty);
+            (name, quote!(#ty.into()))
         })
         .collect();
     let record =
@@ -52,7 +62,7 @@ pub fn derive_for_struct(
     Ok(quote! { dhall_core::rc(#record) })
 }
 
-pub fn derive_for_enum(
+fn derive_for_enum(
     data: &syn::DataEnum,
     constraints: &mut Vec<syn::Type>,
 ) -> Result<proc_macro2::TokenStream, Error> {
@@ -88,7 +98,8 @@ pub fn derive_for_enum(
             };
             let ty = ty?;
             constraints.push(ty.clone());
-            Ok((name, quote!(<#ty as dhall::StaticType>::get_type())))
+            let ty = get_simple_static_type(ty);
+            Ok((name, quote!(#ty.into())))
         })
         .collect::<Result<_, Error>>()?;
 
@@ -97,7 +108,7 @@ pub fn derive_for_enum(
     Ok(quote! { dhall_core::rc(#union) })
 }
 
-pub fn derive_type_inner(
+pub fn derive_simple_static_type_inner(
     input: TokenStream,
 ) -> Result<proc_macro2::TokenStream, Error> {
     let input: DeriveInput = syn::parse_macro_input::parse(input)?;
@@ -136,7 +147,7 @@ pub fn derive_type_inner(
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::StaticType));
+            .push(parse_quote!(#ty: dhall::SimpleStaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -158,16 +169,16 @@ pub fn derive_type_inner(
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::StaticType));
+            .push(parse_quote!(#ty: dhall::SimpleStaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics dhall::StaticType for #ident #ty_generics
+        impl #impl_generics dhall::SimpleStaticType for #ident #ty_generics
                 #where_clause {
-            fn get_type() -> dhall_core::DhallExpr {
+            fn get_simple_static_type() -> dhall::expr::SimpleType {
                 #(#assertions)*
-                #get_type
+                dhall::expr::SimpleType::from(#get_type)
             }
         }
     };

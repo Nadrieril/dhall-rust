@@ -1,77 +1,108 @@
+use crate::expr::*;
 use dhall_core::*;
 use dhall_generator::*;
+use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub enum ConversionError {}
 
 pub trait StaticType {
-    fn get_type() -> DhallExpr;
-    // fn as_dhall(&self) -> DhallExpr;
-    // fn from_dhall(e: DhallExpr) -> Result<Self, DhallConversionError>;
+    fn get_static_type() -> Type;
 }
 
-impl StaticType for bool {
-    fn get_type() -> DhallExpr {
-        dhall_expr!(Bool)
+/// Trait for rust types that can be represented in dhall in
+/// a single way, independent of the value. A typical example is `Option<bool>`,
+/// represented by the dhall expression `Optional Bool`. A typical counterexample
+/// is `HashMap<Text, bool>` because dhall cannot represent records with a
+/// variable number of fields.
+pub trait SimpleStaticType {
+    fn get_simple_static_type() -> SimpleType;
+}
+
+fn mktype(x: SubExpr<X, X>) -> SimpleType {
+    SimpleType(x)
+}
+
+impl<T: SimpleStaticType> StaticType for T {
+    fn get_static_type() -> Type {
+        crate::expr::Normalized(
+            T::get_simple_static_type().into(),
+            Type::const_type(),
+        )
+        .into_type()
     }
 }
 
-impl StaticType for Natural {
-    fn get_type() -> DhallExpr {
-        dhall_expr!(Natural)
+impl StaticType for SimpleType {
+    fn get_static_type() -> Type {
+        Type::const_type()
     }
 }
 
-impl StaticType for Integer {
-    fn get_type() -> DhallExpr {
-        dhall_expr!(Integer)
+impl SimpleStaticType for bool {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Bool))
     }
 }
 
-impl StaticType for String {
-    fn get_type() -> DhallExpr {
-        dhall_expr!(Text)
+impl SimpleStaticType for Natural {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Natural))
     }
 }
 
-impl<A: StaticType, B: StaticType> StaticType for (A, B) {
-    fn get_type() -> DhallExpr {
-        let ta = A::get_type();
-        let tb = B::get_type();
-        dhall_expr!({ _1: ta, _2: tb })
+impl SimpleStaticType for Integer {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Integer))
     }
 }
 
-impl<T: StaticType> StaticType for Option<T> {
-    fn get_type() -> DhallExpr {
-        let t = T::get_type();
-        dhall_expr!(Optional t)
+impl SimpleStaticType for String {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Text))
     }
 }
 
-impl<T: StaticType> StaticType for Vec<T> {
-    fn get_type() -> DhallExpr {
-        let t = T::get_type();
-        dhall_expr!(List t)
+impl<A: SimpleStaticType, B: SimpleStaticType> SimpleStaticType for (A, B) {
+    fn get_simple_static_type() -> SimpleType {
+        let ta: SubExpr<_, _> = A::get_simple_static_type().into();
+        let tb: SubExpr<_, _> = B::get_simple_static_type().into();
+        mktype(dhall_expr!({ _1: ta, _2: tb }))
     }
 }
 
-impl<'a, T: StaticType> StaticType for &'a T {
-    fn get_type() -> DhallExpr {
-        T::get_type()
+impl<T: SimpleStaticType> SimpleStaticType for Option<T> {
+    fn get_simple_static_type() -> SimpleType {
+        let t: SubExpr<_, _> = T::get_simple_static_type().into();
+        mktype(dhall_expr!(Optional t))
     }
 }
 
-impl<T> StaticType for std::marker::PhantomData<T> {
-    fn get_type() -> DhallExpr {
-        dhall_expr!({})
+impl<T: SimpleStaticType> SimpleStaticType for Vec<T> {
+    fn get_simple_static_type() -> SimpleType {
+        let t: SubExpr<_, _> = T::get_simple_static_type().into();
+        mktype(dhall_expr!(List t))
     }
 }
 
-impl<T: StaticType, E: StaticType> StaticType for Result<T, E> {
-    fn get_type() -> DhallExpr {
-        let tt = T::get_type();
-        let te = E::get_type();
-        dhall_expr!(< Ok: tt | Err: te>)
+impl<'a, T: SimpleStaticType> SimpleStaticType for &'a T {
+    fn get_simple_static_type() -> SimpleType {
+        T::get_simple_static_type()
+    }
+}
+
+impl<T> SimpleStaticType for std::marker::PhantomData<T> {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!({}))
+    }
+}
+
+impl<T: SimpleStaticType, E: SimpleStaticType> SimpleStaticType
+    for std::result::Result<T, E>
+{
+    fn get_simple_static_type() -> SimpleType {
+        let tt: SubExpr<_, _> = T::get_simple_static_type().into();
+        let te: SubExpr<_, _> = E::get_simple_static_type().into();
+        mktype(dhall_expr!(< Ok: tt | Err: te>))
     }
 }

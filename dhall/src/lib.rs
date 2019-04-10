@@ -21,6 +21,7 @@ mod imports;
 mod normalize;
 mod traits;
 mod typecheck;
+pub use crate::traits::SimpleStaticType;
 pub use crate::traits::StaticType;
-pub use dhall_generator::StaticType;
+pub use dhall_generator::SimpleStaticType;
 pub mod expr;
