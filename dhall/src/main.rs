@@ -55,7 +55,7 @@ fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
 
-    let expr = match dhall::expr::Parsed::load_from_str(&buffer) {
+    let expr = match dhall::expr::Parsed::parse_str(&buffer) {
         Ok(expr) => expr,
         Err(e) => {
             print_error(&format!("Parse error {}", e), &buffer, 0, 0);

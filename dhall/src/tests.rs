@@ -51,16 +51,16 @@ fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
     crate::imports::load_dhall_file(&PathBuf::from(file_path), true)
 }
 
-fn load_from_file_str<'i>(
+fn parse_file_str<'i>(
     file_path: &str,
 ) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::load_from_file(&PathBuf::from(file_path))
+    crate::expr::Parsed::parse_file(&PathBuf::from(file_path))
 }
 
-fn load_from_binary_file_str<'i>(
+fn parse_binary_file_str<'i>(
     file_path: &str,
 ) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::load_from_binary_file(&PathBuf::from(file_path))
+    crate::expr::Parsed::parse_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test(base_path: &str, feature: Feature) {
@@ -80,24 +80,24 @@ pub fn run_test(base_path: &str, feature: Feature) {
         ParserSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhallb";
-            let expr = load_from_file_str(&expr_file_path)
+            let expr = parse_file_str(&expr_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
 
-            let expected = load_from_binary_file_str(&expected_file_path)
+            let expected = parse_binary_file_str(&expected_file_path)
                 .map_err(|e| println!("{}", e))
                 .unwrap();
 
             assert_eq_pretty!(expr, expected);
 
             // Round-trip pretty-printer
-            let expr =
-                crate::expr::Parsed::load_from_str(&expr.to_string()).unwrap();
+            let expr: crate::expr::Parsed =
+                crate::from_str(&expr.to_string(), None).unwrap();
             assert_eq!(expr, expected);
         }
         ParserFailure => {
             let file_path = base_path + ".dhall";
-            let err = load_from_file_str(&file_path).unwrap_err();
+            let err = parse_file_str(&file_path).unwrap_err();
             match err {
                 ImportError::ParseError(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
@@ -106,13 +106,13 @@ pub fn run_test(base_path: &str, feature: Feature) {
         Normalization => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = load_from_file_str(&expr_file_path)
+            let expr = parse_file_str(&expr_file_path)
                 .unwrap()
                 .resolve()
                 .unwrap()
                 .skip_typecheck()
                 .normalize();
-            let expected = load_from_file_str(&expected_file_path)
+            let expected = parse_file_str(&expected_file_path)
                 .unwrap()
                 .resolve()
                 .unwrap()
@@ -123,7 +123,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
         }
         TypecheckFailure => {
             let file_path = base_path + ".dhall";
-            load_from_file_str(&file_path)
+            parse_file_str(&file_path)
                 .unwrap()
                 .skip_resolve()
                 .unwrap()
@@ -149,7 +149,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
         }
         TypeInferenceFailure => {
             let file_path = base_path + ".dhall";
-            load_from_file_str(&file_path)
+            parse_file_str(&file_path)
                 .unwrap()
                 .skip_resolve()
                 .unwrap()
@@ -159,14 +159,14 @@ pub fn run_test(base_path: &str, feature: Feature) {
         TypeInferenceSuccess => {
             let expr_file_path = base_path.clone() + "A.dhall";
             let expected_file_path = base_path + "B.dhall";
-            let expr = load_from_file_str(&expr_file_path)
+            let expr = parse_file_str(&expr_file_path)
                 .unwrap()
                 .skip_resolve()
                 .unwrap()
                 .typecheck()
                 .unwrap();
             let ty = expr.get_type().as_normalized().unwrap();
-            let expected = load_from_file_str(&expected_file_path)
+            let expected = parse_file_str(&expected_file_path)
                 .unwrap()
                 .skip_resolve()
                 .unwrap()

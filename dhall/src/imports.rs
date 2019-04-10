@@ -90,7 +90,7 @@ fn resolve_expr(
 }
 
 impl Parsed {
-    pub fn load_from_file(f: &Path) -> Result<Parsed, ImportError> {
+    pub fn parse_file(f: &Path) -> Result<Parsed, ImportError> {
         let mut buffer = String::new();
         File::open(f)?.read_to_string(&mut buffer)?;
         let expr = parse_expr(&*buffer)?;
@@ -98,13 +98,13 @@ impl Parsed {
         Ok(Parsed(expr, root))
     }
 
-    pub fn load_from_str(s: &str) -> Result<Parsed, ImportError> {
+    pub fn parse_str(s: &str) -> Result<Parsed, ImportError> {
         let expr = parse_expr(s)?;
         let root = ImportRoot::LocalDir(std::env::current_dir()?);
         Ok(Parsed(expr, root))
     }
 
-    pub fn load_from_binary_file(f: &Path) -> Result<Parsed, ImportError> {
+    pub fn parse_binary_file(f: &Path) -> Result<Parsed, ImportError> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
         let expr = crate::binary::decode(&buffer)?;
@@ -125,7 +125,7 @@ pub fn load_dhall_file(
     f: &Path,
     resolve_imports: bool,
 ) -> Result<Expr<X, X>, ImportError> {
-    let expr = Parsed::load_from_file(f)?;
+    let expr = Parsed::parse_file(f)?;
     let expr = resolve_expr(expr, resolve_imports)?;
     Ok(expr.0.unroll())
 }
