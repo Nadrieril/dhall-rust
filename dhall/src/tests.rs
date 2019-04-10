@@ -19,12 +19,22 @@ right: `{}`"#,
 
 #[macro_export]
 macro_rules! make_spec_test {
-    ($type:ident, $name:ident, $path:expr) => {
+    ($type:ident, $status:ident, $name:ident, $path:expr) => {
         #[test]
         #[allow(non_snake_case)]
         fn $name() {
             use crate::tests::*;
-            run_test($path, Feature::$type);
+            // Many tests stack overflow in debug mode
+            std::thread::Builder::new()
+                .stack_size(4 * 1024 * 1024)
+                .spawn(|| {
+                    run_test($path, Feature::$type, Status::$status)
+                        .map_err(|e| println!("{}", e))
+                        .unwrap();
+                })
+                .unwrap()
+                .join()
+                .unwrap();
         }
     };
 }
@@ -33,15 +43,18 @@ use crate::error::{Error, Result};
 use crate::expr::Parsed;
 use std::path::PathBuf;
 
-#[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub enum Feature {
-    ParserSuccess,
-    ParserFailure,
+    Parser,
     Normalization,
-    TypecheckSuccess,
-    TypecheckFailure,
-    TypeInferenceSuccess,
-    TypeInferenceFailure,
+    Typecheck,
+    TypeInference,
+}
+
+#[derive(Copy, Clone)]
+pub enum Status {
+    Success,
+    Failure,
 }
 
 fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
@@ -52,123 +65,88 @@ fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
     Parsed::parse_binary_file(&PathBuf::from(file_path))
 }
 
-pub fn run_test(base_path: &str, feature: Feature) {
+pub fn run_test(
+    base_path: &str,
+    feature: Feature,
+    status: Status,
+) -> Result<()> {
     use self::Feature::*;
-    let base_path_prefix = match feature {
-        ParserSuccess => "parser/success/",
-        ParserFailure => "parser/failure/",
-        Normalization => "normalization/success/",
-        TypecheckSuccess => "typecheck/success/",
-        TypecheckFailure => "typecheck/failure/",
-        TypeInferenceSuccess => "type-inference/success/",
-        TypeInferenceFailure => "type-inference/failure/",
+    use self::Status::*;
+    let feature_prefix = match feature {
+        Parser => "parser/",
+        Normalization => "normalization/",
+        Typecheck => "typecheck/",
+        TypeInference => "type-inference/",
     };
-    let base_path =
-        "../dhall-lang/tests/".to_owned() + base_path_prefix + base_path;
-    match feature {
-        ParserSuccess => {
+    let status_prefix = match status {
+        Success => "success/",
+        Failure => "failure/",
+    };
+    let base_path = "../dhall-lang/tests/".to_owned()
+        + feature_prefix
+        + status_prefix
+        + base_path;
+    match status {
+        Success => {
             let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhallb";
-            let expr = parse_file_str(&expr_file_path)
-                .map_err(|e| println!("{}", e))
-                .unwrap();
+            let expr = parse_file_str(&expr_file_path)?;
 
-            let expected = parse_binary_file_str(&expected_file_path)
-                .map_err(|e| println!("{}", e))
-                .unwrap();
+            if let Parser = feature {
+                let expected_file_path = base_path + "B.dhallb";
+                let expected = parse_binary_file_str(&expected_file_path)?;
 
-            assert_eq_pretty!(expr, expected);
+                assert_eq_pretty!(expr, expected);
 
-            // Round-trip pretty-printer
-            let expr: Parsed =
-                crate::from_str(&expr.to_string(), None).unwrap();
-            assert_eq!(expr, expected);
-        }
-        ParserFailure => {
-            let file_path = base_path + ".dhall";
-            let err = parse_file_str(&file_path).unwrap_err();
-            match err {
-                Error::Parse(_) => {}
-                e => panic!("Expected parse error, got: {:?}", e),
+                // Round-trip pretty-printer
+                let expr: Parsed = crate::from_str(&expr.to_string(), None)?;
+                assert_eq!(expr, expected);
+
+                return Ok(());
             }
-        }
-        Normalization => {
-            let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhall";
-            let expr = parse_file_str(&expr_file_path)
-                .unwrap()
-                .resolve()
-                .unwrap()
-                .skip_typecheck()
-                .normalize();
-            let expected = parse_file_str(&expected_file_path)
-                .unwrap()
-                .resolve()
-                .unwrap()
-                .skip_typecheck()
-                .normalize();
 
-            assert_eq_display!(expr, expected);
-        }
-        TypecheckFailure => {
-            let file_path = base_path + ".dhall";
-            parse_file_str(&file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap_err();
-        }
-        TypecheckSuccess => {
-            // Many tests stack overflow in debug mode
-            std::thread::Builder::new()
-                .stack_size(4 * 1024 * 1024)
-                .spawn(|| {
-                    let expr_file_path = base_path.clone() + "A.dhall";
-                    let expected_file_path = base_path + "B.dhall";
-                    let expr = parse_file_str(&expr_file_path)
-                        .unwrap()
-                        .resolve()
-                        .unwrap();
-                    let expected = parse_file_str(&expected_file_path)
-                        .unwrap()
-                        .resolve()
-                        .unwrap()
-                        .skip_typecheck()
-                        .skip_normalize()
-                        .into_type();
-                    expr.typecheck_with(&expected).unwrap();
-                })
-                .unwrap()
-                .join()
-                .unwrap();
-        }
-        TypeInferenceFailure => {
-            let file_path = base_path + ".dhall";
-            parse_file_str(&file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap_err();
-        }
-        TypeInferenceSuccess => {
-            let expr_file_path = base_path.clone() + "A.dhall";
+            let expr = expr.resolve()?;
+
             let expected_file_path = base_path + "B.dhall";
-            let expr = parse_file_str(&expr_file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap();
-            let ty = expr.get_type().as_normalized().unwrap();
-            let expected = parse_file_str(&expected_file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
+            let expected = parse_file_str(&expected_file_path)?
+                .resolve()?
                 .skip_typecheck()
                 .skip_normalize();
-            assert_eq_display!(ty, &expected);
+
+            match feature {
+                Parser => unreachable!(),
+                Typecheck => {
+                    expr.typecheck_with(&expected.into_type())?;
+                }
+                TypeInference => {
+                    let expr = expr.typecheck()?;
+                    let ty = expr.get_type().as_normalized()?;
+                    assert_eq_display!(ty, &expected);
+                }
+                Normalization => {
+                    let expr = expr.skip_typecheck().normalize();
+                    assert_eq_display!(expr, expected);
+                }
+            }
+        }
+        Failure => {
+            let file_path = base_path + ".dhall";
+            match feature {
+                Parser => {
+                    let err = parse_file_str(&file_path).unwrap_err();
+                    match err {
+                        Error::Parse(_) => {}
+                        e => panic!("Expected parse error, got: {:?}", e),
+                    }
+                }
+                Normalization => unreachable!(),
+                Typecheck | TypeInference => {
+                    parse_file_str(&file_path)?
+                        .skip_resolve()?
+                        .typecheck()
+                        .unwrap_err();
+                }
+            }
         }
     }
+    Ok(())
 }
