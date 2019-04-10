@@ -7,18 +7,23 @@ quick_error! {
     pub enum Error {
         IO(err: std::io::Error) {
             from()
+            display("{}", err)
         }
         Parse(err: dhall_core::ParseError) {
             from()
+            display("{}", err)
         }
         Decode(err: crate::binary::DecodeError) {
             from()
+            display("{:?}", err)
         }
         Resolve(err: crate::imports::ImportError) {
             from()
+            display("{}", err)
         }
         Typecheck(err: crate::typecheck::TypeError<dhall_core::X>) {
             from()
+            display("{:?}", err)
         }
     }
 }
