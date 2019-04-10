@@ -26,6 +26,7 @@ pub use crate::traits::SimpleStaticType;
 pub use crate::traits::StaticType;
 pub use dhall_generator::SimpleStaticType;
 pub mod expr;
+pub mod serde;
 
 pub fn from_str<'a, T: Deserialize<'a>>(
     s: &'a str,
