@@ -24,8 +24,11 @@ impl<'a> Deserialize<'a> for Resolved {
 impl<'a> Deserialize<'a> for Typed {
     /// Parses, resolves and typechecks the provided string.
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self> {
-        // TODO: compare with provided type
-        Ok(Resolved::from_str(s, ty)?.typecheck()?)
+        let resolved = Resolved::from_str(s, ty)?;
+        match ty {
+            None => Ok(resolved.typecheck()?),
+            Some(t) => Ok(resolved.typecheck_with(t)?),
+        }
     }
 }
 

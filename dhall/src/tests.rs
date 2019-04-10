@@ -31,9 +31,6 @@ macro_rules! make_spec_test {
 
 use crate::error::{Error, Result};
 use crate::expr::Parsed;
-use crate::*;
-use dhall_core::*;
-use dhall_generator as dhall;
 use std::path::PathBuf;
 
 #[allow(dead_code)]
@@ -45,11 +42,6 @@ pub enum Feature {
     TypecheckFailure,
     TypeInferenceSuccess,
     TypeInferenceFailure,
-}
-
-// Deprecated
-fn read_dhall_file<'i>(file_path: &str) -> Result<SubExpr<X, X>> {
-    crate::imports::load_dhall_file(&PathBuf::from(file_path))
 }
 
 fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
@@ -134,11 +126,18 @@ pub fn run_test(base_path: &str, feature: Feature) {
                 .spawn(|| {
                     let expr_file_path = base_path.clone() + "A.dhall";
                     let expected_file_path = base_path + "B.dhall";
-                    let expr = read_dhall_file(&expr_file_path).unwrap();
-                    let expected =
-                        read_dhall_file(&expected_file_path).unwrap();
-                    typecheck::type_of(dhall::subexpr!(expr: expected))
+                    let expr = parse_file_str(&expr_file_path)
+                        .unwrap()
+                        .resolve()
                         .unwrap();
+                    let expected = parse_file_str(&expected_file_path)
+                        .unwrap()
+                        .resolve()
+                        .unwrap()
+                        .skip_typecheck()
+                        .skip_normalize()
+                        .into_type();
+                    expr.typecheck_with(&expected).unwrap();
                 })
                 .unwrap()
                 .join()

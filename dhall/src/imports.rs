@@ -97,9 +97,3 @@ impl Parsed {
         crate::imports::resolve_expr(self, false)
     }
 }
-
-// Deprecated, used for tests only
-#[allow(dead_code)]
-pub fn load_dhall_file(f: &Path) -> Result<SubExpr<X, X>, Error> {
-    Ok(load_import(f)?.0)
-}

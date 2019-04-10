@@ -13,6 +13,11 @@ impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
         type_of(self.0.clone())
     }
+    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError<X>> {
+        let expr: SubExpr<_, _> = self.0.clone();
+        let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().clone();
+        type_of(dhall::subexpr!(expr: ty))
+    }
     /// Pretends this expression has been typechecked. Use with care.
     pub fn skip_typecheck(self) -> Typed {
         Typed(self.0, UNTYPE)
