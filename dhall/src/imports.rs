@@ -1,6 +1,3 @@
-// use dhall_core::{Expr, FilePrefix, Import, ImportLocation, ImportMode, X};
-use dhall_core::{Expr, Import, X};
-// use std::path::Path;
 use crate::error::Error;
 use crate::expr::*;
 use dhall_core::*;
@@ -27,7 +24,7 @@ pub enum ImportRoot {
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
-) -> Result<Expr<X, X>, ImportError> {
+) -> Result<Resolved, ImportError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
     use dhall_core::ImportLocation::*;
@@ -37,16 +34,21 @@ fn resolve_import(
     match &import.location_hashed.location {
         Local(prefix, path) => {
             let path = match prefix {
+                // TODO: fail gracefully
                 Parent => cwd.parent().unwrap().join(path),
                 Here => cwd.join(path),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_dhall_file(&path, true).map_err(|e| {
+            Ok(load_import(&path).map_err(|e| {
                 ImportError::Recursive(import.clone(), Box::new(e))
             })?)
         }
         _ => unimplemented!("{:?}", import),
     }
+}
+
+fn load_import(f: &Path) -> Result<Resolved, Error> {
+    Ok(Parsed::parse_file(f)?.resolve()?)
 }
 
 fn resolve_expr(
@@ -56,7 +58,7 @@ fn resolve_expr(
     let resolve = |import: &Import| -> Result<SubExpr<X, X>, ImportError> {
         if allow_imports {
             let expr = resolve_import(import, &root)?;
-            Ok(expr.roll())
+            Ok(expr.0)
         } else {
             Err(ImportError::UnexpectedImport(import.clone()))
         }
@@ -96,12 +98,8 @@ impl Parsed {
     }
 }
 
-// Deprecated
-pub fn load_dhall_file(
-    f: &Path,
-    resolve_imports: bool,
-) -> Result<Expr<X, X>, Error> {
-    let expr = Parsed::parse_file(f)?;
-    let expr = resolve_expr(expr, resolve_imports)?;
-    Ok(expr.0.unroll())
+// Deprecated, used for tests only
+#[allow(dead_code)]
+pub fn load_dhall_file(f: &Path) -> Result<SubExpr<X, X>, Error> {
+    Ok(load_import(f)?.0)
 }
