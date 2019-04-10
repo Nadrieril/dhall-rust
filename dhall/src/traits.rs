@@ -1,10 +1,8 @@
+use crate::error::*;
 use crate::expr::*;
 use dhall_core::*;
 use dhall_generator::*;
 use std::borrow::Cow;
-
-#[derive(Debug, Clone)]
-pub enum ConversionError {}
 
 pub trait StaticType {
     fn get_static_type() -> Type;
@@ -19,8 +17,6 @@ pub trait SimpleStaticType {
     fn get_simple_static_type() -> SimpleType;
 }
 
-pub type Error = ();
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait Deserialize<'a>: Sized {
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self>;
