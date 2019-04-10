@@ -1,46 +1,20 @@
 // use dhall_core::{Expr, FilePrefix, Import, ImportLocation, ImportMode, X};
 use dhall_core::{Expr, Import, X};
 // use std::path::Path;
-use crate::binary::DecodeError;
+use crate::error::Error;
 use crate::expr::*;
 use dhall_core::*;
-use std::fmt;
+use quick_error::quick_error;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
-#[derive(Debug)]
-pub enum ImportError {
-    ParseError(ParseError),
-    BinaryDecodeError(DecodeError),
-    IOError(std::io::Error),
-    UnexpectedImportError(Import),
-}
-impl From<ParseError> for ImportError {
-    fn from(e: ParseError) -> Self {
-        ImportError::ParseError(e)
-    }
-}
-impl From<DecodeError> for ImportError {
-    fn from(e: DecodeError) -> Self {
-        ImportError::BinaryDecodeError(e)
-    }
-}
-impl From<std::io::Error> for ImportError {
-    fn from(e: std::io::Error) -> Self {
-        ImportError::IOError(e)
-    }
-}
-impl fmt::Display for ImportError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use self::ImportError::*;
-        match self {
-            ParseError(e) => e.fmt(f),
-            BinaryDecodeError(_) => unimplemented!(),
-            IOError(e) => e.fmt(f),
-            UnexpectedImportError(e) => e.fmt(f),
-        }
+quick_error! {
+    #[derive(Debug)]
+    pub enum ImportError {
+        Recursive(import: Import, err: Box<Error>) {}
+        UnexpectedImport(import: Import) {}
     }
 }
 
@@ -67,7 +41,9 @@ fn resolve_import(
                 Here => cwd.join(path),
                 _ => unimplemented!("{:?}", import),
             };
-            load_dhall_file(&path, true)
+            Ok(load_dhall_file(&path, true).map_err(|e| {
+                ImportError::Recursive(import.clone(), Box::new(e))
+            })?)
         }
         _ => unimplemented!("{:?}", import),
     }
@@ -82,7 +58,7 @@ fn resolve_expr(
             let expr = resolve_import(import, &root)?;
             Ok(expr.roll())
         } else {
-            Err(ImportError::UnexpectedImportError(import.clone()))
+            Err(ImportError::UnexpectedImport(import.clone()))
         }
     };
     let expr = expr.as_ref().traverse_embed(&resolve)?;
@@ -90,7 +66,7 @@ fn resolve_expr(
 }
 
 impl Parsed {
-    pub fn parse_file(f: &Path) -> Result<Parsed, ImportError> {
+    pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         let mut buffer = String::new();
         File::open(f)?.read_to_string(&mut buffer)?;
         let expr = parse_expr(&*buffer)?;
@@ -98,13 +74,13 @@ impl Parsed {
         Ok(Parsed(expr, root))
     }
 
-    pub fn parse_str(s: &str) -> Result<Parsed, ImportError> {
+    pub fn parse_str(s: &str) -> Result<Parsed, Error> {
         let expr = parse_expr(s)?;
         let root = ImportRoot::LocalDir(std::env::current_dir()?);
         Ok(Parsed(expr, root))
     }
 
-    pub fn parse_binary_file(f: &Path) -> Result<Parsed, ImportError> {
+    pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
         let expr = crate::binary::decode(&buffer)?;
@@ -124,7 +100,7 @@ impl Parsed {
 pub fn load_dhall_file(
     f: &Path,
     resolve_imports: bool,
-) -> Result<Expr<X, X>, ImportError> {
+) -> Result<Expr<X, X>, Error> {
     let expr = Parsed::parse_file(f)?;
     let expr = resolve_expr(expr, resolve_imports)?;
     Ok(expr.0.unroll())

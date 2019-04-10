@@ -29,7 +29,8 @@ macro_rules! make_spec_test {
     };
 }
 
-use crate::imports::ImportError;
+use crate::error::{Error, Result};
+use crate::expr::Parsed;
 use crate::*;
 use dhall_core::*;
 use dhall_generator as dhall;
@@ -47,20 +48,16 @@ pub enum Feature {
 }
 
 // Deprecated
-fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
+fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>> {
     crate::imports::load_dhall_file(&PathBuf::from(file_path), true)
 }
 
-fn parse_file_str<'i>(
-    file_path: &str,
-) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::parse_file(&PathBuf::from(file_path))
+fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
+    Parsed::parse_file(&PathBuf::from(file_path))
 }
 
-fn parse_binary_file_str<'i>(
-    file_path: &str,
-) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::parse_binary_file(&PathBuf::from(file_path))
+fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
+    Parsed::parse_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test(base_path: &str, feature: Feature) {
@@ -91,7 +88,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
             assert_eq_pretty!(expr, expected);
 
             // Round-trip pretty-printer
-            let expr: crate::expr::Parsed =
+            let expr: Parsed =
                 crate::from_str(&expr.to_string(), None).unwrap();
             assert_eq!(expr, expected);
         }
@@ -99,7 +96,7 @@ pub fn run_test(base_path: &str, feature: Feature) {
             let file_path = base_path + ".dhall";
             let err = parse_file_str(&file_path).unwrap_err();
             match err {
-                ImportError::ParseError(_) => {}
+                Error::Parse(_) => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
