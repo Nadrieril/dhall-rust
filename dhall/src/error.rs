@@ -6,7 +6,7 @@ pub enum Error {
     Parse(dhall_core::ParseError),
     Decode(crate::binary::DecodeError),
     Resolve(crate::imports::ImportError),
-    Typecheck(crate::typecheck::TypeError<dhall_core::X>),
+    Typecheck(crate::typecheck::TypeError),
     Deserialize(String),
 }
 
@@ -44,8 +44,8 @@ impl From<crate::imports::ImportError> for Error {
         Error::Resolve(err)
     }
 }
-impl From<crate::typecheck::TypeError<dhall_core::X>> for Error {
-    fn from(err: crate::typecheck::TypeError<dhall_core::X>) -> Error {
+impl From<crate::typecheck::TypeError> for Error {
+    fn from(err: crate::typecheck::TypeError) -> Error {
         Error::Typecheck(err)
     }
 }

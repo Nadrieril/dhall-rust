@@ -12,10 +12,10 @@ use dhall_generator as dhall;
 use self::TypeMessage::*;
 
 impl Resolved {
-    pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
+    pub fn typecheck(self) -> Result<Typed, TypeError> {
         type_of(self.0.clone())
     }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError<X>> {
+    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
         let expr: SubExpr<_, _> = self.0.clone();
         let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().absurd();
         type_of(dhall::subexpr!(expr: ty))
@@ -26,7 +26,7 @@ impl Resolved {
     }
 }
 impl Typed {
-    fn get_type_move(self) -> Result<Type, TypeError<X>> {
+    fn get_type_move(self) -> Result<Type, TypeError> {
         self.1.ok_or(TypeError::new(
             &Context::new(),
             self.0,
@@ -45,7 +45,7 @@ impl Normalized {
     }
 }
 impl Type {
-    pub fn as_normalized(&self) -> Result<&Normalized, TypeError<X>> {
+    pub fn as_normalized(&self) -> Result<&Normalized, TypeError> {
         use TypeInternal::*;
         match &self.0 {
             Expr(e) => Ok(e),
@@ -56,7 +56,7 @@ impl Type {
             )),
         }
     }
-    pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
+    pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError> {
         use TypeInternal::*;
         match self.0 {
             Expr(e) => Ok(*e),
@@ -68,7 +68,7 @@ impl Type {
         }
     }
     // Expose the outermost constructor
-    fn unroll_ref(&self) -> Result<&Expr<X, X>, TypeError<X>> {
+    fn unroll_ref(&self) -> Result<&Expr<X, X>, TypeError> {
         Ok(self.as_normalized()?.unroll_ref())
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
@@ -296,11 +296,11 @@ macro_rules! ensure_is_const {
 pub fn type_with(
     ctx: &Context<Label, Type>,
     e: SubExpr<X, Normalized>,
-) -> Result<Typed, TypeError<X>> {
+) -> Result<Typed, TypeError> {
     use dhall_core::BinOp::*;
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
-    let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
+    let mkerr = |msg: TypeMessage| TypeError::new(ctx, e.clone(), msg);
 
     let mktype = |ctx, x: SubExpr<X, Normalized>| {
         Ok(type_with(ctx, x)?.normalize().into_type())
@@ -600,7 +600,7 @@ pub fn type_with(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError<X>> {
+pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
     // Ensure the inferred type isn't SuperType
@@ -610,7 +610,7 @@ pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError<X>> {
 
 /// The specific type error
 #[derive(Debug)]
-pub enum TypeMessage<S> {
+pub enum TypeMessage {
     UnboundVariable,
     InvalidInputType(Normalized),
     InvalidOutputType(Normalized),
@@ -633,23 +633,22 @@ pub enum TypeMessage<S> {
     BinOpTypeMismatch(BinOp, Typed),
     NoDependentLet(Normalized, Normalized),
     NoDependentTypes(Normalized, Normalized),
-    MustCombineARecord(SubExpr<S, X>, SubExpr<S, X>),
     Unimplemented,
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
-pub struct TypeError<S> {
+pub struct TypeError {
     pub context: Context<Label, Type>,
-    pub current: SubExpr<S, Normalized>,
-    pub type_message: TypeMessage<S>,
+    pub current: SubExpr<X, Normalized>,
+    pub type_message: TypeMessage,
 }
 
-impl<S> TypeError<S> {
+impl TypeError {
     pub fn new(
         context: &Context<Label, Type>,
-        current: SubExpr<S, Normalized>,
-        type_message: TypeMessage<S>,
+        current: SubExpr<X, Normalized>,
+        type_message: TypeMessage,
     ) -> Self {
         TypeError {
             context: context.clone(),
@@ -659,7 +658,7 @@ impl<S> TypeError<S> {
     }
 }
 
-impl<S: fmt::Debug> ::std::error::Error for TypeMessage<S> {
+impl ::std::error::Error for TypeMessage {
     fn description(&self) -> &str {
         match *self {
             UnboundVariable => "Unbound variable",
@@ -672,7 +671,7 @@ impl<S: fmt::Debug> ::std::error::Error for TypeMessage<S> {
     }
 }
 
-impl<S> fmt::Display for TypeMessage<S> {
+impl fmt::Display for TypeMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             UnboundVariable => {
