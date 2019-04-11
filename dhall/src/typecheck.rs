@@ -565,7 +565,7 @@ pub fn type_with(
                     NaturalPlus => dhall::subexpr!(Natural),
                     NaturalTimes => dhall::subexpr!(Natural),
                     TextAppend => dhall::subexpr!(Text),
-                    _ => panic!("Unimplemented typecheck case: {:?}", e),
+                    _ => Err(mkerr(Unimplemented))?,
                 });
 
                 ensure_equal!(
@@ -583,7 +583,7 @@ pub fn type_with(
                 Ok(RetType(t))
             }
             Embed(p) => match p {},
-            _ => panic!("Unimplemented typecheck case: {:?}", e),
+            _ => Err(mkerr(Unimplemented))?,
         },
     }?;
     match ret {
@@ -629,6 +629,7 @@ pub enum TypeMessage<S> {
     NoDependentLet(Normalized, Normalized),
     NoDependentTypes(Normalized, Normalized),
     MustCombineARecord(SubExpr<S, X>, SubExpr<S, X>),
+    Unimplemented,
 }
 
 /// A structured type error that includes context
