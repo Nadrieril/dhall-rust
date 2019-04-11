@@ -278,9 +278,10 @@ macro_rules! ensure_matches {
     };
 }
 
-macro_rules! ensure_is_type {
+// Ensure the provided type has type `Type`
+macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {
-        ensure_matches!($x, Const(Type) => {}, $err)
+        ensure_matches!($x.get_type()?, Const(Type) => {}, $err)
     };
 }
 
@@ -297,13 +298,14 @@ pub fn type_with(
     e: SubExpr<X, X>,
 ) -> Result<Typed, TypeError<X>> {
     use dhall_core::BinOp::*;
-    use dhall_core::Builtin::*;
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
 
     let mktype =
         |ctx, x: SubExpr<X, X>| Ok(type_with(ctx, x)?.normalize().into_type());
+
+    let mksimpletype = |x: SubExpr<X, X>| SimpleType(x).into_type();
 
     enum Ret {
         RetType(crate::expr::Type),
@@ -396,8 +398,8 @@ pub fn type_with(
             Lam(_, _, _) => unreachable!(),
             Pi(_, _, _) => unreachable!(),
             Let(_, _, _, _) => unreachable!(),
-            Const(Type) => Ok(RetExpr(dhall::expr!(Kind))),
-            Const(Kind) => Ok(RetExpr(dhall::expr!(Sort))),
+            Const(Type) => Ok(RetType(crate::expr::Type::const_kind())),
+            Const(Kind) => Ok(RetType(crate::expr::Type::const_sort())),
             Const(Sort) => {
                 Ok(RetType(crate::expr::Type(TypeInternal::SuperType)))
             }
@@ -446,16 +448,17 @@ pub fn type_with(
             BoolIf(x, y, z) => {
                 ensure_equal!(
                     x.get_type()?,
-                    &mktype(ctx, rc(Builtin(Bool)))?,
+                    &mksimpletype(dhall::subexpr!(Bool)),
                     mkerr(InvalidPredicate(x)),
                 );
-                ensure_is_type!(
-                    y.get_type()?.get_type()?,
+
+                ensure_simple_type!(
+                    y.get_type()?,
                     mkerr(IfBranchMustBeTerm(true, y)),
                 );
 
-                ensure_is_type!(
-                    z.get_type()?.get_type()?,
+                ensure_simple_type!(
+                    z.get_type()?,
                     mkerr(IfBranchMustBeTerm(false, z)),
                 );
 
@@ -469,8 +472,8 @@ pub fn type_with(
             }
             EmptyListLit(t) => {
                 let t = t.normalize().into_type();
-                ensure_is_type!(
-                    t.get_type()?,
+                ensure_simple_type!(
+                    t,
                     mkerr(InvalidListType(t.into_normalized()?)),
                 );
                 let t = t.into_normalized()?.into_expr();
@@ -479,8 +482,8 @@ pub fn type_with(
             NEListLit(xs) => {
                 let mut iter = xs.into_iter().enumerate();
                 let (_, x) = iter.next().unwrap();
-                ensure_is_type!(
-                    x.get_type()?.get_type()?,
+                ensure_simple_type!(
+                    x.get_type()?,
                     mkerr(InvalidListType(
                         x.get_type_move()?.into_normalized()?
                     )),
@@ -501,8 +504,8 @@ pub fn type_with(
             }
             EmptyOptionalLit(t) => {
                 let t = t.normalize().into_type();
-                ensure_is_type!(
-                    t.get_type()?,
+                ensure_simple_type!(
+                    t,
                     mkerr(InvalidOptionalType(t.into_normalized()?)),
                 );
                 let t = t.into_normalized()?.into_expr();
@@ -510,8 +513,8 @@ pub fn type_with(
             }
             NEOptionalLit(x) => {
                 let tx = x.get_type_move()?;
-                ensure_is_type!(
-                    tx.get_type()?,
+                ensure_simple_type!(
+                    tx,
                     mkerr(InvalidOptionalType(tx.into_normalized()?,)),
                 );
                 let t = tx.into_normalized()?.into_expr();
@@ -519,10 +522,7 @@ pub fn type_with(
             }
             RecordType(kts) => {
                 for (k, t) in kts {
-                    ensure_is_type!(
-                        t.get_type()?,
-                        mkerr(InvalidFieldType(k, t)),
-                    );
+                    ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)),);
                 }
                 Ok(RetExpr(dhall::expr!(Type)))
             }
@@ -530,8 +530,8 @@ pub fn type_with(
                 let kts = kvs
                     .into_iter()
                     .map(|(k, v)| {
-                        ensure_is_type!(
-                            v.get_type()?.get_type()?,
+                        ensure_simple_type!(
+                            v.get_type()?,
                             mkerr(InvalidField(k, v)),
                         );
                         Ok((
@@ -557,19 +557,16 @@ pub fn type_with(
             // TODO: check type of interpolations
             TextLit(_) => Ok(RetExpr(dhall::expr!(Text))),
             BinOp(o, l, r) => {
-                let t = mktype(
-                    ctx,
-                    match o {
-                        BoolAnd => dhall::subexpr!(Bool),
-                        BoolOr => dhall::subexpr!(Bool),
-                        BoolEQ => dhall::subexpr!(Bool),
-                        BoolNE => dhall::subexpr!(Bool),
-                        NaturalPlus => dhall::subexpr!(Natural),
-                        NaturalTimes => dhall::subexpr!(Natural),
-                        TextAppend => dhall::subexpr!(Text),
-                        _ => panic!("Unimplemented typecheck case: {:?}", e),
-                    },
-                )?;
+                let t = mksimpletype(match o {
+                    BoolAnd => dhall::subexpr!(Bool),
+                    BoolOr => dhall::subexpr!(Bool),
+                    BoolEQ => dhall::subexpr!(Bool),
+                    BoolNE => dhall::subexpr!(Bool),
+                    NaturalPlus => dhall::subexpr!(Natural),
+                    NaturalTimes => dhall::subexpr!(Natural),
+                    TextAppend => dhall::subexpr!(Text),
+                    _ => panic!("Unimplemented typecheck case: {:?}", e),
+                });
 
                 ensure_equal!(
                     l.get_type()?,

@@ -88,3 +88,8 @@ impl Normalized {
     }
 }
 
+impl SimpleType {
+    pub(crate) fn into_type(self) -> Type {
+        Normalized(self.0, Some(Type::const_type())).into_type()
+    }
+}
