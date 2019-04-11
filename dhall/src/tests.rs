@@ -99,7 +99,8 @@ pub fn run_test(
                 assert_eq_pretty!(expr, expected);
 
                 // Round-trip pretty-printer
-                let expr: Parsed = crate::from_str(&expr.to_string(), None)?;
+                let expr_string = expr.to_string();
+                let expr: Parsed = crate::from_str(&expr_string, None)?;
                 assert_eq!(expr, expected);
 
                 return Ok(());

@@ -1,5 +1,6 @@
 use crate::imports::ImportRoot;
 use dhall_core::*;
+use std::marker::PhantomData;
 
 macro_rules! derive_other_traits {
     ($ty:ident) => {
@@ -20,13 +21,39 @@ macro_rules! derive_other_traits {
     };
 }
 
-#[derive(Debug, Clone, Eq)]
-pub struct Parsed(pub(crate) SubExpr<X, Import>, pub(crate) ImportRoot);
-derive_other_traits!(Parsed);
+macro_rules! derive_other_traits_ {
+    ($ty:ident) => {
+        impl<'a> std::cmp::PartialEq for $ty<'a> {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 == other.0
+            }
+        }
+
+        impl<'a> std::fmt::Display for $ty<'a> {
+            fn fmt(
+                &self,
+                f: &mut std::fmt::Formatter,
+            ) -> Result<(), std::fmt::Error> {
+                self.0.fmt(f)
+            }
+        }
+    };
+}
 
 #[derive(Debug, Clone, Eq)]
-pub struct Resolved(pub(crate) SubExpr<X, Normalized>);
-derive_other_traits!(Resolved);
+pub struct Parsed<'a>(
+    pub(crate) SubExpr<X, Import>,
+    pub(crate) ImportRoot,
+    pub(crate) PhantomData<&'a ()>,
+);
+derive_other_traits_!(Parsed);
+
+#[derive(Debug, Clone, Eq)]
+pub struct Resolved<'a>(
+    pub(crate) SubExpr<X, Normalized>,
+    pub(crate) PhantomData<&'a ()>,
+);
+derive_other_traits_!(Resolved);
 
 #[derive(Debug, Clone, Eq)]
 pub struct Typed(pub(crate) SubExpr<X, Normalized>, pub(crate) Option<Type>);

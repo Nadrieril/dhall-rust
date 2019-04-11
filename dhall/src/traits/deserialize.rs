@@ -5,18 +5,18 @@ pub trait Deserialize<'a>: Sized {
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self>;
 }
 
-impl<'a> Deserialize<'a> for Parsed {
+impl<'de: 'a, 'a> Deserialize<'de> for Parsed<'a> {
     /// Simply parses the provided string. Ignores the
     /// provided type.
-    fn from_str(s: &'a str, _: Option<&Type>) -> Result<Self> {
+    fn from_str(s: &'de str, _: Option<&Type>) -> Result<Self> {
         Ok(Parsed::parse_str(s)?)
     }
 }
 
-impl<'a> Deserialize<'a> for Resolved {
+impl<'de: 'a, 'a> Deserialize<'de> for Resolved<'a> {
     /// Parses and resolves the provided string. Ignores the
     /// provided type.
-    fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self> {
+    fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
         Ok(Parsed::from_str(s, ty)?.resolve()?)
     }
 }

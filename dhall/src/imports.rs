@@ -3,6 +3,7 @@ use crate::expr::*;
 use dhall_core::*;
 use std::fs::File;
 use std::io::Read;
+use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -48,10 +49,10 @@ fn load_import(f: &Path) -> Result<Normalized, Error> {
     Ok(Parsed::parse_file(f)?.resolve()?.typecheck()?.normalize())
 }
 
-fn resolve_expr(
-    Parsed(expr, root): Parsed,
+fn resolve_expr<'a>(
+    Parsed(expr, root, marker): Parsed<'a>,
     allow_imports: bool,
-) -> Result<Resolved, ImportError> {
+) -> Result<Resolved<'a>, ImportError> {
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {
         if allow_imports {
             let expr = resolve_import(import, &root)?;
@@ -61,36 +62,36 @@ fn resolve_expr(
         }
     };
     let expr = expr.as_ref().traverse_embed(&resolve)?;
-    Ok(Resolved(rc(expr)))
+    Ok(Resolved(rc(expr), marker))
 }
 
-impl Parsed {
-    pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
+impl<'a> Parsed<'a> {
+    pub fn parse_file(f: &Path) -> Result<Parsed<'a>, Error> {
         let mut buffer = String::new();
         File::open(f)?.read_to_string(&mut buffer)?;
         let expr = parse_expr(&*buffer)?;
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr, root))
+        Ok(Parsed(expr, root, PhantomData))
     }
 
-    pub fn parse_str(s: &str) -> Result<Parsed, Error> {
+    pub fn parse_str(s: &'a str) -> Result<Parsed<'a>, Error> {
         let expr = parse_expr(s)?;
         let root = ImportRoot::LocalDir(std::env::current_dir()?);
-        Ok(Parsed(expr, root))
+        Ok(Parsed(expr, root, PhantomData))
     }
 
-    pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
+    pub fn parse_binary_file(f: &Path) -> Result<Parsed<'a>, Error> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
         let expr = crate::binary::decode(&buffer)?;
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr, root))
+        Ok(Parsed(expr, root, PhantomData))
     }
 
-    pub fn resolve(self) -> Result<Resolved, ImportError> {
+    pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, true)
     }
-    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
+    pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, false)
     }
 }

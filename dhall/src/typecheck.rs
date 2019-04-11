@@ -11,7 +11,7 @@ use dhall_generator as dhall;
 
 use self::TypeMessage::*;
 
-impl Resolved {
+impl<'a> Resolved<'a> {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
         type_of(self.0.clone())
     }
