@@ -13,6 +13,11 @@ impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError<X>> {
         type_of(self.0.clone())
     }
+    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError<X>> {
+        let expr: SubExpr<_, _> = self.0.clone();
+        let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().clone();
+        type_of(dhall::subexpr!(expr: ty))
+    }
     /// Pretends this expression has been typechecked. Use with care.
     pub fn skip_typecheck(self) -> Typed {
         Typed(self.0, UNTYPE)
@@ -42,7 +47,7 @@ impl Normalized {
         &self.0
     }
     #[inline(always)]
-    fn into_expr(self) -> SubExpr<X, X> {
+    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
     #[inline(always)]
@@ -50,7 +55,7 @@ impl Normalized {
         &self.1
     }
     #[inline(always)]
-    fn into_type(self) -> Type {
+    pub(crate) fn into_type(self) -> Type {
         crate::expr::Type(TypeInternal::Expr(Box::new(self)))
     }
     // Expose the outermost constructor
@@ -78,7 +83,7 @@ impl Type {
         }
     }
     #[inline(always)]
-    fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
+    pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0 {
             Expr(e) => Ok(*e),
@@ -109,6 +114,21 @@ impl Type {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
             Untyped => Untyped,
         })
+    }
+
+    #[inline(always)]
+    pub fn const_sort() -> Self {
+        Normalized(rc(ExprF::Const(Const::Sort)), UNTYPE).into_type()
+    }
+    #[inline(always)]
+    pub fn const_kind() -> Self {
+        Normalized(rc(ExprF::Const(Const::Kind)), Type::const_sort())
+            .into_type()
+    }
+    #[inline(always)]
+    pub fn const_type() -> Self {
+        Normalized(rc(ExprF::Const(Const::Type)), Type::const_kind())
+            .into_type()
     }
 }
 
@@ -706,23 +726,23 @@ mod spec_tests {
 
     macro_rules! tc_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(TypecheckSuccess, $name, $path);
+            make_spec_test!(Typecheck, Success, $name, $path);
         };
     }
     // macro_rules! tc_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(TypecheckFailure, $name, $path);
+    //         make_spec_test!(Typecheck, Failure, $name, $path);
     //     };
     // }
 
     macro_rules! ti_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(TypeInferenceSuccess, $name, $path);
+            make_spec_test!(TypeInference, Success, $name, $path);
         };
     }
     // macro_rules! ti_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(TypeInferenceFailure, $name, $path);
+    //         make_spec_test!(TypeInference, Failure, $name, $path);
     //     };
     // }
 

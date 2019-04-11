@@ -337,7 +337,7 @@ mod spec_tests {
 
     macro_rules! norm {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Normalization, $name, $path);
+            make_spec_test!(Normalization, Success, $name, $path);
         };
     }
 

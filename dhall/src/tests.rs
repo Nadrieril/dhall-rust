@@ -19,160 +19,134 @@ right: `{}`"#,
 
 #[macro_export]
 macro_rules! make_spec_test {
-    ($type:ident, $name:ident, $path:expr) => {
+    ($type:ident, $status:ident, $name:ident, $path:expr) => {
         #[test]
         #[allow(non_snake_case)]
         fn $name() {
             use crate::tests::*;
-            run_test($path, Feature::$type);
-        }
-    };
-}
-
-use crate::imports::ImportError;
-use crate::*;
-use dhall_core::*;
-use dhall_generator as dhall;
-use std::path::PathBuf;
-
-#[allow(dead_code)]
-pub enum Feature {
-    ParserSuccess,
-    ParserFailure,
-    Normalization,
-    TypecheckSuccess,
-    TypecheckFailure,
-    TypeInferenceSuccess,
-    TypeInferenceFailure,
-}
-
-// Deprecated
-fn read_dhall_file<'i>(file_path: &str) -> Result<Expr<X, X>, ImportError> {
-    crate::imports::load_dhall_file(&PathBuf::from(file_path), true)
-}
-
-fn load_from_file_str<'i>(
-    file_path: &str,
-) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::load_from_file(&PathBuf::from(file_path))
-}
-
-fn load_from_binary_file_str<'i>(
-    file_path: &str,
-) -> Result<crate::expr::Parsed, ImportError> {
-    crate::expr::Parsed::load_from_binary_file(&PathBuf::from(file_path))
-}
-
-pub fn run_test(base_path: &str, feature: Feature) {
-    use self::Feature::*;
-    let base_path_prefix = match feature {
-        ParserSuccess => "parser/success/",
-        ParserFailure => "parser/failure/",
-        Normalization => "normalization/success/",
-        TypecheckSuccess => "typecheck/success/",
-        TypecheckFailure => "typecheck/failure/",
-        TypeInferenceSuccess => "type-inference/success/",
-        TypeInferenceFailure => "type-inference/failure/",
-    };
-    let base_path =
-        "../dhall-lang/tests/".to_owned() + base_path_prefix + base_path;
-    match feature {
-        ParserSuccess => {
-            let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhallb";
-            let expr = load_from_file_str(&expr_file_path)
-                .map_err(|e| println!("{}", e))
-                .unwrap();
-
-            let expected = load_from_binary_file_str(&expected_file_path)
-                .map_err(|e| println!("{}", e))
-                .unwrap();
-
-            assert_eq_pretty!(expr, expected);
-
-            // Round-trip pretty-printer
-            let expr =
-                crate::expr::Parsed::load_from_str(&expr.to_string()).unwrap();
-            assert_eq!(expr, expected);
-        }
-        ParserFailure => {
-            let file_path = base_path + ".dhall";
-            let err = load_from_file_str(&file_path).unwrap_err();
-            match err {
-                ImportError::ParseError(_) => {}
-                e => panic!("Expected parse error, got: {:?}", e),
-            }
-        }
-        Normalization => {
-            let expr_file_path = base_path.clone() + "A.dhall";
-            let expected_file_path = base_path + "B.dhall";
-            let expr = load_from_file_str(&expr_file_path)
-                .unwrap()
-                .resolve()
-                .unwrap()
-                .skip_typecheck()
-                .normalize();
-            let expected = load_from_file_str(&expected_file_path)
-                .unwrap()
-                .resolve()
-                .unwrap()
-                .skip_typecheck()
-                .normalize();
-
-            assert_eq_display!(expr, expected);
-        }
-        TypecheckFailure => {
-            let file_path = base_path + ".dhall";
-            load_from_file_str(&file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap_err();
-        }
-        TypecheckSuccess => {
             // Many tests stack overflow in debug mode
             std::thread::Builder::new()
                 .stack_size(4 * 1024 * 1024)
                 .spawn(|| {
-                    let expr_file_path = base_path.clone() + "A.dhall";
-                    let expected_file_path = base_path + "B.dhall";
-                    let expr = rc(read_dhall_file(&expr_file_path).unwrap());
-                    let expected =
-                        rc(read_dhall_file(&expected_file_path).unwrap());
-                    typecheck::type_of(dhall::subexpr!(expr: expected))
+                    run_test($path, Feature::$type, Status::$status)
+                        .map_err(|e| println!("{}", e))
                         .unwrap();
                 })
                 .unwrap()
                 .join()
                 .unwrap();
         }
-        TypeInferenceFailure => {
-            let file_path = base_path + ".dhall";
-            load_from_file_str(&file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap_err();
-        }
-        TypeInferenceSuccess => {
+    };
+}
+
+use crate::error::{Error, Result};
+use crate::expr::Parsed;
+use std::path::PathBuf;
+
+#[derive(Copy, Clone)]
+pub enum Feature {
+    Parser,
+    Normalization,
+    Typecheck,
+    TypeInference,
+}
+
+#[derive(Copy, Clone)]
+pub enum Status {
+    Success,
+    Failure,
+}
+
+fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
+    Parsed::parse_file(&PathBuf::from(file_path))
+}
+
+fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
+    Parsed::parse_binary_file(&PathBuf::from(file_path))
+}
+
+pub fn run_test(
+    base_path: &str,
+    feature: Feature,
+    status: Status,
+) -> Result<()> {
+    use self::Feature::*;
+    use self::Status::*;
+    let feature_prefix = match feature {
+        Parser => "parser/",
+        Normalization => "normalization/",
+        Typecheck => "typecheck/",
+        TypeInference => "type-inference/",
+    };
+    let status_prefix = match status {
+        Success => "success/",
+        Failure => "failure/",
+    };
+    let base_path = "../dhall-lang/tests/".to_owned()
+        + feature_prefix
+        + status_prefix
+        + base_path;
+    match status {
+        Success => {
             let expr_file_path = base_path.clone() + "A.dhall";
+            let expr = parse_file_str(&expr_file_path)?;
+
+            if let Parser = feature {
+                let expected_file_path = base_path + "B.dhallb";
+                let expected = parse_binary_file_str(&expected_file_path)?;
+
+                assert_eq_pretty!(expr, expected);
+
+                // Round-trip pretty-printer
+                let expr: Parsed = crate::from_str(&expr.to_string(), None)?;
+                assert_eq!(expr, expected);
+
+                return Ok(());
+            }
+
+            let expr = expr.resolve()?;
+
             let expected_file_path = base_path + "B.dhall";
-            let expr = load_from_file_str(&expr_file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
-                .typecheck()
-                .unwrap();
-            let ty = expr.get_type().as_normalized().unwrap();
-            let expected = load_from_file_str(&expected_file_path)
-                .unwrap()
-                .skip_resolve()
-                .unwrap()
+            let expected = parse_file_str(&expected_file_path)?
+                .resolve()?
                 .skip_typecheck()
                 .skip_normalize();
-            assert_eq_display!(ty, &expected);
+
+            match feature {
+                Parser => unreachable!(),
+                Typecheck => {
+                    expr.typecheck_with(&expected.into_type())?;
+                }
+                TypeInference => {
+                    let expr = expr.typecheck()?;
+                    let ty = expr.get_type().as_normalized()?;
+                    assert_eq_display!(ty, &expected);
+                }
+                Normalization => {
+                    let expr = expr.skip_typecheck().normalize();
+                    assert_eq_display!(expr, expected);
+                }
+            }
+        }
+        Failure => {
+            let file_path = base_path + ".dhall";
+            match feature {
+                Parser => {
+                    let err = parse_file_str(&file_path).unwrap_err();
+                    match err {
+                        Error::Parse(_) => {}
+                        e => panic!("Expected parse error, got: {:?}", e),
+                    }
+                }
+                Normalization => unreachable!(),
+                Typecheck | TypeInference => {
+                    parse_file_str(&file_path)?
+                        .skip_resolve()?
+                        .typecheck()
+                        .unwrap_err();
+                }
+            }
         }
     }
+    Ok(())
 }

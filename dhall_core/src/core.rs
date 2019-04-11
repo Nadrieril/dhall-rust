@@ -3,7 +3,6 @@ use crate::*;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-pub type Int = isize;
 pub type Integer = isize;
 pub type Natural = usize;
 pub type Double = NaiveDouble;
