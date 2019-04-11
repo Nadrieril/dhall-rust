@@ -24,53 +24,42 @@ impl Resolved {
     }
 }
 impl Typed {
-    #[inline(always)]
     fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
-    #[inline(always)]
     fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
-    #[inline(always)]
     pub fn get_type(&self) -> &Type {
         &self.1
     }
-    #[inline(always)]
     fn get_type_move(self) -> Type {
         self.1
     }
 }
 impl Normalized {
-    #[inline(always)]
     fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
-    #[inline(always)]
     pub(crate) fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
-    #[inline(always)]
     pub fn get_type(&self) -> &Type {
         &self.1
     }
-    #[inline(always)]
     pub(crate) fn into_type(self) -> Type {
         crate::expr::Type(TypeInternal::Expr(Box::new(self)))
     }
     // Expose the outermost constructor
-    #[inline(always)]
     fn unroll_ref(&self) -> &Expr<X, X> {
         self.as_expr().as_ref()
     }
-    #[inline(always)]
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         // shift the type too ?
         Normalized(shift(delta, var, &self.0), self.1.clone())
     }
 }
 impl Type {
-    #[inline(always)]
     pub fn as_normalized(&self) -> Result<&Normalized, TypeError<X>> {
         use TypeInternal::*;
         match &self.0 {
@@ -82,7 +71,6 @@ impl Type {
             )),
         }
     }
-    #[inline(always)]
     pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError<X>> {
         use TypeInternal::*;
         match self.0 {
@@ -95,11 +83,9 @@ impl Type {
         }
     }
     // Expose the outermost constructor
-    #[inline(always)]
     fn unroll_ref(&self) -> Result<&Expr<X, X>, TypeError<X>> {
         Ok(self.as_normalized()?.unroll_ref())
     }
-    #[inline(always)]
     pub fn get_type(&self) -> &Type {
         use TypeInternal::*;
         match &self.0 {
@@ -107,7 +93,6 @@ impl Type {
             Untyped => &UNTYPE,
         }
     }
-    #[inline(always)]
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
         crate::expr::Type(match &self.0 {
@@ -116,16 +101,13 @@ impl Type {
         })
     }
 
-    #[inline(always)]
     pub fn const_sort() -> Self {
         Normalized(rc(ExprF::Const(Const::Sort)), UNTYPE).into_type()
     }
-    #[inline(always)]
     pub fn const_kind() -> Self {
         Normalized(rc(ExprF::Const(Const::Kind)), Type::const_sort())
             .into_type()
     }
-    #[inline(always)]
     pub fn const_type() -> Self {
         Normalized(rc(ExprF::Const(Const::Type)), Type::const_kind())
             .into_type()

@@ -285,7 +285,6 @@ impl<S, A> Expr<S, A> {
         self.map_shallow(recurse, S::clone, map_embed, Label::clone)
     }
 
-    #[inline(always)]
     pub fn traverse_embed<B, Err, F>(
         &self,
         map_embed: &F,
@@ -317,7 +316,6 @@ impl<S, A> Expr<S, A> {
         self.map_shallow(recurse, S::clone, A::clone, map_label)
     }
 
-    #[inline(always)]
     pub fn roll(&self) -> SubExpr<S, A>
     where
         S: Clone,
@@ -359,7 +357,6 @@ impl<S: Clone, A: Clone> Expr<S, SubExpr<S, A>> {
 }
 
 impl<SE, L, N, E> ExprF<SE, L, N, E> {
-    #[inline(always)]
     pub fn as_ref(&self) -> ExprF<&SE, &L, &N, &E>
     where
         L: Ord,
@@ -407,7 +404,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         }
     }
 
-    #[inline(always)]
     pub fn traverse<SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
         self,
         map_subexpr: F1,
@@ -499,7 +495,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         })
     }
 
-    #[inline(always)]
     pub fn map<SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
         self,
         mut map_subexpr: F1,
@@ -526,7 +521,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         ))
     }
 
-    #[inline(always)]
     pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
         &'a self,
         map_subexpr: F1,
@@ -554,7 +548,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         )
     }
 
-    #[inline(always)]
     pub fn map_ref_simple<'a, SE2, F1>(
         &'a self,
         map_subexpr: F1,
@@ -575,7 +568,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         )
     }
 
-    #[inline(always)]
     pub fn traverse_ref_simple<'a, SE2, Err, F1>(
         &'a self,
         map_subexpr: F1,
@@ -596,7 +588,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         )
     }
 
-    // #[inline(always)]
     // pub fn zip<SE2, L2, N2, E2>(
     //     self,
     //     other: ExprF<SE2, L2, N2, E2>
@@ -641,7 +632,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
 }
 
 impl<N, E> SubExpr<N, E> {
-    #[inline(always)]
     pub fn as_ref(&self) -> &Expr<N, E> {
         self.0.as_ref()
     }
@@ -677,7 +667,6 @@ impl<N, E> SubExpr<N, E> {
         self.map_ref(&map_expr, |_, e| map_expr(e))
     }
 
-    #[inline(always)]
     pub fn unroll(&self) -> Expr<N, E>
     where
         N: Clone,
@@ -688,7 +677,6 @@ impl<N, E> SubExpr<N, E> {
 }
 
 impl<N, E> Clone for SubExpr<N, E> {
-    #[inline(always)]
     fn clone(&self) -> Self {
         SubExpr(Rc::clone(&self.0))
     }
