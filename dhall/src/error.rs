@@ -25,5 +25,8 @@ quick_error! {
             from()
             display("{:?}", err)
         }
+        Deserialize(err: String) {
+            display("{}", err)
+        }
     }
 }

@@ -47,7 +47,31 @@ impl SimpleStaticType for Natural {
     }
 }
 
+impl SimpleStaticType for u32 {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Natural))
+    }
+}
+
+impl SimpleStaticType for u64 {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Natural))
+    }
+}
+
 impl SimpleStaticType for Integer {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Integer))
+    }
+}
+
+impl SimpleStaticType for i32 {
+    fn get_simple_static_type() -> SimpleType {
+        mktype(dhall_expr!(Integer))
+    }
+}
+
+impl SimpleStaticType for i64 {
     fn get_simple_static_type() -> SimpleType {
         mktype(dhall_expr!(Integer))
     }

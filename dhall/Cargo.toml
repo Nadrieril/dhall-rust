@@ -5,9 +5,6 @@ authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.n
 edition = "2018"
 build = "build.rs"
 
-[lib]
-doctest = false
-
 [features]
 nothreads = [] # disable threads for tarpaulin
 

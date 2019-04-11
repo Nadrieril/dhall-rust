@@ -8,7 +8,7 @@ pub trait Deserialize<'a>: Sized {
 impl<'a> Deserialize<'a> for Parsed {
     /// Simply parses the provided string. Ignores the
     /// provided type.
-    fn from_str(s: &'a str, _ty: Option<&Type>) -> Result<Self> {
+    fn from_str(s: &'a str, _: Option<&Type>) -> Result<Self> {
         Ok(Parsed::parse_str(s)?)
     }
 }

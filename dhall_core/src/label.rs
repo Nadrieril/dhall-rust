@@ -28,4 +28,7 @@ impl Label {
     pub fn from_str(s: &str) -> Label {
         Label(s.into())
     }
+    pub fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
 }

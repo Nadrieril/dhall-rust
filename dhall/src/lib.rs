@@ -39,14 +39,13 @@
 //!
 //! #[derive(Debug, Deserialize, SimpleStaticType)]
 //! struct Point {
-//!     x: usize,
-//!     y: usize,
+//!     x: u64,
+//!     y: u64,
 //! }
 //!
 //! fn main() {
 //!     // Some dhall data
-//!     // ./Point can be populated using Point::get_type().to_string()
-//!     let data = "{ x = 1, y = 1 + 1 } : ./Point";
+//!     let data = "{ x = 1, y = 1 + 1 }";
 //!
 //!     // Convert the dhall string to a Point.
 //!     let point: Point =
