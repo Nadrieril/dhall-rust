@@ -149,7 +149,6 @@ pub enum Builtin {
     Text,
     List,
     Optional,
-    OptionalSome,
     OptionalNone,
     NaturalBuild,
     NaturalFold,

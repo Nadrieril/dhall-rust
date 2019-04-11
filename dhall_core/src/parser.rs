@@ -41,7 +41,6 @@ impl crate::Builtin {
             "Text" => Some(Text),
             "List" => Some(List),
             "Optional" => Some(Optional),
-            "Some" => Some(OptionalSome),
             "None" => Some(OptionalNone),
             "Natural/build" => Some(NaturalBuild),
             "Natural/fold" => Some(NaturalFold),

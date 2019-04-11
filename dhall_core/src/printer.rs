@@ -426,7 +426,6 @@ impl Display for Builtin {
             Text => "Text",
             List => "List",
             Optional => "Optional",
-            OptionalSome => "Some",
             OptionalNone => "None",
             NaturalBuild => "Natural/build",
             NaturalFold => "Natural/fold",

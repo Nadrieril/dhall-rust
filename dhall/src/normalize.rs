@@ -23,7 +23,6 @@ where
     use dhall_core::ExprF::*;
     use WhatNext::*;
     let (ret, rest) = match (b, args) {
-        (OptionalSome, [x, rest..]) => (rc(NEOptionalLit(x.roll())), rest),
         (OptionalNone, [t, rest..]) => (rc(EmptyOptionalLit(t.roll())), rest),
         (NaturalIsZero, [NaturalLit(n), rest..]) => {
             (rc(BoolLit(*n == 0)), rest)
