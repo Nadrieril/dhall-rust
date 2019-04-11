@@ -296,7 +296,7 @@ impl<S, A> Expr<S, A> {
         let recurse = |e: &SubExpr<S, A>| -> Result<SubExpr<S, B>, Err> {
             Ok(e.as_ref().traverse_embed(map_embed)?.roll())
         };
-        self.as_ref().traverse(
+        self.traverse_ref(
             |e| recurse(e),
             |_, e| recurse(e),
             |x| Ok(S::clone(x)),
@@ -331,8 +331,8 @@ impl<N: Clone, E> Expr<N, E> {
     ) -> SubExpr<N, E2> {
         match self.as_ref() {
             ExprF::Embed(e) => f(e),
-            e => e
-                .map(
+            _ => self
+                .map_ref(
                     |e| e.as_ref().squash_embed(f),
                     |_, e| e.as_ref().squash_embed(f),
                     N::clone,
@@ -392,8 +392,8 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         }
     }
 
-    pub fn traverse<SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
-        self,
+    fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
+        &'a self,
         map_subexpr: F1,
         map_under_binder: F2,
         map_note: F3,
@@ -403,21 +403,21 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
     where
         L: Ord,
         L2: Ord,
-        F1: FnMut(SE) -> Result<SE2, Err>,
-        F2: FnOnce(&L, SE) -> Result<SE2, Err>,
-        F3: FnOnce(N) -> Result<N2, Err>,
-        F4: FnOnce(E) -> Result<E2, Err>,
-        F5: FnMut(L) -> Result<L2, Err>,
+        F1: FnMut(&'a SE) -> Result<SE2, Err>,
+        F2: FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
+        F3: FnOnce(&'a N) -> Result<N2, Err>,
+        F4: FnOnce(&'a E) -> Result<E2, Err>,
+        F5: FnMut(&'a L) -> Result<L2, Err>,
     {
         let mut map = map_subexpr;
-        fn vec<T, U, Err, F: FnMut(T) -> Result<U, Err>>(
-            x: Vec<T>,
+        fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
+            x: &'a Vec<T>,
             f: F,
         ) -> Result<Vec<U>, Err> {
-            x.into_iter().map(f).collect()
+            x.iter().map(f).collect()
         }
-        fn opt<T, U, Err, F: FnOnce(T) -> Result<U, Err>>(
-            x: Option<T>,
+        fn opt<'a, T, U, Err, F: FnOnce(&'a T) -> Result<U, Err>>(
+            x: &'a Option<T>,
             f: F,
         ) -> Result<Option<U>, Err> {
             Ok(match x {
@@ -425,23 +425,23 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
                 None => None,
             })
         }
-        fn btmap<K, L, T, U, Err, FK, FV>(
-            x: BTreeMap<K, T>,
+        fn btmap<'a, K, L, T, U, Err, FK, FV>(
+            x: &'a BTreeMap<K, T>,
             mut fk: FK,
             mut fv: FV,
         ) -> Result<BTreeMap<L, U>, Err>
         where
             K: Ord,
             L: Ord,
-            FK: FnMut(K) -> Result<L, Err>,
-            FV: FnMut(T) -> Result<U, Err>,
+            FK: FnMut(&'a K) -> Result<L, Err>,
+            FV: FnMut(&'a T) -> Result<U, Err>,
         {
             x.into_iter().map(|(k, v)| Ok((fk(k)?, fv(v)?))).collect()
         }
 
         use crate::ExprF::*;
         Ok(match self {
-            Var(V(l, n)) => Var(V(map_label(l)?, n)),
+            Var(V(l, n)) => Var(V(map_label(l)?, *n)),
             Lam(l, t, b) => {
                 let b = map_under_binder(&l, b)?;
                 Lam(map_label(l)?, map(t)?, b)
@@ -456,14 +456,14 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
             }
             App(f, args) => App(map(f)?, vec(args, map)?),
             Annot(x, t) => Annot(map(x)?, map(t)?),
-            Const(k) => Const(k),
-            Builtin(v) => Builtin(v),
-            BoolLit(b) => BoolLit(b),
-            NaturalLit(n) => NaturalLit(n),
-            IntegerLit(n) => IntegerLit(n),
-            DoubleLit(n) => DoubleLit(n),
-            TextLit(t) => TextLit(t.traverse(map)?),
-            BinOp(o, x, y) => BinOp(o, map(x)?, map(y)?),
+            Const(k) => Const(*k),
+            Builtin(v) => Builtin(*v),
+            BoolLit(b) => BoolLit(*b),
+            NaturalLit(n) => NaturalLit(*n),
+            IntegerLit(n) => IntegerLit(*n),
+            DoubleLit(n) => DoubleLit(*n),
+            TextLit(t) => TextLit(t.traverse_ref(map)?),
+            BinOp(o, x, y) => BinOp(*o, map(x)?, map(y)?),
             BoolIf(b, t, f) => BoolIf(map(b)?, map(t)?, map(f)?),
             EmptyListLit(t) => EmptyListLit(map(t)?),
             NEListLit(es) => NEListLit(vec(es, map)?),
@@ -483,39 +483,13 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         })
     }
 
-    pub fn map<SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
-        self,
+    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+        &'a self,
         mut map_subexpr: F1,
         map_under_binder: F2,
         map_note: F3,
         map_embed: F4,
         mut map_label: F5,
-    ) -> ExprF<SE2, L2, N2, E2>
-    where
-        L: Ord,
-        L2: Ord,
-        F1: FnMut(SE) -> SE2,
-        F2: FnOnce(&L, SE) -> SE2,
-        F3: FnOnce(N) -> N2,
-        F4: FnOnce(E) -> E2,
-        F5: FnMut(L) -> L2,
-    {
-        trivial_result(self.traverse(
-            |x| Ok(map_subexpr(x)),
-            |l, x| Ok(map_under_binder(l, x)),
-            |x| Ok(map_note(x)),
-            |x| Ok(map_embed(x)),
-            |x| Ok(map_label(x)),
-        ))
-    }
-
-    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
-        &'a self,
-        map_subexpr: F1,
-        map_under_binder: F2,
-        map_note: F3,
-        map_embed: F4,
-        map_label: F5,
     ) -> ExprF<SE2, L2, N2, E2>
     where
         L: Ord,
@@ -526,14 +500,13 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         F4: FnOnce(&'a E) -> E2,
         F5: FnMut(&'a L) -> L2,
     {
-        // Not optimal: reallocates all the Vecs and BTreeMaps for nothing.
-        self.as_ref().map(
-            map_subexpr,
-            |l, e| map_under_binder(*l, e),
-            map_note,
-            map_embed,
-            map_label,
-        )
+        trivial_result(self.traverse_ref(
+            |x| Ok(map_subexpr(x)),
+            |l, x| Ok(map_under_binder(l, x)),
+            |x| Ok(map_note(x)),
+            |x| Ok(map_embed(x)),
+            |x| Ok(map_label(x)),
+        ))
     }
 
     pub fn map_ref_simple<'a, SE2, F1>(
@@ -567,7 +540,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         E: Clone,
         F1: Fn(&'a SE) -> Result<SE2, Err>,
     {
-        self.as_ref().traverse(
+        self.traverse_ref(
             &map_subexpr,
             |_, e| map_subexpr(e),
             |x| Ok(N::clone(x)),
