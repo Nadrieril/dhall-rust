@@ -41,6 +41,7 @@ macro_rules! make_spec_test {
 
 use crate::error::{Error, Result};
 use crate::expr::Parsed;
+use crate::DynamicType;
 use std::path::PathBuf;
 
 #[derive(Copy, Clone)]
@@ -119,8 +120,8 @@ pub fn run_test(
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;
-                    let ty = expr.get_type()?.as_normalized()?;
-                    assert_eq_display!(ty, &expected);
+                    let ty = expr.get_type()?;
+                    assert_eq_display!(ty.as_normalized()?, &expected);
                 }
                 Normalization => {
                     let expr = expr.skip_typecheck().normalize();

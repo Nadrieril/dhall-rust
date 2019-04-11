@@ -66,3 +66,25 @@ impl From<SubExpr<X, X>> for SimpleType {
         SimpleType(x)
     }
 }
+
+impl Typed {
+    pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
+        &self.0
+    }
+    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
+        self.0
+    }
+}
+
+impl Normalized {
+    pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
+        &self.0
+    }
+    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
+        self.0
+    }
+    pub(crate) fn into_type(self) -> Type {
+        crate::expr::Type(TypeInternal::Expr(Box::new(self)))
+    }
+}
+

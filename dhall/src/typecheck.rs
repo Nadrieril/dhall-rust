@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
+use std::borrow::Borrow;
 use std::fmt;
 
 use crate::expr::*;
+use crate::traits::DynamicType;
 use dhall_core;
 use dhall_core::context::Context;
 use dhall_core::*;
@@ -24,19 +26,6 @@ impl Resolved {
     }
 }
 impl Typed {
-    fn as_expr(&self) -> &SubExpr<X, X> {
-        &self.0
-    }
-    fn into_expr(self) -> SubExpr<X, X> {
-        self.0
-    }
-    pub fn get_type(&self) -> Result<&Type, TypeError<X>> {
-        self.1.as_ref().ok_or(TypeError::new(
-            &Context::new(),
-            self.0.clone(),
-            TypeMessage::Untyped,
-        ))
-    }
     fn get_type_move(self) -> Result<Type, TypeError<X>> {
         self.1.ok_or(TypeError::new(
             &Context::new(),
@@ -46,22 +35,6 @@ impl Typed {
     }
 }
 impl Normalized {
-    fn as_expr(&self) -> &SubExpr<X, X> {
-        &self.0
-    }
-    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
-        self.0
-    }
-    pub fn get_type(&self) -> Result<&Type, TypeError<X>> {
-        self.1.as_ref().ok_or(TypeError::new(
-            &Context::new(),
-            self.0.clone(),
-            TypeMessage::Untyped,
-        ))
-    }
-    pub(crate) fn into_type(self) -> Type {
-        crate::expr::Type(TypeInternal::Expr(Box::new(self)))
-    }
     // Expose the outermost constructor
     fn unroll_ref(&self) -> &Expr<X, X> {
         self.as_expr().as_ref()
@@ -97,17 +70,6 @@ impl Type {
     // Expose the outermost constructor
     fn unroll_ref(&self) -> Result<&Expr<X, X>, TypeError<X>> {
         Ok(self.as_normalized()?.unroll_ref())
-    }
-    pub fn get_type(&self) -> Result<&Type, TypeError<X>> {
-        use TypeInternal::*;
-        match &self.0 {
-            Expr(e) => e.get_type(),
-            SuperType => Err(TypeError::new(
-                &Context::new(),
-                rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
@@ -165,7 +127,11 @@ fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(Label, Label)]) -> bool {
 }
 
 // Equality up to alpha-equivalence (renaming of bound variables)
-fn prop_equal(eL0: &Type, eR0: &Type) -> bool {
+fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
+where
+    T: Borrow<Type>,
+    U: Borrow<Type>,
+{
     use dhall_core::ExprF::*;
     fn go<S, T>(
         ctx: &mut Vec<(Label, Label)>,
@@ -221,7 +187,7 @@ fn prop_equal(eL0: &Type, eR0: &Type) -> bool {
             (_, _) => false,
         }
     }
-    match (&eL0.0, &eR0.0) {
+    match (&eL0.borrow().0, &eR0.borrow().0) {
         (TypeInternal::SuperType, TypeInternal::SuperType) => true,
         (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
             let mut ctx = vec![];
@@ -405,7 +371,7 @@ pub fn type_with(
                 mkerr(InvalidInputType(r.get_type_move()?.into_normalized()?)),
             );
 
-            let ctx2 = ctx.insert(f.clone(), r.get_type()?.clone());
+            let ctx2 = ctx.insert(f.clone(), r.get_type()?.into_owned());
             let b = type_with(&ctx2, b.clone())?;
             // Don't bother to provide a `let`-specific version of this error
             // message because this should never happen anyway
@@ -441,7 +407,7 @@ pub fn type_with(
             },
             App(f, args) => {
                 let mut seen_args: Vec<SubExpr<_, _>> = vec![];
-                let mut tf = f.get_type()?.clone();
+                let mut tf = f.get_type()?.into_owned();
                 for a in args {
                     seen_args.push(a.as_expr().clone());
                     let (x, tx, tb) = ensure_matches!(tf,
