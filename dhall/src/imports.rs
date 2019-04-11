@@ -1,18 +1,15 @@
 use crate::error::Error;
 use crate::expr::*;
 use dhall_core::*;
-use quick_error::quick_error;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum ImportError {
-        Recursive(import: Import, err: Box<Error>) {}
-        UnexpectedImport(import: Import) {}
-    }
+#[derive(Debug)]
+pub enum ImportError {
+    Recursive(Import, Box<Error>),
+    UnexpectedImport(Import),
 }
 
 /// A root from which to resolve relative imports.
