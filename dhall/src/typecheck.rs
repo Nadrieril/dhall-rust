@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use std::borrow::Borrow;
 use std::fmt;
+use std::marker::PhantomData;
 
 use crate::expr::*;
 use crate::traits::DynamicType;
@@ -12,21 +13,24 @@ use dhall_generator as dhall;
 use self::TypeMessage::*;
 
 impl<'a> Resolved<'a> {
-    pub fn typecheck(self) -> Result<Typed, TypeError> {
+    pub fn typecheck(self) -> Result<Typed<'static>, TypeError> {
         type_of(self.0.clone())
     }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
+    pub fn typecheck_with(
+        self,
+        ty: &Type,
+    ) -> Result<Typed<'static>, TypeError> {
         let expr: SubExpr<_, _> = self.0.clone();
         let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().absurd();
         type_of(dhall::subexpr!(expr: ty))
     }
     /// Pretends this expression has been typechecked. Use with care.
-    pub fn skip_typecheck(self) -> Typed {
-        Typed(self.0, None)
+    pub fn skip_typecheck(self) -> Typed<'a> {
+        Typed(self.0, None, self.1)
     }
 }
-impl Typed {
-    fn get_type_move(self) -> Result<Type, TypeError> {
+impl<'a> Typed<'a> {
+    fn get_type_move(self) -> Result<Type<'static>, TypeError> {
         self.1.ok_or(TypeError::new(
             &Context::new(),
             self.0,
@@ -34,18 +38,18 @@ impl Typed {
         ))
     }
 }
-impl Normalized {
+impl<'a> Normalized<'a> {
     // Expose the outermost constructor
     fn unroll_ref(&self) -> &Expr<X, X> {
         self.as_expr().as_ref()
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         // shift the type too ?
-        Normalized(shift(delta, var, &self.0), self.1.clone())
+        Normalized(shift(delta, var, &self.0), self.1.clone(), self.2)
     }
 }
-impl Type {
-    pub fn as_normalized(&self) -> Result<&Normalized, TypeError> {
+impl<'a> Type<'a> {
+    pub fn as_normalized(&self) -> Result<&Normalized<'a>, TypeError> {
         use TypeInternal::*;
         match &self.0 {
             Expr(e) => Ok(e),
@@ -56,7 +60,7 @@ impl Type {
             )),
         }
     }
-    pub(crate) fn into_normalized(self) -> Result<Normalized, TypeError> {
+    pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         use TypeInternal::*;
         match self.0 {
             Expr(e) => Ok(*e),
@@ -83,16 +87,25 @@ impl Type {
         Normalized(
             rc(ExprF::Const(Const::Sort)),
             Some(Type(TypeInternal::SuperType)),
+            PhantomData,
         )
         .into_type()
     }
     pub fn const_kind() -> Self {
-        Normalized(rc(ExprF::Const(Const::Kind)), Some(Type::const_sort()))
-            .into_type()
+        Normalized(
+            rc(ExprF::Const(Const::Kind)),
+            Some(Type::const_sort()),
+            PhantomData,
+        )
+        .into_type()
     }
     pub fn const_type() -> Self {
-        Normalized(rc(ExprF::Const(Const::Type)), Some(Type::const_kind()))
-            .into_type()
+        Normalized(
+            rc(ExprF::Const(Const::Type)),
+            Some(Type::const_kind()),
+            PhantomData,
+        )
+        .into_type()
     }
 }
 
@@ -129,8 +142,8 @@ fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(Label, Label)]) -> bool {
 // Equality up to alpha-equivalence (renaming of bound variables)
 fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
 where
-    T: Borrow<Type>,
-    U: Borrow<Type>,
+    T: Borrow<Type<'static>>,
+    U: Borrow<Type<'static>>,
 {
     use dhall_core::ExprF::*;
     fn go<S, T>(
@@ -197,7 +210,7 @@ where
     }
 }
 
-fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized> {
+fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized<'static>> {
     use dhall_core::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
@@ -294,23 +307,24 @@ macro_rules! ensure_is_const {
 /// Type-check an expression and return the expression alongside its type
 /// if type-checking succeeded, or an error if type-checking failed
 pub fn type_with(
-    ctx: &Context<Label, Type>,
-    e: SubExpr<X, Normalized>,
-) -> Result<Typed, TypeError> {
+    ctx: &Context<Label, Type<'static>>,
+    e: SubExpr<X, Normalized<'static>>,
+) -> Result<Typed<'static>, TypeError> {
     use dhall_core::BinOp::*;
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
-    let mkerr = |msg: TypeMessage| TypeError::new(ctx, e.clone(), msg);
+    let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, e.clone(), msg);
 
-    let mktype = |ctx, x: SubExpr<X, Normalized>| {
+    let mktype = |ctx, x: SubExpr<X, Normalized<'static>>| {
         Ok(type_with(ctx, x)?.normalize().into_type())
     };
 
-    let mksimpletype = |x: SubExpr<X, X>| SimpleType(x).into_type();
+    let mksimpletype =
+        |x: SubExpr<X, X>| SimpleType(x, PhantomData).into_type();
 
     enum Ret {
-        RetType(crate::expr::Type),
-        RetExpr(Expr<X, Normalized>),
+        RetType(crate::expr::Type<'static>),
+        RetExpr(Expr<X, Normalized<'static>>),
     }
     use Ret::*;
     let ret = match e.as_ref() {
@@ -418,6 +432,7 @@ pub fn type_with(
                         mkerr(NotAFunction(Typed(
                             rc(App(f.into_expr(), seen_args)),
                             Some(tf),
+                            PhantomData
                         )))
                     );
                     let tx = mktype(ctx, tx.absurd())?;
@@ -425,7 +440,11 @@ pub fn type_with(
                         &tx,
                         a.get_type()?,
                         mkerr(TypeMismatch(
-                            Typed(rc(App(f.into_expr(), seen_args)), Some(tf)),
+                            Typed(
+                                rc(App(f.into_expr(), seen_args)),
+                                Some(tf),
+                                PhantomData
+                            ),
                             tx.into_normalized()?,
                             a,
                         ))
@@ -592,15 +611,17 @@ pub fn type_with(
         },
     }?;
     match ret {
-        RetExpr(ret) => Ok(Typed(e, Some(mktype(ctx, rc(ret))?))),
-        RetType(typ) => Ok(Typed(e, Some(typ))),
+        RetExpr(ret) => Ok(Typed(e, Some(mktype(ctx, rc(ret))?), PhantomData)),
+        RetType(typ) => Ok(Typed(e, Some(typ), PhantomData)),
     }
 }
 
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError> {
+pub fn type_of(
+    e: SubExpr<X, Normalized<'static>>,
+) -> Result<Typed<'static>, TypeError> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
     // Ensure the inferred type isn't SuperType
@@ -610,45 +631,45 @@ pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError> {
 
 /// The specific type error
 #[derive(Debug)]
-pub enum TypeMessage {
+pub enum TypeMessage<'a> {
     UnboundVariable,
-    InvalidInputType(Normalized),
-    InvalidOutputType(Normalized),
-    NotAFunction(Typed),
-    TypeMismatch(Typed, Normalized, Typed),
-    AnnotMismatch(Typed, Normalized),
+    InvalidInputType(Normalized<'a>),
+    InvalidOutputType(Normalized<'a>),
+    NotAFunction(Typed<'a>),
+    TypeMismatch(Typed<'a>, Normalized<'a>, Typed<'a>),
+    AnnotMismatch(Typed<'a>, Normalized<'a>),
     Untyped,
-    InvalidListElement(usize, Normalized, Typed),
-    InvalidListType(Normalized),
-    InvalidOptionalType(Normalized),
-    InvalidPredicate(Typed),
-    IfBranchMismatch(Typed, Typed),
-    IfBranchMustBeTerm(bool, Typed),
-    InvalidField(Label, Typed),
-    InvalidFieldType(Label, Typed),
+    InvalidListElement(usize, Normalized<'a>, Typed<'a>),
+    InvalidListType(Normalized<'a>),
+    InvalidOptionalType(Normalized<'a>),
+    InvalidPredicate(Typed<'a>),
+    IfBranchMismatch(Typed<'a>, Typed<'a>),
+    IfBranchMustBeTerm(bool, Typed<'a>),
+    InvalidField(Label, Typed<'a>),
+    InvalidFieldType(Label, Typed<'a>),
     DuplicateAlternative(Label),
     FieldCollision(Label),
-    NotARecord(Label, Typed),
-    MissingField(Label, Typed),
-    BinOpTypeMismatch(BinOp, Typed),
-    NoDependentLet(Normalized, Normalized),
-    NoDependentTypes(Normalized, Normalized),
+    NotARecord(Label, Typed<'a>),
+    MissingField(Label, Typed<'a>),
+    BinOpTypeMismatch(BinOp, Typed<'a>),
+    NoDependentLet(Normalized<'a>, Normalized<'a>),
+    NoDependentTypes(Normalized<'a>, Normalized<'a>),
     Unimplemented,
 }
 
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
-    pub context: Context<Label, Type>,
-    pub current: SubExpr<X, Normalized>,
-    pub type_message: TypeMessage,
+    pub context: Context<Label, Type<'static>>,
+    pub current: SubExpr<X, Normalized<'static>>,
+    pub type_message: TypeMessage<'static>,
 }
 
 impl TypeError {
     pub fn new(
-        context: &Context<Label, Type>,
-        current: SubExpr<X, Normalized>,
-        type_message: TypeMessage,
+        context: &Context<Label, Type<'static>>,
+        current: SubExpr<X, Normalized<'static>>,
+        type_message: TypeMessage<'static>,
     ) -> Self {
         TypeError {
             context: context.clone(),
@@ -658,7 +679,7 @@ impl TypeError {
     }
 }
 
-impl ::std::error::Error for TypeMessage {
+impl ::std::error::Error for TypeMessage<'static> {
     fn description(&self) -> &str {
         match *self {
             UnboundVariable => "Unbound variable",
@@ -671,7 +692,7 @@ impl ::std::error::Error for TypeMessage {
     }
 }
 
-impl fmt::Display for TypeMessage {
+impl fmt::Display for TypeMessage<'static> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             UnboundVariable => {

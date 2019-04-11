@@ -22,7 +22,7 @@ pub enum ImportRoot {
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
-) -> Result<Normalized, ImportError> {
+) -> Result<Normalized<'static>, ImportError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
     use dhall_core::ImportLocation::*;
@@ -45,7 +45,7 @@ fn resolve_import(
     }
 }
 
-fn load_import(f: &Path) -> Result<Normalized, Error> {
+fn load_import(f: &Path) -> Result<Normalized<'static>, Error> {
     Ok(Parsed::parse_file(f)?.resolve()?.typecheck()?.normalize())
 }
 
@@ -53,14 +53,15 @@ fn resolve_expr<'a>(
     Parsed(expr, root, marker): Parsed<'a>,
     allow_imports: bool,
 ) -> Result<Resolved<'a>, ImportError> {
-    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
-        if allow_imports {
-            let expr = resolve_import(import, &root)?;
-            Ok(expr)
-        } else {
-            Err(ImportError::UnexpectedImport(import.clone()))
-        }
-    };
+    let resolve =
+        |import: &Import| -> Result<Normalized<'static>, ImportError> {
+            if allow_imports {
+                let expr = resolve_import(import, &root)?;
+                Ok(expr)
+            } else {
+                Err(ImportError::UnexpectedImport(import.clone()))
+            }
+        };
     let expr = expr.as_ref().traverse_embed(&resolve)?;
     Ok(Resolved(rc(expr), marker))
 }
