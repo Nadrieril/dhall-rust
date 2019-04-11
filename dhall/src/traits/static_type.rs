@@ -23,7 +23,7 @@ impl<T: SimpleStaticType> StaticType for T {
     fn get_static_type() -> Type {
         crate::expr::Normalized(
             T::get_simple_static_type().into(),
-            Type::const_type(),
+            Some(Type::const_type()),
         )
         .into_type()
     }
