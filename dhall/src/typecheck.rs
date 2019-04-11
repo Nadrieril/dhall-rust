@@ -17,7 +17,7 @@ impl Resolved {
     }
     pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError<X>> {
         let expr: SubExpr<_, _> = self.0.clone();
-        let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().clone();
+        let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().absurd();
         type_of(dhall::subexpr!(expr: ty))
     }
     /// Pretends this expression has been typechecked. Use with care.
@@ -197,7 +197,7 @@ where
     }
 }
 
-fn type_of_builtin<S>(b: Builtin) -> Expr<S, X> {
+fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized> {
     use dhall_core::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
@@ -295,21 +295,22 @@ macro_rules! ensure_is_const {
 /// if type-checking succeeded, or an error if type-checking failed
 pub fn type_with(
     ctx: &Context<Label, Type>,
-    e: SubExpr<X, X>,
+    e: SubExpr<X, Normalized>,
 ) -> Result<Typed, TypeError<X>> {
     use dhall_core::BinOp::*;
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<_>| TypeError::new(ctx, e.clone(), msg);
 
-    let mktype =
-        |ctx, x: SubExpr<X, X>| Ok(type_with(ctx, x)?.normalize().into_type());
+    let mktype = |ctx, x: SubExpr<X, Normalized>| {
+        Ok(type_with(ctx, x)?.normalize().into_type())
+    };
 
     let mksimpletype = |x: SubExpr<X, X>| SimpleType(x).into_type();
 
     enum Ret {
         RetType(crate::expr::Type),
-        RetExpr(Expr<X, X>),
+        RetExpr(Expr<X, Normalized>),
     }
     use Ret::*;
     let ret = match e.as_ref() {
@@ -419,7 +420,7 @@ pub fn type_with(
                             Some(tf),
                         )))
                     );
-                    let tx = mktype(ctx, tx.clone())?;
+                    let tx = mktype(ctx, tx.absurd())?;
                     ensure_equal!(
                         &tx,
                         a.get_type()?,
@@ -431,7 +432,11 @@ pub fn type_with(
                     );
                     tf = mktype(
                         ctx,
-                        subst_shift(&V(x.clone(), 0), &a.as_expr(), &tb),
+                        subst_shift(
+                            &V(x.clone(), 0),
+                            a.as_expr(),
+                            &tb.absurd(),
+                        ),
                     )?;
                 }
                 Ok(RetType(tf))
@@ -544,7 +549,7 @@ pub fn type_with(
             }
             Field(r, x) => ensure_matches!(r.get_type()?,
                 RecordType(kts) => match kts.get(&x) {
-                    Some(e) => Ok(RetExpr(e.unroll())),
+                    Some(e) => Ok(RetExpr(e.unroll().absurd_rec())),
                     None => Err(mkerr(MissingField(x, r))),
                 },
                 mkerr(NotARecord(x, r))
@@ -582,7 +587,7 @@ pub fn type_with(
 
                 Ok(RetType(t))
             }
-            Embed(p) => match p {},
+            Embed(p) => return Ok(p.into()),
             _ => Err(mkerr(Unimplemented))?,
         },
     }?;
@@ -595,7 +600,7 @@ pub fn type_with(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of(e: SubExpr<X, X>) -> Result<Typed, TypeError<X>> {
+pub fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError<X>> {
     let ctx = Context::new();
     let e = type_with(&ctx, e)?;
     // Ensure the inferred type isn't SuperType
@@ -636,14 +641,14 @@ pub enum TypeMessage<S> {
 #[derive(Debug)]
 pub struct TypeError<S> {
     pub context: Context<Label, Type>,
-    pub current: SubExpr<S, X>,
+    pub current: SubExpr<S, Normalized>,
     pub type_message: TypeMessage<S>,
 }
 
 impl<S> TypeError<S> {
     pub fn new(
         context: &Context<Label, Type>,
-        current: SubExpr<S, X>,
+        current: SubExpr<S, Normalized>,
         type_message: TypeMessage<S>,
     ) -> Self {
         TypeError {

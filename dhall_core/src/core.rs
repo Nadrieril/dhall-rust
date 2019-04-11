@@ -324,29 +324,18 @@ impl<S, A> Expr<S, A> {
     }
 }
 
-impl<S: Clone, A: Clone> Expr<S, Expr<S, A>> {
-    pub fn squash_embed(&self) -> Expr<S, A> {
-        match self {
-            ExprF::Embed(e) => e.clone(),
-            e => e.map_shallow(
-                <Expr<S, Expr<S, A>>>::squash_embed,
-                S::clone,
-                |_| unreachable!(),
-                Label::clone,
-            ),
-        }
-    }
-}
-
-impl<S: Clone, A: Clone> Expr<S, SubExpr<S, A>> {
-    pub fn squash_embed(&self) -> SubExpr<S, A> {
+impl<N: Clone, E> Expr<N, E> {
+    pub fn squash_embed<E2: Clone>(
+        &self,
+        f: &impl Fn(&E) -> SubExpr<N, E2>,
+    ) -> SubExpr<N, E2> {
         match self.as_ref() {
-            ExprF::Embed(e) => e.clone(),
+            ExprF::Embed(e) => f(e),
             e => e
                 .map(
-                    |e| e.as_ref().squash_embed(),
-                    |_, e| e.as_ref().squash_embed(),
-                    S::clone,
+                    |e| e.as_ref().squash_embed(f),
+                    |_, e| e.as_ref().squash_embed(f),
+                    N::clone,
                     |_| unreachable!(),
                     Label::clone,
                 )
@@ -672,6 +661,43 @@ impl<N, E> SubExpr<N, E> {
         E: Clone,
     {
         ExprF::clone(self.as_ref())
+    }
+}
+
+impl<N: Clone> SubExpr<N, X> {
+    pub fn absurd<T>(&self) -> SubExpr<N, T> {
+        rc(self.as_ref().absurd_rec())
+    }
+}
+
+impl<N: Clone> Expr<N, X> {
+    // This is all very sad and I hope this can be avoided sometime
+    pub fn absurd_rec<T>(&self) -> Expr<N, T> {
+        self.map_ref(
+            |e| e.absurd(),
+            |_, e| e.absurd(),
+            |_| unreachable!(),
+            |_| unreachable!(),
+            Label::clone,
+        )
+    }
+}
+
+impl<SE, L, N, E> ExprF<SE, L, N, E>
+where
+    SE: Clone,
+    L: Clone + Ord,
+    N: Clone,
+{
+    // When we know there is no Embed
+    pub fn absurd<T>(&self) -> ExprF<SE, L, N, T> {
+        self.map_ref(
+            |e| e.clone(),
+            |_, e| e.clone(),
+            N::clone,
+            |_| unreachable!(),
+            L::clone,
+        )
     }
 }
 

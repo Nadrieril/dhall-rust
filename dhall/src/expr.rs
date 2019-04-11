@@ -25,11 +25,11 @@ pub struct Parsed(pub(crate) SubExpr<X, Import>, pub(crate) ImportRoot);
 derive_other_traits!(Parsed);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Resolved(pub(crate) SubExpr<X, X>);
+pub struct Resolved(pub(crate) SubExpr<X, Normalized>);
 derive_other_traits!(Resolved);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Typed(pub(crate) SubExpr<X, X>, pub(crate) Option<Type>);
+pub struct Typed(pub(crate) SubExpr<X, Normalized>, pub(crate) Option<Type>);
 derive_other_traits!(Typed);
 
 #[derive(Debug, Clone, Eq)]
@@ -67,11 +67,19 @@ impl From<SubExpr<X, X>> for SimpleType {
     }
 }
 
+// Exposed for the macros
+#[doc(hidden)]
+impl From<Normalized> for Typed {
+    fn from(x: Normalized) -> Typed {
+        Typed(x.0.absurd(), x.1)
+    }
+}
+
 impl Typed {
-    pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
+    pub(crate) fn as_expr(&self) -> &SubExpr<X, Normalized> {
         &self.0
     }
-    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
+    pub(crate) fn into_expr(self) -> SubExpr<X, Normalized> {
         self.0
     }
 }
@@ -80,8 +88,8 @@ impl Normalized {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
-    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
-        self.0
+    pub(crate) fn into_expr<T>(self) -> SubExpr<X, T> {
+        self.0.absurd()
     }
     pub(crate) fn into_type(self) -> Type {
         crate::expr::Type(TypeInternal::Expr(Box::new(self)))
