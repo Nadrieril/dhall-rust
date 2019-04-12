@@ -10,7 +10,6 @@ doctest = false
 
 [dependencies]
 itertools = "0.8.0"
-term-painter = "0.2.3"
 pest = { git = "https://github.com/pest-parser/pest" }
 dhall_parser = { path = "../dhall_parser" }
 iter_patterns = { path = "../iter_patterns" }
