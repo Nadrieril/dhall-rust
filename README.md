@@ -7,6 +7,8 @@ This is a WIP implementation in Rust of the [dhall](https://dhall-lang.org) conf
 
 This language is defined by a [standard](https://github.com/dhall-lang/dhall-lang), and this implementation tries its best to respect it.
 
+This is a nightly crate, so you will need a nightly compiler to use it.
+
 This is still quite unstable so use at your own risk. Documentation is severely lacking for now, sorry !
 
 ## Standard-compliance
