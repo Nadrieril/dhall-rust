@@ -138,8 +138,9 @@ mod serde;
 /// Deserialize an instance of type T from a string of Dhall text.
 ///
 /// This will recursively resolve all imports in the expression, and
-/// typecheck it. More control over this process is not yet available
-/// but will be in a coming verions of this crate.
+/// typecheck it before deserialization. Relative imports will be resolved relative to the
+/// provided file. More control over this process is not yet available
+/// but will be in a coming version of this crate.
 ///
 /// If a type is provided, this additionally checks that the provided
 /// expression has that type.
@@ -154,8 +155,9 @@ pub fn from_str<'a, T: Deserialize<'a>>(
 /// additionally checking that it matches the type of T.
 ///
 /// This will recursively resolve all imports in the expression, and
-/// typecheck it. More control over this process is not yet available
-/// but will be in a coming verions of this crate.
+/// typecheck it before deserialization. Relative imports will be resolved relative to the
+/// provided file. More control over this process is not yet available
+/// but will be in a coming version of this crate.
 pub fn from_str_auto_type<'a, T: Deserialize<'a> + StaticType>(
     s: &'a str,
 ) -> crate::error::Result<T> {
