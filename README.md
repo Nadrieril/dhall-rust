@@ -16,5 +16,5 @@ This is still quite unstable so use at your own risk. Documentation is severely 
 - Normalization: 74%
 - Typechecking: 66%
 
-You can see what's missing from the commented out tests in `dhall/tests`.
+You can see what's missing from the commented out tests in `dhall/src/normalize.rs` and `dhall/src/typecheck.rs`.
 
