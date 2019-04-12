@@ -34,28 +34,21 @@ pub enum InterpolatedTextContents<SubExpr> {
 }
 
 impl<SubExpr> InterpolatedText<SubExpr> {
-    pub fn traverse<SubExpr2, E, F>(
-        self,
+    pub fn traverse_ref<'a, SubExpr2, E, F>(
+        &'a self,
         mut f: F,
     ) -> Result<InterpolatedText<SubExpr2>, E>
     where
-        F: FnMut(SubExpr) -> Result<SubExpr2, E>,
+        F: FnMut(&'a SubExpr) -> Result<SubExpr2, E>,
     {
         Ok(InterpolatedText {
             head: self.head.clone(),
             tail: self
                 .tail
-                .into_iter()
+                .iter()
                 .map(|(e, s)| Ok((f(e)?, s.clone())))
                 .collect::<Result<_, _>>()?,
         })
-    }
-
-    pub fn map<SubExpr2, F>(self, mut f: F) -> InterpolatedText<SubExpr2>
-    where
-        F: FnMut(SubExpr) -> SubExpr2,
-    {
-        crate::trivial_result(self.traverse(|e| Ok(f(e))))
     }
 
     pub fn as_ref(&self) -> InterpolatedText<&SubExpr> {

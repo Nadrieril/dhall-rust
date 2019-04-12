@@ -21,7 +21,7 @@ pub enum ImportRoot {
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
-) -> Result<Normalized, ImportError> {
+) -> Result<Normalized<'static>, ImportError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
     use dhall_core::ImportLocation::*;
@@ -44,53 +44,54 @@ fn resolve_import(
     }
 }
 
-fn load_import(f: &Path) -> Result<Normalized, Error> {
+fn load_import(f: &Path) -> Result<Normalized<'static>, Error> {
     Ok(Parsed::parse_file(f)?.resolve()?.typecheck()?.normalize())
 }
 
-fn resolve_expr(
-    Parsed(expr, root): Parsed,
+fn resolve_expr<'a>(
+    Parsed(expr, root): Parsed<'a>,
     allow_imports: bool,
-) -> Result<Resolved, ImportError> {
-    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
-        if allow_imports {
-            let expr = resolve_import(import, &root)?;
-            Ok(expr)
-        } else {
-            Err(ImportError::UnexpectedImport(import.clone()))
-        }
-    };
+) -> Result<Resolved<'a>, ImportError> {
+    let resolve =
+        |import: &Import| -> Result<Normalized<'static>, ImportError> {
+            if allow_imports {
+                let expr = resolve_import(import, &root)?;
+                Ok(expr)
+            } else {
+                Err(ImportError::UnexpectedImport(import.clone()))
+            }
+        };
     let expr = expr.as_ref().traverse_embed(&resolve)?;
     Ok(Resolved(rc(expr)))
 }
 
-impl Parsed {
-    pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
+impl<'a> Parsed<'a> {
+    pub fn parse_file(f: &Path) -> Result<Parsed<'a>, Error> {
         let mut buffer = String::new();
         File::open(f)?.read_to_string(&mut buffer)?;
         let expr = parse_expr(&*buffer)?;
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr, root))
+        Ok(Parsed(expr.unnote().note_absurd(), root))
     }
 
-    pub fn parse_str(s: &str) -> Result<Parsed, Error> {
+    pub fn parse_str(s: &'a str) -> Result<Parsed<'a>, Error> {
         let expr = parse_expr(s)?;
         let root = ImportRoot::LocalDir(std::env::current_dir()?);
         Ok(Parsed(expr, root))
     }
 
-    pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
+    pub fn parse_binary_file(f: &Path) -> Result<Parsed<'a>, Error> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
         let expr = crate::binary::decode(&buffer)?;
         let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr, root))
+        Ok(Parsed(expr.note_absurd(), root))
     }
 
-    pub fn resolve(self) -> Result<Resolved, ImportError> {
+    pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, true)
     }
-    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
+    pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, false)
     }
 }

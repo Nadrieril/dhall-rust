@@ -4,13 +4,17 @@ use dhall_core::*;
 use dhall_generator::dhall_expr;
 use std::fmt;
 
-impl Typed {
-    pub fn normalize(self) -> Normalized {
-        Normalized(normalize(self.0), self.1)
+impl<'a> Typed<'a> {
+    pub fn normalize(self) -> Normalized<'a> {
+        Normalized(normalize(self.0), self.1, self.2)
     }
     /// Pretends this expression is normalized. Use with care.
-    pub fn skip_normalize(self) -> Normalized {
-        Normalized(self.0.unroll().squash_embed(&|e| e.0.clone()), self.1)
+    pub fn skip_normalize(self) -> Normalized<'a> {
+        Normalized(
+            self.0.unroll().squash_embed(&|e| e.0.clone()),
+            self.1,
+            self.2,
+        )
     }
 }
 
@@ -221,11 +225,11 @@ enum WhatNext<'a, S, A> {
     DoneAsIs,
 }
 
-fn normalize_ref(expr: &Expr<X, Normalized>) -> Expr<X, X> {
+fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
     // Recursively normalize all subexpressions
-    let expr: ExprF<Expr<X, X>, Label, X, Normalized> =
+    let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
         expr.map_ref_simple(|e| normalize_ref(e.as_ref()));
 
     use WhatNext::*;
@@ -327,7 +331,7 @@ fn normalize_ref(expr: &Expr<X, Normalized>) -> Expr<X, X> {
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-fn normalize(e: SubExpr<X, Normalized>) -> SubExpr<X, X> {
+fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
     normalize_ref(e.as_ref()).roll()
 }
 

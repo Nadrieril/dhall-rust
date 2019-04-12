@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: SubExpr<X, Import> = parse_expr(&input_str).unwrap();
+    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::expr!()") };
     let expr = expr.as_ref().map_embed(&no_import);
@@ -17,7 +17,7 @@ pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: SubExpr<X, Import> = parse_expr(&input_str).unwrap();
+    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::subexpr!()") };
     let expr = expr.as_ref().map_embed(&no_import);

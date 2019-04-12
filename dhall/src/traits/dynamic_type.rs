@@ -6,17 +6,17 @@ use dhall_core::{Const, ExprF};
 use std::borrow::Cow;
 
 pub trait DynamicType {
-    fn get_type<'a>(&'a self) -> Result<Cow<'a, Type>, TypeError>;
+    fn get_type<'a>(&'a self) -> Result<Cow<'a, Type<'static>>, TypeError>;
 }
 
 impl<T: StaticType> DynamicType for T {
-    fn get_type<'a>(&'a self) -> Result<Cow<'a, Type>, TypeError> {
+    fn get_type<'a>(&'a self) -> Result<Cow<'a, Type<'static>>, TypeError> {
         Ok(Cow::Owned(T::get_static_type()))
     }
 }
 
-impl DynamicType for Type {
-    fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+impl<'a> DynamicType for Type<'a> {
+    fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
         use TypeInternal::*;
         match &self.0 {
             Expr(e) => e.get_type(),
@@ -29,8 +29,8 @@ impl DynamicType for Type {
     }
 }
 
-impl DynamicType for Normalized {
-    fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+impl<'a> DynamicType for Normalized<'a> {
+    fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
         match &self.1 {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
@@ -42,8 +42,8 @@ impl DynamicType for Normalized {
     }
 }
 
-impl DynamicType for Typed {
-    fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+impl<'a> DynamicType for Typed<'a> {
+    fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
         match &self.1 {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
