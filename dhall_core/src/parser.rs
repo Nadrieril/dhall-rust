@@ -30,8 +30,10 @@ fn rc<'a>(x: ParsedExpr<'a>) -> ParsedSubExpr<'a> {
     crate::rc(x)
 }
 
-fn spanned<'a>(span: Span<'a>, x: ParsedExpr<'a>) -> ParsedExpr<'a> {
-    Note(span, rc(x))
+fn spanned<'a>(_span: Span<'a>, x: ParsedExpr<'a>) -> ParsedExpr<'a> {
+    x
+    // This breaks equality testing; I need to fix that first
+    // Note(span, rc(x))
 }
 
 #[derive(Debug)]
