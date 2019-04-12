@@ -304,8 +304,8 @@ macro_rules! ensure_is_const {
     };
 }
 
-/// Type-check an expression and return the expression alongside its type
-/// if type-checking succeeded, or an error if type-checking failed
+/// Type-check an expression and return the expression alongside its type if type-checking
+/// succeeded, or an error if type-checking failed
 pub fn type_with(
     ctx: &Context<Label, Type<'static>>,
     e: SubExpr<X, Normalized<'static>>,

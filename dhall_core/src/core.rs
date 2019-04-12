@@ -43,26 +43,6 @@ impl From<NaiveDouble> for f64 {
 }
 
 /// Constants for a pure type system
-///
-/// The only axiom is:
-///
-/// ```c
-/// ⊦ Type : Kind
-/// ```
-///
-/// ... and the valid rule pairs are:
-///
-/// ```c
-/// ⊦ Type ↝ Type : Type  -- Functions from terms to terms (ordinary functions)
-/// ⊦ Kind ↝ Type : Type  -- Functions from types to terms (polymorphic functions)
-/// ⊦ Kind ↝ Kind : Kind  -- Functions from types to types (type constructors)
-/// ```
-///
-/// These are the same rule pairs as System Fω
-///
-/// Note that Dhall does not support functions from terms to types and therefore
-/// Dhall is not a dependently typed language
-///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Const {
     Type,
@@ -73,39 +53,8 @@ pub enum Const {
 /// Bound variable
 ///
 /// The `Label` field is the variable's name (i.e. \"`x`\").
-///
-/// The `Int` field disambiguates variables with the same name if there are
-/// multiple bound variables of the same name in scope.  Zero refers to the
-/// nearest bound variable and the index increases by one for each bound
-/// variable of the same name going outward.  The following diagram may help:
-///
-/// ```c
-///                                 +---refers to--+
-///                                 |              |
-///                                 v              |
-/// \(x : Type) -> \(y : Type) -> \(x : Type) -> x@0
-///
-///   +------------------refers to-----------------+
-///   |                                            |
-///   v                                            |
-/// \(x : Type) -> \(y : Type) -> \(x : Type) -> x@1
-/// ```
-///
-/// This `Int` behaves like a De Bruijn index in the special case where all
-/// variables have the same name.
-///
-/// You can optionally omit the index if it is `0`:
-///
-/// ```c
-///                           +refers to+
-///                           |         |
-///                           v         |
-/// \(x : *) -> \(y : *) -> \(x : *) -> x
-/// ```
-///
-/// Zero indices are omitted when pretty-printing `Var`s and non-zero indices
-/// appear as a numeric suffix.
-///
+/// The `Int` field is a DeBruijn index.
+/// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct V<Label>(pub Label, pub usize);
 
@@ -187,38 +136,37 @@ pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Label, Note, Embed>;
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprF<SubExpr, Label, Note, Embed> {
-    ///  `Const c                                  ~  c`
     Const(Const),
-    ///  `Var (V x 0)                              ~  x`<br>
-    ///  `Var (V x n)                              ~  x@n`
+    ///  `x`
+    ///  `x@n`
     Var(V<Label>),
-    ///  `Lam x     A b                            ~  λ(x : A) -> b`
+    ///  `λ(x : A) -> b`
     Lam(Label, SubExpr, SubExpr),
-    ///  `Pi "_" A B                               ~        A  -> B`
-    ///  `Pi x   A B                               ~  ∀(x : A) -> B`
+    ///  `A -> B`
+    ///  `∀(x : A) -> B`
     Pi(Label, SubExpr, SubExpr),
-    ///  `App f A                                  ~  f A`
+    ///  `f a`
     App(SubExpr, Vec<SubExpr>),
-    ///  `Let x Nothing  r e  ~  let x     = r in e`
-    ///  `Let x (Just t) r e  ~  let x : t = r in e`
+    ///  `let x     = r in e`
+    ///  `let x : t = r in e`
     Let(Label, Option<SubExpr>, SubExpr, SubExpr),
-    ///  `Annot x t                                ~  x : t`
+    ///  `x : t`
     Annot(SubExpr, SubExpr),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations
     BinOp(BinOp, SubExpr, SubExpr),
-    ///  `BoolLit b                                ~  b`
+    ///  `True`
     BoolLit(bool),
-    ///  `BoolIf x y z                             ~  if x then y else z`
+    ///  `if x then y else z`
     BoolIf(SubExpr, SubExpr, SubExpr),
-    ///  `NaturalLit n                             ~  +n`
+    ///  `1`
     NaturalLit(Natural),
-    ///  `IntegerLit n                             ~  n`
+    ///  `+2`
     IntegerLit(Integer),
-    ///  `DoubleLit n                              ~  n`
+    ///  `3.24`
     DoubleLit(Double),
-    ///  `TextLit t                                ~  t`
+    ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
     ///  [] : List t`
     EmptyListLit(SubExpr),
@@ -228,15 +176,15 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     EmptyOptionalLit(SubExpr),
     ///  Some e
     NEOptionalLit(SubExpr),
-    ///  `Record            [(k1, t1), (k2, t2)]   ~  { k1 : t1, k2 : t1 }`
+    ///  `{ k1 : t1, k2 : t1 }`
     RecordType(BTreeMap<Label, SubExpr>),
-    ///  `RecordLit         [(k1, v1), (k2, v2)]   ~  { k1 = v1, k2 = v2 }`
+    ///  `{ k1 = v1, k2 = v2 }`
     RecordLit(BTreeMap<Label, SubExpr>),
-    ///  `Union             [(k1, t1), (k2, t2)]   ~  < k1 : t1, k2 : t2 >`
+    ///  `< k1 : t1, k2 : t2 >`
     UnionType(BTreeMap<Label, SubExpr>),
-    ///  `UnionLit (k1, v1) [(k2, t2), (k3, t3)]   ~  < k1 = t1, k2 : t2, k3 : t3 >`
+    ///  `< k1 = t1, k2 : t2, k3 : t3 >`
     UnionLit(Label, SubExpr, BTreeMap<Label, SubExpr>),
-    ///  `Merge x y t                              ~  merge x y : t`
+    ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  e.x
     Field(SubExpr, Label),
@@ -752,75 +700,8 @@ fn add_ui(u: usize, i: isize) -> usize {
 
 /// `shift` is used by both normalization and type-checking to avoid variable
 /// capture by shifting variable indices
-///
-/// For example, suppose that you were to normalize the following expression:
-///
-/// ```c
-/// λ(a : Type) → λ(x : a) → (λ(y : a) → λ(x : a) → y) x
-/// ```
-///
-/// If you were to substitute `y` with `x` without shifting any variable
-/// indices, then you would get the following incorrect result:
-///
-/// ```c
-/// λ(a : Type) → λ(x : a) → λ(x : a) → x  -- Incorrect normalized form
-/// ```
-///
-/// In order to substitute `x` in place of `y` we need to `shift` `x` by `1` in
-/// order to avoid being misinterpreted as the `x` bound by the innermost
-/// lambda.  If we perform that `shift` then we get the correct result:
-///
-/// ```c
-/// λ(a : Type) → λ(x : a) → λ(x : a) → x@1
-/// ```
-///
-/// As a more worked example, suppose that you were to normalize the following
-/// expression:
-///
-/// ```c
-///     λ(a : Type)
-/// →   λ(f : a → a → a)
-/// →   λ(x : a)
-/// →   λ(x : a)
-/// →   (λ(x : a) → f x x@1) x@1
-/// ```
-///
-/// The correct normalized result would be:
-///
-/// ```c
-///     λ(a : Type)
-/// →   λ(f : a → a → a)
-/// →   λ(x : a)
-/// →   λ(x : a)
-/// →   f x@1 x
-/// ```
-///
-/// The above example illustrates how we need to both increase and decrease
-/// variable indices as part of substitution:
-///
-/// * We need to increase the index of the outer `x\@1` to `x\@2` before we
-///   substitute it into the body of the innermost lambda expression in order
-///   to avoid variable capture.  This substitution changes the body of the
-///   lambda expression to `(f x\@2 x\@1)`
-///
-/// * We then remove the innermost lambda and therefore decrease the indices of
-///   both `x`s in `(f x\@2 x\@1)` to `(f x\@1 x)` in order to reflect that one
-///   less `x` variable is now bound within that scope
-///
-/// Formally, `(shift d (V x n) e)` modifies the expression `e` by adding `d` to
-/// the indices of all variables named `x` whose indices are greater than
-/// `(n + m)`, where `m` is the number of bound variables of the same name
-/// within that scope
-///
-/// In practice, `d` is always `1` or `-1` because we either:
-///
-/// * increment variables by `1` to avoid variable capture during substitution
-/// * decrement variables by `1` when deleting lambdas after substitution
-///
-/// `n` starts off at `0` when substitution begins and increments every time we
-/// descend into a lambda or let expression that binds a variable of the same
-/// name in order to avoid shifting the bound variables by mistake.
-///
+/// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
+/// for details
 pub fn shift<S, A>(
     delta: isize,
     var: &V<Label>,
@@ -845,8 +726,8 @@ pub fn shift<S, A>(
 /// removes the variable from the environment by shifting the indices
 /// of other variables appropriately.
 ///
-/// ```c
-/// subst_shift(x, v, e)  ~ ↑(-1, x, e[x := ↑(1, x, v)])
+/// ```
+/// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
 /// ```
 ///
 pub fn subst_shift<S, A>(
