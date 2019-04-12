@@ -18,3 +18,7 @@ This is still quite unstable so use at your own risk. Documentation is severely 
 
 You can see what's missing from the commented out tests in `dhall/src/normalize.rs` and `dhall/src/typecheck.rs`.
 
+## License
+
+Licensed under the terms of the 2-Clause BSD License ([LICENSE](LICENSE) or
+https://opensource.org/licenses/BSD-2-Clause)
