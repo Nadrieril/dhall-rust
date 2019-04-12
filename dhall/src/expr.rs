@@ -22,18 +22,20 @@ macro_rules! derive_other_traits {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct Parsed<'a>(
+pub(crate) struct Parsed<'a>(
     pub(crate) SubExpr<Span<'a>, Import>,
     pub(crate) ImportRoot,
 );
 derive_other_traits!(Parsed);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Resolved<'a>(pub(crate) SubExpr<Span<'a>, Normalized<'static>>);
+pub(crate) struct Resolved<'a>(
+    pub(crate) SubExpr<Span<'a>, Normalized<'static>>,
+);
 derive_other_traits!(Resolved);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Typed<'a>(
+pub(crate) struct Typed<'a>(
     pub(crate) SubExpr<X, Normalized<'static>>,
     pub(crate) Option<Type<'static>>,
     pub(crate) PhantomData<&'a ()>,
@@ -41,7 +43,7 @@ pub struct Typed<'a>(
 derive_other_traits!(Typed);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Normalized<'a>(
+pub(crate) struct Normalized<'a>(
     pub(crate) SubExpr<X, X>,
     pub(crate) Option<Type<'static>>,
     pub(crate) PhantomData<&'a ()>,
@@ -90,6 +92,7 @@ impl<'a> From<Normalized<'a>> for Typed<'a> {
     }
 }
 
+#[doc(hidden)]
 impl<'a> Typed<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, Normalized<'a>> {
         &self.0
@@ -99,6 +102,7 @@ impl<'a> Typed<'a> {
     }
 }
 
+#[doc(hidden)]
 impl<'a> Normalized<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0

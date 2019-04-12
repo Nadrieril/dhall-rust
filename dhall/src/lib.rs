@@ -2,6 +2,7 @@
 #![feature(proc_macro_hygiene)]
 #![feature(slice_patterns)]
 #![feature(label_break_value)]
+#![feature(non_exhaustive)]
 #![cfg_attr(test, feature(custom_inner_attributes))]
 #![allow(
     clippy::type_complexity,
@@ -126,13 +127,12 @@ mod imports;
 mod normalize;
 mod traits;
 mod typecheck;
-pub use crate::traits::{
-    Deserialize, DynamicType, SimpleStaticType, StaticType,
-};
+pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
+#[doc(hidden)]
 pub use dhall_generator::SimpleStaticType;
 pub mod error;
 pub mod expr;
-pub mod serde;
+mod serde;
 
 pub fn from_str<'a, T: Deserialize<'a>>(
     s: &'a str,

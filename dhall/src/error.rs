@@ -1,6 +1,7 @@
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     IO(std::io::Error),
     Parse(dhall_core::ParseError),

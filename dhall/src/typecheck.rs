@@ -25,6 +25,7 @@ impl<'a> Resolved<'a> {
         type_of(dhall::subexpr!(expr: ty))
     }
     /// Pretends this expression has been typechecked. Use with care.
+    #[allow(dead_code)]
     pub fn skip_typecheck(self) -> Typed<'a> {
         Typed(self.0.unnote(), None, PhantomData)
     }
@@ -49,7 +50,7 @@ impl<'a> Normalized<'a> {
     }
 }
 impl<'a> Type<'a> {
-    pub fn as_normalized(&self) -> Result<&Normalized<'a>, TypeError> {
+    pub(crate) fn as_normalized(&self) -> Result<&Normalized<'a>, TypeError> {
         use TypeInternal::*;
         match &self.0 {
             Expr(e) => Ok(e),
@@ -83,7 +84,7 @@ impl<'a> Type<'a> {
         })
     }
 
-    pub fn const_sort() -> Self {
+    fn const_sort() -> Self {
         Normalized(
             rc(ExprF::Const(Const::Sort)),
             Some(Type(TypeInternal::SuperType)),
@@ -91,7 +92,7 @@ impl<'a> Type<'a> {
         )
         .into_type()
     }
-    pub fn const_kind() -> Self {
+    fn const_kind() -> Self {
         Normalized(
             rc(ExprF::Const(Const::Kind)),
             Some(Type::const_sort()),
@@ -99,7 +100,7 @@ impl<'a> Type<'a> {
         )
         .into_type()
     }
-    pub fn const_type() -> Self {
+    pub(crate) fn const_type() -> Self {
         Normalized(
             rc(ExprF::Const(Const::Type)),
             Some(Type::const_kind()),
@@ -306,7 +307,7 @@ macro_rules! ensure_is_const {
 
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed
-pub fn type_with(
+fn type_with(
     ctx: &Context<Label, Type<'static>>,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
@@ -619,7 +620,7 @@ pub fn type_with(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub fn type_of(
+fn type_of(
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
     let ctx = Context::new();
@@ -631,7 +632,7 @@ pub fn type_of(
 
 /// The specific type error
 #[derive(Debug)]
-pub enum TypeMessage<'a> {
+pub(crate) enum TypeMessage<'a> {
     UnboundVariable,
     InvalidInputType(Normalized<'a>),
     InvalidOutputType(Normalized<'a>),
@@ -647,8 +648,6 @@ pub enum TypeMessage<'a> {
     IfBranchMustBeTerm(bool, Typed<'a>),
     InvalidField(Label, Typed<'a>),
     InvalidFieldType(Label, Typed<'a>),
-    DuplicateAlternative(Label),
-    FieldCollision(Label),
     NotARecord(Label, Typed<'a>),
     MissingField(Label, Typed<'a>),
     BinOpTypeMismatch(BinOp, Typed<'a>),
@@ -660,13 +659,13 @@ pub enum TypeMessage<'a> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
-    pub context: Context<Label, Type<'static>>,
-    pub current: SubExpr<X, Normalized<'static>>,
-    pub type_message: TypeMessage<'static>,
+    context: Context<Label, Type<'static>>,
+    current: SubExpr<X, Normalized<'static>>,
+    type_message: TypeMessage<'static>,
 }
 
 impl TypeError {
-    pub fn new(
+    pub(crate) fn new(
         context: &Context<Label, Type<'static>>,
         current: SubExpr<X, Normalized<'static>>,
         type_message: TypeMessage<'static>,

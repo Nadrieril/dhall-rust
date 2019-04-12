@@ -9,6 +9,7 @@ impl<'a> Typed<'a> {
         Normalized(normalize(self.0), self.1, self.2)
     }
     /// Pretends this expression is normalized. Use with care.
+    #[allow(dead_code)]
     pub fn skip_normalize(self) -> Normalized<'a> {
         Normalized(
             self.0.unroll().squash_embed(&|e| e.0.clone()),

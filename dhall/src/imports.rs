@@ -80,6 +80,7 @@ impl<'a> Parsed<'a> {
         Ok(Parsed(expr, root))
     }
 
+    #[allow(dead_code)]
     pub fn parse_binary_file(f: &Path) -> Result<Parsed<'a>, Error> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
@@ -91,6 +92,8 @@ impl<'a> Parsed<'a> {
     pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, true)
     }
+
+    #[allow(dead_code)]
     pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
         crate::imports::resolve_expr(self, false)
     }
