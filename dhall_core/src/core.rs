@@ -726,7 +726,7 @@ pub fn shift<S, A>(
 /// removes the variable from the environment by shifting the indices
 /// of other variables appropriately.
 ///
-/// ```
+/// ```text
 /// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
 /// ```
 ///
