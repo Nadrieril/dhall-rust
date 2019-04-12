@@ -13,7 +13,7 @@
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!
-//! You can think of Dhall as: JSON/YAML + types + imports + functions
+//! You can think of Dhall as: JSON + types + imports + functions
 //!
 //! For a description of the dhall language, examples, tutorials, and more, see the [language
 //! website][dhall].
@@ -130,10 +130,19 @@ mod typecheck;
 pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
 #[doc(hidden)]
 pub use dhall_generator::SimpleStaticType;
+/// When manipulating Dhall expressions goes wrong.
 pub mod error;
 pub mod expr;
 mod serde;
 
+/// Deserialize an instance of type T from a string of Dhall text.
+///
+/// This will recursively resolve all imports in the expression, and
+/// typecheck it. More control over this process is not yet available
+/// but will be in a coming verions of this crate.
+///
+/// If a type is provided, this additionally checks that the provided
+/// expression has that type.
 pub fn from_str<'a, T: Deserialize<'a>>(
     s: &'a str,
     ty: Option<&crate::expr::Type>,
@@ -141,6 +150,12 @@ pub fn from_str<'a, T: Deserialize<'a>>(
     T::from_str(s, ty)
 }
 
+/// Deserialize an instance of type T from a string of Dhall text,
+/// additionally checking that it matches the type of T.
+///
+/// This will recursively resolve all imports in the expression, and
+/// typecheck it. More control over this process is not yet available
+/// but will be in a coming verions of this crate.
 pub fn from_str_auto_type<'a, T: Deserialize<'a> + StaticType>(
     s: &'a str,
 ) -> crate::error::Result<T> {

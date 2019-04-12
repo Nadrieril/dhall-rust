@@ -2,15 +2,32 @@ use crate::expr::*;
 use dhall_core::*;
 use dhall_generator::*;
 
+/// A value that has a statically-known Dhall type.
+///
+/// This trait is strictly more general than [SimpleStaticType].
+/// The reason is that it allows an arbitrary [Type] to be returned
+/// instead of just a [SimpleType].
+///
+/// For now the only interesting impl is [SimpleType] itself, who
+/// has a statically-known type which is not itself a [SimpleType].
 pub trait StaticType {
     fn get_static_type() -> Type<'static>;
 }
 
-/// Trait for rust types that can be represented in dhall in
-/// a single way, independent of the value. A typical example is `Option<bool>`,
-/// represented by the dhall expression `Optional Bool`. A typical counterexample
-/// is `HashMap<Text, bool>` because dhall cannot represent records with a
-/// variable number of fields.
+/// A Rust type that can be represented as a Dhall type.
+///
+/// A typical example is `Option<bool>`,
+/// represented by the dhall expression `Optional Bool`.
+///
+/// This trait can and should be automatically derived.
+///
+/// The representation needs to be independent of the value.
+/// For this reason, something like `HashMap<String, bool>` cannot implement
+/// [SimpleStaticType] because each different value would
+/// have a different Dhall record type.
+///
+/// The `Simple` in `SimpleStaticType` indicates that the returned type is
+/// a [SimpleType].
 pub trait SimpleStaticType {
     fn get_simple_static_type<'a>() -> SimpleType<'a>;
 }
@@ -31,6 +48,8 @@ impl<T: SimpleStaticType> StaticType for T {
 }
 
 impl<'a> StaticType for SimpleType<'a> {
+    /// By definition, a [SimpleType] has type `Type`.
+    /// This returns the Dhall expression `Type`
     fn get_static_type() -> Type<'static> {
         Type::const_type()
     }
@@ -106,8 +125,8 @@ impl<T: SimpleStaticType> SimpleStaticType for Vec<T> {
     }
 }
 
-impl<'b, T: SimpleStaticType> SimpleStaticType for &'b T {
-    fn get_simple_static_type<'a>() -> SimpleType<'a> {
+impl<'a, T: SimpleStaticType> SimpleStaticType for &'a T {
+    fn get_simple_static_type<'b>() -> SimpleType<'b> {
         T::get_simple_static_type()
     }
 }

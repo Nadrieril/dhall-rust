@@ -50,7 +50,12 @@ pub(crate) struct Normalized<'a>(
 );
 derive_other_traits!(Normalized);
 
-/// An expression of type `Type` (like `Bool` or `Natural -> Text`, but not `Type`)
+/// A Dhall expression representing a simple type.
+///
+/// This captures what is usually simply called a "type", like
+/// `Bool`, `{ x: Integer }` or `Natural -> Text`.
+///
+/// For a more general notion of "type", see [Type].
 #[derive(Debug, Clone, Eq)]
 pub struct SimpleType<'a>(
     pub(crate) SubExpr<X, X>,
@@ -58,13 +63,17 @@ pub struct SimpleType<'a>(
 );
 derive_other_traits!(SimpleType);
 
+/// A Dhall expression representing a (possibly higher-kinded) type.
+///
+/// This includes [SimpleType]s but also higher-kinded expressions like
+/// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type<'a>(pub(crate) TypeInternal<'a>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeInternal<'a> {
     Expr(Box<Normalized<'a>>),
-    // The type of `Sort`
+    /// The type of `Sort`
     SuperType,
 }
 

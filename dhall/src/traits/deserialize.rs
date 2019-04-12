@@ -1,7 +1,14 @@
 use crate::error::*;
 use crate::expr::*;
 
+/// A data structure that can be deserialized from a Dhall expression
+///
+/// This is automatically implemented for any type that [serde][serde]
+/// can deserialize.
+///
+/// This trait cannot be implemented manually.
 pub trait Deserialize<'a>: Sized {
+    /// See [dhall::from_str][crate::from_str]
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self>;
 }
 
