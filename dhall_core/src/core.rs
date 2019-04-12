@@ -643,6 +643,39 @@ impl<N: Clone> SubExpr<N, X> {
     }
 }
 
+impl<E: Clone> SubExpr<X, E> {
+    pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
+        rc(self.as_ref().map_ref(
+            |e| e.note_absurd(),
+            |_, e| e.note_absurd(),
+            |_| unreachable!(),
+            E::clone,
+            Label::clone,
+        ))
+    }
+}
+
+impl<E: Clone> Expr<X, E> {
+    pub fn note_absurd<N: Clone>(&self) -> Expr<N, E> {
+        self.roll().note_absurd().unroll()
+    }
+}
+
+impl<N: Clone, E: Clone> SubExpr<N, E> {
+    pub fn unnote(&self) -> SubExpr<X, E> {
+        match self.as_ref() {
+            ExprF::Note(_, e) => e.unnote(),
+            e => rc(e.map_ref(
+                |e| e.unnote(),
+                |_, e| e.unnote(),
+                |_| unreachable!(),
+                E::clone,
+                Label::clone,
+            )),
+        }
+    }
+}
+
 impl<N: Clone> Expr<N, X> {
     // This is all very sad and I hope this can be avoided sometime
     pub fn absurd_rec<T>(&self) -> Expr<N, T> {

@@ -23,17 +23,13 @@ macro_rules! derive_other_traits {
 
 #[derive(Debug, Clone, Eq)]
 pub struct Parsed<'a>(
-    pub(crate) SubExpr<X, Import>,
+    pub(crate) SubExpr<Span<'a>, Import>,
     pub(crate) ImportRoot,
-    pub(crate) PhantomData<&'a ()>,
 );
 derive_other_traits!(Parsed);
 
 #[derive(Debug, Clone, Eq)]
-pub struct Resolved<'a>(
-    pub(crate) SubExpr<X, Normalized<'static>>,
-    pub(crate) PhantomData<&'a ()>,
-);
+pub struct Resolved<'a>(pub(crate) SubExpr<Span<'a>, Normalized<'static>>);
 derive_other_traits!(Resolved);
 
 #[derive(Debug, Clone, Eq)]

@@ -14,19 +14,19 @@ use self::TypeMessage::*;
 
 impl<'a> Resolved<'a> {
     pub fn typecheck(self) -> Result<Typed<'static>, TypeError> {
-        type_of(self.0.clone())
+        type_of(self.0.unnote())
     }
     pub fn typecheck_with(
         self,
         ty: &Type,
     ) -> Result<Typed<'static>, TypeError> {
-        let expr: SubExpr<_, _> = self.0.clone();
+        let expr: SubExpr<_, _> = self.0.unnote();
         let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().absurd();
         type_of(dhall::subexpr!(expr: ty))
     }
     /// Pretends this expression has been typechecked. Use with care.
     pub fn skip_typecheck(self) -> Typed<'a> {
-        Typed(self.0, None, self.1)
+        Typed(self.0.unnote(), None, PhantomData)
     }
 }
 impl<'a> Typed<'a> {
