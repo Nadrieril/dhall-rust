@@ -24,16 +24,7 @@ macro_rules! make_spec_test {
         #[allow(non_snake_case)]
         fn $name() {
             use crate::tests::*;
-            // Many tests stack overflow in debug mode
-            std::thread::Builder::new()
-                .stack_size(4 * 1024 * 1024)
-                .spawn(|| {
-                    run_test($path, Feature::$type, Status::$status)
-                        .map_err(|e| println!("{}", e))
-                        .unwrap();
-                })
-                .unwrap()
-                .join()
+            run_test_with_bigger_stack($path, Feature::$type, Status::$status)
                 .unwrap();
         }
     };
@@ -64,6 +55,25 @@ fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
 
 fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
     Parsed::parse_binary_file(&PathBuf::from(file_path))
+}
+
+pub fn run_test_with_bigger_stack(
+    base_path: &str,
+    feature: Feature,
+    status: Status,
+) -> std::result::Result<(), String> {
+    // Many tests stack overflow in debug mode
+    let base_path: String = base_path.to_string();
+    std::thread::Builder::new()
+        .stack_size(4 * 1024 * 1024)
+        .spawn(move || {
+            run_test(&base_path, feature, status)
+                .map_err(|e| e.to_string())
+                .map(|_| ())
+        })
+        .unwrap()
+        .join()
+        .unwrap()
 }
 
 pub fn run_test(
