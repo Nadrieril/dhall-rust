@@ -82,10 +82,20 @@ dependencies = [
 name = "dhall_core"
 version = "0.1.0"
 dependencies = [
- "dhall_parser 0.1.0",
+ "dhall_generated_parser 0.1.0",
  "iter_patterns 0.1.0",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.0 (git+https://github.com/pest-parser/pest)",
+]
+
+[[package]]
+name = "dhall_generated_parser"
+version = "0.1.0"
+dependencies = [
+ "abnf_to_pest 0.1.0",
+ "pest 2.1.0 (git+https://github.com/pest-parser/pest)",
+ "pest_generator 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.6.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -97,16 +107,6 @@ dependencies = [
  "proc-macro2 0.4.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.29 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "dhall_parser"
-version = "0.1.0"
-dependencies = [
- "abnf_to_pest 0.1.0",
- "pest 2.1.0 (git+https://github.com/pest-parser/pest)",
- "pest_generator 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "quote 0.6.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

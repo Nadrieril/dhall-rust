@@ -4,7 +4,7 @@ cargo-features = ["profile-overrides"]
 members = [
     "abnf_to_pest",
     "dhall",
-    "dhall_parser",
+    "dhall_generated_parser",
     "dhall_core",
     "dhall_generator",
     "iter_patterns",

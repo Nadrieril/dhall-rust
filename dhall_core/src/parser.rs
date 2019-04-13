@@ -5,7 +5,7 @@ pub use pest::Span;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use dhall_parser::{DhallParser, Rule};
+use dhall_generated_parser::{DhallParser, Rule};
 
 use crate::*;
 
