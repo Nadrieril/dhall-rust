@@ -314,8 +314,12 @@ fn mktype(
     Ok(type_with(ctx, e)?.normalize().into_type())
 }
 
-fn mksimpletype(e: SubExpr<X, X>) -> Type<'static> {
+fn into_simple_type<'a>(e: SubExpr<X, X>) -> Type<'a> {
     SimpleType(e, PhantomData).into_type()
+}
+
+fn simple_type_from_builtin<'a>(b: Builtin) -> Type<'a> {
+    into_simple_type(rc(ExprF::Builtin(b)))
 }
 
 /// Intermediary return type
@@ -439,6 +443,7 @@ fn type_last_layer(
     original_e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
     use dhall_core::BinOp::*;
+    use dhall_core::Builtin::*;
     use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<'static>| {
@@ -504,7 +509,7 @@ fn type_last_layer(
         BoolIf(x, y, z) => {
             ensure_equal!(
                 x.get_type()?,
-                &mksimpletype(dhall::subexpr!(Bool)),
+                &simple_type_from_builtin(Bool),
                 mkerr(InvalidPredicate(x)),
             );
 
@@ -601,21 +606,21 @@ fn type_last_layer(
             mkerr(NotARecord(x, r))
         ),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
-        BoolLit(_) => Ok(RetExpr(dhall::expr!(Bool))),
-        NaturalLit(_) => Ok(RetExpr(dhall::expr!(Natural))),
-        IntegerLit(_) => Ok(RetExpr(dhall::expr!(Integer))),
-        DoubleLit(_) => Ok(RetExpr(dhall::expr!(Double))),
+        BoolLit(_) => Ok(RetType(simple_type_from_builtin(Bool))),
+        NaturalLit(_) => Ok(RetType(simple_type_from_builtin(Natural))),
+        IntegerLit(_) => Ok(RetType(simple_type_from_builtin(Integer))),
+        DoubleLit(_) => Ok(RetType(simple_type_from_builtin(Double))),
         // TODO: check type of interpolations
-        TextLit(_) => Ok(RetExpr(dhall::expr!(Text))),
+        TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
         BinOp(o, l, r) => {
-            let t = mksimpletype(match o {
-                BoolAnd => dhall::subexpr!(Bool),
-                BoolOr => dhall::subexpr!(Bool),
-                BoolEQ => dhall::subexpr!(Bool),
-                BoolNE => dhall::subexpr!(Bool),
-                NaturalPlus => dhall::subexpr!(Natural),
-                NaturalTimes => dhall::subexpr!(Natural),
-                TextAppend => dhall::subexpr!(Text),
+            let t = simple_type_from_builtin(match o {
+                BoolAnd => Bool,
+                BoolOr => Bool,
+                BoolEQ => Bool,
+                BoolNE => Bool,
+                NaturalPlus => Natural,
+                NaturalTimes => Natural,
+                TextAppend => Text,
                 _ => return Err(mkerr(Unimplemented)),
             });
 
