@@ -271,15 +271,6 @@ fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized<'static>> {
     }
 }
 
-macro_rules! function_check {
-    ($x:expr, $y:expr, $err:expr $(,)*) => {
-        match function_check($x, $y) {
-            Ok(k) => k,
-            Err(()) => return Err($err),
-        }
-    };
-}
-
 macro_rules! ensure_equal {
     ($x:expr, $y:expr, $err:expr $(,)*) => {
         if !prop_equal($x, $y) {
@@ -379,49 +370,33 @@ fn type_with(
                 ),
             );
 
-            let k = function_check!(kA, kB, {
-                mkerr(NoDependentTypes(
-                    tA.clone().into_normalized()?,
-                    tB.get_type_move()?.into_normalized()?,
-                ))
-            });
+            let k = match function_check(kA, kB) {
+                Ok(k) => k,
+                Err(()) => {
+                    return Err(mkerr(NoDependentTypes(
+                        tA.clone().into_normalized()?,
+                        tB.get_type_move()?.into_normalized()?,
+                    )))
+                }
+            };
 
             Ok(RetExpr(Const(k)))
         }
-        Let(f, mt, r, b) => {
-            let r = if let Some(t) = mt {
-                let r = SubExpr::clone(r);
-                let t = SubExpr::clone(t);
-                dhall::subexpr!(r: t)
+        Let(x, t, v, e) => {
+            let v = if let Some(t) = t {
+                rc(Annot(v.clone(), t.clone()))
             } else {
-                SubExpr::clone(r)
+                v.clone()
             };
 
-            let r = type_with(ctx, r)?;
-            // Don't bother to provide a `let`-specific version of this error
-            // message because this should never happen anyway
-            let kR = ensure_is_const!(
-                &r.get_type()?.get_type()?,
-                mkerr(InvalidInputType(r.get_type_move()?.into_normalized()?)),
-            );
+            let v = type_with(ctx, v)?.normalize();
+            let e = type_with(
+                ctx,
+                // TODO: Use a substitution context
+                subst_shift(&V(x.clone(), 0), &v.as_expr().absurd(), e),
+            )?;
 
-            let ctx2 = ctx.insert(f.clone(), r.get_type()?.into_owned());
-            let b = type_with(&ctx2, b.clone())?;
-            // Don't bother to provide a `let`-specific version of this error
-            // message because this should never happen anyway
-            let kB = ensure_is_const!(
-                &b.get_type()?.get_type()?,
-                mkerr(InvalidOutputType(b.get_type_move()?.into_normalized()?)),
-            );
-
-            function_check!(kR, kB, {
-                mkerr(NoDependentLet(
-                    r.get_type_move()?.into_normalized()?,
-                    b.get_type_move()?.into_normalized()?,
-                ))
-            });
-
-            Ok(RetType(b.get_type_move()?))
+            Ok(RetType(e.get_type_move()?))
         }
         Embed(p) => return Ok(p.clone().into()),
         _ => type_last_layer(
@@ -501,7 +476,7 @@ fn type_last_layer(
                 });
                 tf = mktype(
                     ctx,
-                    subst_shift(&V(x.clone(), 0), a.as_expr(), &tb.absurd()),
+                    rc(Let(x.clone(), None, a.as_expr().clone(), tb.absurd())),
                 )?;
             }
             Ok(RetType(tf))
@@ -622,12 +597,12 @@ fn type_last_layer(
         DoubleLit(_) => Ok(RetType(simple_type_from_builtin(Double))),
         // TODO: check type of interpolations
         TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
-        BinOp(o@ListAppend, l, r) => {
+        BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.as_normalized()?.as_expr().as_ref() {
                 App(f, args) if args.len() == 1 => match f.as_ref() {
                     Builtin(List) => {}
                     _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
-                }
+                },
                 _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
             }
 
@@ -696,7 +671,6 @@ pub(crate) enum TypeMessage<'a> {
     NotARecord(Label, Typed<'a>),
     MissingField(Label, Typed<'a>),
     BinOpTypeMismatch(BinOp, Typed<'a>),
-    NoDependentLet(Normalized<'a>, Normalized<'a>),
     NoDependentTypes(Normalized<'a>, Normalized<'a>),
     Unimplemented,
 }
@@ -971,8 +945,8 @@ mod spec_tests {
     // ti_success!(ti_success_unit_IntegerToDouble, "unit/IntegerToDouble");
     // ti_success!(ti_success_unit_Kind, "unit/Kind");
     ti_success!(ti_success_unit_Let, "unit/Let");
-    // ti_success!(ti_success_unit_LetNestedTypeSynonym, "unit/LetNestedTypeSynonym");
-    // ti_success!(ti_success_unit_LetTypeSynonym, "unit/LetTypeSynonym");
+    ti_success!(ti_success_unit_LetNestedTypeSynonym, "unit/LetNestedTypeSynonym");
+    ti_success!(ti_success_unit_LetTypeSynonym, "unit/LetTypeSynonym");
     ti_success!(ti_success_unit_LetWithAnnotation, "unit/LetWithAnnotation");
     ti_success!(ti_success_unit_List, "unit/List");
     ti_success!(ti_success_unit_ListBuild, "unit/ListBuild");
