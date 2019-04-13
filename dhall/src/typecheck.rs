@@ -622,6 +622,23 @@ fn type_last_layer(
         DoubleLit(_) => Ok(RetType(simple_type_from_builtin(Double))),
         // TODO: check type of interpolations
         TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
+        BinOp(o@ListAppend, l, r) => {
+            match l.get_type()?.as_normalized()?.as_expr().as_ref() {
+                App(f, args) if args.len() == 1 => match f.as_ref() {
+                    Builtin(List) => {}
+                    _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
+                }
+                _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
+            }
+
+            ensure_equal!(
+                l.get_type()?,
+                r.get_type()?,
+                mkerr(BinOpTypeMismatch(o, r))
+            );
+
+            Ok(RetType(l.get_type()?.into_owned()))
+        }
         BinOp(o, l, r) => {
             let t = simple_type_from_builtin(match o {
                 BoolAnd => Bool,
@@ -631,6 +648,7 @@ fn type_last_layer(
                 NaturalPlus => Natural,
                 NaturalTimes => Natural,
                 TextAppend => Text,
+                ListAppend => unreachable!(),
                 _ => return Err(mkerr(Unimplemented)),
             });
 
@@ -986,8 +1004,8 @@ mod spec_tests {
     ti_success!(ti_success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
     ti_success!(ti_success_unit_OperatorEqual, "unit/OperatorEqual");
     ti_success!(ti_success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
-    // ti_success!(ti_success_unit_OperatorListConcatenate, "unit/OperatorListConcatenate");
-    // ti_success!(ti_success_unit_OperatorListConcatenateNormalizeArguments, "unit/OperatorListConcatenateNormalizeArguments");
+    ti_success!(ti_success_unit_OperatorListConcatenate, "unit/OperatorListConcatenate");
+    ti_success!(ti_success_unit_OperatorListConcatenateNormalizeArguments, "unit/OperatorListConcatenateNormalizeArguments");
     ti_success!(ti_success_unit_OperatorNotEqual, "unit/OperatorNotEqual");
     ti_success!(ti_success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
     ti_success!(ti_success_unit_OperatorOr, "unit/OperatorOr");
