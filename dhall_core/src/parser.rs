@@ -604,7 +604,7 @@ make_parser! {
             spanned(span, BoolIf(rc(cond), rc(left), rc(right)))
         },
         [let_binding(bindings).., in_(()), expression(final_expr)] => {
-            bindings.fold(
+            bindings.rev().fold(
                 final_expr,
                 |acc, x| Let(x.0, x.1, x.2, rc(acc))
             )

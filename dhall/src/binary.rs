@@ -316,6 +316,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 let expr = cbor_value_to_dhall(expr)?;
                 return Ok(bindings
                     .into_iter()
+                    .rev()
                     .fold(expr, |acc, (x, t, v)| rc(Let(x, t, v, acc))));
             }
             [U64(26), x, y] => {
