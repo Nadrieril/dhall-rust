@@ -97,7 +97,7 @@ where
                     }
                 };
                 let a0 = a0.roll();
-                let a1 = shift(1, &V("a".into(), 0), &a0);
+                let a1 = shift(1, &V("x".into(), 0), &a0);
                 let g = g.roll();
                 break 'ret (
                     dhall_expr!(
