@@ -305,28 +305,37 @@ macro_rules! ensure_is_const {
     };
 }
 
+/// Takes an expression that is meant to contain a Type
+/// and turn it into a type, typechecking it along the way.
+fn mktype(
+    ctx: &Context<Label, Type<'static>>,
+    e: SubExpr<X, Normalized<'static>>,
+) -> Result<Type<'static>, TypeError> {
+    Ok(type_with(ctx, e)?.normalize().into_type())
+}
+
+fn mksimpletype(e: SubExpr<X, X>) -> Type<'static> {
+    SimpleType(e, PhantomData).into_type()
+}
+
+/// Intermediary return type
+enum Ret {
+    /// Returns the contained Type as is
+    RetType(Type<'static>),
+    /// Returns an expression that must be typechecked and
+    /// turned into a Type first.
+    RetExpr(Expr<X, Normalized<'static>>),
+}
+
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed
 fn type_with(
     ctx: &Context<Label, Type<'static>>,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
-    use dhall_core::BinOp::*;
-    use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, e.clone(), msg);
 
-    let mktype = |ctx, x: SubExpr<X, Normalized<'static>>| {
-        Ok(type_with(ctx, x)?.normalize().into_type())
-    };
-
-    let mksimpletype =
-        |x: SubExpr<X, X>| SimpleType(x, PhantomData).into_type();
-
-    enum Ret {
-        RetType(crate::expr::Type<'static>),
-        RetExpr(Expr<X, Normalized<'static>>),
-    }
     use Ret::*;
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
@@ -407,213 +416,216 @@ fn type_with(
 
             Ok(RetType(b.get_type_move()?))
         }
-        _ => match e
-            .as_ref()
-            .traverse_ref_simple(|e| type_with(ctx, e.clone()))?
-        {
-            Lam(_, _, _) => unreachable!(),
-            Pi(_, _, _) => unreachable!(),
-            Let(_, _, _, _) => unreachable!(),
-            Const(Type) => Ok(RetType(crate::expr::Type::const_kind())),
-            Const(Kind) => Ok(RetType(crate::expr::Type::const_sort())),
-            Const(Sort) => {
-                Ok(RetType(crate::expr::Type(TypeInternal::SuperType)))
-            }
-            Var(V(x, n)) => match ctx.lookup(&x, n) {
-                Some(e) => Ok(RetType(e.clone())),
-                None => Err(mkerr(UnboundVariable)),
-            },
-            App(f, args) => {
-                let mut seen_args: Vec<SubExpr<_, _>> = vec![];
-                let mut tf = f.get_type()?.into_owned();
-                for a in args {
-                    seen_args.push(a.as_expr().clone());
-                    let (x, tx, tb) = ensure_matches!(tf,
-                        Pi(x, tx, tb) => (x, tx, tb),
-                        mkerr(NotAFunction(Typed(
-                            rc(App(f.into_expr(), seen_args)),
-                            Some(tf),
-                            PhantomData
-                        )))
-                    );
-                    let tx = mktype(ctx, tx.absurd())?;
-                    ensure_equal!(
-                        &tx,
-                        a.get_type()?,
-                        mkerr(TypeMismatch(
-                            Typed(
-                                rc(App(f.into_expr(), seen_args)),
-                                Some(tf),
-                                PhantomData
-                            ),
-                            tx.into_normalized()?,
-                            a,
-                        ))
-                    );
-                    tf = mktype(
-                        ctx,
-                        subst_shift(
-                            &V(x.clone(), 0),
-                            a.as_expr(),
-                            &tb.absurd(),
-                        ),
-                    )?;
-                }
-                Ok(RetType(tf))
-            }
-            Annot(x, t) => {
-                let t = t.normalize().into_type();
-                ensure_equal!(
-                    &t,
-                    x.get_type()?,
-                    mkerr(AnnotMismatch(x, t.into_normalized()?))
-                );
-                Ok(RetType(x.get_type_move()?))
-            }
-            BoolIf(x, y, z) => {
-                ensure_equal!(
-                    x.get_type()?,
-                    &mksimpletype(dhall::subexpr!(Bool)),
-                    mkerr(InvalidPredicate(x)),
-                );
-
-                ensure_simple_type!(
-                    y.get_type()?,
-                    mkerr(IfBranchMustBeTerm(true, y)),
-                );
-
-                ensure_simple_type!(
-                    z.get_type()?,
-                    mkerr(IfBranchMustBeTerm(false, z)),
-                );
-
-                ensure_equal!(
-                    y.get_type()?,
-                    z.get_type()?,
-                    mkerr(IfBranchMismatch(y, z))
-                );
-
-                Ok(RetType(y.get_type_move()?))
-            }
-            EmptyListLit(t) => {
-                let t = t.normalize().into_type();
-                ensure_simple_type!(
-                    t,
-                    mkerr(InvalidListType(t.into_normalized()?)),
-                );
-                let t = t.into_normalized()?.into_expr();
-                Ok(RetExpr(dhall::expr!(List t)))
-            }
-            NEListLit(xs) => {
-                let mut iter = xs.into_iter().enumerate();
-                let (_, x) = iter.next().unwrap();
-                ensure_simple_type!(
-                    x.get_type()?,
-                    mkerr(InvalidListType(
-                        x.get_type_move()?.into_normalized()?
-                    )),
-                );
-                for (i, y) in iter {
-                    ensure_equal!(
-                        x.get_type()?,
-                        y.get_type()?,
-                        mkerr(InvalidListElement(
-                            i,
-                            x.get_type_move()?.into_normalized()?,
-                            y
-                        ))
-                    );
-                }
-                let t = x.get_type_move()?.into_normalized()?.into_expr();
-                Ok(RetExpr(dhall::expr!(List t)))
-            }
-            EmptyOptionalLit(t) => {
-                let t = t.normalize().into_type();
-                ensure_simple_type!(
-                    t,
-                    mkerr(InvalidOptionalType(t.into_normalized()?)),
-                );
-                let t = t.into_normalized()?.into_expr();
-                Ok(RetExpr(dhall::expr!(Optional t)))
-            }
-            NEOptionalLit(x) => {
-                let tx = x.get_type_move()?;
-                ensure_simple_type!(
-                    tx,
-                    mkerr(InvalidOptionalType(tx.into_normalized()?,)),
-                );
-                let t = tx.into_normalized()?.into_expr();
-                Ok(RetExpr(dhall::expr!(Optional t)))
-            }
-            RecordType(kts) => {
-                for (k, t) in kts {
-                    ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)),);
-                }
-                Ok(RetExpr(dhall::expr!(Type)))
-            }
-            RecordLit(kvs) => {
-                let kts = kvs
-                    .into_iter()
-                    .map(|(k, v)| {
-                        ensure_simple_type!(
-                            v.get_type()?,
-                            mkerr(InvalidField(k, v)),
-                        );
-                        Ok((
-                            k,
-                            v.get_type_move()?.into_normalized()?.into_expr(),
-                        ))
-                    })
-                    .collect::<Result<_, _>>()?;
-                Ok(RetExpr(RecordType(kts)))
-            }
-            Field(r, x) => ensure_matches!(r.get_type()?,
-                RecordType(kts) => match kts.get(&x) {
-                    Some(e) => Ok(RetExpr(e.unroll().absurd_rec())),
-                    None => Err(mkerr(MissingField(x, r))),
-                },
-                mkerr(NotARecord(x, r))
-            ),
-            Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
-            BoolLit(_) => Ok(RetExpr(dhall::expr!(Bool))),
-            NaturalLit(_) => Ok(RetExpr(dhall::expr!(Natural))),
-            IntegerLit(_) => Ok(RetExpr(dhall::expr!(Integer))),
-            DoubleLit(_) => Ok(RetExpr(dhall::expr!(Double))),
-            // TODO: check type of interpolations
-            TextLit(_) => Ok(RetExpr(dhall::expr!(Text))),
-            BinOp(o, l, r) => {
-                let t = mksimpletype(match o {
-                    BoolAnd => dhall::subexpr!(Bool),
-                    BoolOr => dhall::subexpr!(Bool),
-                    BoolEQ => dhall::subexpr!(Bool),
-                    BoolNE => dhall::subexpr!(Bool),
-                    NaturalPlus => dhall::subexpr!(Natural),
-                    NaturalTimes => dhall::subexpr!(Natural),
-                    TextAppend => dhall::subexpr!(Text),
-                    _ => Err(mkerr(Unimplemented))?,
-                });
-
-                ensure_equal!(
-                    l.get_type()?,
-                    &t,
-                    mkerr(BinOpTypeMismatch(o, l))
-                );
-
-                ensure_equal!(
-                    r.get_type()?,
-                    &t,
-                    mkerr(BinOpTypeMismatch(o, r))
-                );
-
-                Ok(RetType(t))
-            }
-            Embed(p) => return Ok(p.into()),
-            _ => Err(mkerr(Unimplemented))?,
-        },
+        Embed(p) => return Ok(p.clone().into()),
+        _ => type_last_layer(
+            ctx,
+            // Typecheck recursively all subexpressions
+            e.as_ref()
+                .traverse_ref_simple(|e| type_with(ctx, e.clone()))?,
+            e.clone(),
+        ),
     }?;
     match ret {
         RetExpr(ret) => Ok(Typed(e, Some(mktype(ctx, rc(ret))?), PhantomData)),
         RetType(typ) => Ok(Typed(e, Some(typ), PhantomData)),
+    }
+}
+
+/// When all sub-expressions have been typed, check the remaining toplevel
+/// layer.
+fn type_last_layer(
+    ctx: &Context<Label, Type<'static>>,
+    e: ExprF<Typed<'static>, Label, X, Normalized<'static>>,
+    original_e: SubExpr<X, Normalized<'static>>,
+) -> Result<Ret, TypeError> {
+    use dhall_core::BinOp::*;
+    use dhall_core::Const::*;
+    use dhall_core::ExprF::*;
+    let mkerr = |msg: TypeMessage<'static>| {
+        TypeError::new(ctx, original_e.clone(), msg)
+    };
+
+    use Ret::*;
+    match e {
+        Lam(_, _, _) => unreachable!(),
+        Pi(_, _, _) => unreachable!(),
+        Let(_, _, _, _) => unreachable!(),
+        Embed(_) => unreachable!(),
+        Const(Type) => Ok(RetType(crate::expr::Type::const_kind())),
+        Const(Kind) => Ok(RetType(crate::expr::Type::const_sort())),
+        Const(Sort) => Ok(RetType(crate::expr::Type(TypeInternal::SuperType))),
+        Var(V(x, n)) => match ctx.lookup(&x, n) {
+            Some(e) => Ok(RetType(e.clone())),
+            None => Err(mkerr(UnboundVariable)),
+        },
+        App(f, args) => {
+            let mut seen_args: Vec<SubExpr<_, _>> = vec![];
+            let mut tf = f.get_type()?.into_owned();
+            for a in args {
+                seen_args.push(a.as_expr().clone());
+                let (x, tx, tb) = ensure_matches!(tf,
+                    Pi(x, tx, tb) => (x, tx, tb),
+                    mkerr(NotAFunction(Typed(
+                        rc(App(f.into_expr(), seen_args)),
+                        Some(tf),
+                        PhantomData
+                    )))
+                );
+                let tx = mktype(ctx, tx.absurd())?;
+                ensure_equal!(
+                    &tx,
+                    a.get_type()?,
+                    mkerr(TypeMismatch(
+                        Typed(
+                            rc(App(f.into_expr(), seen_args)),
+                            Some(tf),
+                            PhantomData
+                        ),
+                        tx.into_normalized()?,
+                        a,
+                    ))
+                );
+                tf = mktype(
+                    ctx,
+                    subst_shift(&V(x.clone(), 0), a.as_expr(), &tb.absurd()),
+                )?;
+            }
+            Ok(RetType(tf))
+        }
+        Annot(x, t) => {
+            let t = t.normalize().into_type();
+            ensure_equal!(
+                &t,
+                x.get_type()?,
+                mkerr(AnnotMismatch(x, t.into_normalized()?))
+            );
+            Ok(RetType(x.get_type_move()?))
+        }
+        BoolIf(x, y, z) => {
+            ensure_equal!(
+                x.get_type()?,
+                &mksimpletype(dhall::subexpr!(Bool)),
+                mkerr(InvalidPredicate(x)),
+            );
+
+            ensure_simple_type!(
+                y.get_type()?,
+                mkerr(IfBranchMustBeTerm(true, y)),
+            );
+
+            ensure_simple_type!(
+                z.get_type()?,
+                mkerr(IfBranchMustBeTerm(false, z)),
+            );
+
+            ensure_equal!(
+                y.get_type()?,
+                z.get_type()?,
+                mkerr(IfBranchMismatch(y, z))
+            );
+
+            Ok(RetType(y.get_type_move()?))
+        }
+        EmptyListLit(t) => {
+            let t = t.normalize().into_type();
+            ensure_simple_type!(
+                t,
+                mkerr(InvalidListType(t.into_normalized()?)),
+            );
+            let t = t.into_normalized()?.into_expr();
+            Ok(RetExpr(dhall::expr!(List t)))
+        }
+        NEListLit(xs) => {
+            let mut iter = xs.into_iter().enumerate();
+            let (_, x) = iter.next().unwrap();
+            ensure_simple_type!(
+                x.get_type()?,
+                mkerr(InvalidListType(x.get_type_move()?.into_normalized()?)),
+            );
+            for (i, y) in iter {
+                ensure_equal!(
+                    x.get_type()?,
+                    y.get_type()?,
+                    mkerr(InvalidListElement(
+                        i,
+                        x.get_type_move()?.into_normalized()?,
+                        y
+                    ))
+                );
+            }
+            let t = x.get_type_move()?.into_normalized()?.into_expr();
+            Ok(RetExpr(dhall::expr!(List t)))
+        }
+        EmptyOptionalLit(t) => {
+            let t = t.normalize().into_type();
+            ensure_simple_type!(
+                t,
+                mkerr(InvalidOptionalType(t.into_normalized()?)),
+            );
+            let t = t.into_normalized()?.into_expr();
+            Ok(RetExpr(dhall::expr!(Optional t)))
+        }
+        NEOptionalLit(x) => {
+            let tx = x.get_type_move()?;
+            ensure_simple_type!(
+                tx,
+                mkerr(InvalidOptionalType(tx.into_normalized()?,)),
+            );
+            let t = tx.into_normalized()?.into_expr();
+            Ok(RetExpr(dhall::expr!(Optional t)))
+        }
+        RecordType(kts) => {
+            for (k, t) in kts {
+                ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)),);
+            }
+            Ok(RetExpr(dhall::expr!(Type)))
+        }
+        RecordLit(kvs) => {
+            let kts = kvs
+                .into_iter()
+                .map(|(k, v)| {
+                    ensure_simple_type!(
+                        v.get_type()?,
+                        mkerr(InvalidField(k, v)),
+                    );
+                    Ok((k, v.get_type_move()?.into_normalized()?.into_expr()))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(RetExpr(RecordType(kts)))
+        }
+        Field(r, x) => ensure_matches!(r.get_type()?,
+            RecordType(kts) => match kts.get(&x) {
+                Some(e) => Ok(RetExpr(e.unroll().absurd_rec())),
+                None => Err(mkerr(MissingField(x, r))),
+            },
+            mkerr(NotARecord(x, r))
+        ),
+        Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
+        BoolLit(_) => Ok(RetExpr(dhall::expr!(Bool))),
+        NaturalLit(_) => Ok(RetExpr(dhall::expr!(Natural))),
+        IntegerLit(_) => Ok(RetExpr(dhall::expr!(Integer))),
+        DoubleLit(_) => Ok(RetExpr(dhall::expr!(Double))),
+        // TODO: check type of interpolations
+        TextLit(_) => Ok(RetExpr(dhall::expr!(Text))),
+        BinOp(o, l, r) => {
+            let t = mksimpletype(match o {
+                BoolAnd => dhall::subexpr!(Bool),
+                BoolOr => dhall::subexpr!(Bool),
+                BoolEQ => dhall::subexpr!(Bool),
+                BoolNE => dhall::subexpr!(Bool),
+                NaturalPlus => dhall::subexpr!(Natural),
+                NaturalTimes => dhall::subexpr!(Natural),
+                TextAppend => dhall::subexpr!(Text),
+                _ => return Err(mkerr(Unimplemented)),
+            });
+
+            ensure_equal!(l.get_type()?, &t, mkerr(BinOpTypeMismatch(o, l)));
+
+            ensure_equal!(r.get_type()?, &t, mkerr(BinOpTypeMismatch(o, r)));
+
+            Ok(RetType(t))
+        }
+        _ => Err(mkerr(Unimplemented)),
     }
 }
 
