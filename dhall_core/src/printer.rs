@@ -2,180 +2,67 @@ use crate::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
 
-impl<S, A: Display> Display for Expr<S, A> {
+/// Generic instance that delegates to subexpressions
+impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.fmt_phase(f, PrintPhase::Base)
-    }
-}
-
-impl<S, A: Display> Display for SubExpr<S, A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.as_ref().fmt(f)
-    }
-}
-
-//  There is a one-to-one correspondence between the formatter and the grammar. Each phase is
-//  named after a corresponding grammar group, and the structure of the formatter reflects
-//  the relationship between the corresponding grammar rules. This leads to the nice property
-//  of automatically getting all the parentheses and precedences right.
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum PrintPhase {
-    Base,
-    Operator,
-    BinOp(core::BinOp),
-    App,
-    Import,
-    Primitive,
-    Paren,
-}
-
-impl<S, A: Display> Expr<S, A> {
-    fn fmt_phase(
-        &self,
-        f: &mut fmt::Formatter,
-        phase: PrintPhase,
-    ) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
-        use PrintPhase::*;
         match self {
-            _ if phase == Paren => {
-                f.write_str("(")?;
-                self.fmt_phase(f, Base)?;
-                f.write_str(")")?;
-            }
-
             Lam(a, b, c) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "λ({} : ", a)?;
-                b.fmt(f)?;
-                write!(f, ") → ")?;
-                c.fmt(f)?;
+                write!(f, "λ({} : {}) → {}", a, b, c)?;
             }
             BoolIf(a, b, c) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "if ")?;
-                a.fmt(f)?;
-                write!(f, " then ")?;
-                b.fmt(f)?;
-                write!(f, " else ")?;
-                c.fmt(f)?;
+                write!(f, "if {} then {} else {}", a, b, c)?;
             }
             Pi(a, b, c) if &String::from(a) == "_" => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                b.fmt_phase(f, Operator)?;
-                write!(f, " → ")?;
-                c.fmt(f)?;
+                write!(f, "{} → {}", b, c)?;
             }
             Pi(a, b, c) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "∀({} : ", a)?;
-                b.fmt(f)?;
-                write!(f, ") → ")?;
-                c.fmt(f)?;
+                write!(f, "∀({} : {}) → {}", a, b, c)?;
             }
             Let(a, b, c, d) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
                 write!(f, "let {}", a)?;
                 if let Some(b) = b {
-                    write!(f, " : ")?;
-                    b.fmt(f)?;
+                    write!(f, " : {}", b)?;
                 }
-                write!(f, " = ")?;
-                c.fmt(f)?;
-                write!(f, " in ")?;
-                d.fmt(f)?;
+                write!(f, " = {} in {}", c, d)?;
             }
             EmptyListLit(t) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "[] : List ")?;
-                t.fmt_phase(f, Import)?;
+                write!(f, "[] : List {}", t)?;
             }
             NEListLit(es) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                fmt_list("[", ", ", "]", es, f, |e, f| e.fmt(f))?;
+                fmt_list("[", ", ", "]", es, f, Display::fmt)?;
             }
             EmptyOptionalLit(t) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "None ")?;
-                t.fmt_phase(f, Import)?;
+                write!(f, "None {}", t)?;
             }
             NEOptionalLit(e) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "Some ")?;
-                e.fmt_phase(f, Import)?;
+                write!(f, "Some {}", e)?;
             }
             Merge(a, b, c) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                write!(f, "merge ")?;
-                a.fmt_phase(f, Import)?;
-                write!(f, " ")?;
-                b.fmt_phase(f, Import)?;
+                write!(f, "merge {} {}", a, b)?;
                 if let Some(c) = c {
-                    write!(f, " : ")?;
-                    c.fmt_phase(f, PrintPhase::App)?;
+                    write!(f, " : {}", c)?;
                 }
             }
             Annot(a, b) => {
-                if phase > Base {
-                    return self.fmt_phase(f, Paren);
-                }
-                a.fmt_phase(f, Operator)?;
-                write!(f, " : ")?;
-                b.fmt(f)?;
+                write!(f, "{} : {}", a, b)?;
             }
             ExprF::BinOp(op, a, b) => {
-                // Precedence is magically handled by the ordering of BinOps.
-                if phase > PrintPhase::BinOp(*op) {
-                    return self.fmt_phase(f, Paren);
-                }
-                a.fmt_phase(f, PrintPhase::BinOp(*op))?;
-                write!(f, " {} ", op)?;
-                b.fmt_phase(f, PrintPhase::BinOp(*op))?;
+                write!(f, "{} {} {}", a, op, b)?;
             }
             ExprF::App(a, args) => {
-                if phase > PrintPhase::App {
-                    return self.fmt_phase(f, Paren);
-                }
-                a.fmt_phase(f, Import)?;
+                a.fmt(f)?;
                 for x in args {
                     f.write_str(" ")?;
-                    x.fmt_phase(f, Import)?;
+                    x.fmt(f)?;
                 }
             }
             Field(a, b) => {
-                if phase > Import {
-                    return self.fmt_phase(f, Paren);
-                }
-                a.fmt_phase(f, Primitive)?;
-                write!(f, ".{}", b)?;
+                write!(f, "{}.{}", a, b)?;
             }
             Projection(e, ls) => {
-                if phase > Import {
-                    return self.fmt_phase(f, Paren);
-                }
-                e.fmt_phase(f, Primitive)?;
-                write!(f, ".")?;
-                fmt_list("{ ", ", ", " }", ls, f, |l, f| write!(f, "{}", l))?;
+                write!(f, "{}.", e)?;
+                fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
             }
             Var(a) => a.fmt(f)?,
             Const(k) => k.fmt(f)?,
@@ -202,28 +89,135 @@ impl<S, A: Display> Expr<S, A> {
                 write!(f, "{} : {}", k, v)
             })?,
             UnionLit(a, b, c) => {
-                f.write_str("< ")?;
-                write!(f, "{} = {}", a, b)?;
+                write!(f, "< {} = {}", a, b)?;
                 for (k, v) in c {
-                    f.write_str(" | ")?;
-                    write!(f, "{} : {}", k, v)?;
+                    write!(f, " | {} : {}", k, v)?;
                 }
                 f.write_str(" >")?
             }
             Embed(a) => a.fmt(f)?,
-            Note(_, b) => b.fmt_phase(f, phase)?,
+            Note(_, b) => b.fmt(f)?,
         }
         Ok(())
     }
 }
 
-impl<S, A: Display> SubExpr<S, A> {
+// There is a one-to-one correspondence between the formatter and the grammar. Each phase is
+// named after a corresponding grammar group, and the structure of the formatter reflects
+// the relationship between the corresponding grammar rules. This leads to the nice property
+// of automatically getting all the parentheses and precedences right.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+enum PrintPhase {
+    Base,
+    Operator,
+    BinOp(core::BinOp),
+    App,
+    Import,
+    Primitive,
+}
+
+// Wraps an Expr with a phase, so that phase selsction can be done
+// separate from the actual printing
+#[derive(Clone)]
+struct PhasedExpr<'a, S, A>(&'a SubExpr<S, A>, PrintPhase);
+
+impl<'a, S: Clone, A: Display + Clone> Display for PhasedExpr<'a, S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.as_ref().fmt_phase(f, self.1)
+    }
+}
+
+impl<'a, S: Clone, A: Display + Clone> PhasedExpr<'a, S, A> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, S, A> {
+        PhasedExpr(self.0, phase)
+    }
+}
+
+impl<S: Clone, A: Display + Clone> Expr<S, A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
-        phase: PrintPhase,
+        mut phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
-        self.0.as_ref().fmt_phase(f, phase)
+        use crate::ExprF::*;
+        use PrintPhase::*;
+
+        let needs_paren = match self {
+            Lam(_, _, _)
+            | BoolIf(_, _, _)
+            | Pi(_, _, _)
+            | Let(_, _, _, _)
+            | EmptyListLit(_)
+            | NEListLit(_)
+            | EmptyOptionalLit(_)
+            | NEOptionalLit(_)
+            | Merge(_, _, _)
+            | Annot(_, _)
+                if phase > Base =>
+            {
+                true
+            }
+            // Precedence is magically handled by the ordering of BinOps.
+            ExprF::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
+            ExprF::App(_, _) if phase > PrintPhase::App => true,
+            Field(_, _) | Projection(_, _) if phase > Import => true,
+            _ => false,
+        };
+
+        if needs_paren {
+            phase = Base;
+        }
+
+        // Annotate subexpressions with the appropriate phase, defaulting to Base
+        let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
+            Pi(a, b, c) => {
+                if &String::from(&a) == "_" {
+                    Pi(a, b.phase(Operator), c)
+                } else {
+                    Pi(a, b, c)
+                }
+            }
+            Merge(a, b, c) => Merge(
+                a.phase(Import),
+                b.phase(Import),
+                c.map(|x| x.phase(PrintPhase::App)),
+            ),
+            Annot(a, b) => Annot(a.phase(Operator), b),
+            ExprF::BinOp(op, a, b) => ExprF::BinOp(
+                op,
+                a.phase(PrintPhase::BinOp(op)),
+                b.phase(PrintPhase::BinOp(op)),
+            ),
+            EmptyListLit(t) => EmptyListLit(t.phase(Import)),
+            EmptyOptionalLit(t) => EmptyOptionalLit(t.phase(Import)),
+            NEOptionalLit(e) => NEOptionalLit(e.phase(Import)),
+            ExprF::App(a, args) => ExprF::App(
+                a.phase(Import),
+                args.into_iter().map(|x| x.phase(Import)).collect(),
+            ),
+            Field(a, b) => Field(a.phase(Primitive), b),
+            Projection(e, ls) => Projection(e.phase(Primitive), ls),
+            Note(n, b) => Note(n, b.phase(phase)),
+            e => e,
+        };
+
+        if needs_paren {
+            f.write_str("(")?;
+        }
+
+        // Uses the ExprF<PhasedExpr<_>, _, _, _> instance
+        phased_self.fmt(f)?;
+
+        if needs_paren {
+            f.write_str(")")?;
+        }
+        Ok(())
+    }
+}
+
+impl<S: Clone, A: Display + Clone> Display for SubExpr<S, A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
 }
 
