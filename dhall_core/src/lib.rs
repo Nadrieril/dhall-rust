@@ -7,6 +7,11 @@
     clippy::type_complexity
 )]
 
+//! This crate contains the core AST-handling primitives for the [dhall-rust][dhall-rust] crate.
+//! This is highly unstable and breaks regularly; use at your own risk.
+//!
+//! [dhall-rust]: https://github.com/Nadrieril/dhall-rust
+
 mod core;
 pub use crate::core::*;
 mod import;

@@ -1,3 +1,10 @@
+//! This crate only contains a [pest][pest]-generated parser for the [dhall][dhall] language.
+//! It is part of the [dhall-rust][dhall-rust] crate.
+//!
+//! [pest]: https://pest.rs
+//! [dhall]: https://dhall-lang.org/
+//! [dhall-rust]: https://github.com/Nadrieril/dhall-rust
+
 // This crate only contains the grammar-generated parser. The rest of the
 // parser is in dhall_core. This separation is because compiling the
 // grammar-generated parser is extremely slow.
