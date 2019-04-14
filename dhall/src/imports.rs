@@ -1,6 +1,7 @@
 use crate::error::Error;
 use crate::expr::*;
 use dhall_core::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -18,9 +19,12 @@ pub enum ImportRoot {
     LocalDir(PathBuf),
 }
 
+type ImportCache = HashMap<Import, Normalized<'static>>;
+
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
+    import_cache: &mut ImportCache,
 ) -> Result<Normalized<'static>, ImportError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
@@ -36,7 +40,7 @@ fn resolve_import(
                 Here => cwd.join(path),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(&path).map_err(|e| {
+            Ok(load_import(&path, import_cache).map_err(|e| {
                 ImportError::Recursive(import.clone(), Box::new(e))
             })?)
         }
@@ -44,22 +48,40 @@ fn resolve_import(
     }
 }
 
-fn load_import(f: &Path) -> Result<Normalized<'static>, Error> {
-    Ok(Parsed::parse_file(f)?.resolve()?.typecheck()?.normalize())
+fn load_import(
+    f: &Path,
+    import_cache: &mut ImportCache,
+) -> Result<Normalized<'static>, Error> {
+    Ok(resolve_expr_imports(Parsed::parse_file(f)?, import_cache)?
+        .typecheck()?
+        .normalize())
 }
 
-fn resolve_expr<'a>(
+fn resolve_expr_imports<'a>(
     Parsed(expr, root): Parsed<'a>,
-    allow_imports: bool,
+    import_cache: &mut ImportCache,
 ) -> Result<Resolved<'a>, ImportError> {
     let resolve =
         |import: &Import| -> Result<Normalized<'static>, ImportError> {
-            if allow_imports {
-                let expr = resolve_import(import, &root)?;
-                Ok(expr)
-            } else {
-                Err(ImportError::UnexpectedImport(import.clone()))
+            match import_cache.get(import) {
+                Some(expr) => Ok(expr.clone()),
+                None => {
+                    let expr = resolve_import(import, &root, import_cache)?;
+                    import_cache.insert(import.clone(), expr.clone());
+                    Ok(expr)
+                }
             }
+        };
+    let expr = expr.as_ref().traverse_embed(resolve)?;
+    Ok(Resolved(rc(expr)))
+}
+
+fn resolve_expr<'a>(
+    Parsed(expr, _root): Parsed<'a>,
+) -> Result<Resolved<'a>, ImportError> {
+    let resolve =
+        |import: &Import| -> Result<Normalized<'static>, ImportError> {
+            Err(ImportError::UnexpectedImport(import.clone()))
         };
     let expr = expr.as_ref().traverse_embed(&resolve)?;
     Ok(Resolved(rc(expr)))
@@ -90,11 +112,11 @@ impl<'a> Parsed<'a> {
     }
 
     pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
-        crate::imports::resolve_expr(self, true)
+        crate::imports::resolve_expr_imports(self, &mut HashMap::new())
     }
 
     #[allow(dead_code)]
     pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
-        crate::imports::resolve_expr(self, false)
+        crate::imports::resolve_expr(self)
     }
 }
