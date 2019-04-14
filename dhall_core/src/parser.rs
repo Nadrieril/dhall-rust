@@ -171,7 +171,7 @@ macro_rules! make_parser {
         #[allow(unused_imports)]
         use ParsedValue::*;
         #[allow(unreachable_code)]
-        let res: $o = iter_patterns::match_vec!($children;
+        let res: $o = improved_slice_patterns::match_vec!($children;
             $( [$($args)*] => $body, )*
             [x..] => Err(
                 format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
