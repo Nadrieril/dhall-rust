@@ -1,9 +1,10 @@
 [package]
 name = "improved_slice_patterns"
-version = "1.0.0"
+version = "1.0.1"  # remember to update html_root_url
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
 description = "A tiny crate that provides macros to help matching on Vecs and iterators using the syntax of slice_patterns"
-repository = "https://github.com/Nadrieril/dhall-rust"
 readme = "README.md"
+repository = "https://github.com/Nadrieril/dhall-rust"
+documentation = "https://docs.rs/improved_slice_patterns/"

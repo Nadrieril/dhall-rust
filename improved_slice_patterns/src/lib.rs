@@ -1,4 +1,5 @@
 #![feature(slice_patterns)]
+#![doc(html_root_url = "https://docs.rs/improved_slice_patterns/1.0.1")]
 
 //! A tiny crate that provides two macros to help matching
 //! on `Vec`s and iterators using the syntax of
@@ -7,10 +8,13 @@
 //! [slice_patterns]: https://doc.rust-lang.org/nightly/unstable-book/language-features/slice-patterns.html
 
 /// Destructure an iterator using the syntax of slice_patterns.
+///
 /// Wraps the match body in `Some` if there was a match; returns
 /// `None` otherwise.
+///
 /// Contrary to slice_patterns, this allows moving out
 /// of the iterator.
+///
 /// A variable length pattern (`x..`) is only allowed as the last
 /// pattern, unless the iterator is double-ended.
 ///
@@ -122,10 +126,13 @@ macro_rules! destructure_iter {
 }
 
 /// Pattern-match on a vec using the syntax of slice_patterns.
+///
 /// Wraps the match body in `Some` if there was a match; returns
 /// `None` otherwise.
+///
 /// Contrary to slice_patterns, this allows moving out
 /// of the `Vec`.
+///
 /// A variable length pattern (`x..`) returns an iterator.
 ///
 /// Example:
