@@ -198,6 +198,15 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     Embed(Embed),
 }
 
+impl<SE, L, N, E> ExprF<SE, L, N, E> {
+    pub fn visit<'a, V, Return>(&'a self, v: V) -> Return
+    where
+        V: visitor::GenericVisitor<&'a ExprF<SE, L, N, E>, Return>,
+    {
+        v.visit(self)
+    }
+}
+
 impl<S, A> Expr<S, A> {
     pub fn map_shallow<T, B, F1, F2, F3, F4>(
         &self,
@@ -270,9 +279,7 @@ impl<N: Clone, E> Expr<N, E> {
         &self,
         f: impl FnMut(&E) -> SubExpr<N, E2>,
     ) -> SubExpr<N, E2> {
-        rc(trivial_result(
-            self.visit(&mut visitor::SquashEmbedVisitor(f)),
-        ))
+        rc(self.visit(&mut visitor::SquashEmbedVisitor(f)))
     }
 }
 
@@ -463,15 +470,13 @@ impl<E: Clone> SubExpr<X, E> {
 
 impl<E: Clone> Expr<X, E> {
     pub fn note_absurd<N>(&self) -> Expr<N, E> {
-        trivial_result(self.visit(&mut visitor::NoteAbsurdVisitor))
+        self.visit(&mut visitor::NoteAbsurdVisitor)
     }
 }
 
 impl<N, E: Clone> SubExpr<N, E> {
     pub fn unnote(&self) -> SubExpr<X, E> {
-        rc(trivial_result(
-            self.as_ref().visit(&mut visitor::UnNoteVisitor),
-        ))
+        rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
     }
 }
 
@@ -481,7 +486,7 @@ impl<N: Clone> Expr<N, X> {
         self.embed_absurd()
     }
     pub fn embed_absurd<T>(&self) -> Expr<N, T> {
-        trivial_result(self.visit(&mut visitor::EmbedAbsurdVisitor))
+        self.visit(&mut visitor::EmbedAbsurdVisitor)
     }
 }
 
