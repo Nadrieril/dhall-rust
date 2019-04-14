@@ -1,5 +1,5 @@
 #![feature(proc_macro_hygiene)]
-use dhall::SimpleStaticType;
+use dhall::de::SimpleStaticType;
 use dhall_core::{SubExpr, X};
 use dhall_generator::dhall_expr;
 
@@ -20,14 +20,14 @@ fn test_static_type() {
         mktype(dhall_expr!({ _1: Bool, _2: Optional Text }))
     );
 
-    #[derive(dhall::SimpleStaticType)]
+    #[derive(dhall::de::SimpleStaticType)]
     #[allow(dead_code)]
     struct A {
         field1: bool,
         field2: Option<bool>,
     }
     assert_eq!(
-        <A as dhall::SimpleStaticType>::get_simple_static_type(),
+        <A as dhall::de::SimpleStaticType>::get_simple_static_type(),
         mktype(dhall_expr!({ field1: Bool, field2: Optional Bool }))
     );
 

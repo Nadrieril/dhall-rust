@@ -112,7 +112,7 @@ pub fn run_test(
 
                 // Round-trip pretty-printer
                 let expr_string = expr.to_string();
-                let expr: Parsed = crate::from_str(&expr_string, None)?;
+                let expr: Parsed = crate::de::from_str(&expr_string, None)?;
                 assert_eq!(expr, expected);
 
                 return Ok(());

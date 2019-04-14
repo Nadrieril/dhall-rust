@@ -31,13 +31,13 @@
 //! ### Custom datatype
 //!
 //! If you have a custom datatype for which you derived [serde::Deserialize], chances are
-//! you will be able to derive [SimpleStaticType] for it as well. This gives you access to
-//! a dhall representation of your datatype that can be outputted to users, and
-//! allows easy type-safe deserializing.
+//! you will be able to derive [SimpleStaticType][de::SimpleStaticType] for it as well.
+//! This gives you access to a dhall representation of your datatype that can be outputted
+//! to users, and allows easy type-safe deserializing.
 //!
 //! ```edition2018
 //! use serde::Deserialize;
-//! use dhall::SimpleStaticType;
+//! use dhall::de::SimpleStaticType;
 //!
 //! #[derive(Debug, Deserialize, SimpleStaticType)]
 //! struct Point {
@@ -51,7 +51,7 @@
 //!
 //!     // Convert the dhall string to a Point.
 //!     let point: Point =
-//!             dhall::from_str_auto_type(&data)
+//!             dhall::de::from_str_auto_type(&data)
 //!                 .expect("An error ocurred !");
 //!
 //!     // Prints "point = Point { x: 1, y: 2 }"
@@ -63,9 +63,9 @@
 //!
 //! If you used to consume JSON or YAML in a loosely typed way, you can continue to do so
 //! with dhall. You only need to replace [serde_json::from_str] or [serde_yaml::from_str]
-//! with [dhall::from_str][from_str].
-//! More generally, if the [SimpleStaticType] derive doesn't suit your needs, you can still
-//! deserialize any valid dhall file that serde can handle.
+//! with [dhall::de::from_str][de::from_str].
+//! More generally, if the [SimpleStaticType][de::SimpleStaticType] derive doesn't suit your
+//! needs, you can still deserialize any valid dhall file that serde can handle.
 //!
 //! [serde_json::from_str]: https://docs.serde.rs/serde_json/de/fn.from_str.html
 //! [serde_yaml::from_str]: https://docs.serde.rs/serde_yaml/fn.from_str.html
@@ -82,7 +82,7 @@
 //!
 //! // Deserialize it to a Rust type.
 //! let deserialized_map: BTreeMap<String, usize> =
-//!         dhall::from_str(&data, None)
+//!         dhall::de::from_str(&data, None)
 //!             .expect("Failed reading the data !");
 //! assert_eq!(map, deserialized_map);
 //! ```
@@ -102,12 +102,12 @@
 //!
 //! // Construct a type
 //! let point_type =
-//!         dhall::from_str(point_type_data, None)
+//!         dhall::de::from_str(point_type_data, None)
 //!             .expect("Could not parse the Point type");
 //!
 //! // Deserialize it to a Rust type.
 //! let deserialized_map: BTreeMap<String, usize> =
-//!         dhall::from_str(&point_data, Some(&point_type))
+//!         dhall::de::from_str(&point_data, Some(&point_type))
 //!             .expect("Failed reading the data !");
 //! assert_eq!(map, deserialized_map);
 //! ```
@@ -128,39 +128,43 @@ mod imports;
 mod normalize;
 mod traits;
 mod typecheck;
-pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
-#[doc(hidden)]
-pub use dhall_generator::SimpleStaticType;
 /// When manipulating Dhall expressions goes wrong.
 pub mod error;
 pub mod expr;
 mod serde;
 
-/// Deserialize an instance of type T from a string of Dhall text.
-///
-/// This will recursively resolve all imports in the expression, and
-/// typecheck it before deserialization. Relative imports will be resolved relative to the
-/// provided file. More control over this process is not yet available
-/// but will be in a coming version of this crate.
-///
-/// If a type is provided, this additionally checks that the provided
-/// expression has that type.
-pub fn from_str<'a, T: Deserialize<'a>>(
-    s: &'a str,
-    ty: Option<&crate::expr::Type>,
-) -> crate::error::Result<T> {
-    T::from_str(s, ty)
-}
+/// Deserialization of Dhall expressions into Rust
+pub mod de {
+    pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
+    #[doc(hidden)]
+    pub use dhall_generator::SimpleStaticType;
 
-/// Deserialize an instance of type T from a string of Dhall text,
-/// additionally checking that it matches the type of T.
-///
-/// This will recursively resolve all imports in the expression, and
-/// typecheck it before deserialization. Relative imports will be resolved relative to the
-/// provided file. More control over this process is not yet available
-/// but will be in a coming version of this crate.
-pub fn from_str_auto_type<'a, T: Deserialize<'a> + StaticType>(
-    s: &'a str,
-) -> crate::error::Result<T> {
-    from_str(s, Some(&<T as StaticType>::get_static_type()))
+    /// Deserialize an instance of type T from a string of Dhall text.
+    ///
+    /// This will recursively resolve all imports in the expression, and
+    /// typecheck it before deserialization. Relative imports will be resolved relative to the
+    /// provided file. More control over this process is not yet available
+    /// but will be in a coming version of this crate.
+    ///
+    /// If a type is provided, this additionally checks that the provided
+    /// expression has that type.
+    pub fn from_str<'a, T: Deserialize<'a>>(
+        s: &'a str,
+        ty: Option<&crate::expr::Type>,
+    ) -> crate::error::Result<T> {
+        T::from_str(s, ty)
+    }
+
+    /// Deserialize an instance of type T from a string of Dhall text,
+    /// additionally checking that it matches the type of T.
+    ///
+    /// This will recursively resolve all imports in the expression, and
+    /// typecheck it before deserialization. Relative imports will be resolved relative to the
+    /// provided file. More control over this process is not yet available
+    /// but will be in a coming version of this crate.
+    pub fn from_str_auto_type<'a, T: Deserialize<'a> + StaticType>(
+        s: &'a str,
+    ) -> crate::error::Result<T> {
+        from_str(s, Some(&<T as StaticType>::get_static_type()))
+    }
 }

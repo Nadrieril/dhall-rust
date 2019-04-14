@@ -8,7 +8,7 @@ use crate::expr::*;
 ///
 /// This trait cannot be implemented manually.
 pub trait Deserialize<'a>: Sized {
-    /// See [dhall::from_str][crate::from_str]
+    /// See [dhall::de::from_str][crate::de::from_str]
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self>;
 }
 

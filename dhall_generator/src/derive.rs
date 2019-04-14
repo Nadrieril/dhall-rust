@@ -18,7 +18,7 @@ where
     T: quote::ToTokens,
 {
     quote!(
-        <#ty as dhall::SimpleStaticType>::get_simple_static_type()
+        <#ty as ::dhall::de::SimpleStaticType>::get_simple_static_type()
     )
 }
 
@@ -147,7 +147,7 @@ pub fn derive_simple_static_type_inner(
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::SimpleStaticType));
+            .push(parse_quote!(#ty: ::dhall::de::SimpleStaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -169,17 +169,17 @@ pub fn derive_simple_static_type_inner(
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: dhall::SimpleStaticType));
+            .push(parse_quote!(#ty: ::dhall::de::SimpleStaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics dhall::SimpleStaticType for #ident #ty_generics
+        impl #impl_generics ::dhall::de::SimpleStaticType for #ident #ty_generics
                 #where_clause {
             fn get_simple_static_type<'get_simple_static_type>() ->
-                    dhall::expr::SimpleType<'get_simple_static_type> {
+                    ::dhall::expr::SimpleType<'get_simple_static_type> {
                 #(#assertions)*
-                dhall::expr::SimpleType::from(#get_type)
+                ::dhall::expr::SimpleType::from(#get_type)
             }
         }
     };
