@@ -20,3 +20,4 @@ pub use crate::printer::*;
 mod parser;
 pub use crate::parser::*;
 pub mod context;
+pub mod visitor;

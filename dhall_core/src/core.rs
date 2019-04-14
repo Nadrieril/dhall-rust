@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
-use crate::*;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+
+use crate::visitor::{TraverseRefSimpleVisitor, TraverseRefVisitor};
+use crate::*;
 
 pub type Integer = isize;
 pub type Natural = usize;
@@ -209,8 +211,8 @@ impl<S, A> Expr<S, A> {
         T: Clone,
         S: Clone,
         F1: Fn(&Self) -> Expr<T, B>,
-        F2: FnOnce(&S) -> T,
-        F3: FnOnce(&A) -> B,
+        F2: Fn(&S) -> T,
+        F3: Fn(&A) -> B,
         F4: Fn(&Label) -> Label,
     {
         self.map_ref(
@@ -340,13 +342,13 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         }
     }
 
-    fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
+    pub fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
         &'a self,
-        map_subexpr: F1,
-        map_under_binder: F2,
-        map_note: F3,
-        map_embed: F4,
-        mut map_label: F5,
+        visit_subexpr: F1,
+        visit_under_binder: F2,
+        visit_note: F3,
+        visit_embed: F4,
+        visit_label: F5,
     ) -> Result<ExprF<SE2, L2, N2, E2>, Err>
     where
         L: Ord,
@@ -357,95 +359,30 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         F4: FnOnce(&'a E) -> Result<E2, Err>,
         F5: FnMut(&'a L) -> Result<L2, Err>,
     {
-        let mut map = map_subexpr;
-        fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
-            x: &'a Vec<T>,
-            f: F,
-        ) -> Result<Vec<U>, Err> {
-            x.iter().map(f).collect()
-        }
-        fn opt<'a, T, U, Err, F: FnOnce(&'a T) -> Result<U, Err>>(
-            x: &'a Option<T>,
-            f: F,
-        ) -> Result<Option<U>, Err> {
-            Ok(match x {
-                Some(x) => Some(f(x)?),
-                None => None,
-            })
-        }
-        fn btmap<'a, K, L, T, U, Err, FK, FV>(
-            x: &'a BTreeMap<K, T>,
-            mut fk: FK,
-            mut fv: FV,
-        ) -> Result<BTreeMap<L, U>, Err>
-        where
-            K: Ord,
-            L: Ord,
-            FK: FnMut(&'a K) -> Result<L, Err>,
-            FV: FnMut(&'a T) -> Result<U, Err>,
-        {
-            x.into_iter().map(|(k, v)| Ok((fk(k)?, fv(v)?))).collect()
-        }
-
-        use crate::ExprF::*;
-        Ok(match self {
-            Var(V(l, n)) => Var(V(map_label(l)?, *n)),
-            Lam(l, t, b) => {
-                let b = map_under_binder(&l, b)?;
-                Lam(map_label(l)?, map(t)?, b)
-            }
-            Pi(l, t, b) => {
-                let b = map_under_binder(&l, b)?;
-                Pi(map_label(l)?, map(t)?, b)
-            }
-            Let(l, t, a, b) => {
-                let b = map_under_binder(&l, b)?;
-                Let(map_label(l)?, opt(t, &mut map)?, map(a)?, b)
-            }
-            App(f, args) => App(map(f)?, vec(args, map)?),
-            Annot(x, t) => Annot(map(x)?, map(t)?),
-            Const(k) => Const(*k),
-            Builtin(v) => Builtin(*v),
-            BoolLit(b) => BoolLit(*b),
-            NaturalLit(n) => NaturalLit(*n),
-            IntegerLit(n) => IntegerLit(*n),
-            DoubleLit(n) => DoubleLit(*n),
-            TextLit(t) => TextLit(t.traverse_ref(map)?),
-            BinOp(o, x, y) => BinOp(*o, map(x)?, map(y)?),
-            BoolIf(b, t, f) => BoolIf(map(b)?, map(t)?, map(f)?),
-            EmptyListLit(t) => EmptyListLit(map(t)?),
-            NEListLit(es) => NEListLit(vec(es, map)?),
-            EmptyOptionalLit(t) => EmptyOptionalLit(map(t)?),
-            NEOptionalLit(e) => NEOptionalLit(map(e)?),
-            RecordType(kts) => RecordType(btmap(kts, map_label, map)?),
-            RecordLit(kvs) => RecordLit(btmap(kvs, map_label, map)?),
-            UnionType(kts) => UnionType(btmap(kts, map_label, map)?),
-            UnionLit(k, v, kvs) => {
-                UnionLit(map_label(k)?, map(v)?, btmap(kvs, map_label, map)?)
-            }
-            Merge(x, y, t) => Merge(map(x)?, map(y)?, opt(t, map)?),
-            Field(e, l) => Field(map(e)?, map_label(l)?),
-            Projection(e, ls) => Projection(map(e)?, vec(ls, map_label)?),
-            Note(n, e) => Note(map_note(n)?, map(e)?),
-            Embed(a) => Embed(map_embed(a)?),
+        self.visit(TraverseRefVisitor {
+            visit_subexpr,
+            visit_under_binder,
+            visit_note,
+            visit_embed,
+            visit_label,
         })
     }
 
     pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
         &'a self,
         mut map_subexpr: F1,
-        map_under_binder: F2,
-        map_note: F3,
-        map_embed: F4,
+        mut map_under_binder: F2,
+        mut map_note: F3,
+        mut map_embed: F4,
         mut map_label: F5,
     ) -> ExprF<SE2, L2, N2, E2>
     where
         L: Ord,
         L2: Ord,
         F1: FnMut(&'a SE) -> SE2,
-        F2: FnOnce(&'a L, &'a SE) -> SE2,
-        F3: FnOnce(&'a N) -> N2,
-        F4: FnOnce(&'a E) -> E2,
+        F2: FnMut(&'a L, &'a SE) -> SE2,
+        F3: FnMut(&'a N) -> N2,
+        F4: FnMut(&'a E) -> E2,
         F5: FnMut(&'a L) -> L2,
     {
         trivial_result(self.traverse_ref(
@@ -455,6 +392,19 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
             |x| Ok(map_embed(x)),
             |x| Ok(map_label(x)),
         ))
+    }
+
+    pub fn traverse_ref_simple<'a, SE2, Err, F1>(
+        &'a self,
+        visit_subexpr: F1,
+    ) -> Result<ExprF<SE2, L, N, E>, Err>
+    where
+        L: Ord + Clone,
+        N: Clone,
+        E: Clone,
+        F1: FnMut(&'a SE) -> Result<SE2, Err>,
+    {
+        self.visit(TraverseRefSimpleVisitor { visit_subexpr })
     }
 
     pub fn map_ref_simple<'a, SE2, F1>(
@@ -468,33 +418,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         E: Clone,
         F1: Fn(&'a SE) -> SE2,
     {
-        self.map_ref(
-            &map_subexpr,
-            |_, e| map_subexpr(e),
-            N::clone,
-            E::clone,
-            L::clone,
-        )
-    }
-
-    pub fn traverse_ref_simple<'a, SE2, Err, F1>(
-        &'a self,
-        map_subexpr: F1,
-    ) -> Result<ExprF<SE2, L, N, E>, Err>
-    where
-        L: Ord,
-        L: Clone,
-        N: Clone,
-        E: Clone,
-        F1: Fn(&'a SE) -> Result<SE2, Err>,
-    {
-        self.traverse_ref(
-            &map_subexpr,
-            |_, e| map_subexpr(e),
-            |x| Ok(N::clone(x)),
-            |x| Ok(E::clone(x)),
-            |x| Ok(L::clone(x)),
-        )
+        trivial_result(self.traverse_ref_simple(|x| Ok(map_subexpr(x))))
     }
 
     // pub fn zip<SE2, L2, N2, E2>(
@@ -552,7 +476,7 @@ impl<N, E> SubExpr<N, E> {
     ) -> Self
     where
         F1: FnMut(&'a Self) -> Self,
-        F2: FnOnce(&'a Label, &'a Self) -> Self,
+        F2: FnMut(&'a Label, &'a Self) -> Self,
     {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
