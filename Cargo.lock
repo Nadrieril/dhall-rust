@@ -83,7 +83,7 @@ name = "dhall_core"
 version = "0.1.0"
 dependencies = [
  "dhall_generated_parser 0.1.0",
- "improved_slice_patterns 0.1.0",
+ "improved_slice_patterns 1.0.0",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -147,7 +147,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "improved_slice_patterns"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "itertools"
