@@ -1,27 +1,27 @@
 #![feature(slice_patterns)]
 
-/* Destructure an iterator using the syntax of slice_patterns.
- * Wraps the match body in `Some` if there was a match; returns
- * `None` otherwise.
- * Contrary to slice_patterns, this allows moving out
- * of the iterator.
- * A variable length pattern (`x..`) is only allowed as the last
- * pattern, unless the iterator is double-ended.
- *
- * Example:
- * ```
- * let vec = vec![Some(1), Some(2), None];
- *
- * destructure_iter!(vec.into_iter();
- *     [Some(x), y.., z] => {
- *         // x: usize
- *         // y: impl Iterator<Option<usize>>
- *         // z: Option<usize>
- *     }
- * )
- * ```
- *
-*/
+/// Destructure an iterator using the syntax of slice_patterns.
+/// Wraps the match body in `Some` if there was a match; returns
+/// `None` otherwise.
+/// Contrary to slice_patterns, this allows moving out
+/// of the iterator.
+/// A variable length pattern (`x..`) is only allowed as the last
+/// pattern, unless the iterator is double-ended.
+///
+/// Example:
+/// ```
+/// let vec = vec![Some(1), Some(2), None];
+///
+/// destructure_iter!(vec.into_iter();
+///     [Some(x), y.., z] => {
+///         // x: usize
+///         // y: impl Iterator<Option<usize>>
+///         // z: Option<usize>
+///     }
+/// )
+/// ```
+///
+///
 #[macro_export]
 macro_rules! destructure_iter {
     // Variable length pattern
@@ -108,29 +108,29 @@ macro_rules! destructure_iter {
     };
 }
 
-/* Pattern-match on a vec using the syntax of slice_patterns.
- * Wraps the match body in `Some` if there was a match; returns
- * `None` otherwise.
- * A variable length pattern (`x..`) returns an iterator.
- *
- * Example:
- * ```
- * let vec = vec![Some(1), Some(2), None];
- *
- * match_vec!(vec;
- *     [Some(x), y.., z] => {
- *         // x: usize
- *         // y: impl Iterator<Option<usize>>
- *         // z: Option<usize>
- *     }
- *     [x, Some(0)] => {
- *         // x: Option<usize>
- *     },
- *     [..] => { }
- * )
- * ```
- *
-*/
+/// Pattern-match on a vec using the syntax of slice_patterns.
+/// Wraps the match body in `Some` if there was a match; returns
+/// `None` otherwise.
+/// A variable length pattern (`x..`) returns an iterator.
+///
+/// Example:
+/// ```
+/// let vec = vec![Some(1), Some(2), None];
+///
+/// match_vec!(vec;
+///     [Some(x), y.., z] => {
+///         // x: usize
+///         // y: impl Iterator<Option<usize>>
+///         // z: Option<usize>
+///     }
+///     [x, Some(0)] => {
+///         // x: Option<usize>
+///     },
+///     [..] => { }
+/// )
+/// ```
+///
+///
 #[macro_export]
 macro_rules! match_vec {
     // Variable length pattern
