@@ -284,53 +284,6 @@ impl<N: Clone, E> Expr<N, E> {
 }
 
 impl<SE, L, N, E> ExprF<SE, L, N, E> {
-    pub fn as_ref(&self) -> ExprF<&SE, &L, &N, &E>
-    where
-        L: Ord,
-    {
-        fn opt<T>(x: &Option<T>) -> Option<&T> {
-            x.as_ref()
-        }
-        fn vec<T>(x: &[T]) -> Vec<&T> {
-            x.iter().collect()
-        }
-        fn btmap<L: Ord, SE>(x: &BTreeMap<L, SE>) -> BTreeMap<&L, &SE> {
-            x.iter().collect()
-        }
-
-        use crate::ExprF::*;
-        match self {
-            Var(V(l, n)) => Var(V(l, *n)),
-            Lam(l, t, b) => Lam(l, t, b),
-            Pi(l, t, b) => Pi(l, t, b),
-            Let(l, t, a, b) => Let(l, opt(t), a, b),
-            App(f, args) => App(f, vec(args)),
-            Annot(x, t) => Annot(x, t),
-            Const(k) => Const(*k),
-            Builtin(v) => Builtin(*v),
-            BoolLit(b) => BoolLit(*b),
-            NaturalLit(n) => NaturalLit(*n),
-            IntegerLit(n) => IntegerLit(*n),
-            DoubleLit(n) => DoubleLit(*n),
-            TextLit(t) => TextLit(t.as_ref()),
-            BinOp(o, x, y) => BinOp(*o, x, y),
-            BoolIf(b, t, f) => BoolIf(b, t, f),
-            EmptyListLit(t) => EmptyListLit(t),
-            NEListLit(es) => NEListLit(vec(es)),
-            EmptyOptionalLit(t) => EmptyOptionalLit(t),
-            NEOptionalLit(e) => NEOptionalLit(e),
-            RecordType(kts) => RecordType(btmap(kts)),
-            RecordLit(kvs) => RecordLit(btmap(kvs)),
-            UnionType(kts) => UnionType(btmap(kts)),
-            UnionLit(k, v, kvs) => UnionLit(k, v, btmap(kvs)),
-            Merge(x, y, t) => Merge(x, y, opt(t)),
-            Field(e, l) => Field(e, l),
-            Projection(e, ls) => Projection(e, vec(ls)),
-            Note(n, e) => Note(n, e),
-            Embed(a) => Embed(a),
-        }
-    }
-
     pub fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
         &'a self,
         visit_subexpr: F1,
