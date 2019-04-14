@@ -1,7 +1,7 @@
 # `improved_slice_patterns`
 
 A tiny crate that provides two macros to help matching
-on `Vec`s and iterators using [`slice_patterns`][slice_patterns]
+on `Vec`s and iterators using the syntax of [`slice_patterns`][slice_patterns]
 
 [slice_patterns]: https://doc.rust-lang.org/nightly/unstable-book/language-features/slice-patterns.html
 
