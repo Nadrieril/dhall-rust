@@ -10,15 +10,22 @@
 ///
 /// Example:
 /// ```
-/// let vec = vec![Some(1), Some(2), None];
+/// use improved_slice_patterns::destructure_iter;
 ///
-/// destructure_iter!(vec.into_iter();
+/// let vec = vec![Some(1), Some(2), Some(3), None];
+///
+/// let res = destructure_iter!(vec.into_iter();
 ///     [Some(x), y.., z] => {
 ///         // x: usize
 ///         // y: impl Iterator<Option<usize>>
 ///         // z: Option<usize>
+///         (x, y.collect::<Vec<_>>(), z)
 ///     }
-/// )
+/// );
+///
+/// assert_eq!(res, Some((1, vec![Some(2), Some(3)], None)));
+///
+/// # Ok::<(), ()>(())
 /// ```
 ///
 ///
@@ -115,19 +122,24 @@ macro_rules! destructure_iter {
 ///
 /// Example:
 /// ```
-/// let vec = vec![Some(1), Some(2), None];
+/// #![feature(slice_patterns)]
+/// use improved_slice_patterns::match_vec;
 ///
-/// match_vec!(vec;
-///     [Some(x), y.., z] => {
-///         // x: usize
-///         // y: impl Iterator<Option<usize>>
-///         // z: Option<usize>
-///     }
-///     [x, Some(0)] => {
-///         // x: Option<usize>
+/// let vec = vec![Some(1), Some(2), Some(3), None];
+///
+/// let res = match_vec!(vec;
+///     [Some(_), y.., None] => {
+///         y.collect::<Vec<_>>()
 ///     },
-///     [..] => { }
-/// )
+///     [None, None] => {
+///         vec![]
+///     },
+///     [..] => vec![]
+/// );
+///
+/// assert_eq!(res, Some(vec![Some(2), Some(3)]));
+///
+/// # Ok::<(), ()>(())
 /// ```
 ///
 ///

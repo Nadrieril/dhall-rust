@@ -4,6 +4,3 @@ version = "0.1.0"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 edition = "2018"
-
-[lib]
-doctest = false
