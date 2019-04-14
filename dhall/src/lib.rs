@@ -124,14 +124,14 @@ mod tests;
 mod parser;
 
 mod binary;
-mod imports;
-mod normalize;
-mod traits;
-mod typecheck;
 /// When manipulating Dhall expressions goes wrong.
 pub mod error;
 pub mod expr;
+mod imports;
+mod normalize;
 mod serde;
+mod traits;
+mod typecheck;
 
 /// Deserialization of Dhall expressions into Rust
 pub mod de {

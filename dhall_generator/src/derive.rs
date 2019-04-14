@@ -174,7 +174,8 @@ pub fn derive_simple_static_type_inner(
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics ::dhall::de::SimpleStaticType for #ident #ty_generics
+        impl #impl_generics ::dhall::de::SimpleStaticType
+                for #ident #ty_generics
                 #where_clause {
             fn get_simple_static_type<'get_simple_static_type>() ->
                     ::dhall::expr::SimpleType<'get_simple_static_type> {
