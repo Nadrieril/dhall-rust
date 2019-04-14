@@ -313,7 +313,7 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
         DoneRefSub(e) => e.unroll(),
         DoneAsIs => match expr.map_ref_simple(ExprF::roll) {
             e => e.map_ref(
-                |e| e.clone(),
+                SubExpr::clone,
                 |_, e| e.clone(),
                 X::clone,
                 |_| unreachable!(),

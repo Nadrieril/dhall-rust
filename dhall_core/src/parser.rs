@@ -26,7 +26,7 @@ pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
-fn rc<'a>(x: ParsedExpr<'a>) -> ParsedSubExpr<'a> {
+fn rc(x: ParsedExpr<'_>) -> ParsedSubExpr<'_> {
     crate::rc(x)
 }
 

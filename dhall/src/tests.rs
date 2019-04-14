@@ -158,9 +158,7 @@ pub fn run_test(
                     }
                 }
                 Import => {
-                    parse_file_str(&file_path)?
-                        .resolve()
-                        .unwrap_err();
+                    parse_file_str(&file_path)?.resolve().unwrap_err();
                 }
                 Normalization => unreachable!(),
                 Typecheck | TypeInference => {

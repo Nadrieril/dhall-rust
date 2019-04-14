@@ -32,11 +32,10 @@ impl<'a> Resolved<'a> {
 }
 impl<'a> Typed<'a> {
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
-        self.1.ok_or(TypeError::new(
-            &Context::new(),
-            self.0,
-            TypeMessage::Untyped,
-        ))
+        let (expr, ty) = (self.0, self.1);
+        ty.ok_or_else(|| {
+            TypeError::new(&Context::new(), expr, TypeMessage::Untyped)
+        })
     }
 }
 impl<'a> Normalized<'a> {
@@ -128,10 +127,10 @@ fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
             (0, 0) if xL == xL2 && xR == xR2 => return true,
             (_, _) => {
                 if xL == xL2 {
-                    nL = nL - 1;
+                    nL -= 1;
                 }
                 if xR == xR2 {
-                    nR = nR - 1;
+                    nR -= 1;
                 }
             }
         }
@@ -448,7 +447,7 @@ fn type_last_layer(
                             f.into_expr(),
                             args.into_iter()
                                .take(i)
-                               .map(|e| e.into_expr())
+                               .map(Typed::into_expr)
                                .collect()
                         )),
                         Some(tf),
@@ -464,7 +463,7 @@ fn type_last_layer(
                                 f.into_expr(),
                                 args.into_iter()
                                     .take(i + 1)
-                                    .map(|e| e.into_expr())
+                                    .map(Typed::into_expr)
                                     .collect(),
                             )),
                             Some(tf),

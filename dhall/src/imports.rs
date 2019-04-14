@@ -76,9 +76,9 @@ fn do_resolve_expr<'a>(
     Ok(Resolved(rc(expr)))
 }
 
-fn skip_resolve_expr<'a>(
-    Parsed(expr, _root): Parsed<'a>,
-) -> Result<Resolved<'a>, ImportError> {
+fn skip_resolve_expr(
+    Parsed(expr, _root): Parsed<'_>,
+) -> Result<Resolved<'_>, ImportError> {
     let resolve =
         |import: &Import| -> Result<Normalized<'static>, ImportError> {
             Err(ImportError::UnexpectedImport(import.clone()))

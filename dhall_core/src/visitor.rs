@@ -79,7 +79,7 @@ where
         input: &'a ExprF<SE1, L1, N1, E1>,
     ) -> Result<ExprF<SE2, L2, N2, E2>, T::Error> {
         fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
-            x: &'a Vec<T>,
+            x: &'a [T],
             f: F,
         ) -> Result<Vec<U>, Err> {
             x.iter().map(f).collect()
@@ -102,7 +102,7 @@ where
             L2: Ord,
             V: ExprFFallibleVisitor<'a, SE, SE2, L, L2, N, N2, E, E2>,
         {
-            x.into_iter()
+            x.iter()
                 .map(|(k, x)| Ok((v.visit_label(k)?, v.visit_subexpr(x)?)))
                 .collect()
         }
