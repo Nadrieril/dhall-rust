@@ -2,5 +2,5 @@
 name = "improved_slice_patterns"
 version = "0.1.0"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
-license = "BSD-2-Clause"
+license = "MIT OR Apache-2.0"
 edition = "2018"
