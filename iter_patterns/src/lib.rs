@@ -227,38 +227,6 @@ macro_rules! match_vec {
     };
 }
 
-/* Pattern-match on an iterator using the syntax of slice_patterns.
- * Wraps the match body in `Some` if there was a match; returns
- * `None` otherwise.
- *
- * Example:
- * ```
- * let vec = vec![Some(1), Some(2), None];
- *
- * match_iter!(vec.into_iter();
- *     [Some(x), y.., z] => {
- *         // x: usize
- *         // y: impl Iterator<Option<usize>>
- *         // z: Option<usize>
- *     },
- *     [x, Some(0)] => {
- *         // x: Option<usize>
- *     },
- *     [..] => {
- * )
- * ```
- *
-*/
-#[macro_export]
-macro_rules! match_iter {
-    ($arg:expr; $($args:tt)*) => {
-        {
-            let vec: Vec<_> = $arg.collect();
-            $crate::match_vec!(vec; $($args)*)
-        }
-    };
-}
-
 #[test]
 fn test() {
     let test = |v: Vec<Option<isize>>| {
