@@ -12,4 +12,4 @@ doctest = false
 itertools = "0.8.0"
 pest = "2.1"
 dhall_generated_parser = { path = "../dhall_generated_parser" }
-iter_patterns = { path = "../iter_patterns" }
+improved_slice_patterns = { path = "../improved_slice_patterns" }

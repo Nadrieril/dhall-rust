@@ -7,7 +7,7 @@ members = [
     "dhall_generated_parser",
     "dhall_core",
     "dhall_generator",
-    "iter_patterns",
+    "improved_slice_patterns",
 ]
 
 # # Parser is super slow when not optimized
