@@ -21,7 +21,7 @@ pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::subexpr!()") };
     let expr = expr.as_ref().map_embed(&no_import);
-    let output = quote_subexpr(&rc(expr), &Context::new());
+    let output = quote_subexpr(&dhall_core::rc(expr), &Context::new());
     output.into()
 }
 
@@ -133,7 +133,7 @@ fn quote_subexpr(
                 Some(()) => {
                     let s: String = s.into();
                     let var = quote! { dhall_core::V(#s.into(), #n) };
-                    bx(quote! { dhall_core::ExprF::Var(#var) })
+                    rc(quote! { dhall_core::ExprF::Var(#var) })
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
@@ -147,7 +147,7 @@ fn quote_subexpr(
                 }
             }
         }
-        e => bx(quote_exprf(e)),
+        e => rc(quote_exprf(e)),
     }
 }
 
@@ -203,6 +203,6 @@ fn quote_label(l: &Label) -> TokenStream {
     quote! { dhall_core::Label::from(#l) }
 }
 
-fn bx(x: TokenStream) -> TokenStream {
-    quote! { dhall_core::bx(#x) }
+fn rc(x: TokenStream) -> TokenStream {
+    quote! { dhall_core::rc(#x) }
 }

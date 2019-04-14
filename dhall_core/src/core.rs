@@ -449,12 +449,7 @@ impl<N, E> Clone for SubExpr<N, E> {
     }
 }
 
-// Remains of a previous life, where everything was in Boxes
-pub fn bx<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
-    SubExpr(Rc::new(x))
-}
-
-// Should probably rename this too
+// Should probably rename this
 pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
     SubExpr(Rc::new(x))
 }
