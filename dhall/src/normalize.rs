@@ -12,7 +12,7 @@ impl<'a> Typed<'a> {
     #[allow(dead_code)]
     pub fn skip_normalize(self) -> Normalized<'a> {
         Normalized(
-            self.0.unroll().squash_embed(&|e| e.0.clone()),
+            self.0.unroll().squash_embed(|e| e.0.clone()),
             self.1,
             self.2,
         )

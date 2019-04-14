@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use crate::visitor::{TraverseRefSimpleVisitor, TraverseRefVisitor};
+use crate::visitor;
 use crate::*;
 
 pub type Integer = isize;
@@ -236,23 +236,14 @@ impl<S, A> Expr<S, A> {
 
     pub fn traverse_embed<B, Err, F>(
         &self,
-        map_embed: &F,
+        map_embed: F,
     ) -> Result<Expr<S, B>, Err>
     where
         S: Clone,
         B: Clone,
-        F: Fn(&A) -> Result<B, Err>,
+        F: FnMut(&A) -> Result<B, Err>,
     {
-        let recurse = |e: &SubExpr<S, A>| -> Result<SubExpr<S, B>, Err> {
-            Ok(e.as_ref().traverse_embed(map_embed)?.roll())
-        };
-        self.traverse_ref(
-            |e| recurse(e),
-            |_, e| recurse(e),
-            |x| Ok(S::clone(x)),
-            map_embed,
-            |x| Ok(Label::clone(x)),
-        )
+        self.visit(&mut visitor::TraverseEmbedVisitor(map_embed))
     }
 
     pub fn map_label<F>(&self, map_label: &F) -> Self
@@ -277,20 +268,11 @@ impl<S, A> Expr<S, A> {
 impl<N: Clone, E> Expr<N, E> {
     pub fn squash_embed<E2: Clone>(
         &self,
-        f: &impl Fn(&E) -> SubExpr<N, E2>,
+        f: impl FnMut(&E) -> SubExpr<N, E2>,
     ) -> SubExpr<N, E2> {
-        match self.as_ref() {
-            ExprF::Embed(e) => f(e),
-            _ => self
-                .map_ref(
-                    |e| e.as_ref().squash_embed(f),
-                    |_, e| e.as_ref().squash_embed(f),
-                    N::clone,
-                    |_| unreachable!(),
-                    Label::clone,
-                )
-                .roll(),
-        }
+        rc(trivial_result(
+            self.visit(&mut visitor::SquashEmbedVisitor(f)),
+        ))
     }
 }
 
@@ -359,7 +341,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         F4: FnOnce(&'a E) -> Result<E2, Err>,
         F5: FnMut(&'a L) -> Result<L2, Err>,
     {
-        self.visit(TraverseRefVisitor {
+        self.visit(visitor::TraverseRefVisitor {
             visit_subexpr,
             visit_under_binder,
             visit_note,
@@ -404,7 +386,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         E: Clone,
         F1: FnMut(&'a SE) -> Result<SE2, Err>,
     {
-        self.visit(TraverseRefSimpleVisitor { visit_subexpr })
+        self.visit(visitor::TraverseRefSimpleVisitor { visit_subexpr })
     }
 
     pub fn map_ref_simple<'a, SE2, F1>(
@@ -517,65 +499,31 @@ impl<N: Clone> SubExpr<N, X> {
 
 impl<E: Clone> SubExpr<X, E> {
     pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
-        rc(self.as_ref().map_ref(
-            |e| e.note_absurd(),
-            |_, e| e.note_absurd(),
-            |_| unreachable!(),
-            E::clone,
-            Label::clone,
-        ))
+        rc(self.as_ref().note_absurd())
     }
 }
 
 impl<E: Clone> Expr<X, E> {
-    pub fn note_absurd<N: Clone>(&self) -> Expr<N, E> {
-        self.roll().note_absurd().unroll()
+    pub fn note_absurd<N>(&self) -> Expr<N, E> {
+        trivial_result(self.visit(&mut visitor::NoteAbsurdVisitor))
     }
 }
 
-impl<N: Clone, E: Clone> SubExpr<N, E> {
+impl<N, E: Clone> SubExpr<N, E> {
     pub fn unnote(&self) -> SubExpr<X, E> {
-        match self.as_ref() {
-            ExprF::Note(_, e) => e.unnote(),
-            e => rc(e.map_ref(
-                |e| e.unnote(),
-                |_, e| e.unnote(),
-                |_| unreachable!(),
-                E::clone,
-                Label::clone,
-            )),
-        }
+        rc(trivial_result(
+            self.as_ref().visit(&mut visitor::UnNoteVisitor),
+        ))
     }
 }
 
 impl<N: Clone> Expr<N, X> {
-    // This is all very sad and I hope this can be avoided sometime
+    // Deprecated, use embed_absurd instead
     pub fn absurd_rec<T>(&self) -> Expr<N, T> {
-        self.map_ref(
-            |e| e.absurd(),
-            |_, e| e.absurd(),
-            |_| unreachable!(),
-            |_| unreachable!(),
-            Label::clone,
-        )
+        self.embed_absurd()
     }
-}
-
-impl<SE, L, N, E> ExprF<SE, L, N, E>
-where
-    SE: Clone,
-    L: Clone + Ord,
-    N: Clone,
-{
-    // When we know there is no Embed
-    pub fn absurd<T>(&self) -> ExprF<SE, L, N, T> {
-        self.map_ref(
-            |e| e.clone(),
-            |_, e| e.clone(),
-            N::clone,
-            |_| unreachable!(),
-            L::clone,
-        )
+    pub fn embed_absurd<T>(&self) -> Expr<N, T> {
+        trivial_result(self.visit(&mut visitor::EmbedAbsurdVisitor))
     }
 }
 

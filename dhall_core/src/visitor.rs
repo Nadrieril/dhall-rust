@@ -224,3 +224,155 @@ where
         Ok(L::clone(label))
     }
 }
+
+pub struct TraverseEmbedVisitor<F1>(pub F1);
+
+impl<'a, 'b, N, E, E2, Err, F1>
+    ExprVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, Label, Label, N, N, E, E2>
+    for &'b mut TraverseEmbedVisitor<F1>
+where
+    N: Clone + 'a,
+    E2: Clone,
+    F1: FnMut(&E) -> Result<E2, Err>,
+{
+    type Error = Err;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, E>,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+    }
+    fn visit_note(self, note: &'a N) -> Result<N, Self::Error> {
+        Ok(N::clone(note))
+    }
+    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
+        (self.0)(embed)
+    }
+    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
+        Ok(Label::clone(label))
+    }
+}
+
+pub struct SquashEmbedVisitor<F1>(pub F1);
+
+impl<'a, 'b, N, E, E2, F1>
+    ExprVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, Label, Label, N, N, E, E2>
+    for &'b mut SquashEmbedVisitor<F1>
+where
+    N: Clone + 'a,
+    E2: Clone,
+    F1: FnMut(&E) -> SubExpr<N, E2>,
+{
+    type Error = X;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, E>,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+    }
+    fn visit_note(self, note: &'a N) -> Result<N, Self::Error> {
+        Ok(N::clone(note))
+    }
+    fn visit_embed(self, _: &'a E) -> Result<E2, Self::Error> {
+        unreachable!()
+    }
+    fn visit_embed_squash(
+        self,
+        embed: &'a E,
+    ) -> Result<Expr<N, E2>, Self::Error> {
+        Ok((self.0)(embed).unroll())
+    }
+    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
+        Ok(Label::clone(label))
+    }
+}
+
+pub struct UnNoteVisitor;
+
+impl<'a, 'b, N, E>
+    ExprVisitor<'a, SubExpr<N, E>, SubExpr<X, E>, Label, Label, N, X, E, E>
+    for &'b mut UnNoteVisitor
+where
+    E: Clone + 'a,
+{
+    type Error = X;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, E>,
+    ) -> Result<SubExpr<X, E>, Self::Error> {
+        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+    }
+    fn visit_note(self, _: &'a N) -> Result<X, Self::Error> {
+        unreachable!()
+    }
+    fn visit_note_squash(
+        self,
+        _: &'a N,
+        subexpr: &'a SubExpr<N, E>,
+    ) -> Result<Expr<X, E>, Self::Error> {
+        subexpr.as_ref().visit(self)
+    }
+    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
+        Ok(E::clone(embed))
+    }
+    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
+        Ok(Label::clone(label))
+    }
+}
+
+pub struct NoteAbsurdVisitor;
+
+impl<'a, 'b, N, E>
+    ExprVisitor<'a, SubExpr<X, E>, SubExpr<N, E>, Label, Label, X, N, E, E>
+    for &'b mut NoteAbsurdVisitor
+where
+    E: Clone + 'a,
+{
+    type Error = X;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<X, E>,
+    ) -> Result<SubExpr<N, E>, Self::Error> {
+        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+    }
+    fn visit_note(self, note: &'a X) -> Result<N, Self::Error> {
+        match *note {}
+    }
+    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
+        Ok(E::clone(embed))
+    }
+    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
+        Ok(Label::clone(label))
+    }
+}
+
+pub struct EmbedAbsurdVisitor;
+
+impl<'a, 'b, N, E>
+    ExprVisitor<'a, SubExpr<N, X>, SubExpr<N, E>, Label, Label, N, N, X, E>
+    for &'b mut EmbedAbsurdVisitor
+where
+    N: Clone + 'a,
+{
+    type Error = X;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, X>,
+    ) -> Result<SubExpr<N, E>, Self::Error> {
+        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+    }
+    fn visit_note(self, note: &'a N) -> Result<N, Self::Error> {
+        Ok(N::clone(note))
+    }
+    fn visit_embed(self, embed: &'a X) -> Result<E, Self::Error> {
+        match *embed {}
+    }
+    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
+        Ok(Label::clone(label))
+    }
+}
