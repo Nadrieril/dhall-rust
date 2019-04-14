@@ -1,4 +1,7 @@
 #![allow(clippy::implicit_hasher, clippy::or_fun_call)]
+
+//! A tiny crate that helps convert ABNF grammars to [pest][pest].
+
 use abnf::abnf::Rule;
 pub use abnf::abnf::{
     Alternation, Concatenation, Element, Range, Repeat, Repetition,
