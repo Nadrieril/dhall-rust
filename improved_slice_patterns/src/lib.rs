@@ -1,5 +1,10 @@
 #![feature(slice_patterns)]
 
+//! A tiny crate that provides two macros to help matching
+//! on `Vec`s and iterators using [`slice_patterns`][slice_patterns]
+//!
+//! [slice_patterns]: https://doc.rust-lang.org/nightly/unstable-book/language-features/slice-patterns.html
+
 /// Destructure an iterator using the syntax of slice_patterns.
 /// Wraps the match body in `Some` if there was a match; returns
 /// `None` otherwise.
@@ -118,6 +123,8 @@ macro_rules! destructure_iter {
 /// Pattern-match on a vec using the syntax of slice_patterns.
 /// Wraps the match body in `Some` if there was a match; returns
 /// `None` otherwise.
+/// Contrary to slice_patterns, this allows moving out
+/// of the `Vec`.
 /// A variable length pattern (`x..`) returns an iterator.
 ///
 /// Example:
@@ -138,6 +145,20 @@ macro_rules! destructure_iter {
 /// );
 ///
 /// assert_eq!(res, Some(vec![Some(2), Some(3)]));
+///
+///
+/// let vec = vec![Some(1), Some(2), Some(3), None];
+///
+/// let res = match_vec!(vec;
+///     [Some(_), y.., Some(_)] => {
+///         y.collect::<Vec<_>>()
+///     },
+///     [None, None] => {
+///         vec![]
+///     },
+/// );
+///
+/// assert_eq!(res, None); // there was no match
 ///
 /// # Ok::<(), ()>(())
 /// ```
