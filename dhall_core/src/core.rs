@@ -402,48 +402,6 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
     {
         trivial_result(self.traverse_ref_simple(|x| Ok(map_subexpr(x))))
     }
-
-    // pub fn zip<SE2, L2, N2, E2>(
-    //     self,
-    //     other: ExprF<SE2, L2, N2, E2>
-    // ) -> Option<ExprF<(SE, SE2), (L, L2), (N, N2), (E, E2)>>
-    // where
-    //     L: Ord,
-    //     L2: Ord,
-    // {
-    //     // What to do with Var ?
-    //     use crate::ExprF::*;
-    //     match (self, other) {
-    //         // Var(V(l, n)) => Var(V(map_label(l), n)),
-    //         // Lam(l, t, b) => {
-    //         // Pi(l, t, b) => {
-    //         // Let(l, t, a, b) => {
-    //         // App(f, args) => App(map(f), vec(args, map)),
-    //         // Annot(x, t) => Annot(map(x), map(t)),
-    //         (Const(x), Const(y)) if x == y => Some(Const(x)),
-    //         (Builtin(x), Builtin(y)) if x == y => Some(Builtin(x)),
-    //         (BoolLit(x), BoolLit(y)) if x == y => Some(BoolLit(x)),
-    //         (NaturalLit(x), NaturalLit(y)) if x == y => Some(NaturalLit(x)),
-    //         (IntegerLit(x), IntegerLit(y)) if x == y => Some(IntegerLit(x)),
-    //         (DoubleLit(x), DoubleLit(y)) if x == y => Some(DoubleLit(x)),
-    //         // TextLit(t) => TextLit(t.map(map)),
-    //         // BinOp(o, x, y) => BinOp(o, map(x), map(y)),
-    //         // BoolIf(b, t, f) => BoolIf(map(b), map(t), map(f)),
-    //         // EmptyListLit(t) => EmptyListLit(map(t)),
-    //         // NEListLit(es) => NEListLit(vec(es, map)),
-    //         // EmptyOptionalLit(t) => EmptyOptionalLit(map(t)),
-    //         // NEOptionalLit(e) => NEOptionalLit(map(e)),
-    //         // RecordType(kts) => RecordType(btmap(kts, map_label, map)),
-    //         // RecordLit(kvs) => RecordLit(btmap(kvs, map_label, map)),
-    //         // UnionType(kts) => UnionType(btmap(kts, map_label, map)),
-    //         // UnionLit(k, v, kvs) => {
-    //         // Merge(x, y, t) => Merge(map(x), map(y), t.map(map)),
-    //         // Field(e, l) => Field(map(e), map_label(l)),
-    //         // Projection(e, ls) => Projection(map(e), vec(ls, map_label)),
-    //         // Note(n, e) => Note(map_note(n), map(e)),
-    //         // Embed(a) => Embed(map_embed(a)),
-    //     }
-    // }
 }
 
 impl<N, E> SubExpr<N, E> {
