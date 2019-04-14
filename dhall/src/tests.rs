@@ -38,6 +38,7 @@ use std::path::PathBuf;
 #[derive(Copy, Clone)]
 pub enum Feature {
     Parser,
+    Import,
     Normalization,
     Typecheck,
     TypeInference,
@@ -85,6 +86,7 @@ pub fn run_test(
     use self::Status::*;
     let feature_prefix = match feature {
         Parser => "parser/",
+        Import => "import/",
         Normalization => "normalization/",
         Typecheck => "typecheck/",
         TypeInference => "type-inference/",
@@ -126,6 +128,11 @@ pub fn run_test(
 
             match feature {
                 Parser => unreachable!(),
+                Import => {
+                    // Not sure whether to normalize or not
+                    let expr = expr.skip_typecheck().skip_normalize();
+                    assert_eq_display!(expr, expected);
+                }
                 Typecheck => {
                     expr.typecheck_with(&expected.into_type())?;
                 }
@@ -149,6 +156,11 @@ pub fn run_test(
                         Error::Parse(_) => {}
                         e => panic!("Expected parse error, got: {:?}", e),
                     }
+                }
+                Import => {
+                    parse_file_str(&file_path)?
+                        .resolve()
+                        .unwrap_err();
                 }
                 Normalization => unreachable!(),
                 Typecheck | TypeInference => {

@@ -120,3 +120,31 @@ impl<'a> Parsed<'a> {
         crate::imports::skip_resolve_expr(self)
     }
 }
+
+#[cfg(test)]
+mod spec_tests {
+    #![rustfmt::skip]
+
+    macro_rules! import_success {
+        ($name:ident, $path:expr) => {
+            make_spec_test!(Import, Success, $name, $path);
+        };
+    }
+
+    // macro_rules! import_failure {
+    //     ($name:ident, $path:expr) => {
+    //         make_spec_test!(Import, Failure, $name, $path);
+    //     };
+    // }
+
+    // import_success!(success_alternativeEnvNatural, "alternativeEnvNatural");
+    // import_success!(success_alternativeEnvSimple, "alternativeEnvSimple");
+    // import_success!(success_alternativeNatural, "alternativeNatural");
+    // import_success!(success_asText, "asText");
+    import_success!(success_fieldOrder, "fieldOrder");
+    // import_failure!(failure_alternativeEnv, "alternativeEnv");
+    // import_failure!(failure_alternativeEnvMissing, "alternativeEnvMissing");
+    // import_failure!(failure_cycle, "cycle");
+    // import_failure!(failure_missing, "missing");
+    // import_failure!(failure_referentiallyInsane, "referentiallyInsane");
+}
