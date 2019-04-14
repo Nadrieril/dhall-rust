@@ -2,10 +2,21 @@ use std::collections::BTreeMap;
 
 use crate::*;
 
+/// A way too generic Visitor trait.
 pub trait GenericVisitor<Input, Return>: Sized {
     fn visit(self, input: Input) -> Return;
 }
 
+/// A visitor trait that can be used to traverse `ExprF`s. We need this pattern
+/// so that Rust lets us have as much mutability as we can.
+/// For example, `traverse_embed` cannot be made using only `traverse_ref`, because
+/// `traverse_ref` takes a `FnMut` so we would need to pass multiple mutable
+/// reverences to this argument to `traverse_ref`. But Rust's ownership system
+/// is all about preventing exactly this ! So we have to be more clever.
+/// The visitor pattern allows us to have only one mutable thing the whole
+/// time: the visitor itself. The visitor can then carry around multiple closures
+/// or just one, and Rust is ok with either. See for example TraverseRefVisitor
+/// and TraverseEmbedVisitor.
 pub trait ExprFFallibleVisitor<'a, SE1, SE2, L1, L2, N1, N2, E1, E2>:
     Sized
 {
@@ -160,6 +171,7 @@ where
     }
 }
 
+/// Like ExprFFallibleVisitor, but without the error handling.
 pub trait ExprFInFallibleVisitor<'a, SE1, SE2, L1, L2, N1, N2, E1, E2>:
     Sized
 {
