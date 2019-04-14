@@ -52,12 +52,12 @@ fn load_import(
     f: &Path,
     import_cache: &mut ImportCache,
 ) -> Result<Normalized<'static>, Error> {
-    Ok(resolve_expr_imports(Parsed::parse_file(f)?, import_cache)?
+    Ok(do_resolve_expr(Parsed::parse_file(f)?, import_cache)?
         .typecheck()?
         .normalize())
 }
 
-fn resolve_expr_imports<'a>(
+fn do_resolve_expr<'a>(
     Parsed(expr, root): Parsed<'a>,
     import_cache: &mut ImportCache,
 ) -> Result<Resolved<'a>, ImportError> {
@@ -76,7 +76,7 @@ fn resolve_expr_imports<'a>(
     Ok(Resolved(rc(expr)))
 }
 
-fn resolve_expr<'a>(
+fn skip_resolve_expr<'a>(
     Parsed(expr, _root): Parsed<'a>,
 ) -> Result<Resolved<'a>, ImportError> {
     let resolve =
@@ -112,11 +112,11 @@ impl<'a> Parsed<'a> {
     }
 
     pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
-        crate::imports::resolve_expr_imports(self, &mut HashMap::new())
+        crate::imports::do_resolve_expr(self, &mut HashMap::new())
     }
 
     #[allow(dead_code)]
     pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
-        crate::imports::resolve_expr(self)
+        crate::imports::skip_resolve_expr(self)
     }
 }
