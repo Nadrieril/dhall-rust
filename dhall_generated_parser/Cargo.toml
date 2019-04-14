@@ -16,4 +16,4 @@ pest_generator = "2.1"
 quote = "0.6.11"
 
 [dependencies]
-pest = { git = "https://github.com/pest-parser/pest" }
+pest = "2.1"
