@@ -170,17 +170,17 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     DoubleLit(Double),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
-    ///  [] : List t`
+    ///  `[] : List t`
     EmptyListLit(SubExpr),
-    ///  [x, y, z]
+    ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),
     /// Deprecated Optional literal form
-    ///  [] : Optional a
-    ///  [x] : Optional a
+    ///  `[] : Optional a`
+    ///  `[x] : Optional a`
     OldOptionalLit(Option<SubExpr>, SubExpr),
-    ///  None t
+    ///  `None t`
     EmptyOptionalLit(SubExpr),
-    ///  Some e
+    ///  `Some e`
     NEOptionalLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
     RecordType(BTreeMap<Label, SubExpr>),
@@ -192,9 +192,9 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     UnionLit(Label, SubExpr, BTreeMap<Label, SubExpr>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
-    ///  e.x
+    ///  `e.x`
     Field(SubExpr, Label),
-    ///  e.{ x, y, z }
+    ///  `e.{ x, y, z }`
     Projection(SubExpr, Vec<Label>),
     /// Annotation on the AST. Unused for now but could hold e.g. file location information
     Note(Note, SubExpr),
