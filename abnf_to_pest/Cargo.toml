@@ -9,6 +9,6 @@ edition = "2018"
 doctest = false
 
 [dependencies]
-abnf = { git = "https://github.com/Nadrieril/abnf" }
+abnf = "0.1.2"
 itertools = "0.8.0"
 pretty = "0.5.2"

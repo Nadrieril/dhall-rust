@@ -110,8 +110,8 @@ pub fn escape_rulename(x: &str) -> String {
     }
 }
 
-fn format_char(x: usize) -> String {
-    if x <= usize::from(u8::max_value()) {
+fn format_char(x: u32) -> String {
+    if x <= u32::from(u8::max_value()) {
         let x: u8 = x as u8;
         if x.is_ascii_graphic() {
             let x: char = x as char;
