@@ -11,6 +11,7 @@ use std::path::PathBuf;
 pub enum ImportError {
     Recursive(Import, Box<Error>),
     UnexpectedImport(Import),
+    ImportCycle(ImportStack, Import),
 }
 
 /// A root from which to resolve relative imports.
@@ -21,10 +22,13 @@ pub enum ImportRoot {
 
 type ImportCache = HashMap<Import, Normalized<'static>>;
 
+type ImportStack = Vec<Import>;
+
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
     import_cache: &mut ImportCache,
+    import_stack: &ImportStack,
 ) -> Result<Normalized<'static>, ImportError> {
     use self::ImportRoot::*;
     use dhall_core::FilePrefix::*;
@@ -40,7 +44,7 @@ fn resolve_import(
                 Here => cwd.join(path),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(&path, import_cache).map_err(|e| {
+            Ok(load_import(&path, import_cache, import_stack).map_err(|e| {
                 ImportError::Recursive(import.clone(), Box::new(e))
             })?)
         }
@@ -51,22 +55,44 @@ fn resolve_import(
 fn load_import(
     f: &Path,
     import_cache: &mut ImportCache,
+    import_stack: &ImportStack,
 ) -> Result<Normalized<'static>, Error> {
-    Ok(do_resolve_expr(Parsed::parse_file(f)?, import_cache)?
-        .typecheck()?
-        .normalize())
+    Ok(
+        do_resolve_expr(Parsed::parse_file(f)?, import_cache, import_stack)?
+            .typecheck()?
+            .normalize(),
+    )
 }
 
 fn do_resolve_expr<'a>(
     Parsed(expr, root): Parsed<'a>,
     import_cache: &mut ImportCache,
+    import_stack: &ImportStack,
 ) -> Result<Resolved<'a>, ImportError> {
     let resolve =
         |import: &Import| -> Result<Normalized<'static>, ImportError> {
+            if import_stack.contains(import) {
+                return Err(ImportError::ImportCycle(
+                    import_stack.clone(),
+                    import.clone(),
+                ));
+            }
             match import_cache.get(import) {
                 Some(expr) => Ok(expr.clone()),
                 None => {
-                    let expr = resolve_import(import, &root, import_cache)?;
+                    // Copy the import stack and push the current import
+                    let mut import_stack = import_stack.clone();
+                    import_stack.push(import.clone());
+
+                    // Resolve the import recursively
+                    let expr = resolve_import(
+                        import,
+                        &root,
+                        import_cache,
+                        &import_stack,
+                    )?;
+
+                    // Add the import to the cache
                     import_cache.insert(import.clone(), expr.clone());
                     Ok(expr)
                 }
@@ -112,7 +138,7 @@ impl<'a> Parsed<'a> {
     }
 
     pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
-        crate::imports::do_resolve_expr(self, &mut HashMap::new())
+        crate::imports::do_resolve_expr(self, &mut HashMap::new(), &Vec::new())
     }
 
     #[allow(dead_code)]
