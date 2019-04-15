@@ -8,7 +8,7 @@ pub use abnf::abnf::{
 };
 use itertools::Itertools;
 use pretty::{BoxDoc, Doc};
-use std::collections::HashMap;
+use indexmap::map::IndexMap;
 
 trait Pretty {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>>;
@@ -146,7 +146,7 @@ impl Pretty for (String, PestyRule) {
 /// Parse an abnf file. Returns a map of rules.
 pub fn parse_abnf(
     data: &[u8],
-) -> Result<HashMap<String, PestyRule>, std::io::Error> {
+) -> Result<IndexMap<String, PestyRule>, std::io::Error> {
     let make_err =
         |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
     let rules: Vec<Rule> =

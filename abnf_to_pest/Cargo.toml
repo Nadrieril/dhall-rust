@@ -10,5 +10,6 @@ doctest = false
 
 [dependencies]
 abnf = "0.1.2"
+indexmap = "1.0.2"
 itertools = "0.8.0"
 pretty = "0.5.2"
