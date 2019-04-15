@@ -266,6 +266,9 @@ fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized<'static>> {
             forall (nothing: optional) ->
             optional
         ),
+        OptionalNone => dhall::expr!(
+            forall (a: Type) -> Optional a
+        ),
         _ => panic!("Unimplemented typecheck case: {:?}", b),
     }
 }
@@ -543,6 +546,17 @@ fn type_last_layer(
             }
             let t = x.get_type_move()?.into_normalized()?.into_expr();
             Ok(RetExpr(dhall::expr!(List t)))
+        }
+        OldOptionalLit(None, t) => {
+            let t = t.into_expr();
+            let e = dhall::subexpr!(None t);
+            Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
+        }
+        OldOptionalLit(Some(x), t) => {
+            let x = x.into_expr();
+            let t = t.into_expr();
+            let e = dhall::subexpr!(Some x : Optional t);
+            Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
         EmptyOptionalLit(t) => {
             let t = t.normalize().into_type();

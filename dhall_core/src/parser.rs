@@ -641,13 +641,13 @@ make_parser! {
             spanned(span, EmptyListLit(rc(t)))
         },
         [Optional(_), expression(t)] => {
-            spanned(span, EmptyOptionalLit(rc(t)))
+            spanned(span, OldOptionalLit(None, rc(t)))
         },
     ));
 
     rule!(non_empty_optional<ParsedExpr<'a>> as expression; span; children!(
         [expression(x), Optional(_), expression(t)] => {
-            spanned(span, Annot(rc(NEOptionalLit(rc(x))), rc(t)))
+            spanned(span, OldOptionalLit(Option::Some(rc(x)), rc(t)))
         }
     ));
 
@@ -747,10 +747,6 @@ make_parser! {
 
     rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
         [expression(e)] => e,
-        [expression(Builtin(crate::Builtin::OptionalNone)),
-                expression(e), expression(rest)..] => {
-            spanned(span, app(EmptyOptionalLit(rc(e)), rest.map(rc).collect()))
-        },
         [Some(()), expression(e), expression(rest)..] => {
             spanned(span, app(NEOptionalLit(rc(e)), rest.map(rc).collect()))
         },

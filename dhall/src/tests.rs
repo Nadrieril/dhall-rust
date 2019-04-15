@@ -124,7 +124,7 @@ pub fn run_test(
             let expected = parse_file_str(&expected_file_path)?
                 .resolve()?
                 .skip_typecheck()
-                .skip_normalize();
+                .normalize();
 
             match feature {
                 Parser => unreachable!(),

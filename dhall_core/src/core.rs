@@ -174,6 +174,10 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     EmptyListLit(SubExpr),
     ///  [x, y, z]
     NEListLit(Vec<SubExpr>),
+    /// Deprecated Optional literal form
+    ///  [] : Optional a
+    ///  [x] : Optional a
+    OldOptionalLit(Option<SubExpr>, SubExpr),
     ///  None t
     EmptyOptionalLit(SubExpr),
     ///  Some e

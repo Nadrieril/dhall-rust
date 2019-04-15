@@ -265,6 +265,8 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
         BoolIf(BoolLit(false), _, f) => DoneRef(f),
         // TODO: interpolation
         // TextLit(t) =>
+        OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
+        OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
         BinOp(BoolAnd, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x && *y)),
         BinOp(BoolOr, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x || *y)),
         BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => Done(BoolLit(x == y)),
