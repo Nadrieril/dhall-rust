@@ -1,9 +1,13 @@
 [package]
 name = "abnf_to_pest"
-version = "0.1.0"
+version = "0.1.0"  # remember to update html_root_url
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
-license = "BSD-2-Clause"
+license = "MIT OR Apache-2.0"
 edition = "2018"
+description = "A tiny crate that helps convert ABNF grammars to pest"
+readme = "README.md"
+repository = "https://github.com/Nadrieril/dhall-rust"
+documentation = "https://docs.rs/abnf_to_pest/"
 
 [lib]
 doctest = false
