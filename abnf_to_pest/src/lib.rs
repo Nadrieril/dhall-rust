@@ -1,4 +1,3 @@
-#![allow(clippy::implicit_hasher, clippy::or_fun_call)]
 #![doc(html_root_url = "https://docs.rs/abnf_to_pest/0.1.0")]
 
 //! A tiny crate that helps convert ABNF grammars to [pest][pest].
@@ -60,7 +59,7 @@ impl Pretty for Repetition {
             self.repeat
                 .as_ref()
                 .map(Repeat::pretty)
-                .unwrap_or(Doc::nil()),
+                .unwrap_or_else(Doc::nil),
         )
     }
 }
