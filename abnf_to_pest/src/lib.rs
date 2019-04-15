@@ -1,6 +1,25 @@
 #![allow(clippy::implicit_hasher, clippy::or_fun_call)]
 
 //! A tiny crate that helps convert ABNF grammars to [pest][pest].
+//!
+//! Example usage:
+//! ```
+//! let abnf_path = "src/grammar.abnf";
+//! let pest_path = "src/grammar.pest";
+//!
+//! let mut file = File::open(abnf_path)?;
+//! let mut data = Vec::new();
+//! file.read_to_end(&mut data)?;
+//! data.push('\n' as u8);
+//!
+//! let mut rules = abnf_to_pest::parse_abnf(&data)?;
+//! rules.remove("some_inconvenient_rule");
+//!
+//! let mut file = File::create(pest_path)?;
+//! writeln!(&mut file, "{}", render_rules_to_pest(rules).pretty(80))?;
+//! ```
+//!
+//! [pest]: https://pest.rs
 
 use abnf::abnf::Rule;
 pub use abnf::abnf::{
@@ -93,6 +112,10 @@ impl Pretty for Range {
     }
 }
 
+/// Escape the rule name to be a valid Rust identifier.
+///
+/// Replaces e.g. `if` with `if_`, and `rule-name` with `rule_name`.
+/// Also changes `whitespace` to `whitespace_` because of https://github.com/pest-parser/pest/pull/374
 pub fn escape_rulename(x: &str) -> String {
     let x = x.replace("-", "_");
     if x == "if"
