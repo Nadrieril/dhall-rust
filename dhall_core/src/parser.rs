@@ -750,7 +750,8 @@ make_parser! {
         },
     ));
 
-    rule!(first_application_expression<ParsedExpr<'a>> as expression; span; children!(
+    rule!(first_application_expression<ParsedExpr<'a>> as expression; span;
+            children!(
         [expression(e)] => e,
         [Some_(()), expression(e)] => {
             spanned(span, NEOptionalLit(rc(e)))
