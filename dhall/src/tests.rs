@@ -24,8 +24,14 @@ macro_rules! make_spec_test {
         #[allow(non_snake_case)]
         fn $name() {
             use crate::tests::*;
-            run_test_with_bigger_stack($path, Feature::$type, Status::$status)
-                .unwrap();
+            match run_test_with_bigger_stack(
+                $path,
+                Feature::$type,
+                Status::$status,
+            ) {
+                Ok(_) => {}
+                Err(s) => panic!(s),
+            }
         }
     };
 }
