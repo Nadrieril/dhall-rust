@@ -1,7 +1,7 @@
 # end_of_line
 # tab
 # block_comment
-# block_comment_chunk
+# block_comment_char
 # block_comment_continue
 # not_end_of_line
 # line_comment
@@ -118,6 +118,7 @@ times_expression
 equal_expression
 not_equal_expression
 application_expression
+first_application_expression
 # import_expression
 selector_expression
 selector

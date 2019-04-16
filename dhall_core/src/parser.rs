@@ -292,6 +292,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
         | equal_expression
         | not_equal_expression
         | application_expression
+        | first_application_expression
         | selector_expression
         | annotated_expression => true,
         _ => false,
@@ -619,9 +620,6 @@ make_parser! {
         [merge(()), expression(x), expression(y), expression(z)] => {
             spanned(span, Merge(rc(x), rc(y), Some(rc(z))))
         },
-        [merge(()), expression(x), expression(y)] => {
-            spanned(span, Merge(rc(x), rc(y), None))
-        },
         [expression(e)] => e,
     ));
 
@@ -747,11 +745,18 @@ make_parser! {
 
     rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
         [expression(e)] => e,
-        [Some_(()), expression(e), expression(rest)..] => {
-            spanned(span, app(NEOptionalLit(rc(e)), rest.map(rc).collect()))
-        },
         [expression(first), expression(rest)..] => {
             spanned(span, app(first, rest.map(rc).collect()))
+        },
+    ));
+
+    rule!(first_application_expression<ParsedExpr<'a>> as expression; span; children!(
+        [expression(e)] => e,
+        [Some_(()), expression(e)] => {
+            spanned(span, NEOptionalLit(rc(e)))
+        },
+        [merge(()), expression(x), expression(y)] => {
+            spanned(span, Merge(rc(x), rc(y), None))
         },
     ));
 
