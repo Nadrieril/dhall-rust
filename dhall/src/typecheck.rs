@@ -856,11 +856,11 @@ mod spec_tests {
             make_spec_test!(Typecheck, Success, $name, $path);
         };
     }
-    // macro_rules! tc_failure {
-    //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(Typecheck, Failure, $name, $path);
-    //     };
-    // }
+    macro_rules! tc_failure {
+        ($name:ident, $path:expr) => {
+            make_spec_test!(Typecheck, Failure, $name, $path);
+        };
+    }
 
     macro_rules! ti_success {
         ($name:ident, $path:expr) => {
@@ -1023,9 +1023,84 @@ mod spec_tests {
     // tc_success!(tc_success_simple_mixedFieldAccess, "simple/mixedFieldAccess");
     tc_success!(tc_success_simple_unionsOfTypes, "simple/unionsOfTypes");
 
-    // tc_failure!(tc_failure_combineMixedRecords, "combineMixedRecords");
+    tc_failure!(tc_failure_combineMixedRecords, "combineMixedRecords");
     // tc_failure!(tc_failure_duplicateFields, "duplicateFields");
-    // tc_failure!(tc_failure_hurkensParadox, "hurkensParadox");
+    tc_failure!(tc_failure_hurkensParadox, "hurkensParadox");
+    tc_failure!(tc_failure_mixedUnions, "mixedUnions");
+    tc_failure!(tc_failure_preferMixedRecords, "preferMixedRecords");
+    tc_failure!(tc_failure_unit_FunctionApplicationArgumentNotMatch, "unit/FunctionApplicationArgumentNotMatch");
+    tc_failure!(tc_failure_unit_FunctionApplicationIsNotFunction, "unit/FunctionApplicationIsNotFunction");
+    tc_failure!(tc_failure_unit_FunctionArgumentTypeNotAType, "unit/FunctionArgumentTypeNotAType");
+    tc_failure!(tc_failure_unit_FunctionDependentType, "unit/FunctionDependentType");
+    tc_failure!(tc_failure_unit_FunctionDependentType2, "unit/FunctionDependentType2");
+    tc_failure!(tc_failure_unit_FunctionTypeArgumentTypeNotAType, "unit/FunctionTypeArgumentTypeNotAType");
+    tc_failure!(tc_failure_unit_FunctionTypeKindSort, "unit/FunctionTypeKindSort");
+    tc_failure!(tc_failure_unit_FunctionTypeTypeKind, "unit/FunctionTypeTypeKind");
+    tc_failure!(tc_failure_unit_FunctionTypeTypeSort, "unit/FunctionTypeTypeSort");
+    tc_failure!(tc_failure_unit_IfBranchesNotMatch, "unit/IfBranchesNotMatch");
+    tc_failure!(tc_failure_unit_IfBranchesNotType, "unit/IfBranchesNotType");
+    tc_failure!(tc_failure_unit_IfNotBool, "unit/IfNotBool");
+    tc_failure!(tc_failure_unit_LetWithWrongAnnotation, "unit/LetWithWrongAnnotation");
+    tc_failure!(tc_failure_unit_ListLiteralEmptyNotType, "unit/ListLiteralEmptyNotType");
+    tc_failure!(tc_failure_unit_ListLiteralNotType, "unit/ListLiteralNotType");
+    tc_failure!(tc_failure_unit_ListLiteralTypesNotMatch, "unit/ListLiteralTypesNotMatch");
+    tc_failure!(tc_failure_unit_MergeAlternativeHasNoHandler, "unit/MergeAlternativeHasNoHandler");
+    tc_failure!(tc_failure_unit_MergeAnnotationNotType, "unit/MergeAnnotationNotType");
+    tc_failure!(tc_failure_unit_MergeEmptyWithoutAnnotation, "unit/MergeEmptyWithoutAnnotation");
+    tc_failure!(tc_failure_unit_MergeHandlerNotFunction, "unit/MergeHandlerNotFunction");
+    tc_failure!(tc_failure_unit_MergeHandlerNotInUnion, "unit/MergeHandlerNotInUnion");
+    tc_failure!(tc_failure_unit_MergeHandlerNotMatchAlternativeType, "unit/MergeHandlerNotMatchAlternativeType");
+    tc_failure!(tc_failure_unit_MergeHandlersWithDifferentType, "unit/MergeHandlersWithDifferentType");
+    tc_failure!(tc_failure_unit_MergeLhsNotRecord, "unit/MergeLhsNotRecord");
+    tc_failure!(tc_failure_unit_MergeRhsNotUnion, "unit/MergeRhsNotUnion");
+    tc_failure!(tc_failure_unit_MergeWithWrongAnnotation, "unit/MergeWithWrongAnnotation");
+    tc_failure!(tc_failure_unit_OperatorAndNotBool, "unit/OperatorAndNotBool");
+    tc_failure!(tc_failure_unit_OperatorEqualNotBool, "unit/OperatorEqualNotBool");
+    tc_failure!(tc_failure_unit_OperatorListConcatenateLhsNotList, "unit/OperatorListConcatenateLhsNotList");
+    tc_failure!(tc_failure_unit_OperatorListConcatenateListsNotMatch, "unit/OperatorListConcatenateListsNotMatch");
+    tc_failure!(tc_failure_unit_OperatorListConcatenateRhsNotList, "unit/OperatorListConcatenateRhsNotList");
+    tc_failure!(tc_failure_unit_OperatorNotEqualNotBool, "unit/OperatorNotEqualNotBool");
+    tc_failure!(tc_failure_unit_OperatorOrNotBool, "unit/OperatorOrNotBool");
+    tc_failure!(tc_failure_unit_OperatorPlusNotNatural, "unit/OperatorPlusNotNatural");
+    tc_failure!(tc_failure_unit_OperatorTextConcatenateLhsNotText, "unit/OperatorTextConcatenateLhsNotText");
+    tc_failure!(tc_failure_unit_OperatorTextConcatenateRhsNotText, "unit/OperatorTextConcatenateRhsNotText");
+    tc_failure!(tc_failure_unit_OperatorTimesNotNatural, "unit/OperatorTimesNotNatural");
+    tc_failure!(tc_failure_unit_RecordMixedKinds, "unit/RecordMixedKinds");
+    tc_failure!(tc_failure_unit_RecordMixedKinds2, "unit/RecordMixedKinds2");
+    tc_failure!(tc_failure_unit_RecordMixedKinds3, "unit/RecordMixedKinds3");
+    tc_failure!(tc_failure_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
+    tc_failure!(tc_failure_unit_RecordProjectionNotPresent, "unit/RecordProjectionNotPresent");
+    tc_failure!(tc_failure_unit_RecordProjectionNotRecord, "unit/RecordProjectionNotRecord");
+    tc_failure!(tc_failure_unit_RecordSelectionEmpty, "unit/RecordSelectionEmpty");
+    tc_failure!(tc_failure_unit_RecordSelectionNotPresent, "unit/RecordSelectionNotPresent");
+    tc_failure!(tc_failure_unit_RecordSelectionNotRecord, "unit/RecordSelectionNotRecord");
+    tc_failure!(tc_failure_unit_RecordSelectionTypeNotUnionType, "unit/RecordSelectionTypeNotUnionType");
+    tc_failure!(tc_failure_unit_RecordTypeMixedKinds, "unit/RecordTypeMixedKinds");
+    tc_failure!(tc_failure_unit_RecordTypeMixedKinds2, "unit/RecordTypeMixedKinds2");
+    tc_failure!(tc_failure_unit_RecordTypeMixedKinds3, "unit/RecordTypeMixedKinds3");
+    tc_failure!(tc_failure_unit_RecordTypeValueMember, "unit/RecordTypeValueMember");
+    tc_failure!(tc_failure_unit_RecursiveRecordMergeLhsNotRecord, "unit/RecursiveRecordMergeLhsNotRecord");
+    tc_failure!(tc_failure_unit_RecursiveRecordMergeMixedKinds, "unit/RecursiveRecordMergeMixedKinds");
+    tc_failure!(tc_failure_unit_RecursiveRecordMergeOverlapping, "unit/RecursiveRecordMergeOverlapping");
+    tc_failure!(tc_failure_unit_RecursiveRecordMergeRhsNotRecord, "unit/RecursiveRecordMergeRhsNotRecord");
+    tc_failure!(tc_failure_unit_RecursiveRecordTypeMergeLhsNotRecordType, "unit/RecursiveRecordTypeMergeLhsNotRecordType");
+    tc_failure!(tc_failure_unit_RecursiveRecordTypeMergeOverlapping, "unit/RecursiveRecordTypeMergeOverlapping");
+    tc_failure!(tc_failure_unit_RecursiveRecordTypeMergeRhsNotRecordType, "unit/RecursiveRecordTypeMergeRhsNotRecordType");
+    tc_failure!(tc_failure_unit_RightBiasedRecordMergeLhsNotRecord, "unit/RightBiasedRecordMergeLhsNotRecord");
+    tc_failure!(tc_failure_unit_RightBiasedRecordMergeMixedKinds, "unit/RightBiasedRecordMergeMixedKinds");
+    tc_failure!(tc_failure_unit_RightBiasedRecordMergeMixedKinds2, "unit/RightBiasedRecordMergeMixedKinds2");
+    tc_failure!(tc_failure_unit_RightBiasedRecordMergeMixedKinds3, "unit/RightBiasedRecordMergeMixedKinds3");
+    tc_failure!(tc_failure_unit_RightBiasedRecordMergeRhsNotRecord, "unit/RightBiasedRecordMergeRhsNotRecord");
+    tc_failure!(tc_failure_unit_SomeNotType, "unit/SomeNotType");
+    tc_failure!(tc_failure_unit_Sort, "unit/Sort");
+    // tc_failure!(tc_failure_unit_TextLiteralInterpolateNotText, "unit/TextLiteralInterpolateNotText");
+    tc_failure!(tc_failure_unit_TypeAnnotationWrong, "unit/TypeAnnotationWrong");
+    tc_failure!(tc_failure_unit_UnionConstructorFieldNotPresent, "unit/UnionConstructorFieldNotPresent");
+    tc_failure!(tc_failure_unit_UnionTypeMixedKinds, "unit/UnionTypeMixedKinds");
+    tc_failure!(tc_failure_unit_UnionTypeMixedKinds2, "unit/UnionTypeMixedKinds2");
+    tc_failure!(tc_failure_unit_UnionTypeMixedKinds3, "unit/UnionTypeMixedKinds3");
+    tc_failure!(tc_failure_unit_UnionTypeNotType, "unit/UnionTypeNotType");
+    tc_failure!(tc_failure_unit_VariableFree, "unit/VariableFree");
 
     // ti_success!(ti_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
     // ti_success!(ti_success_simple_kindParameter, "simple/kindParameter");
