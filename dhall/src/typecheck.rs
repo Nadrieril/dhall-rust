@@ -644,13 +644,22 @@ fn type_last_layer(
             kts.insert(x, t);
             Ok(RetExpr(UnionType(kts)))
         }
-        Field(r, x) => ensure_matches!(r.get_type()?,
-            RecordType(kts) => match kts.get(&x) {
-                Some(e) => Ok(RetExpr(e.unroll().absurd_rec())),
+        Field(r, x) => match r.as_expr().as_ref() {
+            UnionType(kts) => match kts.get(&x) {
+                // Constructor has type T -> < x: T, ... >
+                Some(t) => {
+                    Ok(RetExpr(Pi(x.clone(), t.clone(), r.normalize().embed())))
+                }
                 None => Err(mkerr(MissingField(x, r))),
             },
-            mkerr(NotARecord(x, r))
-        ),
+            _ => match r.get_type()?.unroll_ref()?.as_ref() {
+                RecordType(kts) => match kts.get(&x) {
+                    Some(t) => Ok(RetExpr(t.unroll().absurd_rec())),
+                    None => Err(mkerr(MissingField(x, r))),
+                },
+                _ => Err(mkerr(NotARecord(x, r))),
+            },
+        },
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
         BoolLit(_) => Ok(RetType(simple_type_from_builtin(Bool))),
@@ -1096,7 +1105,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_True, "unit/True");
     ti_success!(ti_success_unit_Type, "unit/Type");
     ti_success!(ti_success_unit_TypeAnnotation, "unit/TypeAnnotation");
-    // ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
+    ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
     ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
     ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
     ti_success!(ti_success_unit_UnionTypeKind, "unit/UnionTypeKind");
