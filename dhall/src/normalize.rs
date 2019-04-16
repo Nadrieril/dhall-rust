@@ -221,20 +221,16 @@ enum WhatNext<'a, N, E> {
     // The following expression is the normal form
     Done(Expr<N, E>),
     DoneRef(&'a Expr<N, E>),
-    DoneSub(SubExpr<N, E>),
     DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
 }
 
-fn normalize_ref<N>(expr: &Expr<N, Normalized<'static>>) -> Expr<N, X>
-where
-    N: fmt::Debug + Clone,
-{
+fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
     // Recursively normalize all subexpressions
-    let expr: ExprF<Expr<N, X>, Label, N, Normalized<'static>> =
+    let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
         expr.map_ref_simple(|e| normalize_ref(e.as_ref()));
 
     use WhatNext::*;
@@ -245,6 +241,7 @@ where
             ContinueSub(subst_shift(vf0, &r.roll(), &b.roll()))
         }
         Annot(x, _) => DoneRef(x),
+        Note(_, e) => DoneRef(e),
         App(f, args) if args.is_empty() => DoneRef(f),
         App(App(f, args1), args2) => Continue(App(
             f.clone(),
@@ -306,7 +303,7 @@ where
                 .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
                 .collect(),
         )),
-        Embed(e) => DoneSub(e.0.note_absurd()),
+        Embed(e) => DoneRefSub(&e.0),
         _ => DoneAsIs,
     };
 
@@ -315,13 +312,12 @@ where
         ContinueSub(e) => normalize_ref(e.absurd().as_ref()),
         Done(e) => e,
         DoneRef(e) => e.clone(),
-        DoneSub(e) => e.unroll(),
         DoneRefSub(e) => e.unroll(),
         DoneAsIs => match expr.map_ref_simple(ExprF::roll) {
             e => e.map_ref(
                 SubExpr::clone,
                 |_, e| e.clone(),
-                N::clone,
+                X::clone,
                 |_| unreachable!(),
                 Label::clone,
             ),
@@ -338,10 +334,7 @@ where
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-fn normalize<N>(e: SubExpr<N, Normalized<'static>>) -> SubExpr<N, X>
-where
-    N: fmt::Debug + Clone,
-{
+fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
     normalize_ref(e.as_ref()).roll()
 }
 
