@@ -511,15 +511,15 @@ make_parser! {
             scheme: sch,
             authority: auth,
             path: p,
-            query: Option::None,
-            headers: Option::None,
+            query: None,
+            headers: None,
         },
         [scheme(sch), authority(auth), path(p), query(q)] => URL {
             scheme: sch,
             authority: auth,
             path: p,
-            query: Option::Some(q),
-            headers: Option::None,
+            query: Some(q),
+            headers: None,
         },
     ));
 
@@ -530,7 +530,7 @@ make_parser! {
     rule!(http<URL>; children!(
         [http_raw(url)] => url,
         [http_raw(url), import_hashed(ih)] =>
-            URL { headers: Option::Some(Box::new(ih)), ..url },
+            URL { headers: Some(Box::new(ih)), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -566,9 +566,9 @@ make_parser! {
 
     rule!(import_hashed<ImportHashed>; children!(
         [import_type(location)] =>
-            ImportHashed { location, hash: Option::None },
+            ImportHashed { location, hash: None },
         [import_type(location), hash(h)] =>
-            ImportHashed { location, hash: Option::Some(h) },
+            ImportHashed { location, hash: Some(h) },
     ));
 
     token_rule!(Text<()>);
@@ -617,10 +617,10 @@ make_parser! {
             spanned(span, Pi("_".into(), rc(typ), rc(body)))
         },
         [merge(()), expression(x), expression(y), expression(z)] => {
-            spanned(span, Merge(rc(x), rc(y), Option::Some(rc(z))))
+            spanned(span, Merge(rc(x), rc(y), Some(rc(z))))
         },
         [merge(()), expression(x), expression(y)] => {
-            spanned(span, Merge(rc(x), rc(y), Option::None))
+            spanned(span, Merge(rc(x), rc(y), None))
         },
         [expression(e)] => e,
     ));
@@ -628,9 +628,9 @@ make_parser! {
     rule!(let_binding<(Label, Option<ParsedSubExpr<'a>>, ParsedSubExpr<'a>)>;
             children!(
         [nonreserved_label(name), expression(annot), expression(expr)] =>
-            (name, Option::Some(rc(annot)), rc(expr)),
+            (name, Some(rc(annot)), rc(expr)),
         [nonreserved_label(name), expression(expr)] =>
-            (name, Option::None, rc(expr)),
+            (name, None, rc(expr)),
     ));
 
     token_rule!(List<()>);
@@ -647,7 +647,7 @@ make_parser! {
 
     rule!(non_empty_optional<ParsedExpr<'a>> as expression; span; children!(
         [expression(x), Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(Option::Some(rc(x)), rc(t)))
+            spanned(span, OldOptionalLit(Some(rc(x)), rc(t)))
         }
     ));
 
@@ -743,11 +743,11 @@ make_parser! {
         },
     ));
 
-    token_rule!(Some<()>);
+    token_rule!(Some_<()>);
 
     rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
         [expression(e)] => e,
-        [Some(()), expression(e), expression(rest)..] => {
+        [Some_(()), expression(e), expression(rest)..] => {
             spanned(span, app(NEOptionalLit(rc(e)), rest.map(rc).collect()))
         },
         [expression(first), expression(rest)..] => {
@@ -787,8 +787,8 @@ make_parser! {
         [label(l), natural_literal(idx)] => {
             let name = String::from(&l);
             spanned(span, match crate::Builtin::parse(name.as_str()) {
-                Option::Some(b) => Builtin(b),
-                Option::None => match name.as_str() {
+                Some(b) => Builtin(b),
+                None => match name.as_str() {
                     "True" => BoolLit(true),
                     "False" => BoolLit(false),
                     "Type" => Const(crate::Const::Type),
@@ -801,8 +801,8 @@ make_parser! {
         [label(l)] => {
             let name = String::from(&l);
             spanned(span, match crate::Builtin::parse(name.as_str()) {
-                Option::Some(b) => Builtin(b),
-                Option::None => match name.as_str() {
+                Some(b) => Builtin(b),
+                None => match name.as_str() {
                     "True" => BoolLit(true),
                     "False" => BoolLit(false),
                     "Type" => Const(crate::Const::Type),
@@ -862,10 +862,10 @@ make_parser! {
         [empty_union_type(_)] => {
             spanned(span, UnionType(BTreeMap::new()))
         },
-        [non_empty_union_type_or_literal((Option::Some((l, e)), entries))] => {
+        [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
             spanned(span, UnionLit(l, e, entries))
         },
-        [non_empty_union_type_or_literal((Option::None, entries))] => {
+        [non_empty_union_type_or_literal((None, entries))] => {
             spanned(span, UnionType(entries))
         },
     ));
@@ -877,7 +877,7 @@ make_parser! {
             BTreeMap<Label, Option<ParsedSubExpr<'a>>>)>;
             children!(
         [label(l), union_literal_variant_value((e, entries))] => {
-            (Option::Some((l, e)), entries)
+            (Some((l, e)), entries)
         },
         [label(l), union_type_or_literal_variant_type((e, rest))] => {
             let (x, mut entries) = rest;
@@ -895,8 +895,8 @@ make_parser! {
     ));
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr<'a>>)>; children!(
-        [label(name), expression(expr)] => (name, Option::Some(rc(expr))),
-        [label(name)] => (name, Option::None),
+        [label(name), expression(expr)] => (name, Some(rc(expr))),
+        [label(name)] => (name, None),
     ));
 
     // TODO: unary union variants
@@ -906,16 +906,16 @@ make_parser! {
              BTreeMap<Label, Option<ParsedSubExpr<'a>>>))>;
                 children!(
         [expression(e), non_empty_union_type_or_literal(rest)] => {
-            (Option::Some(rc(e)), rest)
+            (Some(rc(e)), rest)
         },
         [expression(e)] => {
-            (Option::Some(rc(e)), (Option::None, BTreeMap::new()))
+            (Some(rc(e)), (None, BTreeMap::new()))
         },
         [non_empty_union_type_or_literal(rest)] => {
-            (Option::None, rest)
+            (None, rest)
         },
         [] => {
-            (Option::None, (Option::None, BTreeMap::new()))
+            (None, (None, BTreeMap::new()))
         },
     ));
 

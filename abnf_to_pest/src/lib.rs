@@ -25,9 +25,9 @@ use abnf::abnf::Rule;
 pub use abnf::abnf::{
     Alternation, Concatenation, Element, Range, Repeat, Repetition,
 };
+use indexmap::map::IndexMap;
 use itertools::Itertools;
 use pretty::{BoxDoc, Doc};
-use indexmap::map::IndexMap;
 
 trait Pretty {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>>;
@@ -116,6 +116,7 @@ impl Pretty for Range {
 ///
 /// Replaces e.g. `if` with `if_`, and `rule-name` with `rule_name`.
 /// Also changes `whitespace` to `whitespace_` because of https://github.com/pest-parser/pest/pull/374
+/// Also changes `Some` and `None` to `Some_` and `None_`, because it was such a pain to work around.
 pub fn escape_rulename(x: &str) -> String {
     let x = x.replace("-", "_");
     if x == "if"
@@ -124,6 +125,9 @@ pub fn escape_rulename(x: &str) -> String {
         || x == "let"
         || x == "in"
         || x == "fn"
+        // Not required but such a pain
+        || x == "Some"
+        || x == "None"
         // TODO: remove when https://github.com/pest-parser/pest/pull/375 gets into a release
         || x == "whitespace"
     {
@@ -147,6 +151,7 @@ fn format_char(x: u32) -> String {
 }
 
 /// Allow control over some of the pest properties of the outputted rule
+#[derive(Debug, Clone)]
 pub struct PestyRule {
     pub silent: bool,
     pub elements: Alternation,
