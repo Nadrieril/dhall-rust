@@ -120,10 +120,25 @@ impl<'a> Normalized<'a> {
     pub(crate) fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
+    pub(crate) fn unnote<'b>(self) -> Normalized<'b> {
+        Normalized(self.0, self.1, PhantomData)
+    }
     pub(crate) fn into_type(self) -> Type<'a> {
         Type(match self.0.as_ref() {
             ExprF::Const(c) => TypeInternal::Const(*c),
             _ => TypeInternal::Expr(Box::new(self)),
+        })
+    }
+}
+
+#[doc(hidden)]
+impl<'a> Type<'a> {
+    pub(crate) fn unnote<'b>(self) -> Type<'b> {
+        use TypeInternal::*;
+        Type(match self.0 {
+            Expr(e) => Expr(Box::new(e.unnote())),
+            Const(c) => Const(c),
+            SuperType => SuperType,
         })
     }
 }

@@ -22,7 +22,7 @@ impl<'a> Resolved<'a> {
         ty: &Type,
     ) -> Result<Typed<'static>, TypeError> {
         let expr: SubExpr<_, _> = self.0.unnote();
-        let ty: SubExpr<_, _> = ty.as_normalized()?.as_expr().absurd();
+        let ty: SubExpr<_, _> = ty.clone().unnote().embed()?;
         type_of(dhall::subexpr!(expr: ty))
     }
     /// Pretends this expression has been typechecked. Use with care.
