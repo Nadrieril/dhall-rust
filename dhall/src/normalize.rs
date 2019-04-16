@@ -19,10 +19,10 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin<S, A>(b: Builtin, args: &[Expr<S, A>]) -> WhatNext<S, A>
+fn apply_builtin<N, E>(b: Builtin, args: &[Expr<N, E>]) -> WhatNext<N, E>
 where
-    S: fmt::Debug + Clone,
-    A: fmt::Debug + Clone,
+    N: fmt::Debug + Clone,
+    E: fmt::Debug + Clone,
 {
     use dhall_core::Builtin::*;
     use dhall_core::ExprF::*;
@@ -209,19 +209,19 @@ where
     // Put the remaining arguments back and eval again. In most cases
     // ret will not be of a form that can be applied, so this won't go very deep.
     // In lots of cases, there are no remaining args so this cann will just return ret.
-    let rest: Vec<SubExpr<S, A>> = rest.iter().map(ExprF::roll).collect();
+    let rest: Vec<SubExpr<N, E>> = rest.iter().map(ExprF::roll).collect();
     Continue(ExprF::App(ret, rest))
 }
 
 // Small enum to help with being DRY
-enum WhatNext<'a, S, A> {
+enum WhatNext<'a, N, E> {
     // Recurse on this expression
-    Continue(Expr<S, A>),
-    ContinueSub(SubExpr<S, A>),
+    Continue(Expr<N, E>),
+    ContinueSub(SubExpr<N, E>),
     // The following expression is the normal form
-    Done(Expr<S, A>),
-    DoneRef(&'a Expr<S, A>),
-    DoneRefSub(&'a SubExpr<S, A>),
+    Done(Expr<N, E>),
+    DoneRef(&'a Expr<N, E>),
+    DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
 }
