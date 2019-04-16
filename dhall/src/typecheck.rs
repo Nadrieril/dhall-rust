@@ -79,13 +79,6 @@ impl<'a> Type<'a> {
             )),
         }
     }
-    // Expose the outermost constructor, except if it is Const
-    fn unroll_ref_no_const(&self) -> Result<&Expr<X, X>, TypeError> {
-        match self.as_normalized()? {
-            Cow::Borrowed(e) => Ok(e.unroll_ref()),
-            Cow::Owned(_) => unimplemented!(),
-        }
-    }
     // Expose the outermost constructor
     fn unroll_ref(&self) -> Result<Cow<Expr<X, X>>, TypeError> {
         match self.as_normalized()? {
@@ -307,11 +300,16 @@ macro_rules! ensure_equal {
     };
 }
 
+// Do not use with Const because they will never match
 macro_rules! ensure_matches {
     ($x:expr, $pat:pat => $branch:expr, $err:expr $(,)*) => {
-        match $x.unroll_ref_no_const()? {
-            $pat => $branch,
-            _ => return Err($err),
+        match $x.unroll_ref()? {
+            Cow::Borrowed(e) => match e {
+                $pat => $branch,
+                _ => return Err($err),
+            },
+            // Can't pattern match because lifetimes
+            Cow::Owned(_) => return Err($err),
         }
     };
 }
@@ -604,7 +602,7 @@ fn type_last_layer(
             let t = tx.embed()?;
             Ok(RetExpr(dhall::expr!(Optional t)))
         }
-        RecordType(kts) => {
+        RecordType(kts) | UnionType(kts) => {
             // Check that all types are the same const
             let mut k = None;
             for (x, t) in kts {
@@ -633,6 +631,18 @@ fn type_last_layer(
                 })
                 .collect::<Result<_, _>>()?;
             Ok(RetExpr(RecordType(kts)))
+        }
+        UnionLit(x, v, kvs) => {
+            let mut kts: std::collections::BTreeMap<_, _> = kvs
+                .into_iter()
+                .map(|(x, v)| {
+                    let t = v.normalize().embed();
+                    Ok((x, t))
+                })
+                .collect::<Result<_, _>>()?;
+            let t = v.get_type_move()?.embed()?;
+            kts.insert(x, t);
+            Ok(RetExpr(UnionType(kts)))
         }
         Field(r, x) => ensure_matches!(r.get_type()?,
             RecordType(kts) => match kts.get(&x) {
@@ -1087,9 +1097,9 @@ mod spec_tests {
     ti_success!(ti_success_unit_Type, "unit/Type");
     ti_success!(ti_success_unit_TypeAnnotation, "unit/TypeAnnotation");
     // ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
-    // ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
-    // ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
-    // ti_success!(ti_success_unit_UnionTypeKind, "unit/UnionTypeKind");
-    // ti_success!(ti_success_unit_UnionTypeOne, "unit/UnionTypeOne");
-    // ti_success!(ti_success_unit_UnionTypeType, "unit/UnionTypeType");
+    ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
+    ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
+    ti_success!(ti_success_unit_UnionTypeKind, "unit/UnionTypeKind");
+    ti_success!(ti_success_unit_UnionTypeOne, "unit/UnionTypeOne");
+    ti_success!(ti_success_unit_UnionTypeType, "unit/UnionTypeType");
 }
