@@ -234,6 +234,7 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
         expr.map_ref_simple(|e| normalize_ref(e.as_ref()));
 
     use WhatNext::*;
+    // TODO: match by move
     let what_next = match &expr {
         Let(f, _, r, b) => {
             let vf0 = &V(f.clone(), 0);
@@ -261,6 +262,13 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
             let b2 = subst_shift(vx0, &a.roll(), &b);
             Continue(App(b2, iter.map(ExprF::roll).collect()))
         }
+        App(UnionConstructor(l, kts), args) => {
+            let mut iter = args.iter();
+            // We know args is nonempty
+            let a = iter.next().unwrap();
+            let e = rc(UnionLit(l.clone(), rc(a.clone()), kts.clone()));
+            Continue(App(e, iter.map(ExprF::roll).collect()))
+        }
         BoolIf(BoolLit(true), t, _) => DoneRef(t),
         BoolIf(BoolLit(false), _, f) => DoneRef(f),
         // TODO: interpolation
@@ -285,9 +293,15 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
             let ys = ys.iter().cloned();
             Done(NEListLit(xs.chain(ys).collect()))
         }
-        Merge(RecordLit(handlers), UnionLit(k, v, _), _) => {
-            match handlers.get(&k) {
+        Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
+            match handlers.get(&l) {
                 Some(h) => Continue(App(h.clone(), vec![v.clone()])),
+                None => DoneAsIs,
+            }
+        }
+        Merge(RecordLit(handlers), UnionConstructor(l, _), _) => {
+            match handlers.get(&l) {
+                Some(h) => DoneRefSub(h),
                 None => DoneAsIs,
             }
         }
@@ -295,6 +309,9 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
             Some(r) => DoneRefSub(r),
             None => DoneAsIs,
         },
+        Field(UnionType(kts), l) => {
+            Done(UnionConstructor(l.clone(), kts.clone()))
+        }
         Projection(_, ls) if ls.is_empty() => {
             Done(RecordLit(std::collections::BTreeMap::new()))
         }
@@ -349,7 +366,7 @@ mod spec_tests {
     }
 
     norm!(success_haskell_tutorial_access_0, "haskell-tutorial/access/0");
-    // norm!(success_haskell_tutorial_access_1, "haskell-tutorial/access/1");
+    norm!(success_haskell_tutorial_access_1, "haskell-tutorial/access/1");
     // norm!(success_haskell_tutorial_combineTypes_0, "haskell-tutorial/combineTypes/0");
     // norm!(success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
     // norm!(success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
@@ -560,7 +577,8 @@ mod spec_tests {
     norm!(success_unit_ListReverse, "unit/ListReverse");
     norm!(success_unit_ListReverseEmpty, "unit/ListReverseEmpty");
     norm!(success_unit_ListReverseTwo, "unit/ListReverseTwo");
-    // norm!(success_unit_Merge, "unit/Merge");
+    norm!(success_unit_Merge, "unit/Merge");
+    norm!(success_unit_MergeEmptyAlternative, "unit/MergeEmptyAlternative");
     norm!(success_unit_MergeNormalizeArguments, "unit/MergeNormalizeArguments");
     norm!(success_unit_MergeWithType, "unit/MergeWithType");
     norm!(success_unit_MergeWithTypeNormalizeArguments, "unit/MergeWithTypeNormalizeArguments");

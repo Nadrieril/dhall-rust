@@ -178,11 +178,14 @@ where
             RecordType(kts) => RecordType(btmap(kts, v)?),
             RecordLit(kvs) => RecordLit(btmap(kvs, v)?),
             UnionType(kts) => UnionType(btoptmap(kts, v)?),
-            UnionLit(k, x, kvs) => UnionLit(
+            UnionLit(k, x, kts) => UnionLit(
                 v.visit_label(k)?,
                 v.visit_subexpr(x)?,
-                btoptmap(kvs, v)?,
+                btoptmap(kts, v)?,
             ),
+            UnionConstructor(x, kts) => {
+                UnionConstructor(v.visit_label(x)?, btoptmap(kts, v)?)
+            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,
