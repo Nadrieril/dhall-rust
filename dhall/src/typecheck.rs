@@ -48,6 +48,11 @@ impl<'a> Normalized<'a> {
         Normalized(shift(delta, var, &self.0), self.1.clone(), self.2)
     }
 }
+impl Normalized<'static> {
+    fn embed<N>(self) -> SubExpr<N, Normalized<'static>> {
+        rc(ExprF::Embed(self))
+    }
+}
 impl<'a> Type<'a> {
     pub(crate) fn as_normalized(&self) -> Result<&Normalized<'a>, TypeError> {
         use TypeInternal::*;
@@ -106,6 +111,11 @@ impl<'a> Type<'a> {
             PhantomData,
         )
         .into_type()
+    }
+}
+impl Type<'static> {
+    fn embed<N>(self) -> Result<SubExpr<N, Normalized<'static>>, TypeError> {
+        Ok(self.into_normalized()?.embed())
     }
 }
 
@@ -348,27 +358,27 @@ fn type_with(
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
-                t.into_normalized()?.into_expr(),
-                b.get_type_move()?.into_normalized()?.into_expr(),
+                t.embed()?,
+                b.get_type_move()?.embed()?,
             )))
         }
-        Pi(x, tA, tB) => {
-            let tA = mktype(ctx, tA.clone())?;
+        Pi(x, ta, tb) => {
+            let ta = mktype(ctx, ta.clone())?;
             let kA = ensure_is_const!(
-                &tA.get_type()?,
-                mkerr(InvalidInputType(tA.into_normalized()?)),
+                &ta.get_type()?,
+                mkerr(InvalidInputType(ta.into_normalized()?)),
             );
 
             let ctx2 = ctx
-                .insert(x.clone(), tA.clone())
+                .insert(x.clone(), ta.clone())
                 .map(|e| e.shift(1, &V(x.clone(), 0)));
-            let tB = type_with(&ctx2, tB.clone())?;
+            let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
-                &tB.get_type()?,
+                &tb.get_type()?,
                 TypeError::new(
                     &ctx2,
                     e.clone(),
-                    InvalidOutputType(tB.get_type_move()?.into_normalized()?),
+                    InvalidOutputType(tb.get_type_move()?.into_normalized()?),
                 ),
             );
 
@@ -376,8 +386,8 @@ fn type_with(
                 Ok(k) => k,
                 Err(()) => {
                     return Err(mkerr(NoDependentTypes(
-                        tA.clone().into_normalized()?,
-                        tB.get_type_move()?.into_normalized()?,
+                        ta.clone().into_normalized()?,
+                        tb.get_type_move()?.into_normalized()?,
                     )))
                 }
             };
@@ -395,7 +405,7 @@ fn type_with(
             let e = type_with(
                 ctx,
                 // TODO: Use a substitution context
-                subst_shift(&V(x.clone(), 0), &v.as_expr().absurd(), e),
+                subst_shift(&V(x.clone(), 0), &v.embed(), e),
             )?;
 
             Ok(RetType(e.get_type_move()?))
@@ -442,17 +452,20 @@ fn type_last_layer(
         },
         App(f, args) => {
             let mut tf = f.get_type()?.into_owned();
+            // Reconstruct the application `f a0 a1 ...`
+            // for error reporting
+            let mkf = |args: Vec<_>, i| {
+                rc(App(
+                    f.into_expr(),
+                    args.into_iter().take(i).map(Typed::into_expr).collect(),
+                ))
+            };
+
             for (i, a) in args.iter().enumerate() {
                 let (x, tx, tb) = ensure_matches!(tf,
                     Pi(x, tx, tb) => (x, tx, tb),
                     mkerr(NotAFunction(Typed(
-                        rc(App(
-                            f.into_expr(),
-                            args.into_iter()
-                               .take(i)
-                               .map(Typed::into_expr)
-                               .collect()
-                        )),
+                        mkf(args, i),
                         Some(tf),
                         PhantomData
                     )))
@@ -461,24 +474,19 @@ fn type_last_layer(
                 ensure_equal!(&tx, a.get_type()?, {
                     let a = a.clone();
                     mkerr(TypeMismatch(
-                        Typed(
-                            rc(App(
-                                f.into_expr(),
-                                args.into_iter()
-                                    .take(i + 1)
-                                    .map(Typed::into_expr)
-                                    .collect(),
-                            )),
-                            Some(tf),
-                            PhantomData,
-                        ),
+                        Typed(mkf(args, i + 1), Some(tf), PhantomData),
                         tx.into_normalized()?,
                         a,
                     ))
                 });
                 tf = mktype(
                     ctx,
-                    rc(Let(x.clone(), None, a.as_expr().clone(), tb.absurd())),
+                    rc(Let(
+                        x.clone(),
+                        None,
+                        a.clone().normalize().embed(),
+                        tb.absurd(),
+                    )),
                 )?;
             }
             Ok(RetType(tf))
@@ -523,7 +531,7 @@ fn type_last_layer(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
             );
-            let t = t.into_normalized()?.into_expr();
+            let t = t.embed()?;
             Ok(RetExpr(dhall::expr!(List t)))
         }
         NEListLit(xs) => {
@@ -544,43 +552,41 @@ fn type_last_layer(
                     ))
                 );
             }
-            let t = x.get_type_move()?.into_normalized()?.into_expr();
+            let t = x.get_type_move()?;
+            let t = t.embed()?;
             Ok(RetExpr(dhall::expr!(List t)))
         }
         OldOptionalLit(None, t) => {
-            let t = t.into_expr();
+            let t = t.normalize().embed();
             let e = dhall::subexpr!(None t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
         OldOptionalLit(Some(x), t) => {
-            let x = x.into_expr();
-            let t = t.into_expr();
+            let t = t.normalize().embed();
+            let x = x.normalize().embed();
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
         EmptyOptionalLit(t) => {
-            let t = t.normalize().into_type();
-            ensure_simple_type!(
-                t,
-                mkerr(InvalidOptionalType(t.into_normalized()?)),
-            );
-            let t = t.into_normalized()?.into_expr();
+            let t = t.normalize();
+            ensure_simple_type!(t, mkerr(InvalidOptionalType(t)));
+            let t = t.embed();
             Ok(RetExpr(dhall::expr!(Optional t)))
         }
         NEOptionalLit(x) => {
             let tx = x.get_type_move()?;
             ensure_simple_type!(
                 tx,
-                mkerr(InvalidOptionalType(tx.into_normalized()?,)),
+                mkerr(InvalidOptionalType(tx.into_normalized()?)),
             );
-            let t = tx.into_normalized()?.into_expr();
+            let t = tx.embed()?;
             Ok(RetExpr(dhall::expr!(Optional t)))
         }
         RecordType(kts) => {
             for (k, t) in kts {
-                ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)),);
+                ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)));
             }
-            Ok(RetExpr(dhall::expr!(Type)))
+            Ok(RetType(crate::expr::Type::const_type()))
         }
         RecordLit(kvs) => {
             let kts = kvs
@@ -590,7 +596,9 @@ fn type_last_layer(
                         v.get_type()?,
                         mkerr(InvalidField(k, v)),
                     );
-                    Ok((k, v.get_type_move()?.into_normalized()?.into_expr()))
+                    let t = v.get_type_move()?;
+                    let t = t.embed()?;
+                    Ok((k, t))
                 })
                 .collect::<Result<_, _>>()?;
             Ok(RetExpr(RecordType(kts)))

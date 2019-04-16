@@ -116,9 +116,6 @@ impl<'a> Normalized<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
-    pub(crate) fn into_expr<T>(self) -> SubExpr<X, T> {
-        self.0.absurd()
-    }
     pub(crate) fn into_type(self) -> Type<'a> {
         crate::expr::Type(TypeInternal::Expr(Box::new(self)))
     }
