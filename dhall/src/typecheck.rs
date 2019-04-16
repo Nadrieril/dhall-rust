@@ -1021,7 +1021,7 @@ mod spec_tests {
     // tc_success!(tc_success_simple_kindParameter, "simple/kindParameter");
     // tc_success!(tc_success_simple_mergeEquivalence, "simple/mergeEquivalence");
     // tc_success!(tc_success_simple_mixedFieldAccess, "simple/mixedFieldAccess");
-    // tc_success!(tc_success_simple_unionsOfTypes, "simple/unionsOfTypes");
+    tc_success!(tc_success_simple_unionsOfTypes, "simple/unionsOfTypes");
 
     // tc_failure!(tc_failure_combineMixedRecords, "combineMixedRecords");
     // tc_failure!(tc_failure_duplicateFields, "duplicateFields");

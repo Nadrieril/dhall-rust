@@ -895,7 +895,8 @@ make_parser! {
     ));
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr<'a>>)>; children!(
-        [label(name), expression(expr)] => (name, Option::Some(rc(expr)))
+        [label(name), expression(expr)] => (name, Option::Some(rc(expr))),
+        [label(name)] => (name, Option::None),
     ));
 
     // TODO: unary union variants
@@ -909,6 +910,12 @@ make_parser! {
         },
         [expression(e)] => {
             (Option::Some(rc(e)), (Option::None, BTreeMap::new()))
+        },
+        [non_empty_union_type_or_literal(rest)] => {
+            (Option::None, rest)
+        },
+        [] => {
+            (Option::None, (Option::None, BTreeMap::new()))
         },
     ));
 

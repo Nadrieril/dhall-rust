@@ -667,12 +667,12 @@ mod spec_tests {
     norm!(success_unit_True, "unit/True");
     norm!(success_unit_Type, "unit/Type");
     norm!(success_unit_TypeAnnotation, "unit/TypeAnnotation");
-    // norm!(success_unit_UnionNormalizeAlternatives, "unit/UnionNormalizeAlternatives");
+    norm!(success_unit_UnionNormalizeAlternatives, "unit/UnionNormalizeAlternatives");
     norm!(success_unit_UnionNormalizeArguments, "unit/UnionNormalizeArguments");
-    // norm!(success_unit_UnionProjectConstructor, "unit/UnionProjectConstructor");
-    // norm!(success_unit_UnionSortAlternatives, "unit/UnionSortAlternatives");
-    // norm!(success_unit_UnionType, "unit/UnionType");
+    norm!(success_unit_UnionProjectConstructor, "unit/UnionProjectConstructor");
+    norm!(success_unit_UnionSortAlternatives, "unit/UnionSortAlternatives");
+    norm!(success_unit_UnionType, "unit/UnionType");
     norm!(success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
-    // norm!(success_unit_UnionTypeNormalizeArguments, "unit/UnionTypeNormalizeArguments");
+    norm!(success_unit_UnionTypeNormalizeArguments, "unit/UnionTypeNormalizeArguments");
     norm!(success_unit_Variable, "unit/Variable");
 }
