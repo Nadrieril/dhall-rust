@@ -220,6 +220,10 @@ fn const_to_normalized<'a>(c: Const) -> Normalized<'a> {
     )
 }
 
+fn const_to_type<'a>(c: Const) -> Type<'a> {
+    Type(TypeInternal::Const(c))
+}
+
 pub(crate) fn type_of_const<'a>(c: Const) -> Type<'a> {
     match c {
         Const::Type => Type::const_kind(),
@@ -601,22 +605,31 @@ fn type_last_layer(
             Ok(RetExpr(dhall::expr!(Optional t)))
         }
         RecordType(kts) => {
-            for (k, t) in kts {
-                ensure_simple_type!(t, mkerr(InvalidFieldType(k, t)));
+            // Check that all types are the same const
+            let mut k = None;
+            for (x, t) in kts {
+                let k2 = ensure_is_const!(
+                    t.get_type()?,
+                    mkerr(InvalidFieldType(x, t))
+                );
+                match k {
+                    None => k = Some(k2),
+                    Some(k1) if k1 != k2 => {
+                        return Err(mkerr(InvalidFieldType(x, t)))
+                    }
+                    Some(_) => {}
+                }
             }
-            Ok(RetType(crate::expr::Type::const_type()))
+            // An empty record type has type Type
+            let k = k.unwrap_or(dhall_core::Const::Type);
+            Ok(RetType(const_to_type(k)))
         }
         RecordLit(kvs) => {
             let kts = kvs
                 .into_iter()
-                .map(|(k, v)| {
-                    ensure_simple_type!(
-                        v.get_type()?,
-                        mkerr(InvalidField(k, v)),
-                    );
-                    let t = v.get_type_move()?;
-                    let t = t.embed()?;
-                    Ok((k, t))
+                .map(|(x, v)| {
+                    let t = v.get_type_move()?.embed()?;
+                    Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
             Ok(RetExpr(RecordType(kts)))
@@ -705,7 +718,6 @@ pub(crate) enum TypeMessage<'a> {
     InvalidPredicate(Typed<'a>),
     IfBranchMismatch(Typed<'a>, Typed<'a>),
     IfBranchMustBeTerm(bool, Typed<'a>),
-    InvalidField(Label, Typed<'a>),
     InvalidFieldType(Label, Typed<'a>),
     NotARecord(Label, Typed<'a>),
     MissingField(Label, Typed<'a>),
@@ -944,7 +956,7 @@ mod spec_tests {
     // tc_success!(tc_success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");
     // tc_success!(tc_success_prelude_Text_concatSep_1, "prelude/Text/concatSep/1");
     // tc_success!(tc_success_recordOfRecordOfTypes, "recordOfRecordOfTypes");
-    // tc_success!(tc_success_recordOfTypes, "recordOfTypes");
+    tc_success!(tc_success_recordOfTypes, "recordOfTypes");
     // tc_success!(tc_success_simple_access_0, "simple/access/0");
     // tc_success!(tc_success_simple_access_1, "simple/access/1");
     // tc_success!(tc_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
@@ -969,9 +981,9 @@ mod spec_tests {
     ti_success!(ti_success_unit_Function, "unit/Function");
     ti_success!(ti_success_unit_FunctionApplication, "unit/FunctionApplication");
     ti_success!(ti_success_unit_FunctionNamedArg, "unit/FunctionNamedArg");
-    // ti_success!(ti_success_unit_FunctionTypeKindKind, "unit/FunctionTypeKindKind");
-    // ti_success!(ti_success_unit_FunctionTypeKindTerm, "unit/FunctionTypeKindTerm");
-    // ti_success!(ti_success_unit_FunctionTypeKindType, "unit/FunctionTypeKindType");
+    ti_success!(ti_success_unit_FunctionTypeKindKind, "unit/FunctionTypeKindKind");
+    ti_success!(ti_success_unit_FunctionTypeKindTerm, "unit/FunctionTypeKindTerm");
+    ti_success!(ti_success_unit_FunctionTypeKindType, "unit/FunctionTypeKindType");
     ti_success!(ti_success_unit_FunctionTypeTermTerm, "unit/FunctionTypeTermTerm");
     ti_success!(ti_success_unit_FunctionTypeTypeTerm, "unit/FunctionTypeTypeTerm");
     ti_success!(ti_success_unit_FunctionTypeTypeType, "unit/FunctionTypeTypeType");
@@ -982,7 +994,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_IntegerLiteral, "unit/IntegerLiteral");
     // ti_success!(ti_success_unit_IntegerShow, "unit/IntegerShow");
     // ti_success!(ti_success_unit_IntegerToDouble, "unit/IntegerToDouble");
-    // ti_success!(ti_success_unit_Kind, "unit/Kind");
+    ti_success!(ti_success_unit_Kind, "unit/Kind");
     ti_success!(ti_success_unit_Let, "unit/Let");
     ti_success!(ti_success_unit_LetNestedTypeSynonym, "unit/LetNestedTypeSynonym");
     ti_success!(ti_success_unit_LetTypeSynonym, "unit/LetTypeSynonym");
@@ -1033,8 +1045,8 @@ mod spec_tests {
     // ti_success!(ti_success_unit_OptionalBuild, "unit/OptionalBuild");
     ti_success!(ti_success_unit_OptionalFold, "unit/OptionalFold");
     ti_success!(ti_success_unit_RecordEmpty, "unit/RecordEmpty");
-    // ti_success!(ti_success_unit_RecordOneKind, "unit/RecordOneKind");
-    // ti_success!(ti_success_unit_RecordOneType, "unit/RecordOneType");
+    ti_success!(ti_success_unit_RecordOneKind, "unit/RecordOneKind");
+    ti_success!(ti_success_unit_RecordOneType, "unit/RecordOneType");
     ti_success!(ti_success_unit_RecordOneValue, "unit/RecordOneValue");
     // ti_success!(ti_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
     // ti_success!(ti_success_unit_RecordProjectionKind, "unit/RecordProjectionKind");
@@ -1045,8 +1057,8 @@ mod spec_tests {
     ti_success!(ti_success_unit_RecordSelectionValue, "unit/RecordSelectionValue");
     ti_success!(ti_success_unit_RecordType, "unit/RecordType");
     ti_success!(ti_success_unit_RecordTypeEmpty, "unit/RecordTypeEmpty");
-    // ti_success!(ti_success_unit_RecordTypeKind, "unit/RecordTypeKind");
-    // ti_success!(ti_success_unit_RecordTypeType, "unit/RecordTypeType");
+    ti_success!(ti_success_unit_RecordTypeKind, "unit/RecordTypeKind");
+    ti_success!(ti_success_unit_RecordTypeType, "unit/RecordTypeType");
     // ti_success!(ti_success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
     // ti_success!(ti_success_unit_RecursiveRecordMergeRecursively, "unit/RecursiveRecordMergeRecursively");
     // ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyTypes, "unit/RecursiveRecordMergeRecursivelyTypes");
