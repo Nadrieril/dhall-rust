@@ -644,21 +644,27 @@ fn type_last_layer(
             kts.insert(x, t);
             Ok(RetExpr(UnionType(kts)))
         }
-        Field(r, x) => match r.as_expr().as_ref() {
-            UnionType(kts) => match kts.get(&x) {
-                // Constructor has type T -> < x: T, ... >
-                Some(t) => {
-                    Ok(RetExpr(Pi(x.clone(), t.clone(), r.normalize().embed())))
+        Field(r, x) => match r.get_type()?.unroll_ref()?.as_ref() {
+            RecordType(kts) => match kts.get(&x) {
+                Some(t) => Ok(RetExpr(t.unroll().absurd_rec())),
+                None => Err(mkerr(MissingRecordField(x, r))),
+            },
+            _ => {
+                let r = r.normalize();
+                match r.as_expr().as_ref() {
+                    UnionType(kts) => match kts.get(&x) {
+                        // Constructor has type T -> < x: T, ... >
+                        // TODO: use "_" instead of x
+                        Some(t) => Ok(RetExpr(Pi(
+                            x.clone(),
+                            t.embed_absurd(),
+                            r.embed(),
+                        ))),
+                        None => Err(mkerr(MissingUnionField(x, r))),
+                    },
+                    _ => Err(mkerr(NotARecord(x, r))),
                 }
-                None => Err(mkerr(MissingField(x, r))),
-            },
-            _ => match r.get_type()?.unroll_ref()?.as_ref() {
-                RecordType(kts) => match kts.get(&x) {
-                    Some(t) => Ok(RetExpr(t.unroll().absurd_rec())),
-                    None => Err(mkerr(MissingField(x, r))),
-                },
-                _ => Err(mkerr(NotARecord(x, r))),
-            },
+            }
         },
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
@@ -738,8 +744,9 @@ pub(crate) enum TypeMessage<'a> {
     IfBranchMismatch(Typed<'a>, Typed<'a>),
     IfBranchMustBeTerm(bool, Typed<'a>),
     InvalidFieldType(Label, Typed<'a>),
-    NotARecord(Label, Typed<'a>),
-    MissingField(Label, Typed<'a>),
+    NotARecord(Label, Normalized<'a>),
+    MissingRecordField(Label, Typed<'a>),
+    MissingUnionField(Label, Normalized<'a>),
     BinOpTypeMismatch(BinOp, Typed<'a>),
     NoDependentTypes(Normalized<'a>, Normalized<'a>),
     Unimplemented,
@@ -974,7 +981,7 @@ mod spec_tests {
     // tc_success!(tc_success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
     // tc_success!(tc_success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");
     // tc_success!(tc_success_prelude_Text_concatSep_1, "prelude/Text/concatSep/1");
-    // tc_success!(tc_success_recordOfRecordOfTypes, "recordOfRecordOfTypes");
+    tc_success!(tc_success_recordOfRecordOfTypes, "recordOfRecordOfTypes");
     tc_success!(tc_success_recordOfTypes, "recordOfTypes");
     // tc_success!(tc_success_simple_access_0, "simple/access/0");
     // tc_success!(tc_success_simple_access_1, "simple/access/1");

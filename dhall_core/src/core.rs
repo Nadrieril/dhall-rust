@@ -447,6 +447,12 @@ impl<N: Clone> Expr<N, X> {
     }
 }
 
+impl<N: Clone> SubExpr<N, X> {
+    pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
+        rc(self.as_ref().embed_absurd())
+    }
+}
+
 impl<N, E> Clone for SubExpr<N, E> {
     fn clone(&self) -> Self {
         SubExpr(Rc::clone(&self.0))
