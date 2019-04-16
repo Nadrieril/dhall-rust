@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use std::borrow::Borrow;
+use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -54,11 +55,13 @@ impl Normalized<'static> {
     }
 }
 impl<'a> Type<'a> {
-    pub(crate) fn as_normalized(&self) -> Result<&Normalized<'a>, TypeError> {
-        use TypeInternal::*;
+    pub(crate) fn as_normalized(
+        &self,
+    ) -> Result<Cow<Normalized<'a>>, TypeError> {
         match &self.0 {
-            Expr(e) => Ok(e),
-            SuperType => Err(TypeError::new(
+            TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
+            TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
+            TypeInternal::SuperType => Err(TypeError::new(
                 &Context::new(),
                 rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
@@ -66,51 +69,47 @@ impl<'a> Type<'a> {
         }
     }
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
-        use TypeInternal::*;
         match self.0 {
-            Expr(e) => Ok(*e),
-            SuperType => Err(TypeError::new(
+            TypeInternal::Expr(e) => Ok(*e),
+            TypeInternal::Const(c) => Ok(const_to_normalized(c)),
+            TypeInternal::SuperType => Err(TypeError::new(
                 &Context::new(),
                 rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
             )),
         }
     }
+    // Expose the outermost constructor, except if it is Const
+    fn unroll_ref_no_const(&self) -> Result<&Expr<X, X>, TypeError> {
+        match self.as_normalized()? {
+            Cow::Borrowed(e) => Ok(e.unroll_ref()),
+            Cow::Owned(_) => unimplemented!(),
+        }
+    }
     // Expose the outermost constructor
-    fn unroll_ref(&self) -> Result<&Expr<X, X>, TypeError> {
-        Ok(self.as_normalized()?.unroll_ref())
+    fn unroll_ref(&self) -> Result<Cow<Expr<X, X>>, TypeError> {
+        match self.as_normalized()? {
+            Cow::Borrowed(e) => Ok(Cow::Borrowed(e.unroll_ref())),
+            Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
+        }
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
-        crate::expr::Type(match &self.0 {
+        Type(match &self.0 {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
+            Const(c) => Const(*c),
             SuperType => SuperType,
         })
     }
 
     fn const_sort() -> Self {
-        Normalized(
-            rc(ExprF::Const(Const::Sort)),
-            Some(Type(TypeInternal::SuperType)),
-            PhantomData,
-        )
-        .into_type()
+        Type(TypeInternal::Const(Const::Sort))
     }
     fn const_kind() -> Self {
-        Normalized(
-            rc(ExprF::Const(Const::Kind)),
-            Some(Type::const_sort()),
-            PhantomData,
-        )
-        .into_type()
+        Type(TypeInternal::Const(Const::Kind))
     }
     pub(crate) fn const_type() -> Self {
-        Normalized(
-            rc(ExprF::Const(Const::Type)),
-            Some(Type::const_kind()),
-            PhantomData,
-        )
-        .into_type()
+        Type(TypeInternal::Const(Const::Type))
     }
 }
 impl Type<'static> {
@@ -200,6 +199,7 @@ where
     }
     match (&eL0.borrow().0, &eR0.borrow().0) {
         (TypeInternal::SuperType, TypeInternal::SuperType) => true,
+        (TypeInternal::Const(cl), TypeInternal::Const(cr)) => cl == cr,
         (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
             let mut ctx = vec![];
             go(&mut ctx, l.as_expr(), r.as_expr())
@@ -208,7 +208,19 @@ where
     }
 }
 
-fn type_of_const<'a>(c: Const) -> Type<'a> {
+fn const_to_normalized<'a>(c: Const) -> Normalized<'a> {
+    Normalized(
+        rc(ExprF::Const(c)),
+        Some(Type(match c {
+            Const::Type => TypeInternal::Const(Const::Kind),
+            Const::Kind => TypeInternal::Const(Const::Sort),
+            Const::Sort => TypeInternal::SuperType,
+        })),
+        PhantomData,
+    )
+}
+
+pub(crate) fn type_of_const<'a>(c: Const) -> Type<'a> {
     match c {
         Const::Type => Type::const_kind(),
         Const::Kind => Type::const_sort(),
@@ -216,7 +228,7 @@ fn type_of_const<'a>(c: Const) -> Type<'a> {
     }
 }
 
-fn type_of_builtin<S>(b: Builtin) -> Expr<S, Normalized<'static>> {
+fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
     use dhall_core::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
@@ -293,7 +305,7 @@ macro_rules! ensure_equal {
 
 macro_rules! ensure_matches {
     ($x:expr, $pat:pat => $branch:expr, $err:expr $(,)*) => {
-        match $x.unroll_ref()? {
+        match $x.unroll_ref_no_const()? {
             $pat => $branch,
             _ => return Err($err),
         }
@@ -302,14 +314,20 @@ macro_rules! ensure_matches {
 
 // Ensure the provided type has type `Type`
 macro_rules! ensure_simple_type {
-    ($x:expr, $err:expr $(,)*) => {
-        ensure_matches!($x.get_type()?, Const(Type) => {}, $err)
-    };
+    ($x:expr, $err:expr $(,)*) => {{
+        let k = ensure_is_const!($x.get_type()?, $err);
+        if k != Type {
+            return Err($err);
+        }
+    }};
 }
 
 macro_rules! ensure_is_const {
     ($x:expr, $err:expr $(,)*) => {
-        ensure_matches!($x, Const(k) => *k, $err)
+        match $x.unroll_ref()?.as_ref() {
+            Const(k) => *k,
+            _ => return Err($err),
+        }
     };
 }
 
@@ -619,7 +637,7 @@ fn type_last_layer(
         // TODO: check type of interpolations
         TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
         BinOp(o @ ListAppend, l, r) => {
-            match l.get_type()?.as_normalized()?.as_expr().as_ref() {
+            match l.get_type()?.unroll_ref()?.as_ref() {
                 App(f, args) if args.len() == 1 => match f.as_ref() {
                     Builtin(List) => {}
                     _ => return Err(mkerr(BinOpTypeMismatch(o, l))),

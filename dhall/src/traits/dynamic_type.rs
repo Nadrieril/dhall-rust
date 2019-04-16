@@ -1,6 +1,6 @@
 use crate::expr::*;
 use crate::traits::StaticType;
-use crate::typecheck::{TypeError, TypeMessage};
+use crate::typecheck::{type_of_const, TypeError, TypeMessage};
 use dhall_core::context::Context;
 use dhall_core::{Const, ExprF};
 use std::borrow::Cow;
@@ -17,10 +17,10 @@ impl<T: StaticType> DynamicType for T {
 
 impl<'a> DynamicType for Type<'a> {
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        use TypeInternal::*;
         match &self.0 {
-            Expr(e) => e.get_type(),
-            SuperType => Err(TypeError::new(
+            TypeInternal::Expr(e) => e.get_type(),
+            TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
+            TypeInternal::SuperType => Err(TypeError::new(
                 &Context::new(),
                 dhall_core::rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,

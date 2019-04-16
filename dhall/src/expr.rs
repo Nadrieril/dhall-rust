@@ -73,6 +73,7 @@ pub struct Type<'a>(pub(crate) TypeInternal<'a>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeInternal<'a> {
     Expr(Box<Normalized<'a>>),
+    Const(dhall_core::Const),
     /// The type of `Sort`
     SuperType,
 }
@@ -116,8 +117,14 @@ impl<'a> Normalized<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
+    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
+        self.0
+    }
     pub(crate) fn into_type(self) -> Type<'a> {
-        crate::expr::Type(TypeInternal::Expr(Box::new(self)))
+        Type(match self.0.as_ref() {
+            ExprF::Const(c) => TypeInternal::Const(*c),
+            _ => TypeInternal::Expr(Box::new(self)),
+        })
     }
 }
 
