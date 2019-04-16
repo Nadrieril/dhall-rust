@@ -186,10 +186,10 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     RecordType(BTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
     RecordLit(BTreeMap<Label, SubExpr>),
-    ///  `< k1 : t1, k2 : t2 >`
-    UnionType(BTreeMap<Label, SubExpr>),
-    ///  `< k1 = t1, k2 : t2, k3 : t3 >`
-    UnionLit(Label, SubExpr, BTreeMap<Label, SubExpr>),
+    ///  `< k1 : t1, k2 >`
+    UnionType(BTreeMap<Label, Option<SubExpr>>),
+    ///  `< k1 = t1, k2 : t2, k3 >`
+    UnionLit(Label, SubExpr, BTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`

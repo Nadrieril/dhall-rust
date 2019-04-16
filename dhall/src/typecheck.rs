@@ -182,10 +182,16 @@ where
             }
             (UnionType(ktsL0), UnionType(ktsR0)) => {
                 ktsL0.len() == ktsR0.len()
-                    && ktsL0
-                        .iter()
-                        .zip(ktsR0.iter())
-                        .all(|((kL, tL), (kR, tR))| kL == kR && go(ctx, tL, tR))
+                    && ktsL0.iter().zip(ktsR0.iter()).all(
+                        |((kL, tL), (kR, tR))| {
+                            kL == kR
+                                && match (tL, tR) {
+                                    (None, None) => true,
+                                    (Some(tL), Some(tR)) => go(ctx, tL, tR),
+                                    _ => false,
+                                }
+                        },
+                    )
             }
             (_, _) => false,
         }
@@ -602,7 +608,7 @@ fn type_last_layer(
             let t = tx.embed()?;
             Ok(RetExpr(dhall::expr!(Optional t)))
         }
-        RecordType(kts) | UnionType(kts) => {
+        RecordType(kts) => {
             // Check that all types are the same const
             let mut k = None;
             for (x, t) in kts {
@@ -622,6 +628,29 @@ fn type_last_layer(
             let k = k.unwrap_or(dhall_core::Const::Type);
             Ok(RetType(const_to_type(k)))
         }
+        UnionType(kts) => {
+            // Check that all types are the same const
+            let mut k = None;
+            for (x, t) in kts {
+                if let Some(t) = t {
+                    let k2 = ensure_is_const!(
+                        t.get_type()?,
+                        mkerr(InvalidFieldType(x, t))
+                    );
+                    match k {
+                        None => k = Some(k2),
+                        Some(k1) if k1 != k2 => {
+                            return Err(mkerr(InvalidFieldType(x, t)))
+                        }
+                        Some(_) => {}
+                    }
+                }
+            }
+            // An empty union type has type Type
+            // An union type with only unary variants has type Type
+            let k = k.unwrap_or(dhall_core::Const::Type);
+            Ok(RetType(const_to_type(k)))
+        }
         RecordLit(kvs) => {
             let kts = kvs
                 .into_iter()
@@ -636,12 +665,12 @@ fn type_last_layer(
             let mut kts: std::collections::BTreeMap<_, _> = kvs
                 .into_iter()
                 .map(|(x, v)| {
-                    let t = v.normalize().embed();
+                    let t = v.map(|x| x.normalize().embed());
                     Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
             let t = v.get_type_move()?.embed()?;
-            kts.insert(x, t);
+            kts.insert(x, Some(t));
             Ok(RetExpr(UnionType(kts)))
         }
         Field(r, x) => match r.get_type()?.unroll_ref()?.as_ref() {
@@ -655,11 +684,12 @@ fn type_last_layer(
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x
-                        Some(t) => Ok(RetExpr(Pi(
+                        Some(Some(t)) => Ok(RetExpr(Pi(
                             x.clone(),
                             t.embed_absurd(),
                             r.embed(),
                         ))),
+                        Some(None) => Ok(RetType(r.into_type())),
                         None => Err(mkerr(MissingUnionField(x, r))),
                     },
                     _ => Err(mkerr(NotARecord(x, r))),

@@ -31,23 +31,6 @@ pub fn quote_exprf<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
-    let quote_map = |m: BTreeMap<Label, TS>| -> TokenStream {
-        let entries = m.into_iter().map(|(k, v)| {
-            let k = quote_label(&k);
-            quote!(m.insert(#k, #v);)
-        });
-        quote! { {
-            use std::collections::BTreeMap;
-            let mut m = BTreeMap::new();
-            #( #entries )*
-            m
-        } }
-    };
-
-    let quote_vec = |e: Vec<TS>| -> TokenStream {
-        quote! { vec![ #(#e),* ] }
-    };
-
     use dhall_core::ExprF::*;
     match expr {
         Var(_) => unreachable!(),
@@ -106,7 +89,7 @@ where
             quote! { dhall_core::ExprF::RecordLit(#m) }
         }
         UnionType(m) => {
-            let m = quote_map(m);
+            let m = quote_opt_map(m);
             quote! { dhall_core::ExprF::UnionType(#m) }
         }
         e => unimplemented!("{:?}", e),
@@ -205,4 +188,44 @@ fn quote_label(l: &Label) -> TokenStream {
 
 fn rc(x: TokenStream) -> TokenStream {
     quote! { dhall_core::rc(#x) }
+}
+
+fn quote_opt<TS>(x: Option<TS>) -> TokenStream
+where
+    TS: quote::ToTokens + std::fmt::Debug,
+{
+    match x {
+        Some(x) => quote!(Some(#x)),
+        None => quote!(None),
+    }
+}
+
+fn quote_vec<TS>(e: Vec<TS>) -> TokenStream
+where
+    TS: quote::ToTokens + std::fmt::Debug,
+{
+    quote! { vec![ #(#e),* ] }
+}
+
+fn quote_map<TS>(m: BTreeMap<Label, TS>) -> TokenStream
+where
+    TS: quote::ToTokens + std::fmt::Debug,
+{
+    let entries = m.into_iter().map(|(k, v)| {
+        let k = quote_label(&k);
+        quote!(m.insert(#k, #v);)
+    });
+    quote! { {
+        use std::collections::BTreeMap;
+        let mut m = BTreeMap::new();
+        #( #entries )*
+        m
+    } }
+}
+
+fn quote_opt_map<TS>(m: BTreeMap<Label, Option<TS>>) -> TokenStream
+where
+    TS: quote::ToTokens + std::fmt::Debug,
+{
+    quote_map(m.into_iter().map(|(k, v)| (k, quote_opt(v))).collect())
 }

@@ -874,41 +874,41 @@ make_parser! {
 
     rule!(non_empty_union_type_or_literal
           <(Option<(Label, ParsedSubExpr<'a>)>,
-            BTreeMap<Label, ParsedSubExpr<'a>>)>;
+            BTreeMap<Label, Option<ParsedSubExpr<'a>>>)>;
             children!(
         [label(l), union_literal_variant_value((e, entries))] => {
-            (Option::Some((l, rc(e))), entries)
+            (Option::Some((l, e)), entries)
         },
         [label(l), union_type_or_literal_variant_type((e, rest))] => {
             let (x, mut entries) = rest;
-            entries.insert(l, rc(e));
+            entries.insert(l, e);
             (x, entries)
         },
     ));
 
     rule!(union_literal_variant_value
-          <(ParsedExpr<'a>, BTreeMap<Label, ParsedSubExpr<'a>>)>;
+          <(ParsedSubExpr<'a>, BTreeMap<Label, Option<ParsedSubExpr<'a>>>)>;
             children!(
         [expression(e), union_type_entry(entries)..] => {
-            (e, entries.collect())
+            (rc(e), entries.collect())
         },
     ));
 
-    rule!(union_type_entry<(Label, ParsedSubExpr<'a>)>; children!(
-        [label(name), expression(expr)] => (name, rc(expr))
+    rule!(union_type_entry<(Label, Option<ParsedSubExpr<'a>>)>; children!(
+        [label(name), expression(expr)] => (name, Option::Some(rc(expr)))
     ));
 
     // TODO: unary union variants
     rule!(union_type_or_literal_variant_type
-          <(ParsedExpr<'a>,
+          <(Option<ParsedSubExpr<'a>>,
             (Option<(Label, ParsedSubExpr<'a>)>,
-             BTreeMap<Label, ParsedSubExpr<'a>>))>;
+             BTreeMap<Label, Option<ParsedSubExpr<'a>>>))>;
                 children!(
         [expression(e), non_empty_union_type_or_literal(rest)] => {
-            (e, rest)
+            (Option::Some(rc(e)), rest)
         },
         [expression(e)] => {
-            (e, (Option::None, BTreeMap::new()))
+            (Option::Some(rc(e)), (Option::None, BTreeMap::new()))
         },
     ));
 

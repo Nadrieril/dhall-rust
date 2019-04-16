@@ -71,35 +71,26 @@ fn derive_for_enum(
         .iter()
         .map(|v| {
             let name = dhall_core::Label::from(v.ident.to_string());
-            let ty = match &v.fields {
+            match &v.fields {
+                syn::Fields::Unit => Ok((name, None)),
                 syn::Fields::Unnamed(fields) if fields.unnamed.is_empty() => {
-                    Err(Error::new(
-                        v.span(),
-                        "Nullary variants are not supported",
-                    ))
+                    Ok((name, None))
                 }
-                syn::Fields::Unnamed(fields) if fields.unnamed.len() > 1 => {
-                    Err(Error::new(
-                        v.span(),
-                        "Variants with more than one field are not supported",
-                    ))
+                syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                    let ty = &fields.unnamed.iter().next().unwrap().ty;
+                    constraints.push(ty.clone());
+                    let ty = get_simple_static_type(ty);
+                    Ok((name, Some(quote!(#ty.into()))))
                 }
-                syn::Fields::Unnamed(fields) => {
-                    Ok(&fields.unnamed.iter().next().unwrap().ty)
-                }
+                syn::Fields::Unnamed(_) => Err(Error::new(
+                    v.span(),
+                    "Variants with more than one field are not supported",
+                )),
                 syn::Fields::Named(_) => Err(Error::new(
                     v.span(),
                     "Named variants are not supported",
                 )),
-                syn::Fields::Unit => Err(Error::new(
-                    v.span(),
-                    "Nullary variants are not supported",
-                )),
-            };
-            let ty = ty?;
-            constraints.push(ty.clone());
-            let ty = get_simple_static_type(ty);
-            Ok((name, quote!(#ty.into())))
+            }
         })
         .collect::<Result<_, Error>>()?;
 

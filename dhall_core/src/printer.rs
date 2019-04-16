@@ -92,12 +92,19 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
                 write!(f, "{} = {}", k, v)
             })?,
             UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
-                write!(f, "{} : {}", k, v)
+                write!(f, "{} : ", k)?;
+                if let Some(v) = v {
+                    v.fmt(f)?
+                }
+                Ok(())
             })?,
             UnionLit(a, b, c) => {
                 write!(f, "< {} = {}", a, b)?;
                 for (k, v) in c {
-                    write!(f, " | {} : {}", k, v)?;
+                    write!(f, " | {}", k)?;
+                    if let Some(v) = v {
+                        write!(f, ": {}", v)?;
+                    }
                 }
                 f.write_str(" >")?
             }

@@ -143,11 +143,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 Field(x, l)
             }
             [U64(11), Object(map)] => {
-                let map = cbor_map_to_dhall_map(map)?;
+                let map = cbor_map_to_dhall_opt_map(map)?;
                 UnionType(map)
             }
             [U64(12), String(l), x, Object(map)] => {
-                let map = cbor_map_to_dhall_map(map)?;
+                let map = cbor_map_to_dhall_opt_map(map)?;
                 let x = cbor_value_to_dhall(&x)?;
                 let l = Label::from(l.as_str());
                 UnionLit(l, x, map)
@@ -339,6 +339,24 @@ fn cbor_map_to_dhall_map(
                 DecodeError::WrongFormatError("map/key".to_owned())
             })?;
             let v = cbor_value_to_dhall(v)?;
+            Ok((Label::from(k.as_ref()), v))
+        })
+        .collect::<Result<_, _>>()
+}
+
+fn cbor_map_to_dhall_opt_map(
+    map: &std::collections::BTreeMap<cbor::ObjectKey, cbor::Value>,
+) -> Result<std::collections::BTreeMap<Label, Option<ParsedExpr>>, DecodeError>
+{
+    map.iter()
+        .map(|(k, v)| -> Result<(_, _), _> {
+            let k = k.as_string().ok_or_else(|| {
+                DecodeError::WrongFormatError("map/key".to_owned())
+            })?;
+            let v = match v {
+                cbor::Value::Null => None,
+                _ => Some(cbor_value_to_dhall(v)?),
+            };
             Ok((Label::from(k.as_ref()), v))
         })
         .collect::<Result<_, _>>()

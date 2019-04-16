@@ -106,6 +106,27 @@ where
                 .map(|(k, x)| Ok((v.visit_label(k)?, v.visit_subexpr(x)?)))
                 .collect()
         }
+        fn btoptmap<'a, V, SE, L, N, E, SE2, L2, N2, E2>(
+            x: &'a BTreeMap<L, Option<SE>>,
+            mut v: V,
+        ) -> Result<BTreeMap<L2, Option<SE2>>, V::Error>
+        where
+            L: Ord,
+            L2: Ord,
+            V: ExprFFallibleVisitor<'a, SE, SE2, L, L2, N, N2, E, E2>,
+        {
+            x.iter()
+                .map(|(k, x)| {
+                    Ok((
+                        v.visit_label(k)?,
+                        match x {
+                            Some(x) => Some(v.visit_subexpr(x)?),
+                            None => None,
+                        },
+                    ))
+                })
+                .collect()
+        }
 
         let mut v = self;
         use crate::ExprF::*;
@@ -156,10 +177,12 @@ where
             NEOptionalLit(e) => NEOptionalLit(v.visit_subexpr(e)?),
             RecordType(kts) => RecordType(btmap(kts, v)?),
             RecordLit(kvs) => RecordLit(btmap(kvs, v)?),
-            UnionType(kts) => UnionType(btmap(kts, v)?),
-            UnionLit(k, x, kvs) => {
-                UnionLit(v.visit_label(k)?, v.visit_subexpr(x)?, btmap(kvs, v)?)
-            }
+            UnionType(kts) => UnionType(btoptmap(kts, v)?),
+            UnionLit(k, x, kvs) => UnionLit(
+                v.visit_label(k)?,
+                v.visit_subexpr(x)?,
+                btoptmap(kvs, v)?,
+            ),
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,
