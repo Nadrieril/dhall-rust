@@ -433,7 +433,6 @@ impl<'a, 'b, N, E, E2, Err, F1>
     > for &'b mut TraverseEmbedVisitor<F1>
 where
     N: Clone + 'a,
-    E2: Clone,
     F1: FnMut(&E) -> Result<E2, Err>,
 {
     type Error = Err;
