@@ -1,8 +1,11 @@
 #![allow(non_snake_case)]
-use crate::expr::*;
+use std::fmt;
+
+use dhall_core::context::Context;
 use dhall_core::*;
 use dhall_generator as dhall;
-use std::fmt;
+
+use crate::expr::*;
 
 impl<'a> Typed<'a> {
     pub fn normalize(self) -> Normalized<'a> {
@@ -97,7 +100,7 @@ where
                     }
                 };
                 let a0 = a0.roll();
-                let a1 = shift(1, &V("x".into(), 0), &a0);
+                let a1 = shift0(1, &"x".into(), &a0);
                 let g = g.roll();
                 break 'ret (
                     dhall::subexpr!(
@@ -217,125 +220,190 @@ where
 enum WhatNext<'a, N, E> {
     // Recurse on this expression
     Continue(Expr<N, E>),
-    ContinueSub(SubExpr<N, E>),
     // The following expression is the normal form
     Done(Expr<N, E>),
     DoneRef(&'a Expr<N, E>),
+    DoneSub(SubExpr<N, E>),
     DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
 }
 
-fn normalize_value(expr: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
+#[derive(Debug, Clone)]
+enum EnvItem {
+    Expr(SubExpr<X, X>),
+    Skip(Label, usize),
+}
+
+impl EnvItem {
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
+        use EnvItem::*;
+        match self {
+            Expr(e) => Expr(shift0(delta, label, e)),
+            Skip(l, n) if l == label => Skip(l.clone(), *n + 1),
+            Skip(l, n) => Skip(l.clone(), *n),
+        }
+    }
+}
+
+struct NormalizationContext(Context<Label, EnvItem>);
+
+impl NormalizationContext {
+    fn new() -> NormalizationContext {
+        NormalizationContext(Context::new())
+    }
+    fn insert(&self, x: &Label, e: SubExpr<X, X>) -> NormalizationContext {
+        NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
+    }
+    fn skip(&self, x: &Label) -> NormalizationContext {
+        NormalizationContext(
+            self.0
+                .map(|e| e.shift0(1, x))
+                .insert(x.clone(), EnvItem::Skip(x.clone(), 0)),
+        )
+    }
+    fn lookup(&self, var: &V<Label>) -> SubExpr<X, X> {
+        let V(x, n) = var;
+        match self.0.lookup(x, *n) {
+            Some(EnvItem::Expr(e)) => e.clone(),
+            Some(EnvItem::Skip(_, m)) => rc(ExprF::Var(V(x.clone(), *m))),
+            None => rc(ExprF::Var(V(x.clone(), *n))),
+        }
+    }
+}
+
+fn normalize_value(
+    ctx: &NormalizationContext,
+    expr: SubExpr<X, Normalized<'static>>,
+) -> SubExpr<X, X> {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
-    // Recursively normalize all subexpressions
-    let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
-        expr.as_ref().map_ref_simple(|e| normalize_value(e.clone()).unroll());
 
-    use WhatNext::*;
-    // TODO: match by move
-    let what_next = match &expr {
-        Let(f, _, r, b) => {
-            let vf0 = &V(f.clone(), 0);
-            // TODO: use a context
-            ContinueSub(subst_shift(vf0, &r.roll(), &b.roll()))
+    match expr.as_ref() {
+        Let(x, _, r, b) => {
+            let r = normalize_value(ctx, r.clone());
+            normalize_value(&ctx.insert(x, r.clone()), b.clone())
         }
-        Annot(x, _) => DoneRef(x),
-        Note(_, e) => DoneRef(e),
-        App(f, args) if args.is_empty() => DoneRef(f),
-        App(App(f, args1), args2) => Continue(App(
-            f.clone(),
-            args1
-                .iter()
-                .cloned()
-                .chain(args2.iter().map(ExprF::roll))
-                .collect(),
-        )),
-        App(Builtin(b), args) => apply_builtin(*b, args),
-        App(Lam(x, _, b), args) => {
-            let mut iter = args.iter();
-            // We know args is nonempty
-            let a = iter.next().unwrap();
-            // Beta reduce
-            let vx0 = &V(x.clone(), 0);
-            let b2 = subst_shift(vx0, &a.roll(), &b);
-            Continue(App(b2, iter.map(ExprF::roll).collect()))
-        }
-        App(UnionConstructor(l, kts), args) => {
-            let mut iter = args.iter();
-            // We know args is nonempty
-            let a = iter.next().unwrap();
-            let e = rc(UnionLit(l.clone(), rc(a.clone()), kts.clone()));
-            Continue(App(e, iter.map(ExprF::roll).collect()))
-        }
-        BoolIf(BoolLit(true), t, _) => DoneRef(t),
-        BoolIf(BoolLit(false), _, f) => DoneRef(f),
-        // TODO: interpolation
-        // TextLit(t) =>
-        OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
-        OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
-        BinOp(BoolAnd, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x && *y)),
-        BinOp(BoolOr, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x || *y)),
-        BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => Done(BoolLit(x == y)),
-        BinOp(BoolNE, BoolLit(x), BoolLit(y)) => Done(BoolLit(x != y)),
-        BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x + y))
-        }
-        BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x * y))
-        }
-        BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
-        BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
-        BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
-        BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {
-            let xs = xs.iter().cloned();
-            let ys = ys.iter().cloned();
-            Done(NEListLit(xs.chain(ys).collect()))
-        }
-        Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => Continue(App(h.clone(), vec![v.clone()])),
-                None => DoneAsIs,
+        e => {
+            // Recursively normalize all subexpressions
+            let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> = e
+                .map_ref_with_special_handling_of_binders(
+                    |e| normalize_value(ctx, e.clone()).unroll(),
+                    |x, e| normalize_value(&ctx.skip(x), e.clone()).unroll(),
+                    X::clone,
+                    Normalized::clone,
+                    Label::clone,
+                );
+
+            use WhatNext::*;
+            let what_next = match &expr {
+                Let(_, _, _, _) => unreachable!(),
+                Embed(e) => DoneRefSub(&e.0),
+                Var(v) => DoneSub(ctx.lookup(v)),
+                Annot(x, _) => DoneRef(x),
+                Note(_, e) => DoneRef(e),
+                App(f, args) if args.is_empty() => DoneRef(f),
+                App(App(f, args1), args2) => Continue(App(
+                    f.clone(),
+                    args1
+                        .iter()
+                        .cloned()
+                        .chain(args2.iter().map(ExprF::roll))
+                        .collect(),
+                )),
+                App(Builtin(b), args) => apply_builtin(*b, args),
+                App(Lam(x, _, b), args) => {
+                    let mut iter = args.iter();
+                    // We know args is nonempty
+                    let a = iter.next().unwrap();
+                    // Beta reduce
+                    let vx0 = &V(x.clone(), 0);
+                    let b2 = subst_shift(vx0, &a.roll(), &b);
+                    Continue(App(b2, iter.map(ExprF::roll).collect()))
+                }
+                App(UnionConstructor(l, kts), args) => {
+                    let mut iter = args.iter();
+                    // We know args is nonempty
+                    let a = iter.next().unwrap();
+                    let e = rc(UnionLit(l.clone(), rc(a.clone()), kts.clone()));
+                    Continue(App(e, iter.map(ExprF::roll).collect()))
+                }
+                BoolIf(BoolLit(true), t, _) => DoneRef(t),
+                BoolIf(BoolLit(false), _, f) => DoneRef(f),
+                // TODO: interpolation
+                // TextLit(t) =>
+                OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
+                OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
+                BinOp(BoolAnd, BoolLit(x), BoolLit(y)) => {
+                    Done(BoolLit(*x && *y))
+                }
+                BinOp(BoolOr, BoolLit(x), BoolLit(y)) => {
+                    Done(BoolLit(*x || *y))
+                }
+                BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => Done(BoolLit(x == y)),
+                BinOp(BoolNE, BoolLit(x), BoolLit(y)) => Done(BoolLit(x != y)),
+                BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
+                    Done(NaturalLit(x + y))
+                }
+                BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
+                    Done(NaturalLit(x * y))
+                }
+                BinOp(TextAppend, TextLit(x), TextLit(y)) => {
+                    Done(TextLit(x + y))
+                }
+                BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
+                BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
+                BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {
+                    let xs = xs.iter().cloned();
+                    let ys = ys.iter().cloned();
+                    Done(NEListLit(xs.chain(ys).collect()))
+                }
+                Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
+                    match handlers.get(&l) {
+                        Some(h) => Continue(App(h.clone(), vec![v.clone()])),
+                        None => DoneAsIs,
+                    }
+                }
+                Merge(RecordLit(handlers), UnionConstructor(l, _), _) => {
+                    match handlers.get(&l) {
+                        Some(h) => DoneRefSub(h),
+                        None => DoneAsIs,
+                    }
+                }
+                Field(RecordLit(kvs), l) => match kvs.get(&l) {
+                    Some(r) => DoneRefSub(r),
+                    None => DoneAsIs,
+                },
+                Field(UnionType(kts), l) => {
+                    Done(UnionConstructor(l.clone(), kts.clone()))
+                }
+                Projection(_, ls) if ls.is_empty() => {
+                    Done(RecordLit(std::collections::BTreeMap::new()))
+                }
+                Projection(RecordLit(kvs), ls) => Done(RecordLit(
+                    ls.iter()
+                        .filter_map(|l| {
+                            kvs.get(l).map(|x| (l.clone(), x.clone()))
+                        })
+                        .collect(),
+                )),
+                _ => DoneAsIs,
+            };
+
+            match what_next {
+                Continue(e) => normalize_value(ctx, e.embed_absurd().roll()),
+                Done(e) => e.roll(),
+                DoneRef(e) => e.roll(),
+                DoneSub(e) => e,
+                DoneRefSub(e) => e.clone(),
+                DoneAsIs => rc(expr.map_ref_simple(ExprF::roll).map_ref(
+                    SubExpr::clone,
+                    X::clone,
+                    |_| unreachable!(),
+                    Label::clone,
+                )),
             }
         }
-        Merge(RecordLit(handlers), UnionConstructor(l, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => DoneRefSub(h),
-                None => DoneAsIs,
-            }
-        }
-        Field(RecordLit(kvs), l) => match kvs.get(&l) {
-            Some(r) => DoneRefSub(r),
-            None => DoneAsIs,
-        },
-        Field(UnionType(kts), l) => {
-            Done(UnionConstructor(l.clone(), kts.clone()))
-        }
-        Projection(_, ls) if ls.is_empty() => {
-            Done(RecordLit(std::collections::BTreeMap::new()))
-        }
-        Projection(RecordLit(kvs), ls) => Done(RecordLit(
-            ls.iter()
-                .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
-                .collect(),
-        )),
-        Embed(e) => DoneRefSub(&e.0),
-        _ => DoneAsIs,
-    };
-
-    match what_next {
-        Continue(e) => normalize_value(e.embed_absurd().roll()),
-        ContinueSub(e) => normalize_value(e.embed_absurd()),
-        Done(e) => e.roll(),
-        DoneRef(e) => e.roll(),
-        DoneRefSub(e) => e.clone(),
-        DoneAsIs => rc(expr.map_ref_simple(ExprF::roll).map_ref(
-            SubExpr::clone,
-            X::clone,
-            |_| unreachable!(),
-            Label::clone,
-        )),
     }
 }
 
@@ -349,7 +417,7 @@ fn normalize_value(expr: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
 /// leave ill-typed sub-expressions unevaluated.
 ///
 fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
-    normalize_value(e)
+    normalize_value(&NormalizationContext::new(), e)
 }
 
 #[cfg(test)]
