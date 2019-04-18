@@ -43,6 +43,20 @@ impl<K: Hash + Eq + Clone, T> Context<K, T> {
                 .collect(),
         )
     }
+
+    pub fn lookup_all<'a>(&'a self, k: &K) -> impl Iterator<Item = &T> {
+        self.0.get(k).into_iter().flat_map(|v| v.iter())
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &T)> {
+        self.0
+            .iter()
+            .flat_map(|(k, vs)| vs.iter().map(move |v| (k, v)))
+    }
+
+    pub fn iter_keys<'a>(&'a self) -> impl Iterator<Item = (&K, &Vec<T>)> {
+        self.0.iter()
+    }
 }
 
 impl<K: Hash + Eq + Clone, T: Clone> Context<K, T> {

@@ -44,9 +44,9 @@ impl<'a> Normalized<'a> {
     fn unroll_ref(&self) -> &Expr<X, X> {
         self.as_expr().as_ref()
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
         // shift the type too ?
-        Normalized(shift(delta, var, &self.0), self.1.clone(), self.2)
+        Normalized(shift0(delta, label, &self.0), self.1.clone(), self.2)
     }
 }
 impl Normalized<'static> {
@@ -86,10 +86,10 @@ impl<'a> Type<'a> {
             Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
         }
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
         use TypeInternal::*;
         Type(match &self.0 {
-            Expr(e) => Expr(Box::new(e.shift(delta, var))),
+            Expr(e) => Expr(Box::new(e.shift0(delta, label))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         })
@@ -378,9 +378,7 @@ fn type_with(
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
-            let ctx2 = ctx
-                .insert(x.clone(), t.clone())
-                .map(|e| e.shift(1, &V(x.clone(), 0)));
+            let ctx2 = ctx.insert(x.clone(), t.clone()).map(|e| e.shift0(1, x));
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
@@ -395,9 +393,8 @@ fn type_with(
                 mkerr(InvalidInputType(ta.into_normalized()?)),
             );
 
-            let ctx2 = ctx
-                .insert(x.clone(), ta.clone())
-                .map(|e| e.shift(1, &V(x.clone(), 0)));
+            let ctx2 =
+                ctx.insert(x.clone(), ta.clone()).map(|e| e.shift0(1, x));
             let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,
