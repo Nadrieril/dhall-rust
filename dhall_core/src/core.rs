@@ -472,6 +472,7 @@ impl<N, E> SubExpr<N, E> {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // Recursive call
+            // TODO: don't discard the note !
             ExprF::Note(_, e) => e
                 .map_subexprs_with_special_handling_of_binders(
                     map_expr,
@@ -505,8 +506,9 @@ impl<N, E> SubExpr<N, E> {
 }
 
 impl<N: Clone> SubExpr<N, X> {
+    // Deprecated, use embed_absurd instead
     pub fn absurd<T>(&self) -> SubExpr<N, T> {
-        rc(self.as_ref().absurd_rec())
+        self.embed_absurd()
     }
     pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
         rc(self.as_ref().embed_absurd())
@@ -530,25 +532,8 @@ pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
     SubExpr(Rc::new(x))
 }
 
-pub fn app<N, E>(f: Expr<N, E>, args: Vec<SubExpr<N, E>>) -> Expr<N, E> {
-    if args.is_empty() {
-        f
-    } else {
-        ExprF::App(rc(f), args)
-    }
-}
-
-pub fn app_rc<N, E>(
-    f: SubExpr<N, E>,
-    args: Vec<SubExpr<N, E>>,
-) -> SubExpr<N, E> {
-    if args.is_empty() {
-        f
-    } else {
-        rc(ExprF::App(f, args))
-    }
-}
-
+/// Add an isize to an usize
+/// Panics on over/underflow
 fn add_ui(u: usize, i: isize) -> usize {
     if i < 0 {
         u.checked_sub(i.checked_neg().unwrap() as usize).unwrap()

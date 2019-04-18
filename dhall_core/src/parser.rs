@@ -746,7 +746,7 @@ make_parser! {
     rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            spanned(span, app(first, rest.map(rc).collect()))
+            spanned(span, App(rc(first), rest.map(rc).collect()))
         },
     ));
 
