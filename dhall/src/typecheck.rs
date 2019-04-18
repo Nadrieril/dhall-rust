@@ -378,7 +378,8 @@ fn type_with(
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
-            let ctx2 = ctx.insert(x.clone(), t.clone()).map(|e| e.shift0(1, x));
+            let ctx2 =
+                ctx.insert(x.clone(), t.clone()).map(|_, e| e.shift0(1, x));
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
@@ -394,7 +395,7 @@ fn type_with(
             );
 
             let ctx2 =
-                ctx.insert(x.clone(), ta.clone()).map(|e| e.shift0(1, x));
+                ctx.insert(x.clone(), ta.clone()).map(|_, e| e.shift0(1, x));
             let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,

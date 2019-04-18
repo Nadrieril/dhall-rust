@@ -41,11 +41,13 @@ impl<K: Hash + Eq + Clone, T> Context<K, T> {
         })
     }
 
-    pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<K, U> {
+    pub fn map<U, F: Fn(&K, &T) -> U>(&self, f: F) -> Context<K, U> {
         Context(
             self.0
                 .iter()
-                .map(|(k, v)| ((*k).clone(), v.iter().map(&f).collect()))
+                .map(|(k, vs)| {
+                    ((*k).clone(), vs.iter().map(|v| f(k, v)).collect())
+                })
                 .collect(),
         )
     }

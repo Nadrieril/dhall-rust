@@ -216,34 +216,10 @@ where
     Continue(ExprF::App(ret, rest))
 }
 
-// Small enum to help with being DRY
-enum WhatNext<'a, N, E> {
-    // Recurse on this expression
-    Continue(Expr<N, E>),
-    // The following expression is the normal form
-    Done(Expr<N, E>),
-    DoneRef(&'a Expr<N, E>),
-    DoneSub(SubExpr<N, E>),
-    DoneRefSub(&'a SubExpr<N, E>),
-    // The current expression is already in normal form
-    DoneAsIs,
-}
-
 #[derive(Debug, Clone)]
 enum EnvItem {
     Expr(SubExpr<X, X>),
-    Skip(Label, usize),
-}
-
-impl EnvItem {
-    fn shift0(&self, delta: isize, label: &Label) -> Self {
-        use EnvItem::*;
-        match self {
-            Expr(e) => Expr(shift0(delta, label, e)),
-            Skip(l, n) if l == label => Skip(l.clone(), *n + 1),
-            Skip(l, n) => Skip(l.clone(), *n),
-        }
-    }
+    Skip(usize),
 }
 
 struct NormalizationContext(Context<Label, EnvItem>);
@@ -258,18 +234,38 @@ impl NormalizationContext {
     fn skip(&self, x: &Label) -> NormalizationContext {
         NormalizationContext(
             self.0
-                .map(|e| e.shift0(1, x))
-                .insert(x.clone(), EnvItem::Skip(x.clone(), 0)),
+                .map(|l, e| {
+                    use EnvItem::*;
+                    match e {
+                        Expr(e) => Expr(shift0(1, x, e)),
+                        Skip(n) if l == x => Skip(*n + 1),
+                        Skip(n) => Skip(*n),
+                    }
+                })
+                .insert(x.clone(), EnvItem::Skip(0)),
         )
     }
     fn lookup(&self, var: &V<Label>) -> SubExpr<X, X> {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
-            Some(EnvItem::Skip(_, m)) => rc(ExprF::Var(V(x.clone(), *m))),
+            Some(EnvItem::Skip(m)) => rc(ExprF::Var(V(x.clone(), *m))),
             None => rc(ExprF::Var(V(x.clone(), *n))),
         }
     }
+}
+
+// Small enum to help with being DRY
+enum WhatNext<'a, N, E> {
+    // Recurse on this expression
+    Continue(Expr<N, E>),
+    // The following expression is the normal form
+    Done(Expr<N, E>),
+    DoneRef(&'a Expr<N, E>),
+    DoneSub(SubExpr<N, E>),
+    DoneRefSub(&'a SubExpr<N, E>),
+    // The current expression is already in normal form
+    DoneAsIs,
 }
 
 fn normalize_value(
