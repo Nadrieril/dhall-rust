@@ -375,11 +375,7 @@ impl<N, E> SubExpr<N, E> {
         self.0.as_ref()
     }
 
-    pub fn map_ref<'a, F1, F2>(
-        &'a self,
-        map_expr: F1,
-        map_under_binder: F2,
-    ) -> Self
+    fn map_ref<'a, F1, F2>(&'a self, map_expr: F1, map_under_binder: F2) -> Self
     where
         F1: FnMut(&'a Self) -> Self,
         F2: FnMut(&'a Label, &'a Self) -> Self,
@@ -493,6 +489,18 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
+/// Applies `shift` to a single var.
+/// The first var is the var to shift away from; the second is the variable to shift
+fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
+    let V(x, n) = var;
+    let V(y, m) = in_expr;
+    if x == y && n <= m {
+        V(y.clone(), add_ui(*m, delta))
+    } else {
+        V(y.clone(), *m)
+    }
+}
+
 /// `shift` is used by both normalization and type-checking to avoid variable
 /// capture by shifting variable indices
 /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
@@ -503,17 +511,16 @@ pub fn shift<S, A>(
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
     use crate::ExprF::*;
-    let V(x, n) = var;
-    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
-        let n = if x == y { n + 1 } else { *n };
-        let newvar = &V(x.clone(), n);
-        shift(delta, newvar, e)
-    };
     match in_expr.as_ref() {
-        Var(V(y, m)) if x == y && n <= m => {
-            rc(Var(V(y.clone(), add_ui(*m, delta))))
-        }
-        _ => in_expr.map_ref(|e| shift(delta, var, e), under_binder),
+        Var(v) => rc(Var(shift_var(delta, var, v))),
+        _ => in_expr.map_ref(
+            |e| shift(delta, var, e),
+            |l: &Label, e| {
+                let vl = V(l.clone(), 0);
+                let newvar = shift_var(1, &vl, var);
+                shift(delta, &newvar, e)
+            },
+        ),
     }
 }
 
@@ -531,18 +538,15 @@ pub fn subst_shift<S, A>(
     in_expr: &SubExpr<S, A>,
 ) -> SubExpr<S, A> {
     use crate::ExprF::*;
-    let V(x, n) = var;
-    let under_binder = |y: &Label, e: &SubExpr<_, _>| {
-        let n = if x == y { n + 1 } else { *n };
-        let newvar = &V(x.clone(), n);
-        subst_shift(newvar, &shift(1, &V(y.clone(), 0), value), e)
-    };
     match in_expr.as_ref() {
-        Var(V(y, m)) if x == y && m == n => SubExpr::clone(value),
-        Var(V(y, m)) if x == y && m > n => {
-            let m = add_ui(*m, -1);
-            rc(Var(V(x.clone(), m)))
-        }
-        _ => in_expr.map_ref(|e| subst_shift(var, &value, e), under_binder),
+        Var(v) if v == var => SubExpr::clone(value),
+        Var(v) => rc(Var(shift_var(-1, var, v))),
+        _ => in_expr.map_ref(
+            |e| subst_shift(var, &value, e),
+            |l: &Label, e| {
+                let vl = V(l.clone(), 0);
+                subst_shift(&shift_var(1, &vl, var), &shift(1, &vl, value), e)
+            },
+        ),
     }
 }
