@@ -213,21 +213,21 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
     }
 }
 
-impl<S, A> Expr<S, A> {
-    pub fn map_shallow<T, B, F1, F2, F3, F4>(
+impl<N, E> Expr<N, E> {
+    pub fn map_shallow<N2, E2, F1, F2, F3, F4>(
         &self,
         map_expr: F1,
         map_note: F2,
         map_embed: F3,
         map_label: F4,
-    ) -> Expr<T, B>
+    ) -> Expr<N2, E2>
     where
-        A: Clone,
-        T: Clone,
-        S: Clone,
-        F1: Fn(&Self) -> Expr<T, B>,
-        F2: Fn(&S) -> T,
-        F3: Fn(&A) -> B,
+        E: Clone,
+        N2: Clone,
+        N: Clone,
+        F1: Fn(&Self) -> Expr<N2, E2>,
+        F2: Fn(&N) -> N2,
+        F3: Fn(&E) -> E2,
         F4: Fn(&Label) -> Label,
     {
         self.map_ref(
@@ -238,42 +238,43 @@ impl<S, A> Expr<S, A> {
         )
     }
 
-    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<S, B>
+    pub fn map_embed<E2, F>(&self, map_embed: &F) -> Expr<N, E2>
     where
-        A: Clone,
-        S: Clone,
-        F: Fn(&A) -> B,
+        E: Clone,
+        N: Clone,
+        F: Fn(&E) -> E2,
     {
-        let recurse = |e: &Expr<S, A>| -> Expr<S, B> { e.map_embed(map_embed) };
-        self.map_shallow(recurse, S::clone, map_embed, Label::clone)
+        let recurse =
+            |e: &Expr<N, E>| -> Expr<N, E2> { e.map_embed(map_embed) };
+        self.map_shallow(recurse, N::clone, map_embed, Label::clone)
     }
 
-    pub fn traverse_embed<B, Err, F>(
+    pub fn traverse_embed<E2, Err, F>(
         &self,
         map_embed: F,
-    ) -> Result<Expr<S, B>, Err>
+    ) -> Result<Expr<N, E2>, Err>
     where
-        S: Clone,
-        B: Clone,
-        F: FnMut(&A) -> Result<B, Err>,
+        N: Clone,
+        E2: Clone,
+        F: FnMut(&E) -> Result<E2, Err>,
     {
         self.visit(&mut visitor::TraverseEmbedVisitor(map_embed))
     }
 
     pub fn map_label<F>(&self, map_label: &F) -> Self
     where
-        A: Clone,
-        S: Clone,
+        E: Clone,
+        N: Clone,
         F: Fn(&Label) -> Label,
     {
         let recurse = |e: &Self| -> Self { e.map_label(map_label) };
-        self.map_shallow(recurse, S::clone, A::clone, map_label)
+        self.map_shallow(recurse, N::clone, E::clone, map_label)
     }
 
-    pub fn roll(&self) -> SubExpr<S, A>
+    pub fn roll(&self) -> SubExpr<N, E>
     where
-        S: Clone,
-        A: Clone,
+        N: Clone,
+        E: Clone,
     {
         rc(ExprF::clone(self))
     }
@@ -574,11 +575,11 @@ fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
 /// capture by shifting variable indices
 /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
 /// for details
-pub fn shift<S, A>(
+pub fn shift<N, E>(
     delta: isize,
     var: &V<Label>,
-    in_expr: &SubExpr<S, A>,
-) -> SubExpr<S, A> {
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(v) => rc(Var(shift_var(delta, var, v))),
@@ -601,11 +602,11 @@ pub fn shift<S, A>(
 /// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
 /// ```
 ///
-pub fn subst_shift<S, A>(
+pub fn subst_shift<N, E>(
     var: &V<Label>,
-    value: &SubExpr<S, A>,
-    in_expr: &SubExpr<S, A>,
-) -> SubExpr<S, A> {
+    value: &SubExpr<N, E>,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(v) if v == var => SubExpr::clone(value),
