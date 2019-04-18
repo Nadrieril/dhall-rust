@@ -496,7 +496,7 @@ fn type_last_layer(
                         PhantomData
                     )))
                 );
-                let tx = mktype(ctx, tx.absurd())?;
+                let tx = mktype(ctx, tx.embed_absurd())?;
                 ensure_equal!(&tx, a.get_type()?, {
                     let a = a.clone();
                     mkerr(TypeMismatch(
@@ -511,7 +511,7 @@ fn type_last_layer(
                         x.clone(),
                         None,
                         a.clone().normalize().embed(),
-                        tb.absurd(),
+                        tb.embed_absurd(),
                     )),
                 )?;
             }
@@ -675,7 +675,7 @@ fn type_last_layer(
         }
         Field(r, x) => match r.get_type()?.unroll_ref()?.as_ref() {
             RecordType(kts) => match kts.get(&x) {
-                Some(t) => Ok(RetExpr(t.unroll().absurd_rec())),
+                Some(t) => Ok(RetExpr(t.unroll().embed_absurd())),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {

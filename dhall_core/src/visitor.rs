@@ -472,36 +472,6 @@ where
     }
 }
 
-pub struct TraverseRefSimpleVisitor<F1> {
-    pub visit_subexpr: F1,
-}
-
-impl<'a, SE, L, N, E, SE2, Err, F1>
-    ExprFFallibleVisitor<'a, SE, SE2, L, L, N, N, E, E>
-    for TraverseRefSimpleVisitor<F1>
-where
-    SE: 'a,
-    L: Ord + Clone + 'a,
-    N: Clone + 'a,
-    E: Clone + 'a,
-    F1: FnMut(&'a SE) -> Result<SE2, Err>,
-{
-    type Error = Err;
-
-    fn visit_subexpr(&mut self, subexpr: &'a SE) -> Result<SE2, Self::Error> {
-        (self.visit_subexpr)(subexpr)
-    }
-    fn visit_note(self, note: &'a N) -> Result<N, Self::Error> {
-        Ok(N::clone(note))
-    }
-    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
-        Ok(E::clone(embed))
-    }
-    fn visit_label(&mut self, label: &'a L) -> Result<L, Self::Error> {
-        Ok(L::clone(label))
-    }
-}
-
 pub struct TraverseEmbedVisitor<F1>(pub F1);
 
 impl<'a, 'b, N, E, E2, Err, F1>

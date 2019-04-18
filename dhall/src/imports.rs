@@ -98,8 +98,8 @@ fn do_resolve_expr<'a>(
                 }
             }
         };
-    let expr = expr.as_ref().traverse_embed(resolve)?;
-    Ok(Resolved(rc(expr)))
+    let expr = expr.traverse_embed(resolve)?;
+    Ok(Resolved(expr))
 }
 
 fn skip_resolve_expr(
@@ -109,8 +109,8 @@ fn skip_resolve_expr(
         |import: &Import| -> Result<Normalized<'static>, ImportError> {
             Err(ImportError::UnexpectedImport(import.clone()))
         };
-    let expr = expr.as_ref().traverse_embed(&resolve)?;
-    Ok(Resolved(rc(expr)))
+    let expr = expr.traverse_embed(resolve)?;
+    Ok(Resolved(expr))
 }
 
 impl<'a> Parsed<'a> {

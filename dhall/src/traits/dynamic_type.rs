@@ -35,7 +35,7 @@ impl<'a> DynamicType for Normalized<'a> {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
                 &Context::new(),
-                self.0.absurd(),
+                self.0.embed_absurd(),
                 TypeMessage::Untyped,
             )),
         }
