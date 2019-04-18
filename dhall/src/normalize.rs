@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use crate::expr::*;
 use dhall_core::*;
-use dhall_generator::dhall_expr;
+use dhall_generator as dhall;
 use std::fmt;
 
 impl<'a> Typed<'a> {
@@ -68,7 +68,7 @@ where
             (rc(NEListLit(ys)), rest)
         }
         (ListIndexed, [_, EmptyListLit(t), rest..]) => (
-            dhall_expr!([] : List ({ index : Natural, value : t })),
+            dhall::subexpr!([] : List ({ index : Natural, value : t })),
             rest,
         ),
         (ListIndexed, [_, NEListLit(xs), rest..]) => {
@@ -78,7 +78,7 @@ where
                 .enumerate()
                 .map(|(i, e)| {
                     let i = rc(NaturalLit(i));
-                    dhall_expr!({ index = i, value = e })
+                    dhall::subexpr!({ index = i, value = e })
                 })
                 .collect();
             (rc(NEListLit(xs)), rest)
@@ -100,7 +100,7 @@ where
                 let a1 = shift(1, &V("x".into(), 0), &a0);
                 let g = g.roll();
                 break 'ret (
-                    dhall_expr!(
+                    dhall::subexpr!(
                         g
                         (List a0)
                         (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
@@ -126,7 +126,7 @@ where
                 let a0 = a0.roll();
                 let g = g.roll();
                 break 'ret (
-                    dhall_expr!(
+                    dhall::subexpr!(
                         g
                         (Optional a0)
                         (λ(x: a0) -> Some x)
@@ -144,7 +144,7 @@ where
                 let x = x.clone();
                 let acc = acc.clone();
                 let cons = cons.roll();
-                dhall_expr!(cons x acc)
+                dhall::subexpr!(cons x acc)
             }),
             rest,
         ),
@@ -155,7 +155,7 @@ where
         (OptionalFold, [_, NEOptionalLit(x), _, just, _, rest..]) => {
             let x = x.clone();
             let just = just.roll();
-            (dhall_expr!(just x), rest)
+            (dhall::subexpr!(just x), rest)
         }
         (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing, rest..]) => {
             (nothing.roll(), rest)
@@ -179,7 +179,7 @@ where
                 };
                 let g = g.roll();
                 break 'ret (
-                    dhall_expr!(g Natural (λ(x : Natural) -> x + 1) 0),
+                    dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
                     rest,
                 );
             }
@@ -193,7 +193,7 @@ where
             let t = t.roll();
             let succ = succ.roll();
             let zero = zero.roll();
-            (dhall_expr!(succ (fold n t succ zero)), rest)
+            (dhall::subexpr!(succ (fold n t succ zero)), rest)
         }
         // (NaturalFold, Some(App(f2, args2)), _) => {
         //     match (f2.as_ref(), args2.as_slice()) {

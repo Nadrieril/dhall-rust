@@ -10,12 +10,6 @@ mod quote;
 
 use proc_macro::TokenStream;
 
-// Deprecated
-#[proc_macro]
-pub fn dhall_expr(input: TokenStream) -> TokenStream {
-    subexpr(input)
-}
-
 #[proc_macro]
 pub fn expr(input: TokenStream) -> TokenStream {
     quote::expr(input)

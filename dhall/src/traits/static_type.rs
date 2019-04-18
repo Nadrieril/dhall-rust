@@ -1,6 +1,6 @@
 use crate::expr::*;
 use dhall_core::*;
-use dhall_generator::*;
+use dhall_generator as dhall;
 
 /// A value that has a statically-known Dhall type.
 ///
@@ -57,49 +57,49 @@ impl<'a> StaticType for SimpleType<'a> {
 
 impl SimpleStaticType for bool {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Bool))
+        mktype(dhall::subexpr!(Bool))
     }
 }
 
 impl SimpleStaticType for Natural {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Natural))
+        mktype(dhall::subexpr!(Natural))
     }
 }
 
 impl SimpleStaticType for u32 {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Natural))
+        mktype(dhall::subexpr!(Natural))
     }
 }
 
 impl SimpleStaticType for u64 {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Natural))
+        mktype(dhall::subexpr!(Natural))
     }
 }
 
 impl SimpleStaticType for Integer {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Integer))
+        mktype(dhall::subexpr!(Integer))
     }
 }
 
 impl SimpleStaticType for i32 {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Integer))
+        mktype(dhall::subexpr!(Integer))
     }
 }
 
 impl SimpleStaticType for i64 {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Integer))
+        mktype(dhall::subexpr!(Integer))
     }
 }
 
 impl SimpleStaticType for String {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!(Text))
+        mktype(dhall::subexpr!(Text))
     }
 }
 
@@ -107,21 +107,21 @@ impl<A: SimpleStaticType, B: SimpleStaticType> SimpleStaticType for (A, B) {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
         let ta: SubExpr<_, _> = A::get_simple_static_type().into();
         let tb: SubExpr<_, _> = B::get_simple_static_type().into();
-        mktype(dhall_expr!({ _1: ta, _2: tb }))
+        mktype(dhall::subexpr!({ _1: ta, _2: tb }))
     }
 }
 
 impl<T: SimpleStaticType> SimpleStaticType for Option<T> {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
         let t: SubExpr<_, _> = T::get_simple_static_type().into();
-        mktype(dhall_expr!(Optional t))
+        mktype(dhall::subexpr!(Optional t))
     }
 }
 
 impl<T: SimpleStaticType> SimpleStaticType for Vec<T> {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
         let t: SubExpr<_, _> = T::get_simple_static_type().into();
-        mktype(dhall_expr!(List t))
+        mktype(dhall::subexpr!(List t))
     }
 }
 
@@ -133,7 +133,7 @@ impl<'a, T: SimpleStaticType> SimpleStaticType for &'a T {
 
 impl<T> SimpleStaticType for std::marker::PhantomData<T> {
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
-        mktype(dhall_expr!({}))
+        mktype(dhall::subexpr!({}))
     }
 }
 
@@ -143,6 +143,6 @@ impl<T: SimpleStaticType, E: SimpleStaticType> SimpleStaticType
     fn get_simple_static_type<'a>() -> SimpleType<'a> {
         let tt: SubExpr<_, _> = T::get_simple_static_type().into();
         let te: SubExpr<_, _> = E::get_simple_static_type().into();
-        mktype(dhall_expr!(< Ok: tt | Err: te>))
+        mktype(dhall::subexpr!(< Ok: tt | Err: te>))
     }
 }
