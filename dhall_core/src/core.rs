@@ -205,109 +205,26 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
 }
 
 impl<SE, L, N, E> ExprF<SE, L, N, E> {
-    pub fn visit<'a, V, Return>(&'a self, v: V) -> Return
+    pub(crate) fn visit<'a, V, Return>(&'a self, v: V) -> Return
     where
         V: visitor::GenericVisitor<&'a ExprF<SE, L, N, E>, Return>,
     {
         v.visit(self)
     }
-}
 
-impl<S, A> Expr<S, A> {
-    pub fn map_shallow<T, B, F1, F2, F3, F4>(
-        &self,
-        map_expr: F1,
-        map_note: F2,
-        map_embed: F3,
-        map_label: F4,
-    ) -> Expr<T, B>
-    where
-        A: Clone,
-        T: Clone,
-        S: Clone,
-        F1: Fn(&Self) -> Expr<T, B>,
-        F2: Fn(&S) -> T,
-        F3: Fn(&A) -> B,
-        F4: Fn(&Label) -> Label,
-    {
-        self.map_ref(
-            |x| rc(map_expr(x.as_ref())),
-            |_, x| rc(map_expr(x.as_ref())),
-            map_note,
-            map_embed,
-            map_label,
-        )
-    }
-
-    pub fn map_embed<B, F>(&self, map_embed: &F) -> Expr<S, B>
-    where
-        A: Clone,
-        S: Clone,
-        F: Fn(&A) -> B,
-    {
-        let recurse = |e: &Expr<S, A>| -> Expr<S, B> { e.map_embed(map_embed) };
-        self.map_shallow(recurse, S::clone, map_embed, Label::clone)
-    }
-
-    pub fn traverse_embed<B, Err, F>(
-        &self,
-        map_embed: F,
-    ) -> Result<Expr<S, B>, Err>
-    where
-        S: Clone,
-        B: Clone,
-        F: FnMut(&A) -> Result<B, Err>,
-    {
-        self.visit(&mut visitor::TraverseEmbedVisitor(map_embed))
-    }
-
-    pub fn map_label<F>(&self, map_label: &F) -> Self
-    where
-        A: Clone,
-        S: Clone,
-        F: Fn(&Label) -> Label,
-    {
-        let recurse = |e: &Self| -> Self { e.map_label(map_label) };
-        self.map_shallow(recurse, S::clone, A::clone, map_label)
-    }
-
-    pub fn roll(&self) -> SubExpr<S, A>
-    where
-        S: Clone,
-        A: Clone,
-    {
-        rc(ExprF::clone(self))
-    }
-}
-
-impl<N: Clone, E> Expr<N, E> {
-    pub fn squash_embed<E2: Clone>(
-        &self,
-        f: impl FnMut(&E) -> SubExpr<N, E2>,
-    ) -> SubExpr<N, E2> {
-        rc(self.visit(&mut visitor::SquashEmbedVisitor(f)))
-    }
-}
-
-impl<SE, L, N, E> ExprF<SE, L, N, E> {
-    pub fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
+    fn traverse_ref_with_special_handling_of_binders<'a, SE2, L2, N2, E2, Err>(
         &'a self,
-        visit_subexpr: F1,
-        visit_under_binder: F2,
-        visit_note: F3,
-        visit_embed: F4,
-        visit_label: F5,
+        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        visit_under_binder: impl FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
+        visit_note: impl FnOnce(&'a N) -> Result<N2, Err>,
+        visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
+        visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
     ) -> Result<ExprF<SE2, L2, N2, E2>, Err>
     where
         L: Ord,
         L2: Ord,
-        F1: FnMut(&'a SE) -> Result<SE2, Err>,
-        F2: FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
-        F3: FnOnce(&'a N) -> Result<N2, Err>,
-        F4: FnOnce(&'a E) -> Result<E2, Err>,
-        F5: FnMut(&'a L) -> Result<L2, Err>,
     {
-        self.visit(visitor::TraverseRefVisitor {
+        self.visit(visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
             visit_note,
@@ -316,24 +233,38 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         })
     }
 
-    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+    fn traverse_ref<'a, SE2, L2, N2, E2, Err>(
         &'a self,
-        mut map_subexpr: F1,
-        mut map_under_binder: F2,
-        mut map_note: F3,
-        mut map_embed: F4,
-        mut map_label: F5,
+        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        visit_note: impl FnOnce(&'a N) -> Result<N2, Err>,
+        visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
+        visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
+    ) -> Result<ExprF<SE2, L2, N2, E2>, Err>
+    where
+        L: Ord,
+        L2: Ord,
+    {
+        self.visit(visitor::TraverseRefVisitor {
+            visit_subexpr,
+            visit_note,
+            visit_embed,
+            visit_label,
+        })
+    }
+
+    pub fn map_ref_with_special_handling_of_binders<'a, SE2, L2, N2, E2>(
+        &'a self,
+        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
+        mut map_under_binder: impl FnMut(&'a L, &'a SE) -> SE2,
+        map_note: impl FnOnce(&'a N) -> N2,
+        map_embed: impl FnOnce(&'a E) -> E2,
+        mut map_label: impl FnMut(&'a L) -> L2,
     ) -> ExprF<SE2, L2, N2, E2>
     where
         L: Ord,
         L2: Ord,
-        F1: FnMut(&'a SE) -> SE2,
-        F2: FnMut(&'a L, &'a SE) -> SE2,
-        F3: FnMut(&'a N) -> N2,
-        F4: FnMut(&'a E) -> E2,
-        F5: FnMut(&'a L) -> L2,
     {
-        trivial_result(self.traverse_ref(
+        trivial_result(self.traverse_ref_with_special_handling_of_binders(
             |x| Ok(map_subexpr(x)),
             |l, x| Ok(map_under_binder(l, x)),
             |x| Ok(map_note(x)),
@@ -342,84 +273,89 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         ))
     }
 
-    pub fn traverse_ref_simple<'a, SE2, Err, F1>(
+    pub fn map_ref<'a, SE2, L2, N2, E2>(
         &'a self,
-        visit_subexpr: F1,
+        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
+        map_note: impl FnOnce(&'a N) -> N2,
+        map_embed: impl FnOnce(&'a E) -> E2,
+        mut map_label: impl FnMut(&'a L) -> L2,
+    ) -> ExprF<SE2, L2, N2, E2>
+    where
+        L: Ord,
+        L2: Ord,
+    {
+        trivial_result(self.traverse_ref(
+            |x| Ok(map_subexpr(x)),
+            |x| Ok(map_note(x)),
+            |x| Ok(map_embed(x)),
+            |x| Ok(map_label(x)),
+        ))
+    }
+
+    pub fn traverse_ref_simple<'a, SE2, Err>(
+        &'a self,
+        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprF<SE2, L, N, E>, Err>
     where
         L: Ord + Clone,
         N: Clone,
         E: Clone,
-        F1: FnMut(&'a SE) -> Result<SE2, Err>,
     {
-        self.visit(visitor::TraverseRefSimpleVisitor { visit_subexpr })
+        self.traverse_ref(
+            visit_subexpr,
+            |x| Ok(N::clone(x)),
+            |x| Ok(E::clone(x)),
+            |x| Ok(L::clone(x)),
+        )
     }
 
-    pub fn map_ref_simple<'a, SE2, F1>(
+    pub fn map_ref_simple<'a, SE2>(
         &'a self,
-        map_subexpr: F1,
+        map_subexpr: impl Fn(&'a SE) -> SE2,
     ) -> ExprF<SE2, L, N, E>
     where
-        L: Ord,
-        L: Clone,
+        L: Ord + Clone,
         N: Clone,
         E: Clone,
-        F1: Fn(&'a SE) -> SE2,
     {
-        trivial_result(self.traverse_ref_simple(|x| Ok(map_subexpr(x))))
+        self.map_ref(map_subexpr, N::clone, E::clone, L::clone)
     }
 }
 
-impl<N, E> SubExpr<N, E> {
-    pub fn as_ref(&self) -> &Expr<N, E> {
-        self.0.as_ref()
-    }
-
-    fn map_ref<'a, F1, F2>(&'a self, map_expr: F1, map_under_binder: F2) -> Self
+impl<N, E> Expr<N, E> {
+    fn traverse_embed<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<Expr<N, E2>, Err>
     where
-        F1: FnMut(&'a Self) -> Self,
-        F2: FnMut(&'a Label, &'a Self) -> Self,
+        N: Clone,
     {
-        match self.as_ref() {
-            ExprF::Embed(_) => SubExpr::clone(self),
-            // Recursive call
-            ExprF::Note(_, e) => e.map_ref(map_expr, map_under_binder),
-            // Call ExprF::map_ref
-            e => rc(e.map_ref(
-                map_expr,
-                map_under_binder,
-                |_| unreachable!(),
-                |_| unreachable!(),
-                Label::clone,
-            )),
-        }
+        self.visit(&mut visitor::TraverseEmbedVisitor(visit_embed))
     }
 
-    pub fn map_ref_simple<F1>(&self, map_expr: F1) -> Self
+    fn map_embed<E2>(&self, mut map_embed: impl FnMut(&E) -> E2) -> Expr<N, E2>
     where
-        F1: Fn(&Self) -> Self,
+        N: Clone,
     {
-        self.map_ref(&map_expr, |_, e| map_expr(e))
+        trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
 
-    pub fn unroll(&self) -> Expr<N, E>
+    pub fn roll(&self) -> SubExpr<N, E>
     where
         N: Clone,
         E: Clone,
     {
-        ExprF::clone(self.as_ref())
+        rc(ExprF::clone(self))
     }
-}
 
-impl<N: Clone> SubExpr<N, X> {
-    pub fn absurd<T>(&self) -> SubExpr<N, T> {
-        rc(self.as_ref().absurd_rec())
-    }
-}
-
-impl<E: Clone> SubExpr<X, E> {
-    pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
-        rc(self.as_ref().note_absurd())
+    pub fn squash_embed<E2>(
+        &self,
+        f: impl FnMut(&E) -> SubExpr<N, E2>,
+    ) -> SubExpr<N, E2>
+    where
+        N: Clone,
+    {
+        trivial_result(self.visit(&mut visitor::SquashEmbedVisitor(f)))
     }
 }
 
@@ -429,25 +365,87 @@ impl<E: Clone> Expr<X, E> {
     }
 }
 
-impl<N, E: Clone> SubExpr<N, E> {
-    pub fn unnote(&self) -> SubExpr<X, E> {
-        rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
+impl<N: Clone> Expr<N, X> {
+    pub fn embed_absurd<E>(&self) -> Expr<N, E> {
+        self.visit(&mut visitor::EmbedAbsurdVisitor)
     }
 }
 
-impl<N: Clone> Expr<N, X> {
-    // Deprecated, use embed_absurd instead
-    pub fn absurd_rec<T>(&self) -> Expr<N, T> {
-        self.embed_absurd()
+impl<N, E> SubExpr<N, E> {
+    pub fn as_ref(&self) -> &Expr<N, E> {
+        self.0.as_ref()
     }
-    pub fn embed_absurd<T>(&self) -> Expr<N, T> {
-        self.visit(&mut visitor::EmbedAbsurdVisitor)
+
+    pub fn traverse_embed<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<SubExpr<N, E2>, Err>
+    where
+        N: Clone,
+    {
+        Ok(rc(self.as_ref().traverse_embed(visit_embed)?))
+    }
+
+    pub fn map_embed<E2>(
+        &self,
+        map_embed: impl FnMut(&E) -> E2,
+    ) -> SubExpr<N, E2>
+    where
+        N: Clone,
+    {
+        rc(self.as_ref().map_embed(map_embed))
+    }
+
+    pub fn map_subexprs_with_special_handling_of_binders<'a>(
+        &'a self,
+        map_expr: impl FnMut(&'a Self) -> Self,
+        map_under_binder: impl FnMut(&'a Label, &'a Self) -> Self,
+    ) -> Self {
+        match self.as_ref() {
+            ExprF::Embed(_) => SubExpr::clone(self),
+            // Recursive call
+            // TODO: don't discard the note !
+            ExprF::Note(_, e) => e
+                .map_subexprs_with_special_handling_of_binders(
+                    map_expr,
+                    map_under_binder,
+                ),
+            // Call ExprF::map_ref
+            e => rc(e.map_ref_with_special_handling_of_binders(
+                map_expr,
+                map_under_binder,
+                |_| unreachable!(),
+                |_| unreachable!(),
+                Label::clone,
+            )),
+        }
+    }
+
+    pub fn unroll(&self) -> Expr<N, E>
+    where
+        N: Clone,
+        E: Clone,
+    {
+        ExprF::clone(self.as_ref())
+    }
+
+    pub fn unnote(&self) -> SubExpr<X, E>
+    where
+        E: Clone,
+    {
+        rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
     }
 }
 
 impl<N: Clone> SubExpr<N, X> {
     pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
         rc(self.as_ref().embed_absurd())
+    }
+}
+
+impl<E: Clone> SubExpr<X, E> {
+    pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
+        rc(self.as_ref().note_absurd())
     }
 }
 
@@ -462,25 +460,8 @@ pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
     SubExpr(Rc::new(x))
 }
 
-pub fn app<N, E>(f: Expr<N, E>, args: Vec<SubExpr<N, E>>) -> Expr<N, E> {
-    if args.is_empty() {
-        f
-    } else {
-        ExprF::App(rc(f), args)
-    }
-}
-
-pub fn app_rc<N, E>(
-    f: SubExpr<N, E>,
-    args: Vec<SubExpr<N, E>>,
-) -> SubExpr<N, E> {
-    if args.is_empty() {
-        f
-    } else {
-        rc(ExprF::App(f, args))
-    }
-}
-
+/// Add an isize to an usize
+/// Panics on over/underflow
 fn add_ui(u: usize, i: isize) -> usize {
     if i < 0 {
         u.checked_sub(i.checked_neg().unwrap() as usize).unwrap()
@@ -505,15 +486,15 @@ fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
 /// capture by shifting variable indices
 /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
 /// for details
-pub fn shift<S, A>(
+pub fn shift<N, E>(
     delta: isize,
     var: &V<Label>,
-    in_expr: &SubExpr<S, A>,
-) -> SubExpr<S, A> {
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(v) => rc(Var(shift_var(delta, var, v))),
-        _ => in_expr.map_ref(
+        _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift(delta, var, e),
             |l: &Label, e| {
                 let vl = V(l.clone(), 0);
@@ -532,16 +513,16 @@ pub fn shift<S, A>(
 /// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
 /// ```
 ///
-pub fn subst_shift<S, A>(
+pub fn subst_shift<N, E>(
     var: &V<Label>,
-    value: &SubExpr<S, A>,
-    in_expr: &SubExpr<S, A>,
-) -> SubExpr<S, A> {
+    value: &SubExpr<N, E>,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(v) if v == var => SubExpr::clone(value),
         Var(v) => rc(Var(shift_var(-1, var, v))),
-        _ => in_expr.map_ref(
+        _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| subst_shift(var, &value, e),
             |l: &Label, e| {
                 let vl = V(l.clone(), 0);

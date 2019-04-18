@@ -98,7 +98,7 @@ impl<'a> From<SubExpr<X, X>> for SimpleType<'a> {
 #[doc(hidden)]
 impl<'a> From<Normalized<'a>> for Typed<'a> {
     fn from(x: Normalized<'a>) -> Typed<'a> {
-        Typed(x.0.absurd(), x.1, x.2)
+        Typed(x.0.embed_absurd(), x.1, x.2)
     }
 }
 

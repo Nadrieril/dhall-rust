@@ -10,8 +10,8 @@ pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::expr!()") };
-    let expr = expr.as_ref().map_embed(&no_import);
-    let output = quote_expr(&expr, &Context::new());
+    let expr = expr.map_embed(no_import);
+    let output = quote_expr(&expr.unroll(), &Context::new());
     output.into()
 }
 
@@ -20,8 +20,8 @@ pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::subexpr!()") };
-    let expr = expr.as_ref().map_embed(&no_import);
-    let output = quote_subexpr(&dhall_core::rc(expr), &Context::new());
+    let expr = expr.map_embed(no_import);
+    let output = quote_subexpr(&expr, &Context::new());
     output.into()
 }
 
@@ -103,7 +103,7 @@ fn quote_subexpr(
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::ExprF::*;
-    match expr.as_ref().map_ref(
+    match expr.as_ref().map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
@@ -138,7 +138,7 @@ fn quote_subexpr(
 // to be of type SubExpr<_, _>.
 fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
     use dhall_core::ExprF::*;
-    match expr.map_ref(
+    match expr.map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),

@@ -325,20 +325,17 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
     };
 
     match what_next {
-        Continue(e) => normalize_ref(&e.absurd_rec()),
-        ContinueSub(e) => normalize_ref(e.absurd().as_ref()),
+        Continue(e) => normalize_ref(&e.embed_absurd()),
+        ContinueSub(e) => normalize_ref(e.embed_absurd().as_ref()),
         Done(e) => e,
         DoneRef(e) => e.clone(),
         DoneRefSub(e) => e.unroll(),
-        DoneAsIs => match expr.map_ref_simple(ExprF::roll) {
-            e => e.map_ref(
-                SubExpr::clone,
-                |_, e| e.clone(),
-                X::clone,
-                |_| unreachable!(),
-                Label::clone,
-            ),
-        },
+        DoneAsIs => expr.map_ref_simple(ExprF::roll).map_ref(
+            SubExpr::clone,
+            X::clone,
+            |_| unreachable!(),
+            Label::clone,
+        ),
     }
 }
 
