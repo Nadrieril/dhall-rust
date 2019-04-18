@@ -541,37 +541,64 @@ where
 
 pub struct SquashEmbedVisitor<F1>(pub F1);
 
-impl<'a, 'b, N, E, E2, F1>
-    ExprFInFallibleVisitor<
-        'a,
-        SubExpr<N, E>,
-        SubExpr<N, E2>,
-        Label,
-        Label,
-        N,
-        N,
-        E,
-        E2,
-    > for &'b mut SquashEmbedVisitor<F1>
+impl<'a, 'b, N, E1, E2, F1>
+    ExprFVeryGenericVisitor<'a, SubExpr<N, E2>, SubExpr<N, E1>, Label, N, E1>
+    for &'b mut SquashEmbedVisitor<F1>
 where
     N: Clone + 'a,
-    E2: Clone,
-    F1: FnMut(&E) -> SubExpr<N, E2>,
+    F1: FnMut(&E1) -> SubExpr<N, E2>,
 {
-    fn visit_subexpr(&mut self, subexpr: &'a SubExpr<N, E>) -> SubExpr<N, E2> {
-        rc(subexpr.as_ref().visit(&mut **self))
+    type Error = X;
+    type SE2 = SubExpr<N, E2>;
+    type L2 = Label;
+    type N2 = N;
+    type E2 = E2;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, E1>,
+    ) -> Result<Self::SE2, Self::Error> {
+        Ok(subexpr.as_ref().visit(&mut **self)?)
     }
-    fn visit_note(self, note: &'a N) -> N {
-        N::clone(note)
+
+    fn visit_label(
+        &mut self,
+        label: &'a Label,
+    ) -> Result<Self::L2, Self::Error> {
+        Ok(Label::clone(label))
     }
-    fn visit_embed(self, _: &'a E) -> E2 {
-        unreachable!()
+
+    fn visit_binder(
+        mut self,
+        label: &'a Label,
+        subexpr: &'a SubExpr<N, E1>,
+    ) -> Result<(Self::L2, Self::SE2), Self::Error> {
+        Ok((self.visit_label(label)?, self.visit_subexpr(subexpr)?))
     }
-    fn visit_embed_squash(self, embed: &'a E) -> Expr<N, E2> {
-        (self.0)(embed).unroll()
+
+    fn visit_embed_squash(
+        self,
+        embed: &'a E1,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        Ok((self.0)(embed))
     }
-    fn visit_label(&mut self, label: &'a Label) -> Label {
-        Label::clone(label)
+
+    fn visit_note_squash(
+        mut self,
+        note: &'a N,
+        subexpr: &'a SubExpr<N, E1>,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        let subexpr = self.visit_subexpr(subexpr)?;
+        let note = N::clone(note);
+        Ok(rc(ExprF::Note(note, subexpr)))
+    }
+
+    // Called with the result of the map, in the non-embed/note case.
+    // Useful to change the result type, and/or avoid some loss of info
+    fn visit_resulting_exprf(
+        result: ExprF<Self::SE2, Self::L2, Self::N2, Self::E2>,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        Ok(rc(result))
     }
 }
 

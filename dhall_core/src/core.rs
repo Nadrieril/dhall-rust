@@ -408,9 +408,8 @@ impl<N, E> Expr<N, E> {
     ) -> SubExpr<N, E2>
     where
         N: Clone,
-        E2: Clone,
     {
-        rc(self.visit(&mut visitor::SquashEmbedVisitor(f)))
+        trivial_result(self.visit(&mut visitor::SquashEmbedVisitor(f)))
     }
 }
 
@@ -427,7 +426,6 @@ impl<N: Clone> Expr<N, X> {
     }
     pub fn embed_absurd<E>(&self) -> Expr<N, E> {
         self.visit(&mut visitor::EmbedAbsurdVisitor)
-        // self.visit(&mut visitor::SquashEmbedVisitor(|e| match *e {}))
     }
 }
 
