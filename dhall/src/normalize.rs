@@ -150,7 +150,7 @@ where
         ),
         // // fold/build fusion
         // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_ref(&App(bx(x.clone()), rest.to_vec()))
+        //     normalize_value(&App(bx(x.clone()), rest.to_vec()))
         // }
         (OptionalFold, [_, NEOptionalLit(x), _, just, _, rest..]) => {
             let x = x.clone();
@@ -162,7 +162,7 @@ where
         }
         // // fold/build fusion
         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_ref(&App(bx(x.clone()), rest.to_vec()))
+        //     normalize_value(&App(bx(x.clone()), rest.to_vec()))
         // }
         (NaturalBuild, [g, rest..]) => {
             'ret: {
@@ -226,12 +226,12 @@ enum WhatNext<'a, N, E> {
     DoneAsIs,
 }
 
-fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
+fn normalize_value(expr: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
     // Recursively normalize all subexpressions
     let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
-        expr.map_ref_simple(|e| normalize_ref(e.as_ref()));
+        expr.as_ref().map_ref_simple(|e| normalize_value(e.clone()).unroll());
 
     use WhatNext::*;
     // TODO: match by move
@@ -325,17 +325,17 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
     };
 
     match what_next {
-        Continue(e) => normalize_ref(&e.embed_absurd()),
-        ContinueSub(e) => normalize_ref(e.embed_absurd().as_ref()),
-        Done(e) => e,
-        DoneRef(e) => e.clone(),
-        DoneRefSub(e) => e.unroll(),
-        DoneAsIs => expr.map_ref_simple(ExprF::roll).map_ref(
+        Continue(e) => normalize_value(e.embed_absurd().roll()),
+        ContinueSub(e) => normalize_value(e.embed_absurd()),
+        Done(e) => e.roll(),
+        DoneRef(e) => e.roll(),
+        DoneRefSub(e) => e.clone(),
+        DoneAsIs => rc(expr.map_ref_simple(ExprF::roll).map_ref(
             SubExpr::clone,
             X::clone,
             |_| unreachable!(),
             Label::clone,
-        ),
+        )),
     }
 }
 
@@ -349,7 +349,7 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
 /// leave ill-typed sub-expressions unevaluated.
 ///
 fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
-    normalize_ref(e.as_ref()).roll()
+    normalize_value(e)
 }
 
 #[cfg(test)]
