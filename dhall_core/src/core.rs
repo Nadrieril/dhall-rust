@@ -232,7 +232,6 @@ impl<S, A> Expr<S, A> {
     {
         self.map_ref(
             |x| rc(map_expr(x.as_ref())),
-            |_, x| rc(map_expr(x.as_ref())),
             map_note,
             map_embed,
             map_label,
@@ -290,7 +289,19 @@ impl<N: Clone, E> Expr<N, E> {
 }
 
 impl<SE, L, N, E> ExprF<SE, L, N, E> {
-    pub fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>(
+    pub fn traverse_ref_with_special_handling_of_binders<
+        'a,
+        SE2,
+        L2,
+        N2,
+        E2,
+        Err,
+        F1,
+        F2,
+        F3,
+        F4,
+        F5,
+    >(
         &'a self,
         visit_subexpr: F1,
         visit_under_binder: F2,
@@ -307,7 +318,7 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         F4: FnOnce(&'a E) -> Result<E2, Err>,
         F5: FnMut(&'a L) -> Result<L2, Err>,
     {
-        self.visit(visitor::TraverseRefVisitor {
+        self.visit(visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
             visit_note,
@@ -316,12 +327,69 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         })
     }
 
-    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F2, F3, F4, F5>(
+    pub fn traverse_ref<'a, SE2, L2, N2, E2, Err, F1, F3, F4, F5>(
+        &'a self,
+        visit_subexpr: F1,
+        visit_note: F3,
+        visit_embed: F4,
+        visit_label: F5,
+    ) -> Result<ExprF<SE2, L2, N2, E2>, Err>
+    where
+        L: Ord,
+        L2: Ord,
+        F1: FnMut(&'a SE) -> Result<SE2, Err>,
+        F3: FnOnce(&'a N) -> Result<N2, Err>,
+        F4: FnOnce(&'a E) -> Result<E2, Err>,
+        F5: FnMut(&'a L) -> Result<L2, Err>,
+    {
+        self.visit(visitor::TraverseRefVisitor {
+            visit_subexpr,
+            visit_note,
+            visit_embed,
+            visit_label,
+        })
+    }
+
+    pub fn map_ref<'a, SE2, L2, N2, E2, F1, F3, F4, F5>(
+        &'a self,
+        mut map_subexpr: F1,
+        map_note: F3,
+        map_embed: F4,
+        mut map_label: F5,
+    ) -> ExprF<SE2, L2, N2, E2>
+    where
+        L: Ord,
+        L2: Ord,
+        F1: FnMut(&'a SE) -> SE2,
+        F3: FnOnce(&'a N) -> N2,
+        F4: FnOnce(&'a E) -> E2,
+        F5: FnMut(&'a L) -> L2,
+    {
+        trivial_result(self.traverse_ref(
+            |x| Ok(map_subexpr(x)),
+            |x| Ok(map_note(x)),
+            |x| Ok(map_embed(x)),
+            |x| Ok(map_label(x)),
+        ))
+    }
+
+    pub fn map_ref_with_special_handling_of_binders<
+        'a,
+        SE2,
+        L2,
+        N2,
+        E2,
+        F1,
+        F2,
+        F3,
+        F4,
+        F5,
+    >(
         &'a self,
         mut map_subexpr: F1,
         mut map_under_binder: F2,
-        mut map_note: F3,
-        mut map_embed: F4,
+        map_note: F3,
+        map_embed: F4,
         mut map_label: F5,
     ) -> ExprF<SE2, L2, N2, E2>
     where
@@ -329,11 +397,11 @@ impl<SE, L, N, E> ExprF<SE, L, N, E> {
         L2: Ord,
         F1: FnMut(&'a SE) -> SE2,
         F2: FnMut(&'a L, &'a SE) -> SE2,
-        F3: FnMut(&'a N) -> N2,
-        F4: FnMut(&'a E) -> E2,
+        F3: FnOnce(&'a N) -> N2,
+        F4: FnOnce(&'a E) -> E2,
         F5: FnMut(&'a L) -> L2,
     {
-        trivial_result(self.traverse_ref(
+        trivial_result(self.traverse_ref_with_special_handling_of_binders(
             |x| Ok(map_subexpr(x)),
             |l, x| Ok(map_under_binder(l, x)),
             |x| Ok(map_note(x)),
@@ -375,7 +443,11 @@ impl<N, E> SubExpr<N, E> {
         self.0.as_ref()
     }
 
-    fn map_ref<'a, F1, F2>(&'a self, map_expr: F1, map_under_binder: F2) -> Self
+    pub fn map_subexprs_with_special_handling_of_binders<'a, F1, F2>(
+        &'a self,
+        map_expr: F1,
+        map_under_binder: F2,
+    ) -> Self
     where
         F1: FnMut(&'a Self) -> Self,
         F2: FnMut(&'a Label, &'a Self) -> Self,
@@ -383,9 +455,13 @@ impl<N, E> SubExpr<N, E> {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // Recursive call
-            ExprF::Note(_, e) => e.map_ref(map_expr, map_under_binder),
+            ExprF::Note(_, e) => e
+                .map_subexprs_with_special_handling_of_binders(
+                    map_expr,
+                    map_under_binder,
+                ),
             // Call ExprF::map_ref
-            e => rc(e.map_ref(
+            e => rc(e.map_ref_with_special_handling_of_binders(
                 map_expr,
                 map_under_binder,
                 |_| unreachable!(),
@@ -393,13 +469,6 @@ impl<N, E> SubExpr<N, E> {
                 Label::clone,
             )),
         }
-    }
-
-    pub fn map_ref_simple<F1>(&self, map_expr: F1) -> Self
-    where
-        F1: Fn(&Self) -> Self,
-    {
-        self.map_ref(&map_expr, |_, e| map_expr(e))
     }
 
     pub fn unroll(&self) -> Expr<N, E>
@@ -513,7 +582,7 @@ pub fn shift<S, A>(
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(v) => rc(Var(shift_var(delta, var, v))),
-        _ => in_expr.map_ref(
+        _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift(delta, var, e),
             |l: &Label, e| {
                 let vl = V(l.clone(), 0);
@@ -541,7 +610,7 @@ pub fn subst_shift<S, A>(
     match in_expr.as_ref() {
         Var(v) if v == var => SubExpr::clone(value),
         Var(v) => rc(Var(shift_var(-1, var, v))),
-        _ => in_expr.map_ref(
+        _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| subst_shift(var, &value, e),
             |l: &Label, e| {
                 let vl = V(l.clone(), 0);

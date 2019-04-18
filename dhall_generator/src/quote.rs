@@ -103,7 +103,7 @@ fn quote_subexpr(
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_core::ExprF::*;
-    match expr.as_ref().map_ref(
+    match expr.as_ref().map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
@@ -138,7 +138,7 @@ fn quote_subexpr(
 // to be of type SubExpr<_, _>.
 fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
     use dhall_core::ExprF::*;
-    match expr.map_ref(
+    match expr.map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),

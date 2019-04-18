@@ -302,7 +302,7 @@ where
     }
 }
 
-pub struct TraverseRefVisitor<F1, F2, F3, F4, F5> {
+pub struct TraverseRefWithBindersVisitor<F1, F2, F3, F4, F5> {
     pub visit_subexpr: F1,
     pub visit_under_binder: F2,
     pub visit_note: F3,
@@ -312,7 +312,7 @@ pub struct TraverseRefVisitor<F1, F2, F3, F4, F5> {
 
 impl<'a, SE, L, N, E, SE2, L2, N2, E2, Err, F1, F2, F3, F4, F5>
     ExprFFallibleVisitor<'a, SE, SE2, L, L2, N, N2, E, E2>
-    for TraverseRefVisitor<F1, F2, F3, F4, F5>
+    for TraverseRefWithBindersVisitor<F1, F2, F3, F4, F5>
 where
     SE: 'a,
     L: 'a,
@@ -337,6 +337,44 @@ where
         subexpr: &'a SE,
     ) -> Result<SE2, Self::Error> {
         (self.visit_under_binder)(label, subexpr)
+    }
+    fn visit_note(self, note: &'a N) -> Result<N2, Self::Error> {
+        (self.visit_note)(note)
+    }
+    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
+        (self.visit_embed)(embed)
+    }
+    fn visit_label(&mut self, label: &'a L) -> Result<L2, Self::Error> {
+        (self.visit_label)(label)
+    }
+}
+
+pub struct TraverseRefVisitor<F1, F2, F3, F4> {
+    pub visit_subexpr: F1,
+    pub visit_note: F2,
+    pub visit_embed: F3,
+    pub visit_label: F4,
+}
+
+impl<'a, SE, L, N, E, SE2, L2, N2, E2, Err, F1, F2, F3, F4>
+    ExprFFallibleVisitor<'a, SE, SE2, L, L2, N, N2, E, E2>
+    for TraverseRefVisitor<F1, F2, F3, F4>
+where
+    SE: 'a,
+    L: 'a,
+    N: 'a,
+    E: 'a,
+    L: Ord,
+    L2: Ord,
+    F1: FnMut(&'a SE) -> Result<SE2, Err>,
+    F2: FnOnce(&'a N) -> Result<N2, Err>,
+    F3: FnOnce(&'a E) -> Result<E2, Err>,
+    F4: FnMut(&'a L) -> Result<L2, Err>,
+{
+    type Error = Err;
+
+    fn visit_subexpr(&mut self, subexpr: &'a SE) -> Result<SE2, Self::Error> {
+        (self.visit_subexpr)(subexpr)
     }
     fn visit_note(self, note: &'a N) -> Result<N2, Self::Error> {
         (self.visit_note)(note)
