@@ -43,7 +43,6 @@ where
             quote! { dhall_core::ExprF::Lam(#x, #t, #b) }
         }
         App(f, a) => {
-            let a = quote_vec(a);
             quote! { dhall_core::ExprF::App(#f, #a) }
         }
         Annot(x, t) => {

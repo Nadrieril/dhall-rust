@@ -150,7 +150,7 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     ///  `∀(x : A) -> B`
     Pi(Label, SubExpr, SubExpr),
     ///  `f a`
-    App(SubExpr, Vec<SubExpr>),
+    App(SubExpr, SubExpr),
     ///  `let x     = r in e`
     ///  `let x : t = r in e`
     Let(Label, Option<SubExpr>, SubExpr, SubExpr),

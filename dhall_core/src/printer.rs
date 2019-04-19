@@ -56,12 +56,8 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
             ExprF::BinOp(op, a, b) => {
                 write!(f, "{} {} {}", a, op, b)?;
             }
-            ExprF::App(a, args) => {
-                a.fmt(f)?;
-                for x in args {
-                    f.write_str(" ")?;
-                    x.fmt(f)?;
-                }
+            ExprF::App(a, b) => {
+                write!(f, "{} {}", a, b)?;
             }
             Field(a, b) => {
                 write!(f, "{}.{}", a, b)?;
@@ -216,10 +212,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             OldOptionalLit(x, t) => OldOptionalLit(x, t.phase(Import)),
             EmptyOptionalLit(t) => EmptyOptionalLit(t.phase(Import)),
             NEOptionalLit(e) => NEOptionalLit(e.phase(Import)),
-            ExprF::App(a, args) => ExprF::App(
-                a.phase(Import),
-                args.into_iter().map(|x| x.phase(Import)).collect(),
-            ),
+            ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             Note(n, b) => Note(n, b.phase(phase)),

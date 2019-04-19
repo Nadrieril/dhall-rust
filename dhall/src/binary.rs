@@ -42,12 +42,12 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 Var(V(l, *n as usize))
             }
             [U64(0), f, args..] => {
-                let f = cbor_value_to_dhall(&f)?;
-                let args = args
-                    .iter()
-                    .map(cbor_value_to_dhall)
-                    .collect::<Result<Vec<_>, _>>()?;
-                App(f, args)
+                let mut f = cbor_value_to_dhall(&f)?;
+                for a in args {
+                    let a = cbor_value_to_dhall(&a)?;
+                    f = rc(App(f, a))
+                }
+                return Ok(f);
             }
             [U64(1), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;

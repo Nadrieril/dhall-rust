@@ -130,9 +130,7 @@ where
                 let (l, e) = v.visit_binder(l, e)?;
                 Let(l, t, a, e)
             }
-            App(f, args) => {
-                App(v.visit_subexpr(f)?, vec(args, |e| v.visit_subexpr(e))?)
-            }
+            App(f, a) => App(v.visit_subexpr(f)?, v.visit_subexpr(a)?),
             Annot(x, t) => Annot(v.visit_subexpr(x)?, v.visit_subexpr(t)?),
             Const(k) => Const(*k),
             Builtin(v) => Builtin(*v),

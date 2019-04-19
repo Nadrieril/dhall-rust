@@ -743,10 +743,10 @@ make_parser! {
 
     token_rule!(Some_<()>);
 
-    rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
+    rule!(application_expression<ParsedExpr<'a>> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            spanned(span, App(rc(first), rest.map(rc).collect()))
+            rest.fold(first, |acc, e| App(rc(acc), rc(e)))
         },
     ));
 
