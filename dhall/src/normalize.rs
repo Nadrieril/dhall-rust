@@ -238,6 +238,12 @@ where
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
 /// The rule is the following: we must _not_ construct values of type `Expr` while normalizing or
 /// typechecking, but only construct `Value`s.
+///
+/// Values usually store subexpressions unnormalized, to enable lazy normalization. They
+/// approximate Weak Head Normal-Form (WHNF). This means that the expression is normalized
+/// as little as possible, but just enough to know the first constructor of the
+/// normal form. This is identical to full normalization for simple types like integers,
+/// but for example for a record literal this means only knowing the field names.
 #[derive(Debug, Clone)]
 enum Value {
     Closure(Closure),
@@ -492,9 +498,6 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> Value {
 }
 
 fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
-    use dhall_core::BinOp::*;
-    use dhall_core::ExprF::*;
-
     let e = match expr.as_ref() {
         ExprF::Let(x, _, r, b) => {
             let r = normalize_value(ctx, r.clone());
@@ -534,6 +537,18 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
             Label::clone,
         );
 
+    normalize_last_layer(ctx, expr)
+}
+
+/// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
+fn normalize_last_layer(
+    ctx: &NormalizationContext,
+    expr: ExprF<Value, Label, X, Normalized<'static>>,
+) -> Value {
+    use dhall_core::BinOp::*;
+    use dhall_core::ExprF::*;
+    use WhatNext::*;
+
     let expr = match expr {
         Var(v) => return ctx.lookup(&v),
         Annot(x, _) => return x,
@@ -548,14 +563,12 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
             t,
         ) => match handlers.remove(&l) {
             Some(h) => return normalize_value(ctx, h),
-            None => {
-                return Value::Expr(rc(Merge(
-                    Value::RecordLit(record_ctx, handlers).normalize_to_expr(),
-                    Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts))
-                        .normalize_to_expr(),
-                    t.map(|t| t.normalize_to_expr()),
-                )))
-            }
+            // Return ownership
+            None => Merge(
+                Value::RecordLit(record_ctx, handlers),
+                Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+                t,
+            ),
         },
         expr => expr,
     };
@@ -563,7 +576,6 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
     let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
         expr.map_ref_simple(|e| e.clone().normalize_to_expr().unroll());
 
-    use WhatNext::*;
     let what_next = match &expr {
         Embed(e) => DoneRefSub(&e.0),
         Annot(_, _) => unreachable!(),
