@@ -247,6 +247,7 @@ where
 #[derive(Debug, Clone)]
 enum WHNF {
     Closure(Closure),
+    BoolLit(bool),
     EmptyListLit(NormalizationContext, InputSubExpr),
     NEListLit(Vec<(NormalizationContext, Vec<InputSubExpr>)>),
     RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
@@ -259,6 +260,7 @@ impl WHNF {
     fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
             WHNF::Closure(c) => c.normalize_to_expr(),
+            WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::EmptyListLit(ctx, e) => rc(ExprF::EmptyListLit(
                 normalize_whnf(&ctx, e).normalize_to_expr(),
             )),
@@ -298,6 +300,7 @@ impl WHNF {
         match self {
             WHNF::Closure(c) => WHNF::Closure(c.shift0(delta, label)),
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
+            WHNF::BoolLit(b) => WHNF::BoolLit(b),
             WHNF::EmptyListLit(ctx, e) => {
                 WHNF::EmptyListLit(ctx, shift0(delta, label, &e))
             }
@@ -516,6 +519,7 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
         ExprF::Builtin(b) => {
             WHNF::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
         }
+        ExprF::BoolLit(b) => WHNF::BoolLit(b),
         ExprF::EmptyListLit(e) => WHNF::EmptyListLit(ctx.clone(), e),
         ExprF::NEListLit(elts) => WHNF::NEListLit(vec![(ctx.clone(), elts)]),
         ExprF::RecordLit(kvs) => WHNF::RecordLit(ctx.clone(), kvs),
@@ -526,7 +530,7 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
 
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
 fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
-    let e = match expr.as_ref() {
+    let expr = match expr.as_ref() {
         ExprF::Let(x, _, r, b) => {
             let r = normalize_whnf(ctx, r.clone());
             return normalize_whnf(&ctx.insert(x, r), b.clone());
@@ -546,6 +550,7 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
                 vec![],
             ))
         }
+        ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
         ExprF::EmptyListLit(e) => {
             return WHNF::EmptyListLit(ctx.clone(), e.clone())
         }
@@ -558,12 +563,20 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
         ExprF::UnionType(kvs) => {
             return WHNF::UnionType(ctx.clone(), kvs.clone())
         }
-        e => e,
+        ExprF::BoolIf(b, e1, e2) => {
+            let b = normalize_whnf(ctx, b.clone());
+            match b {
+                WHNF::BoolLit(true) => return normalize_whnf(ctx, e1.clone()),
+                WHNF::BoolLit(false) => return normalize_whnf(ctx, e2.clone()),
+                _ => expr,
+            }
+        }
+        _ => expr,
     };
 
     // Recursively normalize all subexpressions
-    let expr: ExprF<WHNF, Label, X, Normalized<'static>> = e
-        .map_ref_with_special_handling_of_binders(
+    let expr: ExprF<WHNF, Label, X, Normalized<'static>> =
+        expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| normalize_whnf(ctx, e.clone()),
             |x, e| normalize_whnf(&ctx.skip(x), e.clone()),
             X::clone,
@@ -588,6 +601,18 @@ fn normalize_last_layer(
         Annot(x, _) => return x,
         Note(_, e) => return e,
         App(WHNF::Closure(c), a) => return c.app(a),
+        BinOp(BoolAnd, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
+            return WHNF::BoolLit(x && y)
+        }
+        BinOp(BoolOr, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
+            return WHNF::BoolLit(x || y)
+        }
+        BinOp(BoolEQ, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
+            return WHNF::BoolLit(x == y)
+        }
+        BinOp(BoolNE, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
+            return WHNF::BoolLit(x != y)
+        }
         BinOp(ListAppend, WHNF::EmptyListLit(_, _), y) => return y,
         BinOp(ListAppend, x, WHNF::EmptyListLit(_, _)) => return x,
         BinOp(ListAppend, WHNF::NEListLit(xs), WHNF::NEListLit(ys)) => {
@@ -648,16 +673,15 @@ fn normalize_last_layer(
         Lam(_, _, _) => unreachable!(),
         App(Builtin(_), _) => unreachable!(),
         App(Lam(_, _, _), _) => unreachable!(),
-        BoolIf(BoolLit(true), t, _) => DoneRef(t),
-        BoolIf(BoolLit(false), _, f) => DoneRef(f),
+        BoolIf(BoolLit(_), _, _) => unreachable!(),
         // TODO: interpolation
         // TextLit(t) =>
         OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
         OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
-        BinOp(BoolAnd, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x && *y)),
-        BinOp(BoolOr, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x || *y)),
-        BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => Done(BoolLit(x == y)),
-        BinOp(BoolNE, BoolLit(x), BoolLit(y)) => Done(BoolLit(x != y)),
+        BinOp(BoolAnd, BoolLit(_), BoolLit(_)) => unreachable!(),
+        BinOp(BoolOr, BoolLit(_), BoolLit(_)) => unreachable!(),
+        BinOp(BoolEQ, BoolLit(_), BoolLit(_)) => unreachable!(),
+        BinOp(BoolNE, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
             Done(NaturalLit(x + y))
         }
