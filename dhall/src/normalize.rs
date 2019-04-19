@@ -248,6 +248,7 @@ where
 enum WHNF {
     Closure(Closure),
     BoolLit(bool),
+    NaturalLit(Natural),
     EmptyListLit(NormalizationContext, InputSubExpr),
     NEListLit(Vec<(NormalizationContext, Vec<InputSubExpr>)>),
     RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
@@ -261,6 +262,7 @@ impl WHNF {
         match self {
             WHNF::Closure(c) => c.normalize_to_expr(),
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
+            WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
             WHNF::EmptyListLit(ctx, e) => rc(ExprF::EmptyListLit(
                 normalize_whnf(&ctx, e).normalize_to_expr(),
             )),
@@ -301,6 +303,7 @@ impl WHNF {
             WHNF::Closure(c) => WHNF::Closure(c.shift0(delta, label)),
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
             WHNF::BoolLit(b) => WHNF::BoolLit(b),
+            WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
             WHNF::EmptyListLit(ctx, e) => {
                 WHNF::EmptyListLit(ctx, shift0(delta, label, &e))
             }
@@ -518,6 +521,7 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
             WHNF::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
         }
         ExprF::BoolLit(b) => WHNF::BoolLit(b),
+        ExprF::NaturalLit(n) => WHNF::NaturalLit(n),
         ExprF::EmptyListLit(e) => WHNF::EmptyListLit(ctx.clone(), e),
         ExprF::NEListLit(elts) => WHNF::NEListLit(vec![(ctx.clone(), elts)]),
         ExprF::RecordLit(kvs) => WHNF::RecordLit(ctx.clone(), kvs),
@@ -549,6 +553,7 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
             ))
         }
         ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
+        ExprF::NaturalLit(n) => return WHNF::NaturalLit(*n),
         ExprF::EmptyListLit(e) => {
             return WHNF::EmptyListLit(ctx.clone(), e.clone())
         }
@@ -617,6 +622,23 @@ fn normalize_last_layer(
         }
         BinOp(BoolNE, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
             return WHNF::BoolLit(x != y)
+        }
+
+        BinOp(NaturalPlus, WHNF::NaturalLit(0), y) => return y,
+        BinOp(NaturalPlus, x, WHNF::NaturalLit(0)) => return x,
+        BinOp(NaturalTimes, WHNF::NaturalLit(0), _) => {
+            return WHNF::NaturalLit(0)
+        }
+        BinOp(NaturalTimes, _, WHNF::NaturalLit(0)) => {
+            return WHNF::NaturalLit(0)
+        }
+        BinOp(NaturalTimes, WHNF::NaturalLit(1), y) => return y,
+        BinOp(NaturalTimes, x, WHNF::NaturalLit(1)) => return x,
+        BinOp(NaturalPlus, WHNF::NaturalLit(x), WHNF::NaturalLit(y)) => {
+            return WHNF::NaturalLit(x + y)
+        }
+        BinOp(NaturalTimes, WHNF::NaturalLit(x), WHNF::NaturalLit(y)) => {
+            return WHNF::NaturalLit(x * y)
         }
 
         BinOp(ListAppend, WHNF::EmptyListLit(_, _), y) => return y,
@@ -689,12 +711,8 @@ fn normalize_last_layer(
         BinOp(BoolOr, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(BoolEQ, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(BoolNE, BoolLit(_), BoolLit(_)) => unreachable!(),
-        BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x + y))
-        }
-        BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x * y))
-        }
+        BinOp(NaturalPlus, NaturalLit(_), NaturalLit(_)) => unreachable!(),
+        BinOp(NaturalTimes, NaturalLit(_), NaturalLit(_)) => unreachable!(),
         BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
         BinOp(ListAppend, EmptyListLit(_), _) => unreachable!(),
         BinOp(ListAppend, _, EmptyListLit(_)) => unreachable!(),
@@ -1013,19 +1031,19 @@ mod spec_tests {
     norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
     norm!(success_unit_OperatorOrRhsFalse, "unit/OperatorOrRhsFalse");
     norm!(success_unit_OperatorOrRhsTrue, "unit/OperatorOrRhsTrue");
-    // norm!(success_unit_OperatorPlusLhsZero, "unit/OperatorPlusLhsZero");
-    // norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
+    norm!(success_unit_OperatorPlusLhsZero, "unit/OperatorPlusLhsZero");
+    norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
     norm!(success_unit_OperatorPlusOneAndOne, "unit/OperatorPlusOneAndOne");
-    // norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
+    norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
     // norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
     // norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
     // norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
     norm!(success_unit_OperatorTextConcatenateTextText, "unit/OperatorTextConcatenateTextText");
-    // norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
-    // norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
-    // norm!(success_unit_OperatorTimesNormalizeArguments, "unit/OperatorTimesNormalizeArguments");
-    // norm!(success_unit_OperatorTimesRhsOne, "unit/OperatorTimesRhsOne");
-    // norm!(success_unit_OperatorTimesRhsZero, "unit/OperatorTimesRhsZero");
+    norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
+    norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
+    norm!(success_unit_OperatorTimesNormalizeArguments, "unit/OperatorTimesNormalizeArguments");
+    norm!(success_unit_OperatorTimesRhsOne, "unit/OperatorTimesRhsOne");
+    norm!(success_unit_OperatorTimesRhsZero, "unit/OperatorTimesRhsZero");
     norm!(success_unit_OperatorTimesTwoAndTwo, "unit/OperatorTimesTwoAndTwo");
     norm!(success_unit_Optional, "unit/Optional");
     norm!(success_unit_OptionalBuild, "unit/OptionalBuild");
