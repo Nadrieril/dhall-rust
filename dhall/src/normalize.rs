@@ -247,6 +247,8 @@ where
 #[derive(Debug, Clone)]
 enum WHNF {
     Closure(Closure),
+    EmptyListLit(NormalizationContext, InputSubExpr),
+    NEListLit(Vec<(NormalizationContext, Vec<InputSubExpr>)>),
     RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     Expr(OutputSubExpr),
@@ -257,6 +259,18 @@ impl WHNF {
     fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
             WHNF::Closure(c) => c.normalize_to_expr(),
+            WHNF::EmptyListLit(ctx, e) => rc(ExprF::EmptyListLit(
+                normalize_whnf(&ctx, e).normalize_to_expr(),
+            )),
+            WHNF::NEListLit(elts) => rc(ExprF::NEListLit(
+                elts.into_iter()
+                    .flat_map(|(ctx, vs)| {
+                        vs.into_iter().map(move |v| {
+                            normalize_whnf(&ctx, v).normalize_to_expr()
+                        })
+                    })
+                    .collect(),
+            )),
             WHNF::RecordLit(ctx, kvs) => rc(ExprF::RecordLit(
                 kvs.into_iter()
                     .map(|(k, v)| {
@@ -284,6 +298,21 @@ impl WHNF {
         match self {
             WHNF::Closure(c) => WHNF::Closure(c.shift0(delta, label)),
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
+            WHNF::EmptyListLit(ctx, e) => {
+                WHNF::EmptyListLit(ctx, shift0(delta, label, &e))
+            }
+            WHNF::NEListLit(elts) => WHNF::NEListLit(
+                elts.into_iter()
+                    .map(|(ctx, vs)| {
+                        (
+                            ctx,
+                            vs.into_iter()
+                                .map(|v| shift0(delta, label, &v))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
             WHNF::RecordLit(ctx, kvs) => WHNF::RecordLit(
                 ctx,
                 kvs.into_iter()
@@ -487,6 +516,8 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
         ExprF::Builtin(b) => {
             WHNF::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
         }
+        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(ctx.clone(), e),
+        ExprF::NEListLit(elts) => WHNF::NEListLit(vec![(ctx.clone(), elts)]),
         ExprF::RecordLit(kvs) => WHNF::RecordLit(ctx.clone(), kvs),
         ExprF::UnionType(kvs) => WHNF::UnionType(ctx.clone(), kvs),
         _ => WHNF::Expr(expr),
@@ -514,6 +545,12 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
                 *b,
                 vec![],
             ))
+        }
+        ExprF::EmptyListLit(e) => {
+            return WHNF::EmptyListLit(ctx.clone(), e.clone())
+        }
+        ExprF::NEListLit(elts) => {
+            return WHNF::NEListLit(vec![(ctx.clone(), elts.clone())])
         }
         ExprF::RecordLit(kvs) => {
             return WHNF::RecordLit(ctx.clone(), kvs.clone())
@@ -551,6 +588,13 @@ fn normalize_last_layer(
         Annot(x, _) => return x,
         Note(_, e) => return e,
         App(WHNF::Closure(c), a) => return c.app(a),
+        BinOp(ListAppend, WHNF::EmptyListLit(_, _), y) => return y,
+        BinOp(ListAppend, x, WHNF::EmptyListLit(_, _)) => return x,
+        BinOp(ListAppend, WHNF::NEListLit(xs), WHNF::NEListLit(ys)) => {
+            let xs = xs.into_iter();
+            let ys = ys.into_iter();
+            return WHNF::NEListLit(xs.chain(ys).collect());
+        }
         Field(WHNF::UnionType(ctx, kts), l) => {
             return WHNF::Closure(Closure::UnionConstructor(ctx, l, kts))
         }
@@ -621,13 +665,9 @@ fn normalize_last_layer(
             Done(NaturalLit(x * y))
         }
         BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
-        BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
-        BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
-        BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {
-            let xs = xs.iter().cloned();
-            let ys = ys.iter().cloned();
-            Done(NEListLit(xs.chain(ys).collect()))
-        }
+        BinOp(ListAppend, EmptyListLit(_), _) => unreachable!(),
+        BinOp(ListAppend, _, EmptyListLit(_)) => unreachable!(),
+        BinOp(ListAppend, NEListLit(_), NEListLit(_)) => unreachable!(),
         Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
             match handlers.get(&l) {
                 Some(h) => Continue(App(h.clone(), v.clone())),
