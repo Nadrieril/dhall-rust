@@ -247,6 +247,13 @@ impl Value {
             Value::Expr(e) => e,
         }
     }
+
+    fn shift0(self, delta: isize, label: &Label) -> Self {
+        match self {
+            Value::Closure(c) => Value::Closure(c.shift0(delta, label)),
+            Value::Expr(e) => Value::Expr(shift0(delta, label, &e)),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -260,7 +267,7 @@ impl Closure {
     fn app(self, val: Value) -> Value {
         match self {
             Closure::Lam(ctx, x, _, e) => {
-                let ctx2 = ctx.insert(&x, val.normalize_to_expr(&ctx));
+                let ctx2 = ctx.insert(&x, val);
                 normalize_value(&ctx2, e)
             }
             Closure::AppliedBuiltin(ctx, b, mut args) => {
@@ -305,11 +312,27 @@ impl Closure {
             }
         }
     }
+
+    fn shift0(self, delta: isize, label: &Label) -> Self {
+        match self {
+            Closure::Lam(ctx, x, t, e) => Closure::Lam(
+                ctx,
+                x,
+                shift0(delta, label, &t),
+                shift(delta, &V(label.clone(), 1), &e),
+            ),
+            Closure::AppliedBuiltin(ctx, b, args) => Closure::AppliedBuiltin(
+                ctx,
+                b,
+                args.into_iter().map(|e| e.shift0(delta, label)).collect(),
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 enum EnvItem {
-    Expr(OutputSubExpr),
+    Expr(Value),
     Skip(usize),
 }
 
@@ -320,7 +343,7 @@ impl NormalizationContext {
     fn new() -> NormalizationContext {
         NormalizationContext(Context::new())
     }
-    fn insert(&self, x: &Label, e: OutputSubExpr) -> NormalizationContext {
+    fn insert(&self, x: &Label, e: Value) -> NormalizationContext {
         NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
     }
     fn skip(&self, x: &Label) -> NormalizationContext {
@@ -329,7 +352,7 @@ impl NormalizationContext {
                 .map(|l, e| {
                     use EnvItem::*;
                     match e {
-                        Expr(e) => Expr(shift0(1, x, e)),
+                        Expr(e) => Expr(e.clone().shift0(1, x)),
                         Skip(n) if l == x => Skip(*n + 1),
                         Skip(n) => Skip(*n),
                     }
@@ -337,12 +360,14 @@ impl NormalizationContext {
                 .insert(x.clone(), EnvItem::Skip(0)),
         )
     }
-    fn lookup(&self, var: &V<Label>) -> OutputSubExpr {
+    fn lookup(&self, var: &V<Label>) -> Value {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
-            Some(EnvItem::Skip(m)) => rc(ExprF::Var(V(x.clone(), *m))),
-            None => rc(ExprF::Var(V(x.clone(), *n))),
+            Some(EnvItem::Skip(m)) => {
+                Value::Expr(rc(ExprF::Var(V(x.clone(), *m))))
+            }
+            None => Value::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
         }
     }
 }
@@ -395,8 +420,8 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
 
     let e = match expr.as_ref() {
         Let(x, _, r, b) => {
-            let r = normalize_value(ctx, r.clone()).normalize_to_expr(ctx);
-            return normalize_value(&ctx.insert(x, r.clone()), b.clone());
+            let r = normalize_value(ctx, r.clone());
+            return normalize_value(&ctx.insert(x, r), b.clone());
         }
         Lam(x, t, e) => {
             return Value::Closure(Closure::Lam(
@@ -427,6 +452,7 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
         );
 
     let expr = match expr {
+        Var(v) => return ctx.lookup(&v),
         App(Value::Closure(c), a) => {
             return c.app(a);
         }
@@ -445,9 +471,9 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
     use WhatNext::*;
     let what_next = match &expr {
         Embed(e) => DoneRefSub(&e.0),
-        Var(v) => DoneSub(ctx.lookup(v)),
         Annot(x, _) => DoneRef(x),
         Note(_, e) => DoneRef(e),
+        Var(_) => unreachable!(),
         Let(_, _, _, _) => unreachable!(),
         Lam(_, _, _) => unreachable!(),
         App(Builtin(_), _) => unreachable!(),
