@@ -219,35 +219,89 @@ where
     Continue(rest.fold(ret, |acc, e| rc(ExprF::App(acc, e))).unroll())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// #[derive(Debug, Clone)]
+// struct ContextualizedSubExpr {
+//     ctx: NormalizationContext,
+//     expr: SubExpr<X, Normalized<'static>>,
+// }
+// impl ContextualizedSubExpr {
+//     fn normalize_value(self) -> Value {
+//         normalize_value(&self.ctx, self.expr)
+//     }
+//     fn normalize_expr(self) -> OutputSubExpr {
+//         normalize_value(&self.ctx, self.expr).into_expr(&self.ctx)
+//     }
+// }
+
+#[derive(Debug, Clone)]
 enum Value {
+    Closure(Closure),
     Expr(OutputSubExpr),
-    Lam(
-        Label,
-        InputSubExpr,
-        InputSubExpr,
-    ),
-    AppliedBuiltin(Builtin, Vec<Value>),
 }
 
 impl Value {
-    fn into_expr(self, ctx: &NormalizationContext) -> OutputSubExpr {
+    /// Convert the value back to a (normalized) syntactic expression
+    fn normalize_to_expr(self, _ctx: &NormalizationContext) -> OutputSubExpr {
         match self {
+            Value::Closure(c) => c.normalize_to_expr(),
             Value::Expr(e) => e,
-            Value::Lam(x, t, e) => rc(ExprF::Lam(
-                x.clone(),
-                normalize_value(ctx, t).into_expr(ctx),
-                normalize_value(&ctx.skip(&x), e).into_expr(&ctx.skip(&x)),
-            )),
-            Value::AppliedBuiltin(b, args) if args.is_empty() => {
-                rc(ExprF::Builtin(b))
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Closure {
+    Lam(NormalizationContext, Label, InputSubExpr, InputSubExpr),
+    AppliedBuiltin(NormalizationContext, Builtin, Vec<Value>),
+}
+
+impl Closure {
+    /// Apply the closure to a value
+    fn app(self, val: Value) -> Value {
+        match self {
+            Closure::Lam(ctx, x, _, e) => {
+                let ctx2 = ctx.insert(&x, val.normalize_to_expr(&ctx));
+                normalize_value(&ctx2, e)
             }
-            Value::AppliedBuiltin(b, args) => {
-                let args_rolled =
-                    args.iter().map(|val| val.clone().into_expr(ctx));
-                args_rolled.fold(rc(ExprF::Builtin(b)), |acc, e| {
-                    rc(ExprF::App(acc, e))
-                })
+            Closure::AppliedBuiltin(ctx, b, mut args) => {
+                args.push(val);
+                let args_unrolled: Vec<_> = args
+                    .iter()
+                    .map(|val| val.clone().normalize_to_expr(&ctx).unroll())
+                    .collect();
+                match apply_builtin(b, &args_unrolled).into_value(&ctx) {
+                    Some(v) => return v,
+                    None => {
+                        return Value::Closure(Closure::AppliedBuiltin(
+                            ctx, b, args,
+                        ))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Convert the closure back to a (normalized) syntactic expression
+    fn normalize_to_expr(self) -> OutputSubExpr {
+        match self {
+            Closure::Lam(ctx, x, t, e) => {
+                let ctx2 = ctx.skip(&x);
+                rc(ExprF::Lam(
+                    x.clone(),
+                    normalize_value(&ctx, t).normalize_to_expr(&ctx),
+                    normalize_value(&ctx2, e).normalize_to_expr(&ctx2),
+                ))
+            }
+            Closure::AppliedBuiltin(ctx, b, args) => {
+                if args.is_empty() {
+                    rc(ExprF::Builtin(b))
+                } else {
+                    args.into_iter()
+                        .map(|e| e.normalize_to_expr(&ctx))
+                        .fold(rc(ExprF::Builtin(b)), |acc, e| {
+                            rc(ExprF::App(acc, e))
+                        })
+                }
             }
         }
     }
@@ -259,6 +313,7 @@ enum EnvItem {
     Skip(usize),
 }
 
+#[derive(Debug, Clone)]
 struct NormalizationContext(Context<Label, EnvItem>);
 
 impl NormalizationContext {
@@ -310,39 +365,54 @@ impl<'a> WhatNext<'a, X, X> {
         use WhatNext::*;
         match self {
             Continue(e) => Some(normalize_value(ctx, e.embed_absurd().roll())),
-            Done(e) => Some(reval(e.roll())),
-            DoneRef(e) => Some(reval(e.roll())),
-            DoneSub(e) => Some(reval(e)),
-            DoneRefSub(e) => Some(reval(e.clone())),
+            Done(e) => Some(reval(ctx, e.roll())),
+            DoneRef(e) => Some(reval(ctx, e.roll())),
+            DoneSub(e) => Some(reval(ctx, e)),
+            DoneRefSub(e) => Some(reval(ctx, e.clone())),
             DoneAsIs => None,
         }
     }
 }
 
-fn reval(expr: OutputSubExpr) -> Value {
+fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> Value {
     match expr.as_ref() {
-        ExprF::Lam(x, t, e) => {
-            Value::Lam(x.clone(), t.embed_absurd(), e.embed_absurd())
+        ExprF::Lam(x, t, e) => Value::Closure(Closure::Lam(
+            ctx.clone(),
+            x.clone(),
+            t.embed_absurd(),
+            e.embed_absurd(),
+        )),
+        ExprF::Builtin(b) => {
+            Value::Closure(Closure::AppliedBuiltin(ctx.clone(), *b, vec![]))
         }
-        ExprF::Builtin(b) => Value::AppliedBuiltin(*b, vec![]),
         _ => Value::Expr(expr),
     }
 }
 
-fn normalize_value(
-    ctx: &NormalizationContext,
-    expr: InputSubExpr,
-) -> Value {
+fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
 
     let e = match expr.as_ref() {
         Let(x, _, r, b) => {
-            let r = normalize_value(ctx, r.clone()).into_expr(ctx);
+            let r = normalize_value(ctx, r.clone()).normalize_to_expr(ctx);
             return normalize_value(&ctx.insert(x, r.clone()), b.clone());
         }
-        Lam(x, t, e) => return Value::Lam(x.clone(), t.clone(), e.clone()),
-        ExprF::Builtin(b) => return Value::AppliedBuiltin(*b, vec![]),
+        Lam(x, t, e) => {
+            return Value::Closure(Closure::Lam(
+                ctx.clone(),
+                x.clone(),
+                t.clone(),
+                e.clone(),
+            ))
+        }
+        ExprF::Builtin(b) => {
+            return Value::Closure(Closure::AppliedBuiltin(
+                ctx.clone(),
+                *b,
+                vec![],
+            ))
+        }
         e => e,
     };
 
@@ -357,31 +427,16 @@ fn normalize_value(
         );
 
     let expr = match expr {
-        App(Value::Lam(x, _, b), a) => {
-            // Beta reduce
-            let ctx2 = ctx.insert(&x, a.into_expr(ctx));
-            // return normalize_value(&ctx2, b);
-            return reval(normalize_value(&ctx2, b).into_expr(&ctx2));
-        }
-        App(Value::AppliedBuiltin(b, args1), a) => {
-            let combined_args: Vec<_> =
-                args1.into_iter().chain(std::iter::once(a)).collect();
-            let args_unrolled: Vec<_> = combined_args
-                .iter()
-                .map(|val| val.clone().into_expr(ctx).unroll())
-                .collect();
-            match apply_builtin(b, &args_unrolled).into_value(ctx) {
-                Some(v) => return v,
-                None => return Value::AppliedBuiltin(b, combined_args),
-            }
+        App(Value::Closure(c), a) => {
+            return c.app(a);
         }
         expr => expr,
     };
 
     let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> = expr
         .map_ref_with_special_handling_of_binders(
-            |e| e.clone().into_expr(ctx).unroll(),
-            |x, e| e.clone().into_expr(&ctx.skip(x)).unroll(),
+            |e| e.clone().normalize_to_expr(ctx).unroll(),
+            |x, e| e.clone().normalize_to_expr(&ctx.skip(x)).unroll(),
             X::clone,
             Normalized::clone,
             Label::clone,
@@ -456,12 +511,15 @@ fn normalize_value(
 
     match what_next.into_value(ctx) {
         Some(e) => e,
-        None => reval(rc(expr.map_ref_simple(ExprF::roll).map_ref(
-            SubExpr::clone,
-            X::clone,
-            |_| unreachable!(),
-            Label::clone,
-        ))),
+        None => reval(
+            ctx,
+            rc(expr.map_ref_simple(ExprF::roll).map_ref(
+                SubExpr::clone,
+                X::clone,
+                |_| unreachable!(),
+                Label::clone,
+            )),
+        ),
     }
 }
 
@@ -476,7 +534,7 @@ fn normalize_value(
 ///
 fn normalize(e: InputSubExpr) -> OutputSubExpr {
     normalize_value(&NormalizationContext::new(), e)
-        .into_expr(&NormalizationContext::new())
+        .normalize_to_expr(&NormalizationContext::new())
 }
 
 #[cfg(test)]
