@@ -240,10 +240,10 @@ where
 /// typechecking, but only construct `Value`s.
 ///
 /// Values usually store subexpressions unnormalized, to enable lazy normalization. They
-/// approximate Weak Head Normal-Form (WHNF). This means that the expression is normalized
-/// as little as possible, but just enough to know the first constructor of the
-/// normal form. This is identical to full normalization for simple types like integers,
-/// but for example for a record literal this means only knowing the field names.
+/// approximate what's called Weak Head Normal-Form (WHNF). This means that the expression is
+/// normalized as little as possible, but just enough to know the first constructor of the normal
+/// form. This is identical to full normalization for simple types like integers, but for example
+/// for a record literal this means knowing just the field names.
 #[derive(Debug, Clone)]
 enum Value {
     Closure(Closure),
@@ -557,6 +557,27 @@ fn normalize_last_layer(
         Field(Value::UnionType(ctx, kts), l) => {
             return Value::Closure(Closure::UnionConstructor(ctx, l, kts))
         }
+        Field(Value::RecordLit(record_ctx, mut kvs), l) => match kvs.remove(&l)
+        {
+            Some(r) => return normalize_value(&record_ctx, r),
+            // Return ownership
+            None => Field(Value::RecordLit(record_ctx, kvs), l),
+        },
+        // Always simplify `x.{}` to `{}`
+        Projection(_, ls) if ls.is_empty() => {
+            return Value::RecordLit(
+                ctx.clone(),
+                std::collections::BTreeMap::new(),
+            )
+        }
+        Projection(Value::RecordLit(record_ctx, mut kvs), ls) => {
+            return Value::RecordLit(
+                record_ctx,
+                ls.into_iter()
+                    .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
+                    .collect(),
+            )
+        }
         Merge(
             Value::RecordLit(record_ctx, mut handlers),
             Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
@@ -615,19 +636,10 @@ fn normalize_last_layer(
                 None => DoneAsIs,
             }
         }
-        Field(RecordLit(kvs), l) => match kvs.get(&l) {
-            Some(r) => DoneRefSub(r),
-            None => DoneAsIs,
-        },
+        Field(RecordLit(_), _) => unreachable!(),
         Field(UnionType(_), _) => unreachable!(),
-        Projection(_, ls) if ls.is_empty() => {
-            Done(RecordLit(std::collections::BTreeMap::new()))
-        }
-        Projection(RecordLit(kvs), ls) => Done(RecordLit(
-            ls.iter()
-                .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
-                .collect(),
-        )),
+        Projection(_, ls) if ls.is_empty() => unreachable!(),
+        Projection(RecordLit(_), _) => unreachable!(),
         _ => DoneAsIs,
     };
 
