@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
-use std::fmt;
 
 use dhall_core::context::Context;
 use dhall_core::*;
@@ -26,59 +25,40 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin<N, E>(b: Builtin, args: &[Expr<N, E>]) -> WhatNext<N, E>
-where
-    N: fmt::Debug + Clone,
-    E: fmt::Debug + Clone,
-{
+fn apply_builtin(b: Builtin, args: &[WHNF]) -> WhatNext<X, X> {
+    let args: Vec<_> = args
+        .iter()
+        .map(|val| val.clone().normalize_to_expr().unroll())
+        .collect();
     use dhall_core::Builtin::*;
     use dhall_core::ExprF::*;
     use WhatNext::*;
-    let (ret, rest) = match (b, args) {
-        (OptionalNone, [t, rest..]) => (rc(EmptyOptionalLit(t.roll())), rest),
-        (NaturalIsZero, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n == 0)), rest)
+    let ret = match (b, args.as_slice()) {
+        (OptionalNone, [t]) => rc(EmptyOptionalLit(t.roll())),
+        (NaturalIsZero, [NaturalLit(n)]) => rc(BoolLit(*n == 0)),
+        (NaturalEven, [NaturalLit(n)]) => rc(BoolLit(*n % 2 == 0)),
+        (NaturalOdd, [NaturalLit(n)]) => rc(BoolLit(*n % 2 != 0)),
+        (NaturalToInteger, [NaturalLit(n)]) => rc(IntegerLit(*n as isize)),
+        (NaturalShow, [NaturalLit(n)]) => rc(TextLit(n.to_string().into())),
+        (ListLength, [_, EmptyListLit(_)]) => rc(NaturalLit(0)),
+        (ListLength, [_, NEListLit(ys)]) => rc(NaturalLit(ys.len())),
+        (ListHead, [_, EmptyListLit(t)]) => rc(EmptyOptionalLit(t.clone())),
+        (ListHead, [_, NEListLit(ys)]) => {
+            rc(NEOptionalLit(ys.first().unwrap().clone()))
         }
-        (NaturalEven, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n % 2 == 0)), rest)
+        (ListLast, [_, EmptyListLit(t)]) => rc(EmptyOptionalLit(t.clone())),
+        (ListLast, [_, NEListLit(ys)]) => {
+            rc(NEOptionalLit(ys.last().unwrap().clone()))
         }
-        (NaturalOdd, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n % 2 != 0)), rest)
-        }
-        (NaturalToInteger, [NaturalLit(n), rest..]) => {
-            (rc(IntegerLit(*n as isize)), rest)
-        }
-        (NaturalShow, [NaturalLit(n), rest..]) => {
-            (rc(TextLit(n.to_string().into())), rest)
-        }
-        (ListLength, [_, EmptyListLit(_), rest..]) => (rc(NaturalLit(0)), rest),
-        (ListLength, [_, NEListLit(ys), rest..]) => {
-            (rc(NaturalLit(ys.len())), rest)
-        }
-        (ListHead, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyOptionalLit(t.clone())), rest)
-        }
-        (ListHead, [_, NEListLit(ys), rest..]) => {
-            (rc(NEOptionalLit(ys.first().unwrap().clone())), rest)
-        }
-        (ListLast, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyOptionalLit(t.clone())), rest)
-        }
-        (ListLast, [_, NEListLit(ys), rest..]) => {
-            (rc(NEOptionalLit(ys.last().unwrap().clone())), rest)
-        }
-        (ListReverse, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyListLit(t.clone())), rest)
-        }
-        (ListReverse, [_, NEListLit(ys), rest..]) => {
+        (ListReverse, [_, EmptyListLit(t)]) => rc(EmptyListLit(t.clone())),
+        (ListReverse, [_, NEListLit(ys)]) => {
             let ys = ys.iter().rev().cloned().collect();
-            (rc(NEListLit(ys)), rest)
+            rc(NEListLit(ys))
         }
-        (ListIndexed, [_, EmptyListLit(t), rest..]) => (
-            dhall::subexpr!([] : List ({ index : Natural, value : t })),
-            rest,
-        ),
-        (ListIndexed, [_, NEListLit(xs), rest..]) => {
+        (ListIndexed, [_, EmptyListLit(t)]) => {
+            dhall::subexpr!([] : List ({ index : Natural, value : t }))
+        }
+        (ListIndexed, [_, NEListLit(xs)]) => {
             let xs = xs
                 .iter()
                 .cloned()
@@ -88,9 +68,9 @@ where
                     dhall::subexpr!({ index = i, value = e })
                 })
                 .collect();
-            (rc(NEListLit(xs)), rest)
+            rc(NEListLit(xs))
         }
-        (ListBuild, [a0, g, rest..]) => {
+        (ListBuild, [a0, g]) => {
             'ret: {
                 // if let App(f2, args2) = g {
                 //     if let (Builtin(ListFold), [_, x, rest_inner..]) =
@@ -106,18 +86,15 @@ where
                 let a0 = a0.roll();
                 let a1 = shift0(1, &"x".into(), &a0);
                 let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(
-                        g
-                        (List a0)
-                        (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
-                        ([] : List a0)
-                    ),
-                    rest,
+                break 'ret dhall::subexpr!(
+                    g
+                    (List a0)
+                    (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
+                    ([] : List a0)
                 );
             }
         }
-        (OptionalBuild, [a0, g, rest..]) => {
+        (OptionalBuild, [a0, g]) => {
             'ret: {
                 // if let App(f2, args2) = g {
                 //     if let (Builtin(OptionalFold), [_, x, rest_inner..]) =
@@ -132,75 +109,64 @@ where
                 // };
                 let a0 = a0.roll();
                 let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(
-                        g
-                        (Optional a0)
-                        (λ(x: a0) -> Some x)
-                        (None a0)
-                    ),
-                    rest,
+                break 'ret dhall::subexpr!(
+                    g
+                    (Optional a0)
+                    (λ(x: a0) -> Some x)
+                    (None a0)
                 );
             }
         }
-        (ListFold, [_, EmptyListLit(_), _, _, nil, rest..]) => {
-            (nil.roll(), rest)
-        }
-        (ListFold, [_, NEListLit(xs), _, cons, nil, rest..]) => (
+        (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.roll(),
+        (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
             xs.iter().rev().fold(nil.roll(), |acc, x| {
                 let x = x.clone();
                 let acc = acc.clone();
                 let cons = cons.roll();
                 dhall::subexpr!(cons x acc)
-            }),
-            rest,
-        ),
+            })
+        }
         // // fold/build fusion
         // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
-        (OptionalFold, [_, NEOptionalLit(x), _, just, _, rest..]) => {
+        (OptionalFold, [_, NEOptionalLit(x), _, just, _]) => {
             let x = x.clone();
             let just = just.roll();
-            (dhall::subexpr!(just x), rest)
+            dhall::subexpr!(just x)
         }
-        (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing, rest..]) => {
-            (nothing.roll(), rest)
+        (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
+            nothing.roll()
         }
         // // fold/build fusion
         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
         //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
-        (NaturalBuild, [g, rest..]) => {
-            'ret: {
-                // if let App(f2, args2) = g {
-                //     if let (Builtin(NaturalFold), [x, rest_inner..]) =
-                //         (f2.as_ref(), args2.as_slice())
-                //     {
-                //         // fold/build fusion
-                //         break 'ret (
-                //             rc(App(x.clone(), rest_inner.to_vec())),
-                //             rest,
-                //         );
-                //     }
-                // };
-                let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
-                    rest,
-                );
-            }
+        (NaturalBuild, [g]) => {
+            // 'ret: {
+            // if let App(f2, args2) = g {
+            //     if let (Builtin(NaturalFold), [x, rest_inner..]) =
+            //         (f2.as_ref(), args2.as_slice())
+            //     {
+            //         // fold/build fusion
+            //         break 'ret (
+            //             rc(App(x.clone(), rest_inner.to_vec())),
+            //             rest,
+            //         );
+            //     }
+            // };
+            // }
+            let g = g.roll();
+            dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0)
         }
-        (NaturalFold, [NaturalLit(0), _, _, zero, rest..]) => {
-            (zero.roll(), rest)
-        }
-        (NaturalFold, [NaturalLit(n), t, succ, zero, rest..]) => {
+        (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.roll(),
+        (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
             let fold = rc(Builtin(NaturalFold));
             let n = rc(NaturalLit(n - 1));
             let t = t.roll();
             let succ = succ.roll();
             let zero = zero.roll();
-            (dhall::subexpr!(succ (fold n t succ zero)), rest)
+            dhall::subexpr!(succ (fold n t succ zero))
         }
         // (NaturalFold, Some(App(f2, args2)), _) => {
         //     match (f2.as_ref(), args2.as_slice()) {
@@ -213,11 +179,7 @@ where
         // }
         _ => return DoneAsIs,
     };
-    // Put the remaining arguments back and eval again. In most cases
-    // ret will not be of a form that can be applied, so this won't go very deep.
-    // In lots of cases, there are no remaining args so this cann will just return ret.
-    let rest = rest.iter().map(ExprF::roll);
-    Continue(rest.fold(ret, |acc, e| rc(ExprF::App(acc, e))).unroll())
+    Continue(ret.unroll())
 }
 
 // #[derive(Debug, Clone)]
@@ -403,11 +365,7 @@ impl Closure {
             }
             Closure::AppliedBuiltin(ctx, b, mut args) => {
                 args.push(val);
-                let args_unrolled: Vec<_> = args
-                    .iter()
-                    .map(|val| val.clone().normalize_to_expr().unroll())
-                    .collect();
-                match apply_builtin(b, &args_unrolled).into_value(&ctx) {
+                match apply_builtin(b, &args).into_value(&ctx) {
                     Some(v) => v,
                     None => {
                         WHNF::Closure(Closure::AppliedBuiltin(ctx, b, args))
