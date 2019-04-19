@@ -192,8 +192,6 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     UnionType(BTreeMap<Label, Option<SubExpr>>),
     ///  `< k1 = t1, k2 : t2, k3 >`
     UnionLit(Label, SubExpr, BTreeMap<Label, Option<SubExpr>>),
-    ///  `< k1 : t1, k2 >.k1`
-    UnionConstructor(Label, BTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`

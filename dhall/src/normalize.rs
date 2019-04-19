@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use std::collections::BTreeMap;
 use std::fmt;
 
 use dhall_core::context::Context;
@@ -233,9 +234,15 @@ where
 //     }
 // }
 
+/// A semantic value. This is partially redundant with `dhall_core::Expr`, on purpose. `Expr` should
+/// be limited to syntactic expressions: either written by the user or meant to be printed.
+/// The rule is the following: we must _not_ construct values of type `Expr` while normalizing or
+/// typechecking, but only construct `Value`s.
 #[derive(Debug, Clone)]
 enum Value {
     Closure(Closure),
+    RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
+    UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     Expr(OutputSubExpr),
 }
 
@@ -244,6 +251,25 @@ impl Value {
     fn normalize_to_expr(self, _ctx: &NormalizationContext) -> OutputSubExpr {
         match self {
             Value::Closure(c) => c.normalize_to_expr(),
+            Value::RecordLit(ctx, kvs) => rc(ExprF::RecordLit(
+                kvs.into_iter()
+                    .map(|(k, v)| {
+                        (k, normalize_value(&ctx, v).normalize_to_expr(&ctx))
+                    })
+                    .collect(),
+            )),
+            Value::UnionType(ctx, kvs) => rc(ExprF::UnionType(
+                kvs.into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_value(&ctx, v).normalize_to_expr(&ctx)
+                            }),
+                        )
+                    })
+                    .collect(),
+            )),
             Value::Expr(e) => e,
         }
     }
@@ -252,6 +278,18 @@ impl Value {
         match self {
             Value::Closure(c) => Value::Closure(c.shift0(delta, label)),
             Value::Expr(e) => Value::Expr(shift0(delta, label, &e)),
+            Value::RecordLit(ctx, kvs) => Value::RecordLit(
+                ctx,
+                kvs.into_iter()
+                    .map(|(k, v)| (k, shift0(delta, label, &v)))
+                    .collect(),
+            ),
+            Value::UnionType(ctx, kvs) => Value::UnionType(
+                ctx,
+                kvs.into_iter()
+                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
+                    .collect(),
+            ),
         }
     }
 }
@@ -260,6 +298,11 @@ impl Value {
 enum Closure {
     Lam(NormalizationContext, Label, InputSubExpr, InputSubExpr),
     AppliedBuiltin(NormalizationContext, Builtin, Vec<Value>),
+    UnionConstructor(
+        NormalizationContext,
+        Label,
+        BTreeMap<Label, Option<InputSubExpr>>,
+    ),
 }
 
 impl Closure {
@@ -277,13 +320,29 @@ impl Closure {
                     .map(|val| val.clone().normalize_to_expr(&ctx).unroll())
                     .collect();
                 match apply_builtin(b, &args_unrolled).into_value(&ctx) {
-                    Some(v) => return v,
+                    Some(v) => v,
                     None => {
-                        return Value::Closure(Closure::AppliedBuiltin(
-                            ctx, b, args,
-                        ))
+                        Value::Closure(Closure::AppliedBuiltin(ctx, b, args))
                     }
                 }
+            }
+            Closure::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_value(&ctx, v).normalize_to_expr(&ctx)
+                            }),
+                        )
+                    })
+                    .collect();
+                Value::Expr(rc(ExprF::UnionLit(
+                    l,
+                    val.normalize_to_expr(&ctx),
+                    kts,
+                )))
             }
         }
     }
@@ -310,6 +369,20 @@ impl Closure {
                         })
                 }
             }
+            Closure::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_value(&ctx, v).normalize_to_expr(&ctx)
+                            }),
+                        )
+                    })
+                    .collect();
+                rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
+            }
         }
     }
 
@@ -326,6 +399,13 @@ impl Closure {
                 b,
                 args.into_iter().map(|e| e.shift0(delta, label)).collect(),
             ),
+            Closure::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
+                    .collect();
+                Closure::UnionConstructor(ctx, l, kts)
+            }
         }
     }
 }
@@ -379,7 +459,6 @@ enum WhatNext<'a, N, E> {
     // The following expression is the normal form
     Done(Expr<N, E>),
     DoneRef(&'a Expr<N, E>),
-    DoneSub(SubExpr<N, E>),
     DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
@@ -392,7 +471,6 @@ impl<'a> WhatNext<'a, X, X> {
             Continue(e) => Some(normalize_value(ctx, e.embed_absurd().roll())),
             Done(e) => Some(reval(ctx, e.roll())),
             DoneRef(e) => Some(reval(ctx, e.roll())),
-            DoneSub(e) => Some(reval(ctx, e)),
             DoneRefSub(e) => Some(reval(ctx, e.clone())),
             DoneAsIs => None,
         }
@@ -400,16 +478,15 @@ impl<'a> WhatNext<'a, X, X> {
 }
 
 fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> Value {
-    match expr.as_ref() {
-        ExprF::Lam(x, t, e) => Value::Closure(Closure::Lam(
-            ctx.clone(),
-            x.clone(),
-            t.embed_absurd(),
-            e.embed_absurd(),
-        )),
-        ExprF::Builtin(b) => {
-            Value::Closure(Closure::AppliedBuiltin(ctx.clone(), *b, vec![]))
+    match expr.as_ref().embed_absurd() {
+        ExprF::Lam(x, t, e) => {
+            Value::Closure(Closure::Lam(ctx.clone(), x, t, e))
         }
+        ExprF::Builtin(b) => {
+            Value::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
+        }
+        ExprF::RecordLit(kvs) => Value::RecordLit(ctx.clone(), kvs),
+        ExprF::UnionType(kvs) => Value::UnionType(ctx.clone(), kvs),
         _ => Value::Expr(expr),
     }
 }
@@ -431,12 +508,18 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
                 e.clone(),
             ))
         }
-        ExprF::Builtin(b) => {
+        Builtin(b) => {
             return Value::Closure(Closure::AppliedBuiltin(
                 ctx.clone(),
                 *b,
                 vec![],
             ))
+        }
+        ExprF::RecordLit(kvs) => {
+            return Value::RecordLit(ctx.clone(), kvs.clone())
+        }
+        ExprF::UnionType(kvs) => {
+            return Value::UnionType(ctx.clone(), kvs.clone())
         }
         e => e,
     };
@@ -453,9 +536,28 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
 
     let expr = match expr {
         Var(v) => return ctx.lookup(&v),
-        App(Value::Closure(c), a) => {
-            return c.app(a);
+        Annot(x, _) => return x,
+        Note(_, e) => return e,
+        App(Value::Closure(c), a) => return c.app(a),
+        Field(Value::UnionType(ctx, kts), l) => {
+            return Value::Closure(Closure::UnionConstructor(ctx, l, kts))
         }
+        Merge(
+            Value::RecordLit(record_ctx, mut handlers),
+            Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+            t,
+        ) => match handlers.remove(&l) {
+            Some(h) => return normalize_value(ctx, h),
+            None => {
+                return Value::Expr(rc(Merge(
+                    Value::RecordLit(record_ctx, handlers)
+                        .normalize_to_expr(ctx),
+                    Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts))
+                        .normalize_to_expr(ctx),
+                    t.map(|t| t.normalize_to_expr(ctx)),
+                )))
+            }
+        },
         expr => expr,
     };
 
@@ -471,16 +573,13 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
     use WhatNext::*;
     let what_next = match &expr {
         Embed(e) => DoneRefSub(&e.0),
-        Annot(x, _) => DoneRef(x),
-        Note(_, e) => DoneRef(e),
+        Annot(_, _) => unreachable!(),
+        Note(_, _) => unreachable!(),
         Var(_) => unreachable!(),
         Let(_, _, _, _) => unreachable!(),
         Lam(_, _, _) => unreachable!(),
         App(Builtin(_), _) => unreachable!(),
         App(Lam(_, _, _), _) => unreachable!(),
-        App(UnionConstructor(l, kts), a) => {
-            Done(UnionLit(l.clone(), rc(a.clone()), kts.clone()))
-        }
         BoolIf(BoolLit(true), t, _) => DoneRef(t),
         BoolIf(BoolLit(false), _, f) => DoneRef(f),
         // TODO: interpolation
@@ -511,19 +610,11 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
                 None => DoneAsIs,
             }
         }
-        Merge(RecordLit(handlers), UnionConstructor(l, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => DoneRefSub(h),
-                None => DoneAsIs,
-            }
-        }
         Field(RecordLit(kvs), l) => match kvs.get(&l) {
             Some(r) => DoneRefSub(r),
             None => DoneAsIs,
         },
-        Field(UnionType(kts), l) => {
-            Done(UnionConstructor(l.clone(), kts.clone()))
-        }
+        Field(UnionType(_), _) => unreachable!(),
         Projection(_, ls) if ls.is_empty() => {
             Done(RecordLit(std::collections::BTreeMap::new()))
         }

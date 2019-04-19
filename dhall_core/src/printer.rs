@@ -104,16 +104,6 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
                 }
                 f.write_str(" >")?
             }
-            UnionConstructor(x, map) => {
-                fmt_list("< ", " | ", " >", map, f, |(k, v), f| {
-                    write!(f, "{}", k)?;
-                    if let Some(v) = v {
-                        write!(f, ": {}", v)?;
-                    }
-                    Ok(())
-                })?;
-                write!(f, ".{}", x)?
-            }
             Embed(a) => a.fmt(f)?,
             Note(_, b) => b.fmt(f)?,
         }

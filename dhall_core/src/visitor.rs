@@ -163,9 +163,6 @@ where
                 v.visit_subexpr(x)?,
                 btoptmap(kts, v)?,
             ),
-            UnionConstructor(x, kts) => {
-                UnionConstructor(v.visit_label(x)?, btoptmap(kts, v)?)
-            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,
