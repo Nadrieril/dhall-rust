@@ -157,7 +157,7 @@ where
         ),
         // // fold/build fusion
         // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_value(&App(bx(x.clone()), rest.to_vec()))
+        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
         (OptionalFold, [_, NEOptionalLit(x), _, just, _, rest..]) => {
             let x = x.clone();
@@ -169,7 +169,7 @@ where
         }
         // // fold/build fusion
         // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_value(&App(bx(x.clone()), rest.to_vec()))
+        //     normalize_whnf(&App(bx(x.clone()), rest.to_vec()))
         // }
         (NaturalBuild, [g, rest..]) => {
             'ret: {
@@ -226,71 +226,71 @@ where
 //     expr: SubExpr<X, Normalized<'static>>,
 // }
 // impl ContextualizedSubExpr {
-//     fn normalize_value(self) -> Value {
-//         normalize_value(&self.ctx, self.expr)
+//     fn normalize_whnf(self) -> WHNF {
+//         normalize_whnf(&self.ctx, self.expr)
 //     }
 //     fn normalize_expr(self) -> OutputSubExpr {
-//         normalize_value(&self.ctx, self.expr).into_expr(&self.ctx)
+//         normalize_whnf(&self.ctx, self.expr).into_expr(&self.ctx)
 //     }
 // }
 
 /// A semantic value. This is partially redundant with `dhall_core::Expr`, on purpose. `Expr` should
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
 /// The rule is the following: we must _not_ construct values of type `Expr` while normalizing or
-/// typechecking, but only construct `Value`s.
+/// typechecking, but only construct `WHNF`s.
 ///
-/// Values usually store subexpressions unnormalized, to enable lazy normalization. They
-/// approximate what's called Weak Head Normal-Form (WHNF). This means that the expression is
-/// normalized as little as possible, but just enough to know the first constructor of the normal
-/// form. This is identical to full normalization for simple types like integers, but for example
-/// for a record literal this means knowing just the field names.
+/// WHNFs usually store subexpressions unnormalized, to enable lazy normalization. They approximate
+/// what's called Weak Head Normal-Form (WHNF). This means that the expression is normalized as
+/// little as possible, but just enough to know the first constructor of the normal form. This is
+/// identical to full normalization for simple types like integers, but for e.g. a record literal
+/// this means knowing just the field names.
 #[derive(Debug, Clone)]
-enum Value {
+enum WHNF {
     Closure(Closure),
     RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     Expr(OutputSubExpr),
 }
 
-impl Value {
+impl WHNF {
     /// Convert the value back to a (normalized) syntactic expression
     fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
-            Value::Closure(c) => c.normalize_to_expr(),
-            Value::RecordLit(ctx, kvs) => rc(ExprF::RecordLit(
+            WHNF::Closure(c) => c.normalize_to_expr(),
+            WHNF::RecordLit(ctx, kvs) => rc(ExprF::RecordLit(
                 kvs.into_iter()
                     .map(|(k, v)| {
-                        (k, normalize_value(&ctx, v).normalize_to_expr())
+                        (k, normalize_whnf(&ctx, v).normalize_to_expr())
                     })
                     .collect(),
             )),
-            Value::UnionType(ctx, kvs) => rc(ExprF::UnionType(
+            WHNF::UnionType(ctx, kvs) => rc(ExprF::UnionType(
                 kvs.into_iter()
                     .map(|(k, v)| {
                         (
                             k,
                             v.map(|v| {
-                                normalize_value(&ctx, v).normalize_to_expr()
+                                normalize_whnf(&ctx, v).normalize_to_expr()
                             }),
                         )
                     })
                     .collect(),
             )),
-            Value::Expr(e) => e,
+            WHNF::Expr(e) => e,
         }
     }
 
     fn shift0(self, delta: isize, label: &Label) -> Self {
         match self {
-            Value::Closure(c) => Value::Closure(c.shift0(delta, label)),
-            Value::Expr(e) => Value::Expr(shift0(delta, label, &e)),
-            Value::RecordLit(ctx, kvs) => Value::RecordLit(
+            WHNF::Closure(c) => WHNF::Closure(c.shift0(delta, label)),
+            WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
+            WHNF::RecordLit(ctx, kvs) => WHNF::RecordLit(
                 ctx,
                 kvs.into_iter()
                     .map(|(k, v)| (k, shift0(delta, label, &v)))
                     .collect(),
             ),
-            Value::UnionType(ctx, kvs) => Value::UnionType(
+            WHNF::UnionType(ctx, kvs) => WHNF::UnionType(
                 ctx,
                 kvs.into_iter()
                     .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
@@ -303,7 +303,7 @@ impl Value {
 #[derive(Debug, Clone)]
 enum Closure {
     Lam(NormalizationContext, Label, InputSubExpr, InputSubExpr),
-    AppliedBuiltin(NormalizationContext, Builtin, Vec<Value>),
+    AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
     UnionConstructor(
         NormalizationContext,
         Label,
@@ -313,11 +313,11 @@ enum Closure {
 
 impl Closure {
     /// Apply the closure to a value
-    fn app(self, val: Value) -> Value {
+    fn app(self, val: WHNF) -> WHNF {
         match self {
             Closure::Lam(ctx, x, _, e) => {
                 let ctx2 = ctx.insert(&x, val);
-                normalize_value(&ctx2, e)
+                normalize_whnf(&ctx2, e)
             }
             Closure::AppliedBuiltin(ctx, b, mut args) => {
                 args.push(val);
@@ -328,7 +328,7 @@ impl Closure {
                 match apply_builtin(b, &args_unrolled).into_value(&ctx) {
                     Some(v) => v,
                     None => {
-                        Value::Closure(Closure::AppliedBuiltin(ctx, b, args))
+                        WHNF::Closure(Closure::AppliedBuiltin(ctx, b, args))
                     }
                 }
             }
@@ -339,16 +339,12 @@ impl Closure {
                         (
                             k,
                             v.map(|v| {
-                                normalize_value(&ctx, v).normalize_to_expr()
+                                normalize_whnf(&ctx, v).normalize_to_expr()
                             }),
                         )
                     })
                     .collect();
-                Value::Expr(rc(ExprF::UnionLit(
-                    l,
-                    val.normalize_to_expr(),
-                    kts,
-                )))
+                WHNF::Expr(rc(ExprF::UnionLit(l, val.normalize_to_expr(), kts)))
             }
         }
     }
@@ -360,8 +356,8 @@ impl Closure {
                 let ctx2 = ctx.skip(&x);
                 rc(ExprF::Lam(
                     x.clone(),
-                    normalize_value(&ctx, t).normalize_to_expr(),
-                    normalize_value(&ctx2, e).normalize_to_expr(),
+                    normalize_whnf(&ctx, t).normalize_to_expr(),
+                    normalize_whnf(&ctx2, e).normalize_to_expr(),
                 ))
             }
             Closure::AppliedBuiltin(_ctx, b, args) => {
@@ -382,7 +378,7 @@ impl Closure {
                         (
                             k,
                             v.map(|v| {
-                                normalize_value(&ctx, v).normalize_to_expr()
+                                normalize_whnf(&ctx, v).normalize_to_expr()
                             }),
                         )
                     })
@@ -418,7 +414,7 @@ impl Closure {
 
 #[derive(Debug, Clone)]
 enum EnvItem {
-    Expr(Value),
+    Expr(WHNF),
     Skip(usize),
 }
 
@@ -429,7 +425,7 @@ impl NormalizationContext {
     fn new() -> NormalizationContext {
         NormalizationContext(Context::new())
     }
-    fn insert(&self, x: &Label, e: Value) -> NormalizationContext {
+    fn insert(&self, x: &Label, e: WHNF) -> NormalizationContext {
         NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
     }
     fn skip(&self, x: &Label) -> NormalizationContext {
@@ -446,14 +442,14 @@ impl NormalizationContext {
                 .insert(x.clone(), EnvItem::Skip(0)),
         )
     }
-    fn lookup(&self, var: &V<Label>) -> Value {
+    fn lookup(&self, var: &V<Label>) -> WHNF {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
             Some(EnvItem::Skip(m)) => {
-                Value::Expr(rc(ExprF::Var(V(x.clone(), *m))))
+                WHNF::Expr(rc(ExprF::Var(V(x.clone(), *m))))
             }
-            None => Value::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
+            None => WHNF::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
         }
     }
 }
@@ -471,10 +467,10 @@ enum WhatNext<'a, N, E> {
 }
 
 impl<'a> WhatNext<'a, X, X> {
-    fn into_value(self, ctx: &NormalizationContext) -> Option<Value> {
+    fn into_value(self, ctx: &NormalizationContext) -> Option<WHNF> {
         use WhatNext::*;
         match self {
-            Continue(e) => Some(normalize_value(ctx, e.embed_absurd().roll())),
+            Continue(e) => Some(normalize_whnf(ctx, e.embed_absurd().roll())),
             Done(e) => Some(reval(ctx, e.roll())),
             DoneRef(e) => Some(reval(ctx, e.roll())),
             DoneRefSub(e) => Some(reval(ctx, e.clone())),
@@ -483,28 +479,29 @@ impl<'a> WhatNext<'a, X, X> {
     }
 }
 
-fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> Value {
+fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
     match expr.as_ref().embed_absurd() {
         ExprF::Lam(x, t, e) => {
-            Value::Closure(Closure::Lam(ctx.clone(), x, t, e))
+            WHNF::Closure(Closure::Lam(ctx.clone(), x, t, e))
         }
         ExprF::Builtin(b) => {
-            Value::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
+            WHNF::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
         }
-        ExprF::RecordLit(kvs) => Value::RecordLit(ctx.clone(), kvs),
-        ExprF::UnionType(kvs) => Value::UnionType(ctx.clone(), kvs),
-        _ => Value::Expr(expr),
+        ExprF::RecordLit(kvs) => WHNF::RecordLit(ctx.clone(), kvs),
+        ExprF::UnionType(kvs) => WHNF::UnionType(ctx.clone(), kvs),
+        _ => WHNF::Expr(expr),
     }
 }
 
-fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
+/// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
+fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
     let e = match expr.as_ref() {
         ExprF::Let(x, _, r, b) => {
-            let r = normalize_value(ctx, r.clone());
-            return normalize_value(&ctx.insert(x, r), b.clone());
+            let r = normalize_whnf(ctx, r.clone());
+            return normalize_whnf(&ctx.insert(x, r), b.clone());
         }
         ExprF::Lam(x, t, e) => {
-            return Value::Closure(Closure::Lam(
+            return WHNF::Closure(Closure::Lam(
                 ctx.clone(),
                 x.clone(),
                 t.clone(),
@@ -512,26 +509,26 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
             ))
         }
         ExprF::Builtin(b) => {
-            return Value::Closure(Closure::AppliedBuiltin(
+            return WHNF::Closure(Closure::AppliedBuiltin(
                 ctx.clone(),
                 *b,
                 vec![],
             ))
         }
         ExprF::RecordLit(kvs) => {
-            return Value::RecordLit(ctx.clone(), kvs.clone())
+            return WHNF::RecordLit(ctx.clone(), kvs.clone())
         }
         ExprF::UnionType(kvs) => {
-            return Value::UnionType(ctx.clone(), kvs.clone())
+            return WHNF::UnionType(ctx.clone(), kvs.clone())
         }
         e => e,
     };
 
     // Recursively normalize all subexpressions
-    let expr: ExprF<Value, Label, X, Normalized<'static>> = e
+    let expr: ExprF<WHNF, Label, X, Normalized<'static>> = e
         .map_ref_with_special_handling_of_binders(
-            |e| normalize_value(ctx, e.clone()),
-            |x, e| normalize_value(&ctx.skip(x), e.clone()),
+            |e| normalize_whnf(ctx, e.clone()),
+            |x, e| normalize_whnf(&ctx.skip(x), e.clone()),
             X::clone,
             Normalized::clone,
             Label::clone,
@@ -543,8 +540,8 @@ fn normalize_value(ctx: &NormalizationContext, expr: InputSubExpr) -> Value {
 /// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
 fn normalize_last_layer(
     ctx: &NormalizationContext,
-    expr: ExprF<Value, Label, X, Normalized<'static>>,
-) -> Value {
+    expr: ExprF<WHNF, Label, X, Normalized<'static>>,
+) -> WHNF {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
     use WhatNext::*;
@@ -553,25 +550,26 @@ fn normalize_last_layer(
         Var(v) => return ctx.lookup(&v),
         Annot(x, _) => return x,
         Note(_, e) => return e,
-        App(Value::Closure(c), a) => return c.app(a),
-        Field(Value::UnionType(ctx, kts), l) => {
-            return Value::Closure(Closure::UnionConstructor(ctx, l, kts))
+        App(WHNF::Closure(c), a) => return c.app(a),
+        Field(WHNF::UnionType(ctx, kts), l) => {
+            return WHNF::Closure(Closure::UnionConstructor(ctx, l, kts))
         }
-        Field(Value::RecordLit(record_ctx, mut kvs), l) => match kvs.remove(&l)
-        {
-            Some(r) => return normalize_value(&record_ctx, r),
-            // Return ownership
-            None => Field(Value::RecordLit(record_ctx, kvs), l),
-        },
+        Field(WHNF::RecordLit(record_ctx, mut kvs), l) => {
+            match kvs.remove(&l) {
+                Some(r) => return normalize_whnf(&record_ctx, r),
+                // Return ownership
+                None => Field(WHNF::RecordLit(record_ctx, kvs), l),
+            }
+        }
         // Always simplify `x.{}` to `{}`
         Projection(_, ls) if ls.is_empty() => {
-            return Value::RecordLit(
+            return WHNF::RecordLit(
                 ctx.clone(),
                 std::collections::BTreeMap::new(),
             )
         }
-        Projection(Value::RecordLit(record_ctx, mut kvs), ls) => {
-            return Value::RecordLit(
+        Projection(WHNF::RecordLit(record_ctx, mut kvs), ls) => {
+            return WHNF::RecordLit(
                 record_ctx,
                 ls.into_iter()
                     .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
@@ -579,15 +577,15 @@ fn normalize_last_layer(
             )
         }
         Merge(
-            Value::RecordLit(record_ctx, mut handlers),
-            Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+            WHNF::RecordLit(record_ctx, mut handlers),
+            WHNF::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
             t,
         ) => match handlers.remove(&l) {
-            Some(h) => return normalize_value(ctx, h),
+            Some(h) => return normalize_whnf(ctx, h),
             // Return ownership
             None => Merge(
-                Value::RecordLit(record_ctx, handlers),
-                Value::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+                WHNF::RecordLit(record_ctx, handlers),
+                WHNF::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
                 t,
             ),
         },
@@ -667,7 +665,7 @@ fn normalize_last_layer(
 /// leave ill-typed sub-expressions unevaluated.
 ///
 fn normalize(e: InputSubExpr) -> OutputSubExpr {
-    normalize_value(&NormalizationContext::new(), e).normalize_to_expr()
+    normalize_whnf(&NormalizationContext::new(), e).normalize_to_expr()
 }
 
 #[cfg(test)]
