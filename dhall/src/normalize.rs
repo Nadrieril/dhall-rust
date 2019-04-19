@@ -7,6 +7,9 @@ use dhall_generator as dhall;
 
 use crate::expr::*;
 
+type InputSubExpr = SubExpr<X, Normalized<'static>>;
+type OutputSubExpr = SubExpr<X, X>;
+
 impl<'a> Typed<'a> {
     pub fn normalize(self) -> Normalized<'a> {
         Normalized(normalize(self.0), self.1, self.2)
@@ -218,17 +221,17 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Value {
-    Expr(SubExpr<X, X>),
+    Expr(OutputSubExpr),
     Lam(
         Label,
-        SubExpr<X, Normalized<'static>>,
-        SubExpr<X, Normalized<'static>>,
+        InputSubExpr,
+        InputSubExpr,
     ),
     AppliedBuiltin(Builtin, Vec<Value>),
 }
 
 impl Value {
-    fn into_expr(self, ctx: &NormalizationContext) -> SubExpr<X, X> {
+    fn into_expr(self, ctx: &NormalizationContext) -> OutputSubExpr {
         match self {
             Value::Expr(e) => e,
             Value::Lam(x, t, e) => rc(ExprF::Lam(
@@ -252,7 +255,7 @@ impl Value {
 
 #[derive(Debug, Clone)]
 enum EnvItem {
-    Expr(SubExpr<X, X>),
+    Expr(OutputSubExpr),
     Skip(usize),
 }
 
@@ -262,7 +265,7 @@ impl NormalizationContext {
     fn new() -> NormalizationContext {
         NormalizationContext(Context::new())
     }
-    fn insert(&self, x: &Label, e: SubExpr<X, X>) -> NormalizationContext {
+    fn insert(&self, x: &Label, e: OutputSubExpr) -> NormalizationContext {
         NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
     }
     fn skip(&self, x: &Label) -> NormalizationContext {
@@ -279,7 +282,7 @@ impl NormalizationContext {
                 .insert(x.clone(), EnvItem::Skip(0)),
         )
     }
-    fn lookup(&self, var: &V<Label>) -> SubExpr<X, X> {
+    fn lookup(&self, var: &V<Label>) -> OutputSubExpr {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
@@ -316,7 +319,7 @@ impl<'a> WhatNext<'a, X, X> {
     }
 }
 
-fn reval(expr: SubExpr<X, X>) -> Value {
+fn reval(expr: OutputSubExpr) -> Value {
     match expr.as_ref() {
         ExprF::Lam(x, t, e) => {
             Value::Lam(x.clone(), t.embed_absurd(), e.embed_absurd())
@@ -328,7 +331,7 @@ fn reval(expr: SubExpr<X, X>) -> Value {
 
 fn normalize_value(
     ctx: &NormalizationContext,
-    expr: SubExpr<X, Normalized<'static>>,
+    expr: InputSubExpr,
 ) -> Value {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
@@ -471,7 +474,7 @@ fn normalize_value(
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
+fn normalize(e: InputSubExpr) -> OutputSubExpr {
     normalize_value(&NormalizationContext::new(), e)
         .into_expr(&NormalizationContext::new())
 }
