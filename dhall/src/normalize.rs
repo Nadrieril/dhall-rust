@@ -224,10 +224,7 @@ enum Value {
         SubExpr<X, Normalized<'static>>,
         SubExpr<X, Normalized<'static>>,
     ),
-    // App(
-    //     SubExpr<X, Normalized<'static>>,
-    //     Vec<SubExpr<X, Normalized<'static>>>,
-    // ),
+    AppliedBuiltin(Builtin, Vec<Value>),
 }
 
 impl Value {
@@ -239,12 +236,14 @@ impl Value {
                 normalize_value(ctx, t).into_expr(ctx),
                 normalize_value(&ctx.skip(&x), e).into_expr(&ctx.skip(&x)),
             )),
-            // Value::App(f, args) => rc(ExprF::App(
-            //     normalize_value(ctx, f).into_expr(ctx),
-            //     args.into_iter()
-            //         .map(|e| normalize_value(ctx, e).into_expr(ctx))
-            //         .collect(),
-            // )),
+            Value::AppliedBuiltin(b, args) if args.is_empty() => {
+                rc(ExprF::Builtin(b))
+            }
+            Value::AppliedBuiltin(b, args) => {
+                let args_rolled: Vec<_> =
+                    args.iter().map(|val| val.clone().into_expr(ctx)).collect();
+                rc(ExprF::App(rc(ExprF::Builtin(b)), args_rolled))
+            }
         }
     }
 }
@@ -301,11 +300,26 @@ enum WhatNext<'a, N, E> {
     DoneAsIs,
 }
 
+impl<'a> WhatNext<'a, X, X> {
+    fn into_value(self, ctx: &NormalizationContext) -> Option<Value> {
+        use WhatNext::*;
+        match self {
+            Continue(e) => Some(normalize_value(ctx, e.embed_absurd().roll())),
+            Done(e) => Some(reval(e.roll())),
+            DoneRef(e) => Some(reval(e.roll())),
+            DoneSub(e) => Some(reval(e)),
+            DoneRefSub(e) => Some(reval(e.clone())),
+            DoneAsIs => None,
+        }
+    }
+}
+
 fn reval(expr: SubExpr<X, X>) -> Value {
     match expr.as_ref() {
         ExprF::Lam(x, t, e) => {
             Value::Lam(x.clone(), t.embed_absurd(), e.embed_absurd())
         }
+        ExprF::Builtin(b) => Value::AppliedBuiltin(*b, vec![]),
         _ => Value::Expr(expr),
     }
 }
@@ -323,6 +337,7 @@ fn normalize_value(
             return normalize_value(&ctx.insert(x, r.clone()), b.clone());
         }
         Lam(x, t, e) => return Value::Lam(x.clone(), t.clone(), e.clone()),
+        ExprF::Builtin(b) => return Value::AppliedBuiltin(*b, vec![]),
         e => e,
     };
 
@@ -352,6 +367,18 @@ fn normalize_value(
                     .roll(),
             );
         }
+        App(Value::AppliedBuiltin(b, args1), args2) => {
+            let combined_args: Vec<_> =
+                args1.into_iter().chain(args2.into_iter()).collect();
+            let args_unrolled: Vec<_> = combined_args
+                .iter()
+                .map(|val| val.clone().into_expr(ctx).unroll())
+                .collect();
+            match apply_builtin(b, &args_unrolled).into_value(ctx) {
+                Some(v) => return v,
+                None => return Value::AppliedBuiltin(b, combined_args),
+            }
+        }
         expr => expr,
     };
 
@@ -370,18 +397,10 @@ fn normalize_value(
         Var(v) => DoneSub(ctx.lookup(v)),
         Annot(x, _) => DoneRef(x),
         Note(_, e) => DoneRef(e),
-        App(_, args) if args.is_empty() => unreachable!(),
         Let(_, _, _, _) => unreachable!(),
         Lam(_, _, _) => unreachable!(),
-        App(App(f, args1), args2) => Continue(App(
-            f.clone(),
-            args1
-                .iter()
-                .cloned()
-                .chain(args2.iter().map(ExprF::roll))
-                .collect(),
-        )),
-        App(Builtin(b), args) => apply_builtin(*b, args),
+        App(_, args) if args.is_empty() => unreachable!(),
+        App(Builtin(_), _) => unreachable!(),
         App(Lam(_, _, _), _) => unreachable!(),
         App(UnionConstructor(l, kts), args) => {
             let mut iter = args.iter();
@@ -444,13 +463,9 @@ fn normalize_value(
         _ => DoneAsIs,
     };
 
-    match what_next {
-        Continue(e) => normalize_value(ctx, e.embed_absurd().roll()),
-        Done(e) => reval(e.roll()),
-        DoneRef(e) => reval(e.roll()),
-        DoneSub(e) => reval(e),
-        DoneRefSub(e) => reval(e.clone()),
-        DoneAsIs => reval(rc(expr.map_ref_simple(ExprF::roll).map_ref(
+    match what_next.into_value(ctx) {
+        Some(e) => e,
+        None => reval(rc(expr.map_ref_simple(ExprF::roll).map_ref(
             SubExpr::clone,
             X::clone,
             |_| unreachable!(),
