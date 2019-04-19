@@ -492,7 +492,6 @@ enum WhatNext<'a, N, E> {
     Continue(Expr<N, E>),
     // The following expression is the normal form
     Done(Expr<N, E>),
-    DoneRef(&'a Expr<N, E>),
     DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
@@ -504,7 +503,6 @@ impl<'a> WhatNext<'a, X, X> {
         match self {
             Continue(e) => Some(normalize_whnf(ctx, e.embed_absurd().roll())),
             Done(e) => Some(reval(ctx, e.roll())),
-            DoneRef(e) => Some(reval(ctx, e.roll())),
             DoneRefSub(e) => Some(reval(ctx, e.clone())),
             DoneAsIs => None,
         }
@@ -601,18 +599,26 @@ fn normalize_last_layer(
         Annot(x, _) => return x,
         Note(_, e) => return e,
         App(WHNF::Closure(c), a) => return c.app(a),
-        BinOp(BoolAnd, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
-            return WHNF::BoolLit(x && y)
-        }
-        BinOp(BoolOr, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
-            return WHNF::BoolLit(x || y)
-        }
+
+        BinOp(BoolAnd, WHNF::BoolLit(true), y) => return y,
+        BinOp(BoolAnd, x, WHNF::BoolLit(true)) => return x,
+        BinOp(BoolAnd, WHNF::BoolLit(false), _) => return WHNF::BoolLit(false),
+        BinOp(BoolAnd, _, WHNF::BoolLit(false)) => return WHNF::BoolLit(false),
+        BinOp(BoolOr, WHNF::BoolLit(true), _) => return WHNF::BoolLit(true),
+        BinOp(BoolOr, _, WHNF::BoolLit(true)) => return WHNF::BoolLit(true),
+        BinOp(BoolOr, WHNF::BoolLit(false), y) => return y,
+        BinOp(BoolOr, x, WHNF::BoolLit(false)) => return x,
+        BinOp(BoolEQ, WHNF::BoolLit(true), y) => return y,
+        BinOp(BoolEQ, x, WHNF::BoolLit(true)) => return x,
+        BinOp(BoolNE, WHNF::BoolLit(false), y) => return y,
+        BinOp(BoolNE, x, WHNF::BoolLit(false)) => return x,
         BinOp(BoolEQ, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
             return WHNF::BoolLit(x == y)
         }
         BinOp(BoolNE, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
             return WHNF::BoolLit(x != y)
         }
+
         BinOp(ListAppend, WHNF::EmptyListLit(_, _), y) => return y,
         BinOp(ListAppend, x, WHNF::EmptyListLit(_, _)) => return x,
         BinOp(ListAppend, WHNF::NEListLit(xs), WHNF::NEListLit(ys)) => {
@@ -620,6 +626,7 @@ fn normalize_last_layer(
             let ys = ys.into_iter();
             return WHNF::NEListLit(xs.chain(ys).collect());
         }
+
         Field(WHNF::UnionType(ctx, kts), l) => {
             return WHNF::Closure(Closure::UnionConstructor(ctx, l, kts))
         }
@@ -983,29 +990,29 @@ mod spec_tests {
     norm!(success_unit_None, "unit/None");
     norm!(success_unit_NoneNatural, "unit/NoneNatural");
     // norm!(success_unit_OperatorAndEquivalentArguments, "unit/OperatorAndEquivalentArguments");
-    // norm!(success_unit_OperatorAndLhsFalse, "unit/OperatorAndLhsFalse");
-    // norm!(success_unit_OperatorAndLhsTrue, "unit/OperatorAndLhsTrue");
-    // norm!(success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
-    // norm!(success_unit_OperatorAndRhsFalse, "unit/OperatorAndRhsFalse");
-    // norm!(success_unit_OperatorAndRhsTrue, "unit/OperatorAndRhsTrue");
+    norm!(success_unit_OperatorAndLhsFalse, "unit/OperatorAndLhsFalse");
+    norm!(success_unit_OperatorAndLhsTrue, "unit/OperatorAndLhsTrue");
+    norm!(success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
+    norm!(success_unit_OperatorAndRhsFalse, "unit/OperatorAndRhsFalse");
+    norm!(success_unit_OperatorAndRhsTrue, "unit/OperatorAndRhsTrue");
     // norm!(success_unit_OperatorEqualEquivalentArguments, "unit/OperatorEqualEquivalentArguments");
-    // norm!(success_unit_OperatorEqualLhsTrue, "unit/OperatorEqualLhsTrue");
-    // norm!(success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
-    // norm!(success_unit_OperatorEqualRhsTrue, "unit/OperatorEqualRhsTrue");
+    norm!(success_unit_OperatorEqualLhsTrue, "unit/OperatorEqualLhsTrue");
+    norm!(success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
+    norm!(success_unit_OperatorEqualRhsTrue, "unit/OperatorEqualRhsTrue");
     norm!(success_unit_OperatorListConcatenateLhsEmpty, "unit/OperatorListConcatenateLhsEmpty");
     norm!(success_unit_OperatorListConcatenateListList, "unit/OperatorListConcatenateListList");
     norm!(success_unit_OperatorListConcatenateNormalizeArguments, "unit/OperatorListConcatenateNormalizeArguments");
     norm!(success_unit_OperatorListConcatenateRhsEmpty, "unit/OperatorListConcatenateRhsEmpty");
     // norm!(success_unit_OperatorNotEqualEquivalentArguments, "unit/OperatorNotEqualEquivalentArguments");
-    // norm!(success_unit_OperatorNotEqualLhsFalse, "unit/OperatorNotEqualLhsFalse");
-    // norm!(success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
-    // norm!(success_unit_OperatorNotEqualRhsFalse, "unit/OperatorNotEqualRhsFalse");
+    norm!(success_unit_OperatorNotEqualLhsFalse, "unit/OperatorNotEqualLhsFalse");
+    norm!(success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
+    norm!(success_unit_OperatorNotEqualRhsFalse, "unit/OperatorNotEqualRhsFalse");
     // norm!(success_unit_OperatorOrEquivalentArguments, "unit/OperatorOrEquivalentArguments");
-    // norm!(success_unit_OperatorOrLhsFalse, "unit/OperatorOrLhsFalse");
-    // norm!(success_unit_OperatorOrLhsTrue, "unit/OperatorOrLhsTrue");
-    // norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
-    // norm!(success_unit_OperatorOrRhsFalse, "unit/OperatorOrRhsFalse");
-    // norm!(success_unit_OperatorOrRhsTrue, "unit/OperatorOrRhsTrue");
+    norm!(success_unit_OperatorOrLhsFalse, "unit/OperatorOrLhsFalse");
+    norm!(success_unit_OperatorOrLhsTrue, "unit/OperatorOrLhsTrue");
+    norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
+    norm!(success_unit_OperatorOrRhsFalse, "unit/OperatorOrRhsFalse");
+    norm!(success_unit_OperatorOrRhsTrue, "unit/OperatorOrRhsTrue");
     // norm!(success_unit_OperatorPlusLhsZero, "unit/OperatorPlusLhsZero");
     // norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
     norm!(success_unit_OperatorPlusOneAndOne, "unit/OperatorPlusOneAndOne");
