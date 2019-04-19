@@ -244,15 +244,26 @@ where
 /// little as possible, but just enough to know the first constructor of the normal form. This is
 /// identical to full normalization for simple types like integers, but for e.g. a record literal
 /// this means knowing just the field names.
+///
+/// Each variant captures the relevant contexts when it is constructed. Conceptually each
+/// subexpression has its own context, but in practise contexts can be shared when sensible, to
+/// avoid unnecessary allocations.
 #[derive(Debug, Clone)]
 enum WHNF {
     Closure(Closure),
     BoolLit(bool),
     NaturalLit(Natural),
+    EmptyOptionalLit(NormalizationContext, InputSubExpr),
+    NEOptionalLit(NormalizationContext, InputSubExpr),
     EmptyListLit(NormalizationContext, InputSubExpr),
     NEListLit(Vec<(NormalizationContext, Vec<InputSubExpr>)>),
     RecordLit(NormalizationContext, BTreeMap<Label, InputSubExpr>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
+    UnionLit(
+        Label,
+        Box<WHNF>,
+        (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
+    ),
     Expr(OutputSubExpr),
 }
 
@@ -263,6 +274,12 @@ impl WHNF {
             WHNF::Closure(c) => c.normalize_to_expr(),
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
+            WHNF::EmptyOptionalLit(ctx, e) => rc(ExprF::EmptyOptionalLit(
+                normalize_whnf(&ctx, e).normalize_to_expr(),
+            )),
+            WHNF::NEOptionalLit(ctx, e) => rc(ExprF::NEOptionalLit(
+                normalize_whnf(&ctx, e).normalize_to_expr(),
+            )),
             WHNF::EmptyListLit(ctx, e) => rc(ExprF::EmptyListLit(
                 normalize_whnf(&ctx, e).normalize_to_expr(),
             )),
@@ -282,13 +299,27 @@ impl WHNF {
                     })
                     .collect(),
             )),
-            WHNF::UnionType(ctx, kvs) => rc(ExprF::UnionType(
-                kvs.into_iter()
+            WHNF::UnionType(ctx, kts) => rc(ExprF::UnionType(
+                kts.into_iter()
                     .map(|(k, v)| {
                         (
                             k,
                             v.map(|v| {
                                 normalize_whnf(&ctx, v).normalize_to_expr()
+                            }),
+                        )
+                    })
+                    .collect(),
+            )),
+            WHNF::UnionLit(l, v, (kts_ctx, kts)) => rc(ExprF::UnionLit(
+                l,
+                v.normalize_to_expr(),
+                kts.into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_whnf(&kts_ctx, v).normalize_to_expr()
                             }),
                         )
                     })
@@ -304,6 +335,12 @@ impl WHNF {
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
             WHNF::BoolLit(b) => WHNF::BoolLit(b),
             WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
+            WHNF::EmptyOptionalLit(ctx, e) => {
+                WHNF::EmptyOptionalLit(ctx, shift0(delta, label, &e))
+            }
+            WHNF::NEOptionalLit(ctx, e) => {
+                WHNF::NEOptionalLit(ctx, shift0(delta, label, &e))
+            }
             WHNF::EmptyListLit(ctx, e) => {
                 WHNF::EmptyListLit(ctx, shift0(delta, label, &e))
             }
@@ -325,11 +362,21 @@ impl WHNF {
                     .map(|(k, v)| (k, shift0(delta, label, &v)))
                     .collect(),
             ),
-            WHNF::UnionType(ctx, kvs) => WHNF::UnionType(
+            WHNF::UnionType(ctx, kts) => WHNF::UnionType(
                 ctx,
-                kvs.into_iter()
+                kts.into_iter()
                     .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
                     .collect(),
+            ),
+            WHNF::UnionLit(l, v, (kts_ctx, kts)) => WHNF::UnionLit(
+                l,
+                Box::new(v.shift0(delta, label)),
+                (
+                    kts_ctx,
+                    kts.into_iter()
+                        .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
+                        .collect(),
+                ),
             ),
         }
     }
@@ -368,18 +415,7 @@ impl Closure {
                 }
             }
             Closure::UnionConstructor(ctx, l, kts) => {
-                let kts = kts
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            k,
-                            v.map(|v| {
-                                normalize_whnf(&ctx, v).normalize_to_expr()
-                            }),
-                        )
-                    })
-                    .collect();
-                WHNF::Expr(rc(ExprF::UnionLit(l, val.normalize_to_expr(), kts)))
+                WHNF::UnionLit(l, Box::new(val), (ctx, kts))
             }
         }
     }
@@ -522,10 +558,17 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
         }
         ExprF::BoolLit(b) => WHNF::BoolLit(b),
         ExprF::NaturalLit(n) => WHNF::NaturalLit(n),
+        ExprF::EmptyOptionalLit(e) => WHNF::EmptyOptionalLit(ctx.clone(), e),
+        ExprF::NEOptionalLit(e) => WHNF::NEOptionalLit(ctx.clone(), e),
         ExprF::EmptyListLit(e) => WHNF::EmptyListLit(ctx.clone(), e),
         ExprF::NEListLit(elts) => WHNF::NEListLit(vec![(ctx.clone(), elts)]),
         ExprF::RecordLit(kvs) => WHNF::RecordLit(ctx.clone(), kvs),
         ExprF::UnionType(kvs) => WHNF::UnionType(ctx.clone(), kvs),
+        ExprF::UnionLit(l, x, kts) => WHNF::UnionLit(
+            l,
+            Box::new(normalize_whnf(ctx, x)),
+            (ctx.clone(), kts),
+        ),
         _ => WHNF::Expr(expr),
     }
 }
@@ -554,6 +597,18 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
         }
         ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => return WHNF::NaturalLit(*n),
+        ExprF::OldOptionalLit(None, t) => {
+            return WHNF::EmptyOptionalLit(ctx.clone(), t.clone())
+        }
+        ExprF::OldOptionalLit(Some(x), _) => {
+            return WHNF::NEOptionalLit(ctx.clone(), x.clone())
+        }
+        ExprF::EmptyOptionalLit(e) => {
+            return WHNF::EmptyOptionalLit(ctx.clone(), e.clone())
+        }
+        ExprF::NEOptionalLit(e) => {
+            return WHNF::NEOptionalLit(ctx.clone(), e.clone())
+        }
         ExprF::EmptyListLit(e) => {
             return WHNF::EmptyListLit(ctx.clone(), e.clone())
         }
@@ -565,6 +620,13 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
         }
         ExprF::UnionType(kvs) => {
             return WHNF::UnionType(ctx.clone(), kvs.clone())
+        }
+        ExprF::UnionLit(l, x, kts) => {
+            return WHNF::UnionLit(
+                l.clone(),
+                Box::new(normalize_whnf(ctx, x.clone())),
+                (ctx.clone(), kts.clone()),
+            )
         }
         ExprF::BoolIf(b, e1, e2) => {
             let b = normalize_whnf(ctx, b.clone());
@@ -687,6 +749,22 @@ fn normalize_last_layer(
                 t,
             ),
         },
+        Merge(
+            WHNF::RecordLit(record_ctx, mut handlers),
+            WHNF::UnionLit(l, v, (kts_ctx, kts)),
+            t,
+        ) => match handlers.remove(&l) {
+            Some(h) => {
+                let h = normalize_whnf(&kts_ctx, h);
+                return normalize_last_layer(ctx, App(h, *v));
+            }
+            // Return ownership
+            None => Merge(
+                WHNF::RecordLit(record_ctx, handlers),
+                WHNF::UnionLit(l, v, (kts_ctx, kts)),
+                t,
+            ),
+        },
         expr => expr,
     };
 
@@ -705,8 +783,7 @@ fn normalize_last_layer(
         BoolIf(BoolLit(_), _, _) => unreachable!(),
         // TODO: interpolation
         // TextLit(t) =>
-        OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
-        OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
+        OldOptionalLit(_, _) => unreachable!(),
         BinOp(BoolAnd, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(BoolOr, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(BoolEQ, BoolLit(_), BoolLit(_)) => unreachable!(),
@@ -717,12 +794,7 @@ fn normalize_last_layer(
         BinOp(ListAppend, EmptyListLit(_), _) => unreachable!(),
         BinOp(ListAppend, _, EmptyListLit(_)) => unreachable!(),
         BinOp(ListAppend, NEListLit(_), NEListLit(_)) => unreachable!(),
-        Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => Continue(App(h.clone(), v.clone())),
-                None => DoneAsIs,
-            }
-        }
+        Merge(RecordLit(_), UnionLit(_, _, _), _) => unreachable!(),
         Field(RecordLit(_), _) => unreachable!(),
         Field(UnionType(_), _) => unreachable!(),
         Projection(_, ls) if ls.is_empty() => unreachable!(),
