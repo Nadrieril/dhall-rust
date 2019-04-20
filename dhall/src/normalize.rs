@@ -226,6 +226,7 @@ enum WHNF {
         Now,
         (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     ),
+    TextLit(Vec<InterpolatedTextContents<Now>>),
     Expr(OutputSubExpr),
 }
 
@@ -281,6 +282,17 @@ impl WHNF {
                     })
                     .collect(),
             )),
+            WHNF::TextLit(elts) => rc(ExprF::TextLit(
+                elts.into_iter()
+                    .map(|contents| {
+                        use InterpolatedTextContents::{Expr, Text};
+                        match contents {
+                            Expr(n) => Expr(n.normalize().normalize_to_expr()),
+                            Text(s) => Text(s),
+                        }
+                    })
+                    .collect(),
+            )),
             WHNF::Expr(e) => e,
         }
     }
@@ -321,6 +333,17 @@ impl WHNF {
                         .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
                         .collect(),
                 ),
+            ),
+            WHNF::TextLit(elts) => WHNF::TextLit(
+                elts.into_iter()
+                    .map(|contents| {
+                        use InterpolatedTextContents::{Expr, Text};
+                        match contents {
+                            Expr(n) => Expr(n.shift0(delta, label)),
+                            Text(s) => Text(s),
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
@@ -555,6 +578,17 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
         ExprF::UnionLit(l, x, kts) => {
             WHNF::UnionLit(l, Now::new(ctx.clone(), x), (ctx.clone(), kts))
         }
+        ExprF::TextLit(elts) => WHNF::TextLit(
+            elts.into_iter()
+                .map(|contents| {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match contents {
+                        Expr(n) => Expr(Now::new(ctx.clone(), n)),
+                        Text(s) => Text(s),
+                    }
+                })
+                .collect(),
+        ),
         _ => WHNF::Expr(expr),
     }
 }
@@ -619,6 +653,19 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
                 l.clone(),
                 Now::new(ctx.clone(), x.clone()),
                 (ctx.clone(), kts.clone()),
+            )
+        }
+        ExprF::TextLit(elts) => {
+            return WHNF::TextLit(
+                elts.iter()
+                    .map(|contents| {
+                        use InterpolatedTextContents::{Expr, Text};
+                        match contents {
+                            Expr(n) => Expr(Now::new(ctx.clone(), n.clone())),
+                            Text(s) => Text(s.clone()),
+                        }
+                    })
+                    .collect(),
             )
         }
         ExprF::BoolIf(b, e1, e2) => {
@@ -702,6 +749,10 @@ fn normalize_last_layer(
             xs.append(&mut ys);
             return WHNF::NEListLit(xs);
         }
+        BinOp(TextAppend, WHNF::TextLit(mut x), WHNF::TextLit(mut y)) => {
+            x.append(&mut y);
+            return WHNF::TextLit(x);
+        }
 
         Field(WHNF::UnionType(ctx, kts), l) => {
             return WHNF::Closure(Closure::UnionConstructor(ctx, l, kts))
@@ -779,7 +830,7 @@ fn normalize_last_layer(
         BinOp(BoolNE, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(NaturalPlus, NaturalLit(_), NaturalLit(_)) => unreachable!(),
         BinOp(NaturalTimes, NaturalLit(_), NaturalLit(_)) => unreachable!(),
-        BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
+        BinOp(TextAppend, TextLit(_), TextLit(_)) => unreachable!(),
         BinOp(ListAppend, EmptyListLit(_), _) => unreachable!(),
         BinOp(ListAppend, _, EmptyListLit(_)) => unreachable!(),
         BinOp(ListAppend, NEListLit(_), NEListLit(_)) => unreachable!(),

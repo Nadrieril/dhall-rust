@@ -72,9 +72,21 @@ impl<SubExpr> InterpolatedText<SubExpr> {
             }),
         )
     }
+
+    pub fn into_iter(
+        self,
+    ) -> impl Iterator<Item = InterpolatedTextContents<SubExpr>> {
+        use std::iter::once;
+        once(InterpolatedTextContents::Text(self.head)).chain(
+            self.tail.into_iter().flat_map(|(e, s)| {
+                once(InterpolatedTextContents::Expr(e))
+                    .chain(once(InterpolatedTextContents::Text(s)))
+            }),
+        )
+    }
 }
 
-impl<'a, SubExpr: Clone + 'a> FromIterator<InterpolatedTextContents<SubExpr>>
+impl<'a, SubExpr: 'a> FromIterator<InterpolatedTextContents<SubExpr>>
     for InterpolatedText<SubExpr>
 {
     fn from_iter<T>(iter: T) -> Self
@@ -90,7 +102,7 @@ impl<'a, SubExpr: Clone + 'a> FromIterator<InterpolatedTextContents<SubExpr>>
             match x {
                 InterpolatedTextContents::Text(s) => crnt_str.push_str(&s),
                 InterpolatedTextContents::Expr(e) => {
-                    res.tail.push((e.clone(), "".to_owned()));
+                    res.tail.push((e, "".to_owned()));
                     crnt_str = &mut res.tail.last_mut().unwrap().1;
                 }
             }
