@@ -98,66 +98,49 @@ fn apply_builtin(
         {
             args.get(1).unwrap().clone()
         }
-        (ListBuild, [a0, g]) => {
-            // TODO: avoid passing through Exprs
-            let a0 = whnf_to_expr(a0);
-            let a1 = shift0(1, &"x".into(), &a0);
-            let g = whnf_to_expr(g);
-            normalize_whnf(
-                ctx,
-                dhall::subexpr!(
-                    g
-                    (List a0)
-                    (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
-                    ([] : List a0)
-                ),
-            )
-        }
+        // TODO: avoid passing through Exprs
+        (ListBuild, [a0, g]) => g
+            .clone()
+            .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(a0.clone()))
+            .app(normalize_whnf(ctx, {
+                let a0 = whnf_to_expr(a0);
+                let a1 = shift0(1, &"x".into(), &a0);
+                dhall::subexpr!(λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
+            }))
+            .app(EmptyListLit(Now::from_whnf(a0.clone()))),
         (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.clone(),
         (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
-            // TODO: avoid passing through Exprs
-            let nil = whnf_to_expr(nil);
-            let cons = whnf_to_expr(cons);
-            normalize_whnf(
-                ctx,
-                xs.iter().rev().fold(nil, |acc, x| {
-                    let x = now_to_expr(x);
-                    let acc = acc.clone();
-                    dhall::subexpr!(cons x acc)
-                }),
-            )
+            let mut v = nil.clone();
+            for x in xs.iter().rev() {
+                v = cons.clone().app(x.clone().normalize()).app(v);
+            }
+            v
         }
         // fold/build fusion
-        (
-            OptionalBuild,
-            [_, WHNF::AppliedBuiltin(_, OptionalFold, args)],
-        ) if args.len() == 2 => args.get(1).unwrap().clone(),
-        (
-            OptionalFold,
-            [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)],
-        ) if args.len() == 2 => args.get(1).unwrap().clone(),
-        (OptionalBuild, [a0, g]) => {
-            // TODO: avoid passing through Exprs
-            let a0 = whnf_to_expr(a0);
-            let g = whnf_to_expr(g);
-            normalize_whnf(
-                ctx,
-                dhall::subexpr!(
-                    g
-                    (Optional a0)
-                    (λ(x: a0) -> Some x)
-                    (None a0)
-                ),
-            )
+        (OptionalBuild, [_, WHNF::AppliedBuiltin(_, OptionalFold, args)])
+            if args.len() == 2 =>
+        {
+            args.get(1).unwrap().clone()
         }
+        (OptionalFold, [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)])
+            if args.len() == 2 =>
+        {
+            args.get(1).unwrap().clone()
+        }
+        // TODO: avoid passing through Exprs
+        (OptionalBuild, [a0, g]) => g
+            .clone()
+            .app(AppliedBuiltin(ctx.clone(), Optional, vec![]).app(a0.clone()))
+            .app(normalize_whnf(ctx, {
+                let a0 = whnf_to_expr(a0);
+                dhall::subexpr!(λ(x: a0) -> Some x)
+            }))
+            .app(EmptyOptionalLit(Now::from_whnf(a0.clone()))),
         (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
             nothing.clone()
         }
         (OptionalFold, [_, NEOptionalLit(x), _, just, _]) => {
-            // TODO: avoid passing through Exprs
-            let just = whnf_to_expr(just);
-            let x = now_to_expr(x);
-            normalize_whnf(ctx, dhall::subexpr!(just x))
+            just.clone().app(x.clone().normalize())
         }
         // fold/build fusion
         (NaturalBuild, [WHNF::AppliedBuiltin(_, NaturalFold, args)])
@@ -170,23 +153,23 @@ fn apply_builtin(
         {
             args.get(0).unwrap().clone()
         }
-        (NaturalBuild, [g]) => {
-            // TODO: avoid passing through Exprs
-            let g = whnf_to_expr(g);
-            normalize_whnf(
+        // TODO: avoid passing through Exprs
+        (NaturalBuild, [g]) => g
+            .clone()
+            .app(AppliedBuiltin(ctx.clone(), Natural, vec![]))
+            .app(normalize_whnf(
                 ctx,
-                dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
-            )
-        }
+                dhall::subexpr!((λ(x : Natural) -> x + 1)),
+            ))
+            .app(NaturalLit(0)),
         (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.clone(),
         (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
-            // TODO: avoid passing through Exprs
-            let t = whnf_to_expr(t);
-            let succ = whnf_to_expr(succ);
-            let zero = whnf_to_expr(zero);
-            let fold = rc(ExprF::Builtin(NaturalFold));
-            let n = rc(ExprF::NaturalLit(n - 1));
-            normalize_whnf(ctx, dhall::subexpr!(succ (fold n t succ zero)))
+            let fold = AppliedBuiltin(ctx, NaturalFold, vec![])
+                .app(NaturalLit(n - 1))
+                .app(t.clone())
+                .app(succ.clone())
+                .app(zero.clone());
+            succ.clone().app(fold)
         }
         _ => return None,
     };
@@ -290,15 +273,11 @@ impl WHNF {
                 ))
             }
             WHNF::AppliedBuiltin(_ctx, b, args) => {
-                if args.is_empty() {
-                    rc(ExprF::Builtin(b))
-                } else {
-                    args.into_iter()
-                        .map(|e| e.normalize_to_expr())
-                        .fold(rc(ExprF::Builtin(b)), |acc, e| {
-                            rc(ExprF::App(acc, e))
-                        })
+                let mut e = WHNF::Expr(rc(ExprF::Builtin(b)));
+                for v in args {
+                    e = e.app(v);
                 }
+                e.normalize_to_expr()
             }
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
