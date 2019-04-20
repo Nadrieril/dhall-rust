@@ -176,7 +176,7 @@ macro_rules! make_parser {
             [x..] => Err(
                 format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
             )?,
-        ).ok_or_else(|| -> String { unreachable!() })?;
+        ).map_err(|_| -> String { unreachable!() })?;
         Ok(ParsedValue::$group(res))
     });
     (@body,
@@ -743,10 +743,10 @@ make_parser! {
 
     token_rule!(Some_<()>);
 
-    rule!(application_expression<ParsedExpr<'a>> as expression; span; children!(
+    rule!(application_expression<ParsedExpr<'a>> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            spanned(span, App(rc(first), rest.map(rc).collect()))
+            rest.fold(first, |acc, e| App(rc(acc), rc(e)))
         },
     ));
 
@@ -754,7 +754,7 @@ make_parser! {
             children!(
         [expression(e)] => e,
         [Some_(()), expression(e)] => {
-            spanned(span, NEOptionalLit(rc(e)))
+            spanned(span, SomeLit(rc(e)))
         },
         [merge(()), expression(x), expression(y)] => {
             spanned(span, Merge(rc(x), rc(y), None))

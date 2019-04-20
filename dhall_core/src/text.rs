@@ -1,5 +1,4 @@
 use std::iter::FromIterator;
-use std::ops::Add;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterpolatedText<SubExpr> {
@@ -33,6 +32,16 @@ pub enum InterpolatedTextContents<SubExpr> {
     Expr(SubExpr),
 }
 
+impl<SubExpr> InterpolatedTextContents<SubExpr> {
+    pub fn is_empty(&self) -> bool {
+        use InterpolatedTextContents::{Expr, Text};
+        match self {
+            Expr(_) => false,
+            Text(s) => s.is_empty(),
+        }
+    }
+}
+
 impl<SubExpr> InterpolatedText<SubExpr> {
     pub fn traverse_ref<'a, SubExpr2, E, F>(
         &'a self,
@@ -51,13 +60,6 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         })
     }
 
-    pub fn as_ref(&self) -> InterpolatedText<&SubExpr> {
-        InterpolatedText {
-            head: self.head.clone(),
-            tail: self.tail.iter().map(|(e, s)| (e, s.clone())).collect(),
-        }
-    }
-
     pub fn iter<'a>(
         &'a self,
     ) -> impl Iterator<Item = InterpolatedTextContents<SubExpr>> + 'a
@@ -65,16 +67,30 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         SubExpr: Clone,
     {
         use std::iter::once;
-        once(InterpolatedTextContents::Text(self.head.clone())).chain(
-            self.tail.iter().flat_map(|(e, s)| {
-                once(InterpolatedTextContents::Expr(SubExpr::clone(e)))
-                    .chain(once(InterpolatedTextContents::Text(s.clone())))
-            }),
-        )
+        use InterpolatedTextContents::{Expr, Text};
+        once(Text(self.head.clone()))
+            .chain(self.tail.iter().flat_map(|(e, s)| {
+                once(Expr(SubExpr::clone(e))).chain(once(Text(s.clone())))
+            }))
+            .filter(|c| !c.is_empty())
+    }
+
+    pub fn into_iter(
+        self,
+    ) -> impl Iterator<Item = InterpolatedTextContents<SubExpr>> {
+        use std::iter::once;
+        use InterpolatedTextContents::{Expr, Text};
+        once(Text(self.head))
+            .chain(
+                self.tail
+                    .into_iter()
+                    .flat_map(|(e, s)| once(Expr(e)).chain(once(Text(s)))),
+            )
+            .filter(|c| !c.is_empty())
     }
 }
 
-impl<'a, SubExpr: Clone + 'a> FromIterator<InterpolatedTextContents<SubExpr>>
+impl<SubExpr> FromIterator<InterpolatedTextContents<SubExpr>>
     for InterpolatedText<SubExpr>
 {
     fn from_iter<T>(iter: T) -> Self
@@ -82,26 +98,19 @@ impl<'a, SubExpr: Clone + 'a> FromIterator<InterpolatedTextContents<SubExpr>>
         T: IntoIterator<Item = InterpolatedTextContents<SubExpr>>,
     {
         let mut res = InterpolatedText {
-            head: "".to_owned(),
-            tail: vec![],
+            head: String::new(),
+            tail: Vec::new(),
         };
         let mut crnt_str = &mut res.head;
         for x in iter.into_iter() {
             match x {
                 InterpolatedTextContents::Text(s) => crnt_str.push_str(&s),
                 InterpolatedTextContents::Expr(e) => {
-                    res.tail.push((e.clone(), "".to_owned()));
+                    res.tail.push((e, String::new()));
                     crnt_str = &mut res.tail.last_mut().unwrap().1;
                 }
             }
         }
         res
-    }
-}
-
-impl<SubExpr: Clone> Add for &InterpolatedText<SubExpr> {
-    type Output = InterpolatedText<SubExpr>;
-    fn add(self, rhs: &InterpolatedText<SubExpr>) -> Self::Output {
-        self.iter().chain(rhs.iter()).collect()
     }
 }

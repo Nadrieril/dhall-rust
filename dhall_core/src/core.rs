@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::context::Context;
 use crate::visitor;
 use crate::*;
 
@@ -148,7 +150,7 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     ///  `∀(x : A) -> B`
     Pi(Label, SubExpr, SubExpr),
     ///  `f a`
-    App(SubExpr, Vec<SubExpr>),
+    App(SubExpr, SubExpr),
     ///  `let x     = r in e`
     ///  `let x : t = r in e`
     Let(Label, Option<SubExpr>, SubExpr, SubExpr),
@@ -178,10 +180,8 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     ///  `[] : Optional a`
     ///  `[x] : Optional a`
     OldOptionalLit(Option<SubExpr>, SubExpr),
-    ///  `None t`
-    EmptyOptionalLit(SubExpr),
     ///  `Some e`
-    NEOptionalLit(SubExpr),
+    SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
     RecordType(BTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
@@ -190,8 +190,6 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     UnionType(BTreeMap<Label, Option<SubExpr>>),
     ///  `< k1 = t1, k2 : t2, k3 >`
     UnionLit(Label, SubExpr, BTreeMap<Label, Option<SubExpr>>),
-    ///  `< k1 : t1, k2 >.k1`
-    UnionConstructor(Label, BTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`
@@ -486,6 +484,7 @@ fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
 /// capture by shifting variable indices
 /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
 /// for details
+///
 pub fn shift<N, E>(
     delta: isize,
     var: &V<Label>,
@@ -505,6 +504,41 @@ pub fn shift<N, E>(
     }
 }
 
+pub fn shift0<N, E>(
+    delta: isize,
+    label: &Label,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
+    shift(delta, &V(label.clone(), 0), in_expr)
+}
+
+fn shift0_multiple<N, E>(
+    deltas: &HashMap<Label, isize>,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
+    shift0_multiple_inner(&Context::new(), deltas, in_expr)
+}
+
+fn shift0_multiple_inner<N, E>(
+    ctx: &Context<Label, ()>,
+    deltas: &HashMap<Label, isize>,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
+    use crate::ExprF::*;
+    match in_expr.as_ref() {
+        Var(V(y, m)) if ctx.lookup(y, *m).is_none() => {
+            let delta = deltas.get(y).unwrap_or(&0);
+            rc(Var(V(y.clone(), add_ui(*m, *delta))))
+        }
+        _ => in_expr.map_subexprs_with_special_handling_of_binders(
+            |e| shift0_multiple_inner(ctx, deltas, e),
+            |l: &Label, e| {
+                shift0_multiple_inner(&ctx.insert(l.clone(), ()), deltas, e)
+            },
+        ),
+    }
+}
+
 /// Substitute all occurrences of a variable with an expression, and
 /// removes the variable from the environment by shifting the indices
 /// of other variables appropriately.
@@ -518,15 +552,29 @@ pub fn subst_shift<N, E>(
     value: &SubExpr<N, E>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
+    subst_shift_inner(&HashMap::new(), var, value, in_expr)
+}
+
+fn subst_shift_inner<N, E>(
+    ctx: &HashMap<Label, isize>,
+    var: &V<Label>,
+    value: &SubExpr<N, E>,
+    in_expr: &SubExpr<N, E>,
+) -> SubExpr<N, E> {
     use crate::ExprF::*;
+    let V(x, n) = var;
+    let dn = ctx.get(x).unwrap_or(&0);
+    let actual_var = V(x.clone(), add_ui(*n, *dn));
     match in_expr.as_ref() {
-        Var(v) if v == var => SubExpr::clone(value),
-        Var(v) => rc(Var(shift_var(-1, var, v))),
+        Var(v) if v == &actual_var => shift0_multiple(ctx, value),
+        Var(v) => rc(Var(shift_var(-1, &actual_var, v))),
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| subst_shift(var, &value, e),
+            |e| subst_shift_inner(ctx, var, value, e),
             |l: &Label, e| {
-                let vl = V(l.clone(), 0);
-                subst_shift(&shift_var(1, &vl, var), &shift(1, &vl, value), e)
+                let mut ctx = ctx.clone();
+                let count = ctx.entry(l.clone()).or_insert(0);
+                *count += 1;
+                subst_shift_inner(&ctx, var, value, e)
             },
         ),
     }

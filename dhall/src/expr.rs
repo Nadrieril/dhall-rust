@@ -107,9 +107,6 @@ impl<'a> Typed<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, Normalized<'a>> {
         &self.0
     }
-    pub(crate) fn into_expr(self) -> SubExpr<X, Normalized<'a>> {
-        self.0
-    }
 }
 
 #[doc(hidden)]

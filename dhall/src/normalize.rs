@@ -1,8 +1,18 @@
 #![allow(non_snake_case)]
-use crate::expr::*;
-use dhall_core::*;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
+use dhall_core::context::Context;
+use dhall_core::{
+    rc, shift, shift0, Builtin, ExprF, Integer, InterpolatedText,
+    InterpolatedTextContents, Label, Natural, SubExpr, V, X,
+};
 use dhall_generator as dhall;
-use std::fmt;
+
+use crate::expr::{Normalized, Typed};
+
+type InputSubExpr = SubExpr<X, Normalized<'static>>;
+type OutputSubExpr = SubExpr<X, X>;
 
 impl<'a> Typed<'a> {
     pub fn normalize(self) -> Normalized<'a> {
@@ -19,323 +29,762 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin<N, E>(b: Builtin, args: &[Expr<N, E>]) -> WhatNext<N, E>
-where
-    N: fmt::Debug + Clone,
-    E: fmt::Debug + Clone,
-{
+fn shift0_mut<N, E>(delta: isize, label: &Label, in_expr: &mut SubExpr<N, E>) {
+    let new_expr = shift0(delta, label, &in_expr);
+    std::mem::replace(in_expr, new_expr);
+}
+
+fn shift_mut<N, E>(delta: isize, var: &V<Label>, in_expr: &mut SubExpr<N, E>) {
+    let new_expr = shift(delta, var, &in_expr);
+    std::mem::replace(in_expr, new_expr);
+}
+
+fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
     use dhall_core::Builtin::*;
-    use dhall_core::ExprF::*;
-    use WhatNext::*;
-    let (ret, rest) = match (b, args) {
-        (OptionalNone, [t, rest..]) => (rc(EmptyOptionalLit(t.roll())), rest),
-        (NaturalIsZero, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n == 0)), rest)
-        }
-        (NaturalEven, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n % 2 == 0)), rest)
-        }
-        (NaturalOdd, [NaturalLit(n), rest..]) => {
-            (rc(BoolLit(*n % 2 != 0)), rest)
-        }
-        (NaturalToInteger, [NaturalLit(n), rest..]) => {
-            (rc(IntegerLit(*n as isize)), rest)
-        }
-        (NaturalShow, [NaturalLit(n), rest..]) => {
-            (rc(TextLit(n.to_string().into())), rest)
-        }
-        (ListLength, [_, EmptyListLit(_), rest..]) => (rc(NaturalLit(0)), rest),
-        (ListLength, [_, NEListLit(ys), rest..]) => {
-            (rc(NaturalLit(ys.len())), rest)
-        }
-        (ListHead, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyOptionalLit(t.clone())), rest)
-        }
-        (ListHead, [_, NEListLit(ys), rest..]) => {
-            (rc(NEOptionalLit(ys.first().unwrap().clone())), rest)
-        }
-        (ListLast, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyOptionalLit(t.clone())), rest)
-        }
-        (ListLast, [_, NEListLit(ys), rest..]) => {
-            (rc(NEOptionalLit(ys.last().unwrap().clone())), rest)
-        }
-        (ListReverse, [_, EmptyListLit(t), rest..]) => {
-            (rc(EmptyListLit(t.clone())), rest)
-        }
-        (ListReverse, [_, NEListLit(ys), rest..]) => {
-            let ys = ys.iter().rev().cloned().collect();
-            (rc(NEListLit(ys)), rest)
-        }
-        (ListIndexed, [_, EmptyListLit(t), rest..]) => (
-            dhall::subexpr!([] : List ({ index : Natural, value : t })),
-            rest,
+    use WHNF::*;
+
+    let ret = match b {
+        OptionalNone => improved_slice_patterns::match_vec!(args;
+            [t] => EmptyOptionalLit(Now::from_whnf(t)),
         ),
-        (ListIndexed, [_, NEListLit(xs), rest..]) => {
-            let xs = xs
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, e)| {
-                    let i = rc(NaturalLit(i));
-                    dhall::subexpr!({ index = i, value = e })
+        NaturalIsZero => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n == 0),
+        ),
+        NaturalEven => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n % 2 == 0),
+        ),
+        NaturalOdd => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n % 2 != 0),
+        ),
+        NaturalToInteger => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => IntegerLit(n as isize),
+        ),
+        NaturalShow => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => {
+                TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
+            }
+        ),
+        ListLength => improved_slice_patterns::match_vec!(args;
+           [_, EmptyListLit(_)] => NaturalLit(0),
+           [_, NEListLit(xs)] => NaturalLit(xs.len()),
+        ),
+        ListHead => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
+            [_, NEListLit(xs)] => {
+                NEOptionalLit(xs.into_iter().next().unwrap())
+            }
+        ),
+        ListLast => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
+            [_, NEListLit(xs)] => {
+                NEOptionalLit(xs.into_iter().rev().next().unwrap())
+            }
+        ),
+        ListReverse => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyListLit(n),
+            [_, NEListLit(xs)] => {
+                let mut xs = xs;
+                xs.reverse();
+                NEListLit(xs)
+            }
+        ),
+        ListIndexed => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(t)] => {
+                let mut kts = BTreeMap::new();
+                kts.insert(
+                    "index".into(),
+                    Now::from_whnf(
+                        WHNF::from_builtin(Natural)
+                    ),
+                );
+                kts.insert("value".into(), t);
+                EmptyListLit(Now::from_whnf(RecordType(kts)))
+            },
+            [_, NEListLit(xs)] => {
+                let xs = xs
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        let i = NaturalLit(i);
+                        let mut kvs = BTreeMap::new();
+                        kvs.insert("index".into(), Now::from_whnf(i));
+                        kvs.insert("value".into(), e);
+                        Now::from_whnf(RecordLit(kvs))
+                    })
+                    .collect();
+                NEListLit(xs)
+            }
+        ),
+        ListBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(ListFold, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    // Do we really need to handle this case ?
+                    unimplemented!()
+                }
+            },
+            [t, g] => g
+                .app(WHNF::from_builtin(List).app(t.clone()))
+                .app(ListConsClosure(Now::from_whnf(t.clone()), None))
+                .app(EmptyListLit(Now::from_whnf(t))),
+        ),
+        ListFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(ListBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [_, EmptyListLit(_), _, _, nil] => nil,
+            [_, NEListLit(xs), _, cons, nil] => {
+                let mut v = nil;
+                for x in xs.into_iter().rev() {
+                    v = cons.clone().app(x.normalize()).app(v);
+                }
+                v
+            }
+        ),
+        OptionalBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(OptionalFold, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [t, g] => g
+                .app(WHNF::from_builtin(Optional).app(t.clone()))
+                .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
+                .app(EmptyOptionalLit(Now::from_whnf(t))),
+        ),
+        OptionalFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(OptionalBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [_, EmptyOptionalLit(_), _, _, nothing] => {
+                nothing
+            },
+            [_, NEOptionalLit(x), _, just, _] => {
+                just.app(x.normalize())
+            }
+        ),
+        NaturalBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [WHNF::AppliedBuiltin(NaturalFold, args)] => {
+                let mut args = args;
+                if args.len() >= 1 {
+                    args.remove(0)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [g] => g
+                .app(WHNF::from_builtin(Natural))
+                .app(NaturalSuccClosure)
+                .app(NaturalLit(0)),
+        ),
+        NaturalFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [WHNF::AppliedBuiltin(NaturalBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 1 {
+                    args.remove(0)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [NaturalLit(0), _, _, zero] => zero,
+            [NaturalLit(n), t, succ, zero] => {
+                let fold = WHNF::from_builtin(NaturalFold)
+                    .app(NaturalLit(n - 1))
+                    .app(t)
+                    .app(succ.clone())
+                    .app(zero);
+                succ.app(fold)
+            },
+        ),
+        _ => Err(args),
+    };
+
+    match ret {
+        Ok(x) => x,
+        Err(args) => AppliedBuiltin(b, args),
+    }
+}
+
+#[derive(Debug, Clone)]
+enum EnvItem {
+    Expr(WHNF),
+    Skip(usize),
+}
+
+#[derive(Debug, Clone)]
+struct NormalizationContext(Rc<Context<Label, EnvItem>>);
+
+impl NormalizationContext {
+    fn new() -> Self {
+        NormalizationContext(Rc::new(Context::new()))
+    }
+    fn insert(&self, x: &Label, e: WHNF) -> Self {
+        NormalizationContext(Rc::new(
+            self.0.insert(x.clone(), EnvItem::Expr(e)),
+        ))
+    }
+    fn skip(&self, x: &Label) -> Self {
+        NormalizationContext(Rc::new(
+            self.0
+                .map(|l, e| {
+                    use EnvItem::*;
+                    match e {
+                        Expr(e) => {
+                            let mut e = e.clone();
+                            e.shift0(1, x);
+                            Expr(e)
+                        }
+                        Skip(n) if l == x => Skip(*n + 1),
+                        Skip(n) => Skip(*n),
+                    }
                 })
-                .collect();
-            (rc(NEListLit(xs)), rest)
-        }
-        (ListBuild, [a0, g, rest..]) => {
-            'ret: {
-                if let App(f2, args2) = g {
-                    if let (Builtin(ListFold), [_, x, rest_inner..]) =
-                        (f2.as_ref(), args2.as_slice())
-                    {
-                        // fold/build fusion
-                        break 'ret (
-                            rc(App(x.clone(), rest_inner.to_vec())),
-                            rest,
-                        );
-                    }
-                };
-                let a0 = a0.roll();
-                let a1 = shift(1, &V("x".into(), 0), &a0);
-                let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(
-                        g
-                        (List a0)
-                        (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
-                        ([] : List a0)
-                    ),
-                    rest,
-                );
+                .insert(x.clone(), EnvItem::Skip(0)),
+        ))
+    }
+    fn lookup(&self, var: &V<Label>) -> WHNF {
+        let V(x, n) = var;
+        match self.0.lookup(x, *n) {
+            Some(EnvItem::Expr(e)) => e.clone(),
+            Some(EnvItem::Skip(m)) => {
+                WHNF::Expr(rc(ExprF::Var(V(x.clone(), *m))))
             }
+            None => WHNF::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
         }
-        (OptionalBuild, [a0, g, rest..]) => {
-            'ret: {
-                if let App(f2, args2) = g {
-                    if let (Builtin(OptionalFold), [_, x, rest_inner..]) =
-                        (f2.as_ref(), args2.as_slice())
-                    {
-                        // fold/build fusion
-                        break 'ret (
-                            rc(App(x.clone(), rest_inner.to_vec())),
-                            rest,
-                        );
-                    }
-                };
-                let a0 = a0.roll();
-                let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(
-                        g
-                        (Optional a0)
-                        (λ(x: a0) -> Some x)
-                        (None a0)
-                    ),
-                    rest,
-                );
+    }
+}
+
+/// A semantic value. This is partially redundant with `dhall_core::Expr`, on purpose. `Expr` should
+/// be limited to syntactic expressions: either written by the user or meant to be printed.
+/// The rule is the following: we must _not_ construct values of type `Expr` while normalizing,
+/// but only construct `WHNF`s.
+///
+/// WHNFs store subexpressions unnormalized, to enable lazy normalization. They approximate
+/// what's called Weak Head Normal-Form (WHNF). This means that the expression is normalized as
+/// little as possible, but just enough to know the first constructor of the normal form. This is
+/// identical to full normalization for simple types like integers, but for e.g. a record literal
+/// this means knowing just the field names.
+///
+/// Each variant captures the relevant contexts when it is constructed. Conceptually each
+/// subexpression has its own context, but in practice some contexts can be shared when sensible, to
+/// avoid unnecessary allocations.
+#[derive(Debug, Clone)]
+enum WHNF {
+    /// Closures
+    Lam(Label, Now, (NormalizationContext, InputSubExpr)),
+    AppliedBuiltin(Builtin, Vec<WHNF>),
+    /// `λ(x: a) -> Some x`
+    OptionalSomeClosure(Now),
+    /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
+    /// `λ(xs : List a) -> [ x ] # xs`
+    ListConsClosure(Now, Option<Now>),
+    /// `λ(x : Natural) -> x + 1`
+    NaturalSuccClosure,
+
+    BoolLit(bool),
+    NaturalLit(Natural),
+    IntegerLit(Integer),
+    EmptyOptionalLit(Now),
+    NEOptionalLit(Now),
+    EmptyListLit(Now),
+    NEListLit(Vec<Now>),
+    RecordLit(BTreeMap<Label, Now>),
+    RecordType(BTreeMap<Label, Now>),
+    UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
+    UnionConstructor(
+        NormalizationContext,
+        Label,
+        BTreeMap<Label, Option<InputSubExpr>>,
+    ),
+    UnionLit(
+        Label,
+        Now,
+        (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
+    ),
+    TextLit(Vec<InterpolatedTextContents<Now>>),
+    Expr(OutputSubExpr),
+}
+
+impl WHNF {
+    /// Convert the value back to a (normalized) syntactic expression
+    fn normalize_to_expr(self) -> OutputSubExpr {
+        match self {
+            WHNF::Lam(x, t, (ctx, e)) => {
+                let ctx2 = ctx.skip(&x);
+                rc(ExprF::Lam(
+                    x.clone(),
+                    t.normalize().normalize_to_expr(),
+                    normalize_whnf(ctx2, e).normalize_to_expr(),
+                ))
             }
+            WHNF::AppliedBuiltin(b, args) => {
+                let mut e = WHNF::Expr(rc(ExprF::Builtin(b)));
+                for v in args {
+                    e = e.app(v);
+                }
+                e.normalize_to_expr()
+            }
+            WHNF::OptionalSomeClosure(n) => {
+                let a = n.normalize().normalize_to_expr();
+                dhall::subexpr!(λ(x: a) -> Some x)
+            }
+            WHNF::ListConsClosure(n, None) => {
+                let a = n.normalize().normalize_to_expr();
+                // Avoid accidental capture of the new `x` variable
+                let a1 = shift0(1, &"x".into(), &a);
+                dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
+            }
+            WHNF::ListConsClosure(n, Some(v)) => {
+                let v = v.normalize().normalize_to_expr();
+                let a = n.normalize().normalize_to_expr();
+                dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
+            }
+            WHNF::NaturalSuccClosure => {
+                dhall::subexpr!(λ(x : Natural) -> x + 1)
+            }
+            WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
+            WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
+            WHNF::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
+            WHNF::EmptyOptionalLit(n) => {
+                WHNF::Expr(rc(ExprF::Builtin(Builtin::OptionalNone)))
+                    .app(n.normalize())
+                    .normalize_to_expr()
+            }
+            WHNF::NEOptionalLit(n) => {
+                rc(ExprF::SomeLit(n.normalize().normalize_to_expr()))
+            }
+            WHNF::EmptyListLit(n) => {
+                rc(ExprF::EmptyListLit(n.normalize().normalize_to_expr()))
+            }
+            WHNF::NEListLit(elts) => rc(ExprF::NEListLit(
+                elts.into_iter()
+                    .map(|n| n.normalize().normalize_to_expr())
+                    .collect(),
+            )),
+            WHNF::RecordLit(kvs) => rc(ExprF::RecordLit(
+                kvs.into_iter()
+                    .map(|(k, v)| (k, v.normalize().normalize_to_expr()))
+                    .collect(),
+            )),
+            WHNF::RecordType(kts) => rc(ExprF::RecordType(
+                kts.into_iter()
+                    .map(|(k, v)| (k, v.normalize().normalize_to_expr()))
+                    .collect(),
+            )),
+            WHNF::UnionType(ctx, kts) => rc(ExprF::UnionType(
+                kts.into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_whnf(ctx.clone(), v)
+                                    .normalize_to_expr()
+                            }),
+                        )
+                    })
+                    .collect(),
+            )),
+            WHNF::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_whnf(ctx.clone(), v)
+                                    .normalize_to_expr()
+                            }),
+                        )
+                    })
+                    .collect();
+                rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
+            }
+            WHNF::UnionLit(l, v, (kts_ctx, kts)) => rc(ExprF::UnionLit(
+                l,
+                v.normalize().normalize_to_expr(),
+                kts.into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_whnf(kts_ctx.clone(), v)
+                                    .normalize_to_expr()
+                            }),
+                        )
+                    })
+                    .collect(),
+            )),
+            WHNF::TextLit(elts) => {
+                fn normalize_textlit(
+                    elts: Vec<InterpolatedTextContents<Now>>,
+                ) -> InterpolatedText<OutputSubExpr> {
+                    elts.into_iter()
+                        .flat_map(|contents| {
+                            use InterpolatedTextContents::{Expr, Text};
+                            let new_interpolated = match contents {
+                                Expr(n) => match n.normalize() {
+                                    WHNF::TextLit(elts2) => {
+                                        normalize_textlit(elts2)
+                                    }
+                                    e => InterpolatedText::from((
+                                        String::new(),
+                                        vec![(
+                                            e.normalize_to_expr(),
+                                            String::new(),
+                                        )],
+                                    )),
+                                },
+                                Text(s) => InterpolatedText::from(s),
+                            };
+                            new_interpolated.into_iter()
+                        })
+                        .collect()
+                }
+
+                rc(ExprF::TextLit(normalize_textlit(elts)))
+            }
+            WHNF::Expr(e) => e,
         }
-        (ListFold, [_, EmptyListLit(_), _, _, nil, rest..]) => {
-            (nil.roll(), rest)
+    }
+
+    /// Apply to a value
+    fn app(self, val: WHNF) -> WHNF {
+        match (self, val) {
+            (WHNF::Lam(x, _, (ctx, e)), val) => {
+                let ctx2 = ctx.insert(&x, val);
+                normalize_whnf(ctx2, e)
+            }
+            (WHNF::AppliedBuiltin(b, mut args), val) => {
+                args.push(val);
+                apply_builtin(b, args)
+            }
+            (WHNF::OptionalSomeClosure(_), val) => {
+                WHNF::NEOptionalLit(Now::from_whnf(val))
+            }
+            (WHNF::ListConsClosure(t, None), val) => {
+                WHNF::ListConsClosure(t, Some(Now::from_whnf(val)))
+            }
+            (WHNF::ListConsClosure(_, Some(x)), WHNF::EmptyListLit(_)) => {
+                WHNF::NEListLit(vec![x])
+            }
+            (WHNF::ListConsClosure(_, Some(x)), WHNF::NEListLit(mut xs)) => {
+                xs.insert(0, x);
+                WHNF::NEListLit(xs)
+            }
+            (WHNF::NaturalSuccClosure, WHNF::NaturalLit(n)) => {
+                WHNF::NaturalLit(n + 1)
+            }
+            (WHNF::UnionConstructor(ctx, l, kts), val) => {
+                WHNF::UnionLit(l, Now::from_whnf(val), (ctx, kts))
+            }
+            // Can't do anything useful, convert to expr
+            (f, a) => WHNF::Expr(rc(ExprF::App(
+                f.normalize_to_expr(),
+                a.normalize_to_expr(),
+            ))),
         }
-        (ListFold, [_, NEListLit(xs), _, cons, nil, rest..]) => (
-            xs.iter().rev().fold(nil.roll(), |acc, x| {
-                let x = x.clone();
-                let acc = acc.clone();
-                let cons = cons.roll();
-                dhall::subexpr!(cons x acc)
-            }),
-            rest,
+    }
+
+    fn from_builtin(b: Builtin) -> WHNF {
+        WHNF::AppliedBuiltin(b, vec![])
+    }
+
+    fn shift0(&mut self, delta: isize, label: &Label) {
+        match self {
+            WHNF::NaturalSuccClosure
+            | WHNF::BoolLit(_)
+            | WHNF::NaturalLit(_)
+            | WHNF::IntegerLit(_) => {}
+            WHNF::EmptyOptionalLit(n)
+            | WHNF::NEOptionalLit(n)
+            | WHNF::OptionalSomeClosure(n)
+            | WHNF::EmptyListLit(n) => {
+                n.shift0(delta, label);
+            }
+            WHNF::Lam(_, t, (_, e)) => {
+                t.shift0(delta, label);
+                shift_mut(delta, &V(label.clone(), 1), e);
+            }
+            WHNF::AppliedBuiltin(_, args) => {
+                for x in args.iter_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::ListConsClosure(t, v) => {
+                t.shift0(delta, label);
+                for x in v.iter_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::NEListLit(elts) => {
+                for x in elts.iter_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::RecordLit(kvs) | WHNF::RecordType(kvs) => {
+                for x in kvs.values_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::UnionType(_, kts) | WHNF::UnionConstructor(_, _, kts) => {
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    shift0_mut(delta, label, x);
+                }
+            }
+            WHNF::UnionLit(_, v, (_, kts)) => {
+                v.shift0(delta, label);
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    shift0_mut(delta, label, x);
+                }
+            }
+            WHNF::TextLit(elts) => {
+                for x in elts.iter_mut() {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match x {
+                        Expr(n) => n.shift0(delta, label),
+                        Text(_) => {}
+                    }
+                }
+            }
+            WHNF::Expr(e) => shift0_mut(delta, label, e),
+        }
+    }
+}
+
+/// Normalize-on-write smart container. Contains either a (partially) normalized value or a
+/// non-normalized value alongside a normalization context.
+/// The name is a pun on std::borrow::Cow.
+#[derive(Debug, Clone)]
+enum Now {
+    Normalized(Box<WHNF>),
+    Unnormalized(NormalizationContext, InputSubExpr),
+}
+
+impl Now {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Now {
+        Now::Unnormalized(ctx, e)
+    }
+
+    fn from_whnf(v: WHNF) -> Now {
+        Now::Normalized(Box::new(v))
+    }
+
+    fn normalize(self) -> WHNF {
+        match self {
+            Now::Normalized(v) => *v,
+            Now::Unnormalized(ctx, e) => normalize_whnf(ctx, e),
+        }
+    }
+
+    fn shift0(&mut self, delta: isize, label: &Label) {
+        match self {
+            Now::Normalized(v) => v.shift0(delta, label),
+            Now::Unnormalized(_, e) => shift0_mut(delta, label, e),
+        }
+    }
+}
+
+/// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
+fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
+    match expr.as_ref() {
+        ExprF::Var(v) => ctx.lookup(&v),
+        ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
+        ExprF::Note(_, e) => normalize_whnf(ctx, e.clone()),
+        // TODO: wasteful to retraverse everything
+        ExprF::Embed(e) => normalize_whnf(ctx, e.0.embed_absurd()),
+        ExprF::Let(x, _, r, b) => {
+            let r = normalize_whnf(ctx.clone(), r.clone());
+            normalize_whnf(ctx.insert(x, r), b.clone())
+        }
+        ExprF::Lam(x, t, e) => WHNF::Lam(
+            x.clone(),
+            Now::new(ctx.clone(), t.clone()),
+            (ctx, e.clone()),
         ),
-        // // fold/build fusion
-        // (ListFold, [_, App(box Builtin(ListBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_ref(&App(bx(x.clone()), rest.to_vec()))
-        // }
-        (OptionalFold, [_, NEOptionalLit(x), _, just, _, rest..]) => {
-            let x = x.clone();
-            let just = just.roll();
-            (dhall::subexpr!(just x), rest)
+        ExprF::Builtin(b) => WHNF::AppliedBuiltin(*b, vec![]),
+        ExprF::BoolLit(b) => WHNF::BoolLit(*b),
+        ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
+        ExprF::OldOptionalLit(None, e) => {
+            WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
         }
-        (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing, rest..]) => {
-            (nothing.roll(), rest)
+        ExprF::OldOptionalLit(Some(e), _) => {
+            WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
-        // // fold/build fusion
-        // (OptionalFold, [_, App(box Builtin(OptionalBuild), [_, x, rest..]), rest..]) => {
-        //     normalize_ref(&App(bx(x.clone()), rest.to_vec()))
-        // }
-        (NaturalBuild, [g, rest..]) => {
-            'ret: {
-                if let App(f2, args2) = g {
-                    if let (Builtin(NaturalFold), [x, rest_inner..]) =
-                        (f2.as_ref(), args2.as_slice())
-                    {
-                        // fold/build fusion
-                        break 'ret (
-                            rc(App(x.clone(), rest_inner.to_vec())),
-                            rest,
-                        );
+        ExprF::SomeLit(e) => WHNF::NEOptionalLit(Now::new(ctx, e.clone())),
+        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Now::new(ctx, e.clone())),
+        ExprF::NEListLit(elts) => WHNF::NEListLit(
+            elts.iter()
+                .map(|e| Now::new(ctx.clone(), e.clone()))
+                .collect(),
+        ),
+        ExprF::RecordLit(kvs) => WHNF::RecordLit(
+            kvs.iter()
+                .map(|(k, e)| (k.clone(), Now::new(ctx.clone(), e.clone())))
+                .collect(),
+        ),
+        ExprF::UnionType(kvs) => WHNF::UnionType(ctx, kvs.clone()),
+        ExprF::UnionLit(l, x, kts) => WHNF::UnionLit(
+            l.clone(),
+            Now::new(ctx.clone(), x.clone()),
+            (ctx, kts.clone()),
+        ),
+        ExprF::TextLit(elts) => WHNF::TextLit(
+            elts.iter()
+                .map(|contents| {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match contents {
+                        Expr(n) => Expr(Now::new(ctx.clone(), n.clone())),
+                        Text(s) => Text(s.clone()),
                     }
-                };
-                let g = g.roll();
-                break 'ret (
-                    dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
-                    rest,
-                );
+                })
+                .collect(),
+        ),
+        ExprF::BoolIf(b, e1, e2) => {
+            let b = normalize_whnf(ctx.clone(), b.clone());
+            match b {
+                WHNF::BoolLit(true) => normalize_whnf(ctx, e1.clone()),
+                WHNF::BoolLit(false) => normalize_whnf(ctx, e2.clone()),
+                b => {
+                    let e1 = normalize_whnf(ctx.clone(), e1.clone());
+                    let e2 = normalize_whnf(ctx, e2.clone());
+                    match (e1, e2) {
+                        (WHNF::BoolLit(true), WHNF::BoolLit(false)) => b,
+                        (e1, e2) => {
+                            normalize_last_layer(ExprF::BoolIf(b, e1, e2))
+                        }
+                    }
+                }
             }
         }
-        (NaturalFold, [NaturalLit(0), _, _, zero, rest..]) => {
-            (zero.roll(), rest)
+        expr => {
+            // Recursively normalize subexpressions
+            let expr: ExprF<WHNF, Label, X, X> = expr
+                .map_ref_with_special_handling_of_binders(
+                    |e| normalize_whnf(ctx.clone(), e.clone()),
+                    |x, e| normalize_whnf(ctx.skip(x), e.clone()),
+                    X::clone,
+                    |_| unreachable!(),
+                    Label::clone,
+                );
+
+            normalize_last_layer(expr)
         }
-        (NaturalFold, [NaturalLit(n), t, succ, zero, rest..]) => {
-            let fold = rc(Builtin(NaturalFold));
-            let n = rc(NaturalLit(n - 1));
-            let t = t.roll();
-            let succ = succ.roll();
-            let zero = zero.roll();
-            (dhall::subexpr!(succ (fold n t succ zero)), rest)
-        }
-        // (NaturalFold, Some(App(f2, args2)), _) => {
-        //     match (f2.as_ref(), args2.as_slice()) {
-        //         // fold/build fusion
-        //         (Builtin(NaturalBuild), [x, rest..]) => {
-        //             rc(App(x.clone(), rest.to_vec()))
-        //         }
-        //         _ => return rc(App(f, args)),
-        //     }
-        // }
-        _ => return DoneAsIs,
-    };
-    // Put the remaining arguments back and eval again. In most cases
-    // ret will not be of a form that can be applied, so this won't go very deep.
-    // In lots of cases, there are no remaining args so this cann will just return ret.
-    let rest: Vec<SubExpr<N, E>> = rest.iter().map(ExprF::roll).collect();
-    Continue(ExprF::App(ret, rest))
+    }
 }
 
-// Small enum to help with being DRY
-enum WhatNext<'a, N, E> {
-    // Recurse on this expression
-    Continue(Expr<N, E>),
-    ContinueSub(SubExpr<N, E>),
-    // The following expression is the normal form
-    Done(Expr<N, E>),
-    DoneRef(&'a Expr<N, E>),
-    DoneRefSub(&'a SubExpr<N, E>),
-    // The current expression is already in normal form
-    DoneAsIs,
-}
-
-fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
+/// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
+fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
     use dhall_core::BinOp::*;
-    use dhall_core::ExprF::*;
-    // Recursively normalize all subexpressions
-    let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
-        expr.map_ref_simple(|e| normalize_ref(e.as_ref()));
+    use WHNF::*;
 
-    use WhatNext::*;
-    // TODO: match by move
-    let what_next = match &expr {
-        Let(f, _, r, b) => {
-            let vf0 = &V(f.clone(), 0);
-            // TODO: use a context
-            ContinueSub(subst_shift(vf0, &r.roll(), &b.roll()))
+    match expr {
+        ExprF::App(v, a) => v.app(a),
+
+        ExprF::BinOp(BoolAnd, BoolLit(true), y) => y,
+        ExprF::BinOp(BoolAnd, x, BoolLit(true)) => x,
+        ExprF::BinOp(BoolAnd, BoolLit(false), _) => BoolLit(false),
+        ExprF::BinOp(BoolAnd, _, BoolLit(false)) => BoolLit(false),
+        ExprF::BinOp(BoolOr, BoolLit(true), _) => BoolLit(true),
+        ExprF::BinOp(BoolOr, _, BoolLit(true)) => BoolLit(true),
+        ExprF::BinOp(BoolOr, BoolLit(false), y) => y,
+        ExprF::BinOp(BoolOr, x, BoolLit(false)) => x,
+        ExprF::BinOp(BoolEQ, BoolLit(true), y) => y,
+        ExprF::BinOp(BoolEQ, x, BoolLit(true)) => x,
+        ExprF::BinOp(BoolNE, BoolLit(false), y) => y,
+        ExprF::BinOp(BoolNE, x, BoolLit(false)) => x,
+        ExprF::BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => BoolLit(x == y),
+        ExprF::BinOp(BoolNE, BoolLit(x), BoolLit(y)) => BoolLit(x != y),
+
+        ExprF::BinOp(NaturalPlus, NaturalLit(0), y) => y,
+        ExprF::BinOp(NaturalPlus, x, NaturalLit(0)) => x,
+        ExprF::BinOp(NaturalTimes, NaturalLit(0), _) => NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, _, NaturalLit(0)) => NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, NaturalLit(1), y) => y,
+        ExprF::BinOp(NaturalTimes, x, NaturalLit(1)) => x,
+        ExprF::BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
+            NaturalLit(x + y)
         }
-        Annot(x, _) => DoneRef(x),
-        Note(_, e) => DoneRef(e),
-        App(f, args) if args.is_empty() => DoneRef(f),
-        App(App(f, args1), args2) => Continue(App(
-            f.clone(),
-            args1
-                .iter()
-                .cloned()
-                .chain(args2.iter().map(ExprF::roll))
-                .collect(),
-        )),
-        App(Builtin(b), args) => apply_builtin(*b, args),
-        App(Lam(x, _, b), args) => {
-            let mut iter = args.iter();
-            // We know args is nonempty
-            let a = iter.next().unwrap();
-            // Beta reduce
-            let vx0 = &V(x.clone(), 0);
-            let b2 = subst_shift(vx0, &a.roll(), &b);
-            Continue(App(b2, iter.map(ExprF::roll).collect()))
+        ExprF::BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
+            NaturalLit(x * y)
         }
-        App(UnionConstructor(l, kts), args) => {
-            let mut iter = args.iter();
-            // We know args is nonempty
-            let a = iter.next().unwrap();
-            let e = rc(UnionLit(l.clone(), rc(a.clone()), kts.clone()));
-            Continue(App(e, iter.map(ExprF::roll).collect()))
+
+        ExprF::BinOp(ListAppend, EmptyListLit(_), y) => y,
+        ExprF::BinOp(ListAppend, x, EmptyListLit(_)) => x,
+        ExprF::BinOp(ListAppend, NEListLit(mut xs), NEListLit(mut ys)) => {
+            xs.append(&mut ys);
+            NEListLit(xs)
         }
-        BoolIf(BoolLit(true), t, _) => DoneRef(t),
-        BoolIf(BoolLit(false), _, f) => DoneRef(f),
-        // TODO: interpolation
-        // TextLit(t) =>
-        OldOptionalLit(None, t) => Done(EmptyOptionalLit(t.roll())),
-        OldOptionalLit(Some(x), _) => Done(NEOptionalLit(x.roll())),
-        BinOp(BoolAnd, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x && *y)),
-        BinOp(BoolOr, BoolLit(x), BoolLit(y)) => Done(BoolLit(*x || *y)),
-        BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => Done(BoolLit(x == y)),
-        BinOp(BoolNE, BoolLit(x), BoolLit(y)) => Done(BoolLit(x != y)),
-        BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x + y))
+        ExprF::BinOp(TextAppend, TextLit(mut x), TextLit(mut y)) => {
+            x.append(&mut y);
+            TextLit(x)
         }
-        BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            Done(NaturalLit(x * y))
-        }
-        BinOp(TextAppend, TextLit(x), TextLit(y)) => Done(TextLit(x + y)),
-        BinOp(ListAppend, EmptyListLit(_), y) => DoneRef(y),
-        BinOp(ListAppend, x, EmptyListLit(_)) => DoneRef(x),
-        BinOp(ListAppend, NEListLit(xs), NEListLit(ys)) => {
-            let xs = xs.iter().cloned();
-            let ys = ys.iter().cloned();
-            Done(NEListLit(xs.chain(ys).collect()))
-        }
-        Merge(RecordLit(handlers), UnionLit(l, v, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => Continue(App(h.clone(), vec![v.clone()])),
-                None => DoneAsIs,
+        ExprF::BinOp(TextAppend, TextLit(x), y) if x.is_empty() => y,
+        ExprF::BinOp(TextAppend, x, TextLit(y)) if y.is_empty() => x,
+
+        ExprF::Field(UnionType(ctx, kts), l) => UnionConstructor(ctx, l, kts),
+        ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
+            Some(r) => r.normalize(),
+            None => {
+                // Couldn't do anything useful, so just normalize subexpressions
+                Expr(rc(ExprF::Field(RecordLit(kvs).normalize_to_expr(), l)))
             }
-        }
-        Merge(RecordLit(handlers), UnionConstructor(l, _), _) => {
-            match handlers.get(&l) {
-                Some(h) => DoneRefSub(h),
-                None => DoneAsIs,
-            }
-        }
-        Field(RecordLit(kvs), l) => match kvs.get(&l) {
-            Some(r) => DoneRefSub(r),
-            None => DoneAsIs,
         },
-        Field(UnionType(kts), l) => {
-            Done(UnionConstructor(l.clone(), kts.clone()))
+        ExprF::Projection(_, ls) if ls.is_empty() => {
+            RecordLit(std::collections::BTreeMap::new())
         }
-        Projection(_, ls) if ls.is_empty() => {
-            Done(RecordLit(std::collections::BTreeMap::new()))
-        }
-        Projection(RecordLit(kvs), ls) => Done(RecordLit(
-            ls.iter()
-                .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
+        ExprF::Projection(RecordLit(mut kvs), ls) => RecordLit(
+            ls.into_iter()
+                .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
                 .collect(),
-        )),
-        Embed(e) => DoneRefSub(&e.0),
-        _ => DoneAsIs,
-    };
-
-    match what_next {
-        Continue(e) => normalize_ref(&e.embed_absurd()),
-        ContinueSub(e) => normalize_ref(e.embed_absurd().as_ref()),
-        Done(e) => e,
-        DoneRef(e) => e.clone(),
-        DoneRefSub(e) => e.unroll(),
-        DoneAsIs => expr.map_ref_simple(ExprF::roll).map_ref(
-            SubExpr::clone,
-            X::clone,
-            |_| unreachable!(),
-            Label::clone,
         ),
+        ExprF::Merge(RecordLit(mut handlers), e, t) => {
+            let e = match e {
+                UnionConstructor(ctor_ctx, l, kts) => match handlers.remove(&l)
+                {
+                    Some(h) => return h.normalize(),
+                    None => UnionConstructor(ctor_ctx, l, kts),
+                },
+                UnionLit(l, v, (kts_ctx, kts)) => match handlers.remove(&l) {
+                    Some(h) => {
+                        let h = h.normalize();
+                        let v = v.normalize();
+                        return h.app(v);
+                    }
+                    None => UnionLit(l, v, (kts_ctx, kts)),
+                },
+                e => e,
+            };
+            // Couldn't do anything useful, so just normalize subexpressions
+            Expr(rc(ExprF::Merge(
+                RecordLit(handlers).normalize_to_expr(),
+                e.normalize_to_expr(),
+                t.map(WHNF::normalize_to_expr),
+            )))
+        }
+        // Couldn't do anything useful, so just normalize subexpressions
+        expr => {
+            Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
+        }
     }
 }
 
@@ -348,8 +797,8 @@ fn normalize_ref(expr: &Expr<X, Normalized<'static>>) -> Expr<X, X> {
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-fn normalize(e: SubExpr<X, Normalized<'static>>) -> SubExpr<X, X> {
-    normalize_ref(e.as_ref()).roll()
+fn normalize(e: InputSubExpr) -> OutputSubExpr {
+    normalize_whnf(NormalizationContext::new(), e).normalize_to_expr()
 }
 
 #[cfg(test)]
@@ -489,7 +938,7 @@ mod spec_tests {
     norm!(success_prelude_Optional_unzip_1, "prelude/Optional/unzip/1");
     norm!(success_prelude_Text_concat_0, "prelude/Text/concat/0");
     norm!(success_prelude_Text_concat_1, "prelude/Text/concat/1");
-    // norm!(success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
+    norm!(success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
     norm!(success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
     // norm!(success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
     // norm!(success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
@@ -536,7 +985,7 @@ mod spec_tests {
     // norm!(success_unit_IfAlternativesIdentical, "unit/IfAlternativesIdentical");
     norm!(success_unit_IfFalse, "unit/IfFalse");
     norm!(success_unit_IfNormalizePredicateAndBranches, "unit/IfNormalizePredicateAndBranches");
-    // norm!(success_unit_IfTrivial, "unit/IfTrivial");
+    norm!(success_unit_IfTrivial, "unit/IfTrivial");
     norm!(success_unit_IfTrue, "unit/IfTrue");
     norm!(success_unit_Integer, "unit/Integer");
     norm!(success_unit_IntegerNegative, "unit/IntegerNegative");
@@ -603,42 +1052,42 @@ mod spec_tests {
     norm!(success_unit_None, "unit/None");
     norm!(success_unit_NoneNatural, "unit/NoneNatural");
     // norm!(success_unit_OperatorAndEquivalentArguments, "unit/OperatorAndEquivalentArguments");
-    // norm!(success_unit_OperatorAndLhsFalse, "unit/OperatorAndLhsFalse");
-    // norm!(success_unit_OperatorAndLhsTrue, "unit/OperatorAndLhsTrue");
-    // norm!(success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
-    // norm!(success_unit_OperatorAndRhsFalse, "unit/OperatorAndRhsFalse");
-    // norm!(success_unit_OperatorAndRhsTrue, "unit/OperatorAndRhsTrue");
+    norm!(success_unit_OperatorAndLhsFalse, "unit/OperatorAndLhsFalse");
+    norm!(success_unit_OperatorAndLhsTrue, "unit/OperatorAndLhsTrue");
+    norm!(success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
+    norm!(success_unit_OperatorAndRhsFalse, "unit/OperatorAndRhsFalse");
+    norm!(success_unit_OperatorAndRhsTrue, "unit/OperatorAndRhsTrue");
     // norm!(success_unit_OperatorEqualEquivalentArguments, "unit/OperatorEqualEquivalentArguments");
-    // norm!(success_unit_OperatorEqualLhsTrue, "unit/OperatorEqualLhsTrue");
-    // norm!(success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
-    // norm!(success_unit_OperatorEqualRhsTrue, "unit/OperatorEqualRhsTrue");
+    norm!(success_unit_OperatorEqualLhsTrue, "unit/OperatorEqualLhsTrue");
+    norm!(success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
+    norm!(success_unit_OperatorEqualRhsTrue, "unit/OperatorEqualRhsTrue");
     norm!(success_unit_OperatorListConcatenateLhsEmpty, "unit/OperatorListConcatenateLhsEmpty");
     norm!(success_unit_OperatorListConcatenateListList, "unit/OperatorListConcatenateListList");
     norm!(success_unit_OperatorListConcatenateNormalizeArguments, "unit/OperatorListConcatenateNormalizeArguments");
     norm!(success_unit_OperatorListConcatenateRhsEmpty, "unit/OperatorListConcatenateRhsEmpty");
     // norm!(success_unit_OperatorNotEqualEquivalentArguments, "unit/OperatorNotEqualEquivalentArguments");
-    // norm!(success_unit_OperatorNotEqualLhsFalse, "unit/OperatorNotEqualLhsFalse");
-    // norm!(success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
-    // norm!(success_unit_OperatorNotEqualRhsFalse, "unit/OperatorNotEqualRhsFalse");
+    norm!(success_unit_OperatorNotEqualLhsFalse, "unit/OperatorNotEqualLhsFalse");
+    norm!(success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
+    norm!(success_unit_OperatorNotEqualRhsFalse, "unit/OperatorNotEqualRhsFalse");
     // norm!(success_unit_OperatorOrEquivalentArguments, "unit/OperatorOrEquivalentArguments");
-    // norm!(success_unit_OperatorOrLhsFalse, "unit/OperatorOrLhsFalse");
-    // norm!(success_unit_OperatorOrLhsTrue, "unit/OperatorOrLhsTrue");
-    // norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
-    // norm!(success_unit_OperatorOrRhsFalse, "unit/OperatorOrRhsFalse");
-    // norm!(success_unit_OperatorOrRhsTrue, "unit/OperatorOrRhsTrue");
-    // norm!(success_unit_OperatorPlusLhsZero, "unit/OperatorPlusLhsZero");
-    // norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
+    norm!(success_unit_OperatorOrLhsFalse, "unit/OperatorOrLhsFalse");
+    norm!(success_unit_OperatorOrLhsTrue, "unit/OperatorOrLhsTrue");
+    norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
+    norm!(success_unit_OperatorOrRhsFalse, "unit/OperatorOrRhsFalse");
+    norm!(success_unit_OperatorOrRhsTrue, "unit/OperatorOrRhsTrue");
+    norm!(success_unit_OperatorPlusLhsZero, "unit/OperatorPlusLhsZero");
+    norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
     norm!(success_unit_OperatorPlusOneAndOne, "unit/OperatorPlusOneAndOne");
-    // norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
-    // norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
-    // norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
-    // norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
+    norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
+    norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
+    norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
+    norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
     norm!(success_unit_OperatorTextConcatenateTextText, "unit/OperatorTextConcatenateTextText");
-    // norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
-    // norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
-    // norm!(success_unit_OperatorTimesNormalizeArguments, "unit/OperatorTimesNormalizeArguments");
-    // norm!(success_unit_OperatorTimesRhsOne, "unit/OperatorTimesRhsOne");
-    // norm!(success_unit_OperatorTimesRhsZero, "unit/OperatorTimesRhsZero");
+    norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
+    norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
+    norm!(success_unit_OperatorTimesNormalizeArguments, "unit/OperatorTimesNormalizeArguments");
+    norm!(success_unit_OperatorTimesRhsOne, "unit/OperatorTimesRhsOne");
+    norm!(success_unit_OperatorTimesRhsZero, "unit/OperatorTimesRhsZero");
     norm!(success_unit_OperatorTimesTwoAndTwo, "unit/OperatorTimesTwoAndTwo");
     norm!(success_unit_Optional, "unit/Optional");
     norm!(success_unit_OptionalBuild, "unit/OptionalBuild");
@@ -675,7 +1124,7 @@ mod spec_tests {
     norm!(success_unit_SomeNormalizeArguments, "unit/SomeNormalizeArguments");
     norm!(success_unit_Sort, "unit/Sort");
     norm!(success_unit_Text, "unit/Text");
-    // norm!(success_unit_TextInterpolate, "unit/TextInterpolate");
+    norm!(success_unit_TextInterpolate, "unit/TextInterpolate");
     norm!(success_unit_TextLiteral, "unit/TextLiteral");
     norm!(success_unit_TextNormalizeInterpolations, "unit/TextNormalizeInterpolations");
     norm!(success_unit_TextShow, "unit/TextShow");

@@ -44,9 +44,9 @@ impl<'a> Normalized<'a> {
     fn unroll_ref(&self) -> &Expr<X, X> {
         self.as_expr().as_ref()
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
         // shift the type too ?
-        Normalized(shift(delta, var, &self.0), self.1.clone(), self.2)
+        Normalized(shift0(delta, label, &self.0), self.1.clone(), self.2)
     }
 }
 impl Normalized<'static> {
@@ -86,10 +86,10 @@ impl<'a> Type<'a> {
             Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
         }
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
         use TypeInternal::*;
         Type(match &self.0 {
-            Expr(e) => Expr(Box::new(e.shift(delta, var))),
+            Expr(e) => Expr(Box::new(e.shift0(delta, label))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         })
@@ -168,11 +168,7 @@ where
                     eq2
                 }
             }
-            (App(fL, aL), App(fR, aR)) => {
-                go(ctx, fL, fR)
-                    && aL.len() == aR.len()
-                    && aL.iter().zip(aR.iter()).all(|(aL, aR)| go(ctx, aL, aR))
-            }
+            (App(fL, aL), App(fR, aR)) => go(ctx, fL, fR) && go(ctx, aL, aR),
             (RecordType(ktsL0), RecordType(ktsR0)) => {
                 ktsL0.len() == ktsR0.len()
                     && ktsL0
@@ -378,9 +374,8 @@ fn type_with(
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
-            let ctx2 = ctx
-                .insert(x.clone(), t.clone())
-                .map(|e| e.shift(1, &V(x.clone(), 0)));
+            let ctx2 =
+                ctx.insert(x.clone(), t.clone()).map(|_, e| e.shift0(1, x));
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
@@ -395,9 +390,8 @@ fn type_with(
                 mkerr(InvalidInputType(ta.into_normalized()?)),
             );
 
-            let ctx2 = ctx
-                .insert(x.clone(), ta.clone())
-                .map(|e| e.shift(1, &V(x.clone(), 0)));
+            let ctx2 =
+                ctx.insert(x.clone(), ta.clone()).map(|_, e| e.shift0(1, x));
             let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,
@@ -476,46 +470,22 @@ fn type_last_layer(
             Some(e) => Ok(RetType(e.clone())),
             None => Err(mkerr(UnboundVariable)),
         },
-        App(f, args) => {
-            let mut tf = f.get_type()?.into_owned();
-            // Reconstruct the application `f a0 a1 ...`
-            // for error reporting
-            let mkf = |args: Vec<_>, i| {
-                rc(App(
-                    f.into_expr(),
-                    args.into_iter().take(i).map(Typed::into_expr).collect(),
-                ))
-            };
-
-            for (i, a) in args.iter().enumerate() {
-                let (x, tx, tb) = ensure_matches!(tf,
-                    Pi(x, tx, tb) => (x, tx, tb),
-                    mkerr(NotAFunction(Typed(
-                        mkf(args, i),
-                        Some(tf),
-                        PhantomData
-                    )))
-                );
-                let tx = mktype(ctx, tx.embed_absurd())?;
-                ensure_equal!(&tx, a.get_type()?, {
-                    let a = a.clone();
-                    mkerr(TypeMismatch(
-                        Typed(mkf(args, i + 1), Some(tf), PhantomData),
-                        tx.into_normalized()?,
-                        a,
-                    ))
-                });
-                tf = mktype(
-                    ctx,
-                    rc(Let(
-                        x.clone(),
-                        None,
-                        a.clone().normalize().embed(),
-                        tb.embed_absurd(),
-                    )),
-                )?;
-            }
-            Ok(RetType(tf))
+        App(f, a) => {
+            let tf = f.get_type()?;
+            let (x, tx, tb) = ensure_matches!(tf,
+                Pi(x, tx, tb) => (x, tx, tb),
+                mkerr(NotAFunction(f))
+            );
+            let tx = mktype(ctx, tx.embed_absurd())?;
+            ensure_equal!(a.get_type()?, &tx, {
+                mkerr(TypeMismatch(f, tx.into_normalized()?, a))
+            });
+            Ok(RetExpr(Let(
+                x.clone(),
+                None,
+                a.normalize().embed(),
+                tb.embed_absurd(),
+            )))
         }
         Annot(x, t) => {
             let t = t.normalize().into_type();
@@ -593,13 +563,7 @@ fn type_last_layer(
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
-        EmptyOptionalLit(t) => {
-            let t = t.normalize();
-            ensure_simple_type!(t, mkerr(InvalidOptionalType(t)));
-            let t = t.embed();
-            Ok(RetExpr(dhall::expr!(Optional t)))
-        }
-        NEOptionalLit(x) => {
+        SomeLit(x) => {
             let tx = x.get_type_move()?;
             ensure_simple_type!(
                 tx,
@@ -706,7 +670,7 @@ fn type_last_layer(
         TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.unroll_ref()?.as_ref() {
-                App(f, args) if args.len() == 1 => match f.as_ref() {
+                App(f, _) => match f.as_ref() {
                     Builtin(List) => {}
                     _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
                 },

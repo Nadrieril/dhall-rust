@@ -130,9 +130,7 @@ where
                 let (l, e) = v.visit_binder(l, e)?;
                 Let(l, t, a, e)
             }
-            App(f, args) => {
-                App(v.visit_subexpr(f)?, vec(args, |e| v.visit_subexpr(e))?)
-            }
+            App(f, a) => App(v.visit_subexpr(f)?, v.visit_subexpr(a)?),
             Annot(x, t) => Annot(v.visit_subexpr(x)?, v.visit_subexpr(t)?),
             Const(k) => Const(*k),
             Builtin(v) => Builtin(*v),
@@ -155,8 +153,7 @@ where
                 opt(x, |e| v.visit_subexpr(e))?,
                 v.visit_subexpr(t)?,
             ),
-            EmptyOptionalLit(t) => EmptyOptionalLit(v.visit_subexpr(t)?),
-            NEOptionalLit(e) => NEOptionalLit(v.visit_subexpr(e)?),
+            SomeLit(e) => SomeLit(v.visit_subexpr(e)?),
             RecordType(kts) => RecordType(btmap(kts, v)?),
             RecordLit(kvs) => RecordLit(btmap(kvs, v)?),
             UnionType(kts) => UnionType(btoptmap(kts, v)?),
@@ -165,9 +162,6 @@ where
                 v.visit_subexpr(x)?,
                 btoptmap(kts, v)?,
             ),
-            UnionConstructor(x, kts) => {
-                UnionConstructor(v.visit_label(x)?, btoptmap(kts, v)?)
-            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,

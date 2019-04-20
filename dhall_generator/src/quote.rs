@@ -43,7 +43,6 @@ where
             quote! { dhall_core::ExprF::Lam(#x, #t, #b) }
         }
         App(f, a) => {
-            let a = quote_vec(a);
             quote! { dhall_core::ExprF::App(#f, #a) }
         }
         Annot(x, t) => {
@@ -67,11 +66,8 @@ where
         BoolLit(b) => {
             quote! { dhall_core::ExprF::BoolLit(#b) }
         }
-        EmptyOptionalLit(x) => {
-            quote! { dhall_core::ExprF::EmptyOptionalLit(#x) }
-        }
-        NEOptionalLit(x) => {
-            quote! { dhall_core::ExprF::NEOptionalLit(#x) }
+        SomeLit(x) => {
+            quote! { dhall_core::ExprF::SomeLit(#x) }
         }
         EmptyListLit(t) => {
             quote! { dhall_core::ExprF::EmptyListLit(#t) }

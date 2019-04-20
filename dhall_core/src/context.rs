@@ -32,16 +32,38 @@ impl<K: Hash + Eq + Clone, T> Context<K, T> {
     /// lookup k n (insert j v c) = lookup k  n      c  -- k /= j
     /// ```
     pub fn lookup<'a>(&'a self, k: &K, n: usize) -> Option<&'a T> {
-        self.0.get(k).and_then(|v| v.get(v.len() - 1 - n))
+        self.0.get(k).and_then(|v| {
+            if n < v.len() {
+                v.get(v.len() - 1 - n)
+            } else {
+                None
+            }
+        })
     }
 
-    pub fn map<U, F: Fn(&T) -> U>(&self, f: F) -> Context<K, U> {
+    pub fn map<U, F: Fn(&K, &T) -> U>(&self, f: F) -> Context<K, U> {
         Context(
             self.0
                 .iter()
-                .map(|(k, v)| ((*k).clone(), v.iter().map(&f).collect()))
+                .map(|(k, vs)| {
+                    ((*k).clone(), vs.iter().map(|v| f(k, v)).collect())
+                })
                 .collect(),
         )
+    }
+
+    pub fn lookup_all<'a>(&'a self, k: &K) -> impl Iterator<Item = &T> {
+        self.0.get(k).into_iter().flat_map(|v| v.iter())
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &T)> {
+        self.0
+            .iter()
+            .flat_map(|(k, vs)| vs.iter().map(move |v| (k, v)))
+    }
+
+    pub fn iter_keys<'a>(&'a self) -> impl Iterator<Item = (&K, &Vec<T>)> {
+        self.0.iter()
     }
 }
 

@@ -38,10 +38,7 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
             OldOptionalLit(Some(x), t) => {
                 write!(f, "[{}] : Optional {}", x, t)?;
             }
-            EmptyOptionalLit(t) => {
-                write!(f, "None {}", t)?;
-            }
-            NEOptionalLit(e) => {
+            SomeLit(e) => {
                 write!(f, "Some {}", e)?;
             }
             Merge(a, b, c) => {
@@ -56,12 +53,8 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
             ExprF::BinOp(op, a, b) => {
                 write!(f, "{} {} {}", a, op, b)?;
             }
-            ExprF::App(a, args) => {
-                a.fmt(f)?;
-                for x in args {
-                    f.write_str(" ")?;
-                    x.fmt(f)?;
-                }
+            ExprF::App(a, b) => {
+                write!(f, "{} {}", a, b)?;
             }
             Field(a, b) => {
                 write!(f, "{}.{}", a, b)?;
@@ -107,16 +100,6 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
                     }
                 }
                 f.write_str(" >")?
-            }
-            UnionConstructor(x, map) => {
-                fmt_list("< ", " | ", " >", map, f, |(k, v), f| {
-                    write!(f, "{}", k)?;
-                    if let Some(v) = v {
-                        write!(f, ": {}", v)?;
-                    }
-                    Ok(())
-                })?;
-                write!(f, ".{}", x)?
             }
             Embed(a) => a.fmt(f)?,
             Note(_, b) => b.fmt(f)?,
@@ -173,8 +156,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             | EmptyListLit(_)
             | NEListLit(_)
             | OldOptionalLit(_, _)
-            | EmptyOptionalLit(_)
-            | NEOptionalLit(_)
+            | SomeLit(_)
             | Merge(_, _, _)
             | Annot(_, _)
                 if phase > Base =>
@@ -214,12 +196,8 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             ),
             EmptyListLit(t) => EmptyListLit(t.phase(Import)),
             OldOptionalLit(x, t) => OldOptionalLit(x, t.phase(Import)),
-            EmptyOptionalLit(t) => EmptyOptionalLit(t.phase(Import)),
-            NEOptionalLit(e) => NEOptionalLit(e.phase(Import)),
-            ExprF::App(a, args) => ExprF::App(
-                a.phase(Import),
-                args.into_iter().map(|x| x.phase(Import)).collect(),
-            ),
+            SomeLit(e) => SomeLit(e.phase(Import)),
+            ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             Note(n, b) => Note(n, b.phase(phase)),
