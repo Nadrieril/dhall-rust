@@ -25,14 +25,17 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin(b: Builtin, args: &[WHNF]) -> WhatNext<X, X> {
+fn apply_builtin(
+    ctx: &NormalizationContext,
+    b: Builtin,
+    args: &[WHNF],
+) -> Option<WHNF> {
     let args: Vec<_> = args
         .iter()
         .map(|val| val.clone().normalize_to_expr().unroll())
         .collect();
     use dhall_core::Builtin::*;
     use dhall_core::ExprF::*;
-    use WhatNext::*;
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => rc(EmptyOptionalLit(t.roll())),
         (NaturalIsZero, [NaturalLit(n)]) => rc(BoolLit(*n == 0)),
@@ -177,24 +180,52 @@ fn apply_builtin(b: Builtin, args: &[WHNF]) -> WhatNext<X, X> {
         //         _ => return rc(App(f, args)),
         //     }
         // }
-        _ => return DoneAsIs,
+        _ => return None,
     };
-    Continue(ret.unroll())
+    Some(normalize_whnf(ctx, ret.embed_absurd()))
 }
 
-// #[derive(Debug, Clone)]
-// struct ContextualizedSubExpr {
-//     ctx: NormalizationContext,
-//     expr: SubExpr<X, Normalized<'static>>,
-// }
-// impl ContextualizedSubExpr {
-//     fn normalize_whnf(self) -> WHNF {
-//         normalize_whnf(&self.ctx, self.expr)
-//     }
-//     fn normalize_expr(self) -> OutputSubExpr {
-//         normalize_whnf(&self.ctx, self.expr).into_expr(&self.ctx)
-//     }
-// }
+#[derive(Debug, Clone)]
+enum EnvItem {
+    Expr(WHNF),
+    Skip(usize),
+}
+
+#[derive(Debug, Clone)]
+struct NormalizationContext(Context<Label, EnvItem>);
+
+impl NormalizationContext {
+    fn new() -> NormalizationContext {
+        NormalizationContext(Context::new())
+    }
+    fn insert(&self, x: &Label, e: WHNF) -> NormalizationContext {
+        NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
+    }
+    fn skip(&self, x: &Label) -> NormalizationContext {
+        NormalizationContext(
+            self.0
+                .map(|l, e| {
+                    use EnvItem::*;
+                    match e {
+                        Expr(e) => Expr(e.clone().shift0(1, x)),
+                        Skip(n) if l == x => Skip(*n + 1),
+                        Skip(n) => Skip(*n),
+                    }
+                })
+                .insert(x.clone(), EnvItem::Skip(0)),
+        )
+    }
+    fn lookup(&self, var: &V<Label>) -> WHNF {
+        let V(x, n) = var;
+        match self.0.lookup(x, *n) {
+            Some(EnvItem::Expr(e)) => e.clone(),
+            Some(EnvItem::Skip(m)) => {
+                WHNF::Expr(rc(ExprF::Var(V(x.clone(), *m))))
+            }
+            None => WHNF::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
+        }
+    }
+}
 
 /// A semantic value. This is partially redundant with `dhall_core::Expr`, on purpose. `Expr` should
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
@@ -425,7 +456,7 @@ impl Closure {
             }
             Closure::AppliedBuiltin(ctx, b, mut args) => {
                 args.push(val);
-                match apply_builtin(b, &args).into_value(&ctx) {
+                match apply_builtin(&ctx, b, &args) {
                     Some(v) => v,
                     None => {
                         WHNF::Closure(Closure::AppliedBuiltin(ctx, b, args))
@@ -500,119 +531,14 @@ impl Closure {
     }
 }
 
-#[derive(Debug, Clone)]
-enum EnvItem {
-    Expr(WHNF),
-    Skip(usize),
-}
-
-#[derive(Debug, Clone)]
-struct NormalizationContext(Context<Label, EnvItem>);
-
-impl NormalizationContext {
-    fn new() -> NormalizationContext {
-        NormalizationContext(Context::new())
-    }
-    fn insert(&self, x: &Label, e: WHNF) -> NormalizationContext {
-        NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
-    }
-    fn skip(&self, x: &Label) -> NormalizationContext {
-        NormalizationContext(
-            self.0
-                .map(|l, e| {
-                    use EnvItem::*;
-                    match e {
-                        Expr(e) => Expr(e.clone().shift0(1, x)),
-                        Skip(n) if l == x => Skip(*n + 1),
-                        Skip(n) => Skip(*n),
-                    }
-                })
-                .insert(x.clone(), EnvItem::Skip(0)),
-        )
-    }
-    fn lookup(&self, var: &V<Label>) -> WHNF {
-        let V(x, n) = var;
-        match self.0.lookup(x, *n) {
-            Some(EnvItem::Expr(e)) => e.clone(),
-            Some(EnvItem::Skip(m)) => {
-                WHNF::Expr(rc(ExprF::Var(V(x.clone(), *m))))
-            }
-            None => WHNF::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
-        }
-    }
-}
-
-// Small enum to help with being DRY
-enum WhatNext<N, E> {
-    // Recurse on this expression
-    Continue(Expr<N, E>),
-    // The current expression is already in normal form
-    DoneAsIs,
-}
-
-impl WhatNext<X, X> {
-    fn into_value(self, ctx: &NormalizationContext) -> Option<WHNF> {
-        use WhatNext::*;
-        match self {
-            Continue(e) => Some(normalize_whnf(ctx, e.embed_absurd().roll())),
-            DoneAsIs => None,
-        }
-    }
-}
-
-fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
-    match expr.as_ref().embed_absurd() {
-        ExprF::Lam(x, t, e) => WHNF::Closure(Closure::Lam(
-            x,
-            Now::new(ctx.clone(), t),
-            (ctx.clone(), e),
-        )),
-        ExprF::Builtin(b) => {
-            WHNF::Closure(Closure::AppliedBuiltin(ctx.clone(), b, vec![]))
-        }
-        ExprF::BoolLit(b) => WHNF::BoolLit(b),
-        ExprF::NaturalLit(n) => WHNF::NaturalLit(n),
-        ExprF::EmptyOptionalLit(e) => {
-            WHNF::EmptyOptionalLit(Now::new(ctx.clone(), e))
-        }
-        ExprF::NEOptionalLit(e) => {
-            WHNF::NEOptionalLit(Now::new(ctx.clone(), e))
-        }
-        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Now::new(ctx.clone(), e)),
-        ExprF::NEListLit(elts) => WHNF::NEListLit(
-            elts.into_iter().map(|e| Now::new(ctx.clone(), e)).collect(),
-        ),
-        ExprF::RecordLit(kvs) => WHNF::RecordLit(
-            kvs.into_iter()
-                .map(|(k, e)| (k, Now::new(ctx.clone(), e)))
-                .collect(),
-        ),
-        ExprF::UnionType(kvs) => WHNF::UnionType(ctx.clone(), kvs),
-        ExprF::UnionLit(l, x, kts) => {
-            WHNF::UnionLit(l, Now::new(ctx.clone(), x), (ctx.clone(), kts))
-        }
-        ExprF::TextLit(elts) => WHNF::TextLit(
-            elts.into_iter()
-                .map(|contents| {
-                    use InterpolatedTextContents::{Expr, Text};
-                    match contents {
-                        Expr(n) => Expr(Now::new(ctx.clone(), n)),
-                        Text(s) => Text(s),
-                    }
-                })
-                .collect(),
-        ),
-        _ => WHNF::Expr(expr),
-    }
-}
-
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
 fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
     let expr = match expr.as_ref() {
         ExprF::Var(v) => return ctx.lookup(&v),
         ExprF::Annot(x, _) => return normalize_whnf(ctx, x.clone()),
         ExprF::Note(_, e) => return normalize_whnf(ctx, e.clone()),
-        ExprF::Embed(e) => return reval(ctx, e.0.clone()),
+        // TODO: wasteful to retraverse everything
+        ExprF::Embed(e) => return normalize_whnf(ctx, e.0.embed_absurd()),
         ExprF::Let(x, _, r, b) => {
             let r = normalize_whnf(ctx, r.clone());
             return normalize_whnf(&ctx.insert(x, r), b.clone());
