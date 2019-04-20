@@ -38,159 +38,158 @@ fn apply_builtin(
     let now_to_expr =
         |v: &Now| v.clone().normalize().normalize_to_expr().embed_absurd();
 
-    let ret =
-        match (b, args) {
-            (OptionalNone, [t]) => EmptyOptionalLit(Now::from_whnf(t.clone())),
-            (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
-            (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
-            (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
-            (NaturalToInteger, [NaturalLit(n)]) => {
-                Expr(rc(ExprF::IntegerLit(*n as isize)))
-            }
-            (NaturalShow, [NaturalLit(n)]) => {
-                TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
-            }
-            (ListLength, [_, EmptyListLit(_)]) => NaturalLit(0),
-            (ListLength, [_, NEListLit(xs)]) => NaturalLit(xs.len()),
-            (ListHead, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
-            (ListHead, [_, NEListLit(xs)]) => {
-                NEOptionalLit(xs.first().unwrap().clone())
-            }
-            (ListLast, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
-            (ListLast, [_, NEListLit(xs)]) => {
-                NEOptionalLit(xs.last().unwrap().clone())
-            }
-            (ListReverse, [_, EmptyListLit(n)]) => EmptyListLit(n.clone()),
-            (ListReverse, [_, NEListLit(xs)]) => {
-                let xs = xs.iter().cloned().rev().collect();
-                NEListLit(xs)
-            }
-            (ListIndexed, [_, EmptyListLit(t)]) => {
-                // TODO: avoid passing through Exprs
-                let t = now_to_expr(t);
-                EmptyListLit(Now::new(
-                    ctx,
-                    dhall::subexpr!({ index : Natural, value : t }),
-                ))
-            }
-            (ListIndexed, [_, NEListLit(xs)]) => {
-                let xs = xs
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, e)| {
-                        let i = NaturalLit(i);
-                        let mut kvs = BTreeMap::new();
-                        kvs.insert("index".into(), Now::from_whnf(i));
-                        kvs.insert("value".into(), e);
-                        Now::from_whnf(RecordLit(kvs))
-                    })
-                    .collect();
-                NEListLit(xs)
-            }
-            // fold/build fusion
-            (ListBuild, [_, WHNF::AppliedBuiltin(_, ListFold, args)])
-                if args.len() == 2 =>
-            {
-                args.get(1).unwrap().clone()
-            }
-            (ListFold, [_, WHNF::AppliedBuiltin(_, ListBuild, args)])
-                if args.len() == 2 =>
-            {
-                args.get(1).unwrap().clone()
-            }
-            (ListBuild, [a0, g]) => {
-                // TODO: avoid passing through Exprs
-                let a0 = whnf_to_expr(a0);
-                let a1 = shift0(1, &"x".into(), &a0);
-                let g = whnf_to_expr(g);
-                normalize_whnf(
-                    ctx,
-                    dhall::subexpr!(
-                        g
-                        (List a0)
-                        (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
-                        ([] : List a0)
-                    ),
-                )
-            }
-            (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.clone(),
-            (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
-                // TODO: avoid passing through Exprs
-                let nil = whnf_to_expr(nil);
-                let cons = whnf_to_expr(cons);
-                normalize_whnf(
-                    ctx,
-                    xs.iter().rev().fold(nil, |acc, x| {
-                        let x = now_to_expr(x);
-                        let acc = acc.clone();
-                        dhall::subexpr!(cons x acc)
-                    }),
-                )
-            }
-            // fold/build fusion
-            (
-                OptionalBuild,
-                [_, WHNF::AppliedBuiltin(_, OptionalFold, args)],
-            ) if args.len() == 2 => args.get(1).unwrap().clone(),
-            (
-                OptionalFold,
-                [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)],
-            ) if args.len() == 2 => args.get(1).unwrap().clone(),
-            (OptionalBuild, [a0, g]) => {
-                // TODO: avoid passing through Exprs
-                let a0 = whnf_to_expr(a0);
-                let g = whnf_to_expr(g);
-                normalize_whnf(
-                    ctx,
-                    dhall::subexpr!(
-                        g
-                        (Optional a0)
-                        (λ(x: a0) -> Some x)
-                        (None a0)
-                    ),
-                )
-            }
-            (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
-                nothing.clone()
-            }
-            (OptionalFold, [_, NEOptionalLit(x), _, just, _]) => {
-                // TODO: avoid passing through Exprs
-                let just = whnf_to_expr(just);
-                let x = now_to_expr(x);
-                normalize_whnf(ctx, dhall::subexpr!(just x))
-            }
-            // fold/build fusion
-            (NaturalBuild, [WHNF::AppliedBuiltin(_, NaturalFold, args)])
-                if args.len() == 1 =>
-            {
-                args.get(0).unwrap().clone()
-            }
-            (NaturalFold, [WHNF::AppliedBuiltin(_, NaturalBuild, args)])
-                if args.len() == 1 =>
-            {
-                args.get(0).unwrap().clone()
-            }
-            (NaturalBuild, [g]) => {
-                // TODO: avoid passing through Exprs
-                let g = whnf_to_expr(g);
-                normalize_whnf(
-                    ctx,
-                    dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
-                )
-            }
-            (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.clone(),
-            (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
-                // TODO: avoid passing through Exprs
-                let t = whnf_to_expr(t);
-                let succ = whnf_to_expr(succ);
-                let zero = whnf_to_expr(zero);
-                let fold = rc(ExprF::Builtin(NaturalFold));
-                let n = rc(ExprF::NaturalLit(n - 1));
-                normalize_whnf(ctx, dhall::subexpr!(succ (fold n t succ zero)))
-            }
-            _ => return None,
-        };
+    let ret = match (b, args) {
+        (OptionalNone, [t]) => EmptyOptionalLit(Now::from_whnf(t.clone())),
+        (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
+        (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
+        (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
+        (NaturalToInteger, [NaturalLit(n)]) => {
+            Expr(rc(ExprF::IntegerLit(*n as isize)))
+        }
+        (NaturalShow, [NaturalLit(n)]) => {
+            TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
+        }
+        (ListLength, [_, EmptyListLit(_)]) => NaturalLit(0),
+        (ListLength, [_, NEListLit(xs)]) => NaturalLit(xs.len()),
+        (ListHead, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
+        (ListHead, [_, NEListLit(xs)]) => {
+            NEOptionalLit(xs.first().unwrap().clone())
+        }
+        (ListLast, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
+        (ListLast, [_, NEListLit(xs)]) => {
+            NEOptionalLit(xs.last().unwrap().clone())
+        }
+        (ListReverse, [_, EmptyListLit(n)]) => EmptyListLit(n.clone()),
+        (ListReverse, [_, NEListLit(xs)]) => {
+            let xs = xs.iter().cloned().rev().collect();
+            NEListLit(xs)
+        }
+        (ListIndexed, [_, EmptyListLit(t)]) => {
+            // TODO: avoid passing through Exprs
+            let t = now_to_expr(t);
+            EmptyListLit(Now::new(
+                ctx,
+                dhall::subexpr!({ index : Natural, value : t }),
+            ))
+        }
+        (ListIndexed, [_, NEListLit(xs)]) => {
+            let xs = xs
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, e)| {
+                    let i = NaturalLit(i);
+                    let mut kvs = BTreeMap::new();
+                    kvs.insert("index".into(), Now::from_whnf(i));
+                    kvs.insert("value".into(), e);
+                    Now::from_whnf(RecordLit(kvs))
+                })
+                .collect();
+            NEListLit(xs)
+        }
+        // fold/build fusion
+        (ListBuild, [_, WHNF::AppliedBuiltin(_, ListFold, args)])
+            if args.len() == 2 =>
+        {
+            args.get(1).unwrap().clone()
+        }
+        (ListFold, [_, WHNF::AppliedBuiltin(_, ListBuild, args)])
+            if args.len() == 2 =>
+        {
+            args.get(1).unwrap().clone()
+        }
+        (ListBuild, [a0, g]) => {
+            // TODO: avoid passing through Exprs
+            let a0 = whnf_to_expr(a0);
+            let a1 = shift0(1, &"x".into(), &a0);
+            let g = whnf_to_expr(g);
+            normalize_whnf(
+                ctx,
+                dhall::subexpr!(
+                    g
+                    (List a0)
+                    (λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
+                    ([] : List a0)
+                ),
+            )
+        }
+        (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.clone(),
+        (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
+            // TODO: avoid passing through Exprs
+            let nil = whnf_to_expr(nil);
+            let cons = whnf_to_expr(cons);
+            normalize_whnf(
+                ctx,
+                xs.iter().rev().fold(nil, |acc, x| {
+                    let x = now_to_expr(x);
+                    let acc = acc.clone();
+                    dhall::subexpr!(cons x acc)
+                }),
+            )
+        }
+        // fold/build fusion
+        (
+            OptionalBuild,
+            [_, WHNF::AppliedBuiltin(_, OptionalFold, args)],
+        ) if args.len() == 2 => args.get(1).unwrap().clone(),
+        (
+            OptionalFold,
+            [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)],
+        ) if args.len() == 2 => args.get(1).unwrap().clone(),
+        (OptionalBuild, [a0, g]) => {
+            // TODO: avoid passing through Exprs
+            let a0 = whnf_to_expr(a0);
+            let g = whnf_to_expr(g);
+            normalize_whnf(
+                ctx,
+                dhall::subexpr!(
+                    g
+                    (Optional a0)
+                    (λ(x: a0) -> Some x)
+                    (None a0)
+                ),
+            )
+        }
+        (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
+            nothing.clone()
+        }
+        (OptionalFold, [_, NEOptionalLit(x), _, just, _]) => {
+            // TODO: avoid passing through Exprs
+            let just = whnf_to_expr(just);
+            let x = now_to_expr(x);
+            normalize_whnf(ctx, dhall::subexpr!(just x))
+        }
+        // fold/build fusion
+        (NaturalBuild, [WHNF::AppliedBuiltin(_, NaturalFold, args)])
+            if args.len() == 1 =>
+        {
+            args.get(0).unwrap().clone()
+        }
+        (NaturalFold, [WHNF::AppliedBuiltin(_, NaturalBuild, args)])
+            if args.len() == 1 =>
+        {
+            args.get(0).unwrap().clone()
+        }
+        (NaturalBuild, [g]) => {
+            // TODO: avoid passing through Exprs
+            let g = whnf_to_expr(g);
+            normalize_whnf(
+                ctx,
+                dhall::subexpr!(g Natural (λ(x : Natural) -> x + 1) 0),
+            )
+        }
+        (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.clone(),
+        (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
+            // TODO: avoid passing through Exprs
+            let t = whnf_to_expr(t);
+            let succ = whnf_to_expr(succ);
+            let zero = whnf_to_expr(zero);
+            let fold = rc(ExprF::Builtin(NaturalFold));
+            let n = rc(ExprF::NaturalLit(n - 1));
+            normalize_whnf(ctx, dhall::subexpr!(succ (fold n t succ zero)))
+        }
+        _ => return None,
+    };
     Some(ret)
 }
 
