@@ -667,11 +667,16 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
             match b {
                 WHNF::BoolLit(true) => normalize_whnf(ctx, e1.clone()),
                 WHNF::BoolLit(false) => normalize_whnf(ctx, e2.clone()),
-                _ => normalize_last_layer(ExprF::BoolIf(
-                    b,
-                    normalize_whnf(ctx.clone(), e1.clone()),
-                    normalize_whnf(ctx, e2.clone()),
-                )),
+                b => {
+                    let e1 = normalize_whnf(ctx.clone(), e1.clone());
+                    let e2 = normalize_whnf(ctx, e2.clone());
+                    match (e1, e2) {
+                        (WHNF::BoolLit(true), WHNF::BoolLit(false)) => b,
+                        (e1, e2) => {
+                            normalize_last_layer(ExprF::BoolIf(b, e1, e2))
+                        }
+                    }
+                }
             }
         }
         expr => {
@@ -736,6 +741,8 @@ fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
             x.append(&mut y);
             TextLit(x)
         }
+        ExprF::BinOp(TextAppend, TextLit(x), y) if x.is_empty() => y,
+        ExprF::BinOp(TextAppend, x, TextLit(y)) if y.is_empty() => x,
 
         ExprF::Field(UnionType(ctx, kts), l) => UnionConstructor(ctx, l, kts),
         ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
@@ -981,7 +988,7 @@ mod spec_tests {
     // norm!(success_unit_IfAlternativesIdentical, "unit/IfAlternativesIdentical");
     norm!(success_unit_IfFalse, "unit/IfFalse");
     norm!(success_unit_IfNormalizePredicateAndBranches, "unit/IfNormalizePredicateAndBranches");
-    // norm!(success_unit_IfTrivial, "unit/IfTrivial");
+    norm!(success_unit_IfTrivial, "unit/IfTrivial");
     norm!(success_unit_IfTrue, "unit/IfTrue");
     norm!(success_unit_Integer, "unit/Integer");
     norm!(success_unit_IntegerNegative, "unit/IntegerNegative");
@@ -1075,9 +1082,9 @@ mod spec_tests {
     norm!(success_unit_OperatorPlusNormalizeArguments, "unit/OperatorPlusNormalizeArguments");
     norm!(success_unit_OperatorPlusOneAndOne, "unit/OperatorPlusOneAndOne");
     norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
-    // norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
-    // norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
-    // norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
+    norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
+    norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
+    norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
     norm!(success_unit_OperatorTextConcatenateTextText, "unit/OperatorTextConcatenateTextText");
     norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
     norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
