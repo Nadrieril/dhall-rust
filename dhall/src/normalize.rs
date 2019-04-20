@@ -32,133 +32,193 @@ impl<'a> Typed<'a> {
 fn apply_builtin(
     ctx: NormalizationContext,
     b: Builtin,
-    args: &[WHNF],
-) -> Option<WHNF> {
+    args: Vec<WHNF>,
+) -> WHNF {
     use dhall_core::Builtin::*;
     use WHNF::*;
 
-    let ret = match (b, args) {
-        (OptionalNone, [t]) => EmptyOptionalLit(Now::from_whnf(t.clone())),
-        (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
-        (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
-        (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
-        (NaturalToInteger, [NaturalLit(n)]) => IntegerLit(*n as isize),
-        (NaturalShow, [NaturalLit(n)]) => {
-            TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
-        }
-        (ListLength, [_, EmptyListLit(_)]) => NaturalLit(0),
-        (ListLength, [_, NEListLit(xs)]) => NaturalLit(xs.len()),
-        (ListHead, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
-        (ListHead, [_, NEListLit(xs)]) => {
-            NEOptionalLit(xs.first().unwrap().clone())
-        }
-        (ListLast, [_, EmptyListLit(n)]) => EmptyOptionalLit(n.clone()),
-        (ListLast, [_, NEListLit(xs)]) => {
-            NEOptionalLit(xs.last().unwrap().clone())
-        }
-        (ListReverse, [_, EmptyListLit(n)]) => EmptyListLit(n.clone()),
-        (ListReverse, [_, NEListLit(xs)]) => {
-            let xs = xs.iter().cloned().rev().collect();
-            NEListLit(xs)
-        }
-        (ListIndexed, [_, EmptyListLit(t)]) => {
-            let mut kts = BTreeMap::new();
-            kts.insert(
-                "index".into(),
-                Now::from_whnf(AppliedBuiltin(ctx, Natural, vec![])),
-            );
-            kts.insert("value".into(), t.clone());
-            EmptyListLit(Now::from_whnf(RecordType(kts)))
-        }
-        (ListIndexed, [_, NEListLit(xs)]) => {
-            let xs = xs
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, e)| {
-                    let i = NaturalLit(i);
-                    let mut kvs = BTreeMap::new();
-                    kvs.insert("index".into(), Now::from_whnf(i));
-                    kvs.insert("value".into(), e);
-                    Now::from_whnf(RecordLit(kvs))
-                })
-                .collect();
-            NEListLit(xs)
-        }
-        // fold/build fusion
-        (ListBuild, [_, WHNF::AppliedBuiltin(_, ListFold, args)])
-            if args.len() == 2 =>
-        {
-            args.get(1).unwrap().clone()
-        }
-        (ListFold, [_, WHNF::AppliedBuiltin(_, ListBuild, args)])
-            if args.len() == 2 =>
-        {
-            args.get(1).unwrap().clone()
-        }
-        (ListBuild, [t, g]) => g
-            .clone()
-            .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(t.clone()))
-            .app(ListConsClosure(Now::from_whnf(t.clone()), None))
-            .app(EmptyListLit(Now::from_whnf(t.clone()))),
-        (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.clone(),
-        (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
-            let mut v = nil.clone();
-            for x in xs.iter().rev() {
-                v = cons.clone().app(x.clone().normalize()).app(v);
+    let ret = match b {
+        OptionalNone => improved_slice_patterns::match_vec!(args;
+            [t] => EmptyOptionalLit(Now::from_whnf(t)),
+        ),
+        NaturalIsZero => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n == 0),
+        ),
+        NaturalEven => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n % 2 == 0),
+        ),
+        NaturalOdd => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => BoolLit(n % 2 != 0),
+        ),
+        NaturalToInteger => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => IntegerLit(n as isize),
+        ),
+        NaturalShow => improved_slice_patterns::match_vec!(args;
+            [NaturalLit(n)] => {
+                TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
             }
-            v
-        }
-        // fold/build fusion
-        (OptionalBuild, [_, WHNF::AppliedBuiltin(_, OptionalFold, args)])
-            if args.len() == 2 =>
-        {
-            args.get(1).unwrap().clone()
-        }
-        (OptionalFold, [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)])
-            if args.len() == 2 =>
-        {
-            args.get(1).unwrap().clone()
-        }
-        (OptionalBuild, [t, g]) => g
-            .clone()
-            .app(AppliedBuiltin(ctx.clone(), Optional, vec![]).app(t.clone()))
-            .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
-            .app(EmptyOptionalLit(Now::from_whnf(t.clone()))),
-        (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
-            nothing.clone()
-        }
-        (OptionalFold, [_, NEOptionalLit(x), _, just, _]) => {
-            just.clone().app(x.clone().normalize())
-        }
-        // fold/build fusion
-        (NaturalBuild, [WHNF::AppliedBuiltin(_, NaturalFold, args)])
-            if args.len() == 1 =>
-        {
-            args.get(0).unwrap().clone()
-        }
-        (NaturalFold, [WHNF::AppliedBuiltin(_, NaturalBuild, args)])
-            if args.len() == 1 =>
-        {
-            args.get(0).unwrap().clone()
-        }
-        (NaturalBuild, [g]) => g
-            .clone()
-            .app(AppliedBuiltin(ctx.clone(), Natural, vec![]))
-            .app(NaturalSuccClosure)
-            .app(NaturalLit(0)),
-        (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.clone(),
-        (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
-            let fold = AppliedBuiltin(ctx, NaturalFold, vec![])
-                .app(NaturalLit(n - 1))
-                .app(t.clone())
-                .app(succ.clone())
-                .app(zero.clone());
-            succ.clone().app(fold)
-        }
-        _ => return None,
+        ),
+        ListLength => improved_slice_patterns::match_vec!(args;
+           [_, EmptyListLit(_)] => NaturalLit(0),
+           [_, NEListLit(xs)] => NaturalLit(xs.len()),
+        ),
+        ListHead => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
+            [_, NEListLit(xs)] => {
+                NEOptionalLit(xs.into_iter().next().unwrap())
+            }
+        ),
+        ListLast => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
+            [_, NEListLit(xs)] => {
+                NEOptionalLit(xs.into_iter().rev().next().unwrap())
+            }
+        ),
+        ListReverse => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(n)] => EmptyListLit(n),
+            [_, NEListLit(xs)] => {
+                let mut xs = xs;
+                xs.reverse();
+                NEListLit(xs)
+            }
+        ),
+        ListIndexed => improved_slice_patterns::match_vec!(args;
+            [_, EmptyListLit(t)] => {
+                let mut kts = BTreeMap::new();
+                kts.insert(
+                    "index".into(),
+                    Now::from_whnf(
+                        AppliedBuiltin(ctx.clone(), Natural, vec![])
+                    ),
+                );
+                kts.insert("value".into(), t);
+                EmptyListLit(Now::from_whnf(RecordType(kts)))
+            },
+            [_, NEListLit(xs)] => {
+                let xs = xs
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        let i = NaturalLit(i);
+                        let mut kvs = BTreeMap::new();
+                        kvs.insert("index".into(), Now::from_whnf(i));
+                        kvs.insert("value".into(), e);
+                        Now::from_whnf(RecordLit(kvs))
+                    })
+                    .collect();
+                NEListLit(xs)
+            }
+        ),
+        ListBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(_, ListFold, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    // Do we really need to handle this case ?
+                    unimplemented!()
+                }
+            },
+            [t, g] => g
+                .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(t.clone()))
+                .app(ListConsClosure(Now::from_whnf(t.clone()), None))
+                .app(EmptyListLit(Now::from_whnf(t))),
+        ),
+        ListFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(_, ListBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [_, EmptyListLit(_), _, _, nil] => nil,
+            [_, NEListLit(xs), _, cons, nil] => {
+                let mut v = nil;
+                for x in xs.into_iter().rev() {
+                    v = cons.clone().app(x.normalize()).app(v);
+                }
+                v
+            }
+        ),
+        OptionalBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(_, OptionalFold, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [t, g] => g
+                .app(AppliedBuiltin(ctx.clone(), Optional, vec![])
+                    .app(t.clone()))
+                .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
+                .app(EmptyOptionalLit(Now::from_whnf(t))),
+        ),
+        OptionalFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 2 {
+                    args.remove(1)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [_, EmptyOptionalLit(_), _, _, nothing] => {
+                nothing
+            },
+            [_, NEOptionalLit(x), _, just, _] => {
+                just.app(x.normalize())
+            }
+        ),
+        NaturalBuild => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [WHNF::AppliedBuiltin(_, NaturalFold, args)] => {
+                let mut args = args;
+                if args.len() >= 1 {
+                    args.remove(0)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [g] => g
+                .app(AppliedBuiltin(ctx.clone(), Natural, vec![]))
+                .app(NaturalSuccClosure)
+                .app(NaturalLit(0)),
+        ),
+        NaturalFold => improved_slice_patterns::match_vec!(args;
+            // fold/build fusion
+            [WHNF::AppliedBuiltin(_, NaturalBuild, args)] => {
+                let mut args = args;
+                if args.len() >= 1 {
+                    args.remove(0)
+                } else {
+                    unimplemented!()
+                }
+            },
+            [NaturalLit(0), _, _, zero] => zero,
+            [NaturalLit(n), t, succ, zero] => {
+                let fold = AppliedBuiltin(ctx.clone(), NaturalFold, vec![])
+                    .app(NaturalLit(n - 1))
+                    .app(t)
+                    .app(succ.clone())
+                    .app(zero);
+                succ.app(fold)
+            },
+        ),
+        _ => Err(args),
     };
-    Some(ret)
+
+    match ret {
+        Ok(x) => x,
+        Err(args) => AppliedBuiltin(ctx, b, args),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -405,10 +465,7 @@ impl WHNF {
             }
             (WHNF::AppliedBuiltin(ctx, b, mut args), val) => {
                 args.push(val);
-                match apply_builtin(ctx.clone(), b, &args) {
-                    Some(v) => v,
-                    None => WHNF::AppliedBuiltin(ctx, b, args),
-                }
+                apply_builtin(ctx, b, args)
             }
             (WHNF::OptionalSomeClosure(_), val) => {
                 WHNF::NEOptionalLit(Now::from_whnf(val))
