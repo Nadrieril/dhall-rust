@@ -34,10 +34,6 @@ fn apply_builtin(
     use dhall_core::Builtin::*;
     use WHNF::*;
 
-    let whnf_to_expr = |v: &WHNF| v.clone().normalize_to_expr().embed_absurd();
-    let now_to_expr =
-        |v: &Now| v.clone().normalize().normalize_to_expr().embed_absurd();
-
     let ret = match (b, args) {
         (OptionalNone, [t]) => EmptyOptionalLit(Now::from_whnf(t.clone())),
         (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
@@ -66,7 +62,7 @@ fn apply_builtin(
         }
         (ListIndexed, [_, EmptyListLit(t)]) => {
             // TODO: avoid passing through Exprs
-            let t = now_to_expr(t);
+            let t = t.clone().normalize().normalize_to_expr().embed_absurd();
             EmptyListLit(Now::new(
                 ctx,
                 dhall::subexpr!({ index : Natural, value : t }),
@@ -98,16 +94,11 @@ fn apply_builtin(
         {
             args.get(1).unwrap().clone()
         }
-        // TODO: avoid passing through Exprs
-        (ListBuild, [a0, g]) => g
+        (ListBuild, [t, g]) => g
             .clone()
-            .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(a0.clone()))
-            .app(normalize_whnf(ctx, {
-                let a0 = whnf_to_expr(a0);
-                let a1 = shift0(1, &"x".into(), &a0);
-                dhall::subexpr!(λ(x : a0) -> λ(xs : List a1) -> [ x ] # xs)
-            }))
-            .app(EmptyListLit(Now::from_whnf(a0.clone()))),
+            .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(t.clone()))
+            .app(ListConsClosure(Now::from_whnf(t.clone()), None))
+            .app(EmptyListLit(Now::from_whnf(t.clone()))),
         (ListFold, [_, EmptyListLit(_), _, _, nil]) => nil.clone(),
         (ListFold, [_, NEListLit(xs), _, cons, nil]) => {
             let mut v = nil.clone();
@@ -127,15 +118,11 @@ fn apply_builtin(
         {
             args.get(1).unwrap().clone()
         }
-        // TODO: avoid passing through Exprs
-        (OptionalBuild, [a0, g]) => g
+        (OptionalBuild, [t, g]) => g
             .clone()
-            .app(AppliedBuiltin(ctx.clone(), Optional, vec![]).app(a0.clone()))
-            .app(normalize_whnf(ctx, {
-                let a0 = whnf_to_expr(a0);
-                dhall::subexpr!(λ(x: a0) -> Some x)
-            }))
-            .app(EmptyOptionalLit(Now::from_whnf(a0.clone()))),
+            .app(AppliedBuiltin(ctx.clone(), Optional, vec![]).app(t.clone()))
+            .app(SomeConstructorClosure(Now::from_whnf(t.clone())))
+            .app(EmptyOptionalLit(Now::from_whnf(t.clone()))),
         (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
             nothing.clone()
         }
@@ -153,14 +140,10 @@ fn apply_builtin(
         {
             args.get(0).unwrap().clone()
         }
-        // TODO: avoid passing through Exprs
         (NaturalBuild, [g]) => g
             .clone()
             .app(AppliedBuiltin(ctx.clone(), Natural, vec![]))
-            .app(normalize_whnf(
-                ctx,
-                dhall::subexpr!((λ(x : Natural) -> x + 1)),
-            ))
+            .app(NaturalSuccClosure)
             .app(NaturalLit(0)),
         (NaturalFold, [NaturalLit(0), _, _, zero]) => zero.clone(),
         (NaturalFold, [NaturalLit(n), t, succ, zero]) => {
@@ -236,8 +219,17 @@ impl NormalizationContext {
 /// avoid unnecessary allocations.
 #[derive(Debug, Clone)]
 enum WHNF {
+    /// Closures
     Lam(Label, Now, (NormalizationContext, InputSubExpr)),
     AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
+    /// `λ(x: a) -> Some x`
+    SomeConstructorClosure(Now),
+    /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs
+    /// `λ(xs : List a) -> [ x ] # xs
+    ListConsClosure(Now, Option<Now>),
+    /// `λ(x : Natural) -> x + 1`
+    NaturalSuccClosure,
+
     BoolLit(bool),
     NaturalLit(Natural),
     EmptyOptionalLit(Now),
@@ -278,6 +270,24 @@ impl WHNF {
                     e = e.app(v);
                 }
                 e.normalize_to_expr()
+            }
+            WHNF::SomeConstructorClosure(n) => {
+                let a = n.normalize().normalize_to_expr();
+                dhall::subexpr!(λ(x: a) -> Some x)
+            }
+            WHNF::ListConsClosure(n, None) => {
+                let a = n.normalize().normalize_to_expr();
+                // Avoid accidental capture of the new `x` variable
+                let a1 = shift0(1, &"x".into(), &a);
+                dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
+            }
+            WHNF::ListConsClosure(n, Some(v)) => {
+                let v = v.normalize().normalize_to_expr();
+                let a = n.normalize().normalize_to_expr();
+                dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
+            }
+            WHNF::NaturalSuccClosure => {
+                dhall::subexpr!(λ(x : Natural) -> x + 1)
             }
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
@@ -378,25 +388,40 @@ impl WHNF {
 
     /// Apply to a value
     fn app(self, val: WHNF) -> WHNF {
-        match self {
-            WHNF::Lam(x, _, (ctx, e)) => {
+        match (self, val) {
+            (WHNF::Lam(x, _, (ctx, e)), val) => {
                 let ctx2 = ctx.insert(&x, val);
                 normalize_whnf(ctx2, e)
             }
-            WHNF::AppliedBuiltin(ctx, b, mut args) => {
+            (WHNF::AppliedBuiltin(ctx, b, mut args), val) => {
                 args.push(val);
                 match apply_builtin(ctx.clone(), b, &args) {
                     Some(v) => v,
                     None => WHNF::AppliedBuiltin(ctx, b, args),
                 }
             }
-            WHNF::UnionConstructor(ctx, l, kts) => {
+            (WHNF::SomeConstructorClosure(_), val) => {
+                WHNF::NEOptionalLit(Now::from_whnf(val))
+            }
+            (WHNF::ListConsClosure(t, None), val) => {
+                WHNF::ListConsClosure(t, Some(Now::from_whnf(val)))
+            }
+            (WHNF::ListConsClosure(_, Some(x)), WHNF::EmptyListLit(_)) => {
+                WHNF::NEListLit(vec![x])
+            }
+            (WHNF::ListConsClosure(_, Some(x)), WHNF::NEListLit(xs)) => {
+                WHNF::NEListLit(std::iter::once(x).chain(xs).collect())
+            }
+            (WHNF::NaturalSuccClosure, WHNF::NaturalLit(n)) => {
+                WHNF::NaturalLit(n + 1)
+            }
+            (WHNF::UnionConstructor(ctx, l, kts), val) => {
                 WHNF::UnionLit(l, Now::from_whnf(val), (ctx, kts))
             }
             // Can't do anything useful, convert to expr
-            v => WHNF::Expr(rc(ExprF::App(
-                v.normalize_to_expr(),
-                val.normalize_to_expr(),
+            (f, a) => WHNF::Expr(rc(ExprF::App(
+                f.normalize_to_expr(),
+                a.normalize_to_expr(),
             ))),
         }
     }
@@ -413,6 +438,14 @@ impl WHNF {
                 b,
                 args.into_iter().map(|e| e.shift0(delta, label)).collect(),
             ),
+            WHNF::SomeConstructorClosure(n) => {
+                WHNF::SomeConstructorClosure(n.shift0(delta, label))
+            }
+            WHNF::ListConsClosure(t, v) => WHNF::ListConsClosure(
+                t.shift0(delta, label),
+                v.map(|v| v.shift0(delta, label)),
+            ),
+            WHNF::NaturalSuccClosure => WHNF::NaturalSuccClosure,
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
             WHNF::BoolLit(b) => WHNF::BoolLit(b),
             WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
