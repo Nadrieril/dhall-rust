@@ -71,16 +71,11 @@ pub fn run_test_with_bigger_stack(
 ) -> std::result::Result<(), String> {
     // Many tests stack overflow in debug mode
     let base_path: String = base_path.to_string();
-    std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
-        .spawn(move || {
-            run_test(&base_path, feature, status)
-                .map_err(|e| e.to_string())
-                .map(|_| ())
-        })
-        .unwrap()
-        .join()
-        .unwrap()
+    stacker::grow(4 * 1024 * 1024, move || {
+        run_test(&base_path, feature, status)
+            .map_err(|e| e.to_string())
+            .map(|_| ())
+    })
 }
 
 pub fn run_test(
