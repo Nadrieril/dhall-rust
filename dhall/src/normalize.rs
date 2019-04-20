@@ -262,10 +262,10 @@ impl NormalizationContext {
 
 /// A semantic value. This is partially redundant with `dhall_core::Expr`, on purpose. `Expr` should
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
-/// The rule is the following: we must _not_ construct values of type `Expr` while normalizing or
-/// typechecking, but only construct `WHNF`s.
+/// The rule is the following: we must _not_ construct values of type `Expr` while normalizing,
+/// but only construct `WHNF`s.
 ///
-/// WHNFs usually store subexpressions unnormalized, to enable lazy normalization. They approximate
+/// WHNFs store subexpressions unnormalized, to enable lazy normalization. They approximate
 /// what's called Weak Head Normal-Form (WHNF). This means that the expression is normalized as
 /// little as possible, but just enough to know the first constructor of the normal form. This is
 /// identical to full normalization for simple types like integers, but for e.g. a record literal
@@ -471,8 +471,9 @@ impl WHNF {
             (WHNF::ListConsClosure(_, Some(x)), WHNF::EmptyListLit(_)) => {
                 WHNF::NEListLit(vec![x])
             }
-            (WHNF::ListConsClosure(_, Some(x)), WHNF::NEListLit(xs)) => {
-                WHNF::NEListLit(std::iter::once(x).chain(xs).collect())
+            (WHNF::ListConsClosure(_, Some(x)), WHNF::NEListLit(mut xs)) => {
+                xs.insert(0, x);
+                WHNF::NEListLit(xs)
             }
             (WHNF::NaturalSuccClosure, WHNF::NaturalLit(n)) => {
                 WHNF::NaturalLit(n + 1)
