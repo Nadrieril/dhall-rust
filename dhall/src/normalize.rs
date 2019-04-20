@@ -32,11 +32,7 @@ fn apply_builtin(
     args: &[WHNF],
 ) -> Option<WHNF> {
     use dhall_core::Builtin::*;
-    use Closure::AppliedBuiltin;
-    use WHNF::{
-        BoolLit, EmptyListLit, EmptyOptionalLit, Expr, NEListLit,
-        NEOptionalLit, NaturalLit, RecordLit, TextLit,
-    };
+    use WHNF::*;
 
     let whnf_to_expr = |v: &WHNF| v.clone().normalize_to_expr().embed_absurd();
     let now_to_expr =
@@ -93,14 +89,16 @@ fn apply_builtin(
                 NEListLit(xs)
             }
             // fold/build fusion
-            (
-                ListBuild,
-                [_, WHNF::Closure(AppliedBuiltin(_, ListFold, args))],
-            ) if args.len() == 2 => args.get(1).unwrap().clone(),
-            (
-                ListFold,
-                [_, WHNF::Closure(AppliedBuiltin(_, ListBuild, args))],
-            ) if args.len() == 2 => args.get(1).unwrap().clone(),
+            (ListBuild, [_, WHNF::AppliedBuiltin(_, ListFold, args)])
+                if args.len() == 2 =>
+            {
+                args.get(1).unwrap().clone()
+            }
+            (ListFold, [_, WHNF::AppliedBuiltin(_, ListBuild, args)])
+                if args.len() == 2 =>
+            {
+                args.get(1).unwrap().clone()
+            }
             (ListBuild, [a0, g]) => {
                 // TODO: avoid passing through Exprs
                 let a0 = whnf_to_expr(a0);
@@ -133,11 +131,11 @@ fn apply_builtin(
             // fold/build fusion
             (
                 OptionalBuild,
-                [_, WHNF::Closure(AppliedBuiltin(_, OptionalFold, args))],
+                [_, WHNF::AppliedBuiltin(_, OptionalFold, args)],
             ) if args.len() == 2 => args.get(1).unwrap().clone(),
             (
                 OptionalFold,
-                [_, WHNF::Closure(AppliedBuiltin(_, OptionalBuild, args))],
+                [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)],
             ) if args.len() == 2 => args.get(1).unwrap().clone(),
             (OptionalBuild, [a0, g]) => {
                 // TODO: avoid passing through Exprs
@@ -163,14 +161,16 @@ fn apply_builtin(
                 normalize_whnf(ctx, dhall::subexpr!(just x))
             }
             // fold/build fusion
-            (
-                NaturalBuild,
-                [WHNF::Closure(AppliedBuiltin(_, NaturalFold, args))],
-            ) if args.len() == 1 => args.get(0).unwrap().clone(),
-            (
-                NaturalFold,
-                [WHNF::Closure(AppliedBuiltin(_, NaturalBuild, args))],
-            ) if args.len() == 1 => args.get(0).unwrap().clone(),
+            (NaturalBuild, [WHNF::AppliedBuiltin(_, NaturalFold, args)])
+                if args.len() == 1 =>
+            {
+                args.get(0).unwrap().clone()
+            }
+            (NaturalFold, [WHNF::AppliedBuiltin(_, NaturalBuild, args)])
+                if args.len() == 1 =>
+            {
+                args.get(0).unwrap().clone()
+            }
             (NaturalBuild, [g]) => {
                 // TODO: avoid passing through Exprs
                 let g = whnf_to_expr(g);
@@ -254,7 +254,8 @@ impl NormalizationContext {
 /// avoid unnecessary allocations.
 #[derive(Debug, Clone)]
 enum WHNF {
-    Closure(Closure),
+    Lam(Label, Now, (NormalizationContext, InputSubExpr)),
+    AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
     BoolLit(bool),
     NaturalLit(Natural),
     EmptyOptionalLit(Now),
@@ -263,6 +264,11 @@ enum WHNF {
     NEListLit(Vec<Now>),
     RecordLit(BTreeMap<Label, Now>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
+    UnionConstructor(
+        NormalizationContext,
+        Label,
+        BTreeMap<Label, Option<InputSubExpr>>,
+    ),
     UnionLit(
         Label,
         Now,
@@ -276,7 +282,25 @@ impl WHNF {
     /// Convert the value back to a (normalized) syntactic expression
     fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
-            WHNF::Closure(c) => c.normalize_to_expr(),
+            WHNF::Lam(x, t, (ctx, e)) => {
+                let ctx2 = ctx.skip(&x);
+                rc(ExprF::Lam(
+                    x.clone(),
+                    t.normalize().normalize_to_expr(),
+                    normalize_whnf(ctx2, e).normalize_to_expr(),
+                ))
+            }
+            WHNF::AppliedBuiltin(_ctx, b, args) => {
+                if args.is_empty() {
+                    rc(ExprF::Builtin(b))
+                } else {
+                    args.into_iter()
+                        .map(|e| e.normalize_to_expr())
+                        .fold(rc(ExprF::Builtin(b)), |acc, e| {
+                            rc(ExprF::App(acc, e))
+                        })
+                }
+            }
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
             WHNF::EmptyOptionalLit(n) => {
@@ -311,6 +335,21 @@ impl WHNF {
                     })
                     .collect(),
             )),
+            WHNF::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k,
+                            v.map(|v| {
+                                normalize_whnf(ctx.clone(), v)
+                                    .normalize_to_expr()
+                            }),
+                        )
+                    })
+                    .collect();
+                rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
+            }
             WHNF::UnionLit(l, v, (kts_ctx, kts)) => rc(ExprF::UnionLit(
                 l,
                 v.normalize().normalize_to_expr(),
@@ -359,9 +398,43 @@ impl WHNF {
         }
     }
 
+    /// Apply to a value
+    fn app(self, val: WHNF) -> WHNF {
+        match self {
+            WHNF::Lam(x, _, (ctx, e)) => {
+                let ctx2 = ctx.insert(&x, val);
+                normalize_whnf(ctx2, e)
+            }
+            WHNF::AppliedBuiltin(ctx, b, mut args) => {
+                args.push(val);
+                match apply_builtin(ctx.clone(), b, &args) {
+                    Some(v) => v,
+                    None => WHNF::AppliedBuiltin(ctx, b, args),
+                }
+            }
+            WHNF::UnionConstructor(ctx, l, kts) => {
+                WHNF::UnionLit(l, Now::from_whnf(val), (ctx, kts))
+            }
+            // Can't do anything useful, convert to expr
+            v => WHNF::Expr(rc(ExprF::App(
+                v.normalize_to_expr(),
+                val.normalize_to_expr(),
+            ))),
+        }
+    }
+
     fn shift0(self, delta: isize, label: &Label) -> Self {
         match self {
-            WHNF::Closure(c) => WHNF::Closure(c.shift0(delta, label)),
+            WHNF::Lam(x, t, (ctx, e)) => WHNF::Lam(
+                x,
+                t.shift0(delta, label),
+                (ctx, shift(delta, &V(label.clone(), 1), &e)),
+            ),
+            WHNF::AppliedBuiltin(ctx, b, args) => WHNF::AppliedBuiltin(
+                ctx,
+                b,
+                args.into_iter().map(|e| e.shift0(delta, label)).collect(),
+            ),
             WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
             WHNF::BoolLit(b) => WHNF::BoolLit(b),
             WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
@@ -386,6 +459,13 @@ impl WHNF {
                     .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
                     .collect(),
             ),
+            WHNF::UnionConstructor(ctx, l, kts) => {
+                let kts = kts
+                    .into_iter()
+                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
+                    .collect();
+                WHNF::UnionConstructor(ctx, l, kts)
+            }
             WHNF::UnionLit(l, v, (kts_ctx, kts)) => WHNF::UnionLit(
                 l,
                 v.shift0(delta, label),
@@ -448,103 +528,6 @@ impl Now {
     }
 }
 
-#[derive(Debug, Clone)]
-enum Closure {
-    Lam(Label, Now, (NormalizationContext, InputSubExpr)),
-    AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
-    UnionConstructor(
-        NormalizationContext,
-        Label,
-        BTreeMap<Label, Option<InputSubExpr>>,
-    ),
-}
-
-impl Closure {
-    /// Apply the closure to a value
-    fn app(self, val: WHNF) -> WHNF {
-        match self {
-            Closure::Lam(x, _, (ctx, e)) => {
-                let ctx2 = ctx.insert(&x, val);
-                normalize_whnf(ctx2, e)
-            }
-            Closure::AppliedBuiltin(ctx, b, mut args) => {
-                args.push(val);
-                match apply_builtin(ctx.clone(), b, &args) {
-                    Some(v) => v,
-                    None => {
-                        WHNF::Closure(Closure::AppliedBuiltin(ctx, b, args))
-                    }
-                }
-            }
-            Closure::UnionConstructor(ctx, l, kts) => {
-                WHNF::UnionLit(l, Now::from_whnf(val), (ctx, kts))
-            }
-        }
-    }
-
-    /// Convert the closure back to a (normalized) syntactic expression
-    fn normalize_to_expr(self) -> OutputSubExpr {
-        match self {
-            Closure::Lam(x, t, (ctx, e)) => {
-                let ctx2 = ctx.skip(&x);
-                rc(ExprF::Lam(
-                    x.clone(),
-                    t.normalize().normalize_to_expr(),
-                    normalize_whnf(ctx2, e).normalize_to_expr(),
-                ))
-            }
-            Closure::AppliedBuiltin(_ctx, b, args) => {
-                if args.is_empty() {
-                    rc(ExprF::Builtin(b))
-                } else {
-                    args.into_iter()
-                        .map(|e| e.normalize_to_expr())
-                        .fold(rc(ExprF::Builtin(b)), |acc, e| {
-                            rc(ExprF::App(acc, e))
-                        })
-                }
-            }
-            Closure::UnionConstructor(ctx, l, kts) => {
-                let kts = kts
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            k,
-                            v.map(|v| {
-                                normalize_whnf(ctx.clone(), v)
-                                    .normalize_to_expr()
-                            }),
-                        )
-                    })
-                    .collect();
-                rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
-            }
-        }
-    }
-
-    fn shift0(self, delta: isize, label: &Label) -> Self {
-        match self {
-            Closure::Lam(x, t, (ctx, e)) => Closure::Lam(
-                x,
-                t.shift0(delta, label),
-                (ctx, shift(delta, &V(label.clone(), 1), &e)),
-            ),
-            Closure::AppliedBuiltin(ctx, b, args) => Closure::AppliedBuiltin(
-                ctx,
-                b,
-                args.into_iter().map(|e| e.shift0(delta, label)).collect(),
-            ),
-            Closure::UnionConstructor(ctx, l, kts) => {
-                let kts = kts
-                    .into_iter()
-                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
-                    .collect();
-                Closure::UnionConstructor(ctx, l, kts)
-            }
-        }
-    }
-}
-
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
 fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
     let expr = match expr.as_ref() {
@@ -558,15 +541,13 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
             return normalize_whnf(ctx.insert(x, r), b.clone());
         }
         ExprF::Lam(x, t, e) => {
-            return WHNF::Closure(Closure::Lam(
+            return WHNF::Lam(
                 x.clone(),
                 Now::new(ctx.clone(), t.clone()),
                 (ctx, e.clone()),
-            ))
+            )
         }
-        ExprF::Builtin(b) => {
-            return WHNF::Closure(Closure::AppliedBuiltin(ctx, *b, vec![]))
-        }
+        ExprF::Builtin(b) => return WHNF::AppliedBuiltin(ctx, *b, vec![]),
         ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => return WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
@@ -652,7 +633,7 @@ fn normalize_last_layer(
     use dhall_core::ExprF::*;
 
     let expr = match expr {
-        App(WHNF::Closure(c), a) => return c.app(a),
+        App(v, a) => return v.app(a),
 
         BinOp(BoolAnd, WHNF::BoolLit(true), y) => return y,
         BinOp(BoolAnd, x, WHNF::BoolLit(true)) => return x,
@@ -702,7 +683,7 @@ fn normalize_last_layer(
         }
 
         Field(WHNF::UnionType(ctx, kts), l) => {
-            return WHNF::Closure(Closure::UnionConstructor(ctx, l, kts))
+            return WHNF::UnionConstructor(ctx, l, kts)
         }
         Field(WHNF::RecordLit(mut kvs), l) => {
             match kvs.remove(&l) {
@@ -724,14 +705,14 @@ fn normalize_last_layer(
         }
         Merge(
             WHNF::RecordLit(mut handlers),
-            WHNF::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+            WHNF::UnionConstructor(ctor_ctx, l, kts),
             t,
         ) => match handlers.remove(&l) {
             Some(h) => return h.normalize(),
             // Return ownership
             None => Merge(
                 WHNF::RecordLit(handlers),
-                WHNF::Closure(Closure::UnionConstructor(ctor_ctx, l, kts)),
+                WHNF::UnionConstructor(ctor_ctx, l, kts),
                 t,
             ),
         },
