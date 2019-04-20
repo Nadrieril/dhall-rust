@@ -123,7 +123,7 @@ fn apply_builtin(
         (OptionalBuild, [t, g]) => g
             .clone()
             .app(AppliedBuiltin(ctx.clone(), Optional, vec![]).app(t.clone()))
-            .app(SomeConstructorClosure(Now::from_whnf(t.clone())))
+            .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
             .app(EmptyOptionalLit(Now::from_whnf(t.clone()))),
         (OptionalFold, [_, EmptyOptionalLit(_), _, _, nothing]) => {
             nothing.clone()
@@ -225,9 +225,9 @@ enum WHNF {
     Lam(Label, Now, (NormalizationContext, InputSubExpr)),
     AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
     /// `λ(x: a) -> Some x`
-    SomeConstructorClosure(Now),
-    /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs
-    /// `λ(xs : List a) -> [ x ] # xs
+    OptionalSomeClosure(Now),
+    /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
+    /// `λ(xs : List a) -> [ x ] # xs`
     ListConsClosure(Now, Option<Now>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
@@ -275,7 +275,7 @@ impl WHNF {
                 }
                 e.normalize_to_expr()
             }
-            WHNF::SomeConstructorClosure(n) => {
+            WHNF::OptionalSomeClosure(n) => {
                 let a = n.normalize().normalize_to_expr();
                 dhall::subexpr!(λ(x: a) -> Some x)
             }
@@ -410,7 +410,7 @@ impl WHNF {
                     None => WHNF::AppliedBuiltin(ctx, b, args),
                 }
             }
-            (WHNF::SomeConstructorClosure(_), val) => {
+            (WHNF::OptionalSomeClosure(_), val) => {
                 WHNF::NEOptionalLit(Now::from_whnf(val))
             }
             (WHNF::ListConsClosure(t, None), val) => {
@@ -448,8 +448,8 @@ impl WHNF {
                 b,
                 args.into_iter().map(|e| e.shift0(delta, label)).collect(),
             ),
-            WHNF::SomeConstructorClosure(n) => {
-                WHNF::SomeConstructorClosure(n.shift0(delta, label))
+            WHNF::OptionalSomeClosure(n) => {
+                WHNF::OptionalSomeClosure(n.shift0(delta, label))
             }
             WHNF::ListConsClosure(t, v) => WHNF::ListConsClosure(
                 t.shift0(delta, label),
@@ -557,206 +557,184 @@ impl Now {
 
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
 fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
-    let expr = match expr.as_ref() {
-        ExprF::Var(v) => return ctx.lookup(&v),
-        ExprF::Annot(x, _) => return normalize_whnf(ctx, x.clone()),
-        ExprF::Note(_, e) => return normalize_whnf(ctx, e.clone()),
+    match expr.as_ref() {
+        ExprF::Var(v) => ctx.lookup(&v),
+        ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
+        ExprF::Note(_, e) => normalize_whnf(ctx, e.clone()),
         // TODO: wasteful to retraverse everything
-        ExprF::Embed(e) => return normalize_whnf(ctx, e.0.embed_absurd()),
+        ExprF::Embed(e) => normalize_whnf(ctx, e.0.embed_absurd()),
         ExprF::Let(x, _, r, b) => {
             let r = normalize_whnf(ctx.clone(), r.clone());
-            return normalize_whnf(ctx.insert(x, r), b.clone());
+            normalize_whnf(ctx.insert(x, r), b.clone())
         }
-        ExprF::Lam(x, t, e) => {
-            return WHNF::Lam(
-                x.clone(),
-                Now::new(ctx.clone(), t.clone()),
-                (ctx, e.clone()),
-            )
-        }
-        ExprF::Builtin(b) => return WHNF::AppliedBuiltin(ctx, *b, vec![]),
-        ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
-        ExprF::NaturalLit(n) => return WHNF::NaturalLit(*n),
+        ExprF::Lam(x, t, e) => WHNF::Lam(
+            x.clone(),
+            Now::new(ctx.clone(), t.clone()),
+            (ctx, e.clone()),
+        ),
+        ExprF::Builtin(b) => WHNF::AppliedBuiltin(ctx, *b, vec![]),
+        ExprF::BoolLit(b) => WHNF::BoolLit(*b),
+        ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
-            return WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::OldOptionalLit(Some(e), _) => {
-            return WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::EmptyOptionalLit(e) => {
-            return WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::NEOptionalLit(e) => {
-            return WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
-        ExprF::EmptyListLit(e) => {
-            return WHNF::EmptyListLit(Now::new(ctx, e.clone()))
-        }
-        ExprF::NEListLit(elts) => {
-            return WHNF::NEListLit(
-                elts.iter()
-                    .map(|e| Now::new(ctx.clone(), e.clone()))
-                    .collect(),
-            )
-        }
-        ExprF::RecordLit(kvs) => {
-            return WHNF::RecordLit(
-                kvs.iter()
-                    .map(|(k, e)| (k.clone(), Now::new(ctx.clone(), e.clone())))
-                    .collect(),
-            )
-        }
-        ExprF::UnionType(kvs) => return WHNF::UnionType(ctx, kvs.clone()),
-        ExprF::UnionLit(l, x, kts) => {
-            return WHNF::UnionLit(
-                l.clone(),
-                Now::new(ctx.clone(), x.clone()),
-                (ctx, kts.clone()),
-            )
-        }
-        ExprF::TextLit(elts) => {
-            return WHNF::TextLit(
-                elts.iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(n) => Expr(Now::new(ctx.clone(), n.clone())),
-                            Text(s) => Text(s.clone()),
-                        }
-                    })
-                    .collect(),
-            )
-        }
+        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Now::new(ctx, e.clone())),
+        ExprF::NEListLit(elts) => WHNF::NEListLit(
+            elts.iter()
+                .map(|e| Now::new(ctx.clone(), e.clone()))
+                .collect(),
+        ),
+        ExprF::RecordLit(kvs) => WHNF::RecordLit(
+            kvs.iter()
+                .map(|(k, e)| (k.clone(), Now::new(ctx.clone(), e.clone())))
+                .collect(),
+        ),
+        ExprF::UnionType(kvs) => WHNF::UnionType(ctx, kvs.clone()),
+        ExprF::UnionLit(l, x, kts) => WHNF::UnionLit(
+            l.clone(),
+            Now::new(ctx.clone(), x.clone()),
+            (ctx, kts.clone()),
+        ),
+        ExprF::TextLit(elts) => WHNF::TextLit(
+            elts.iter()
+                .map(|contents| {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match contents {
+                        Expr(n) => Expr(Now::new(ctx.clone(), n.clone())),
+                        Text(s) => Text(s.clone()),
+                    }
+                })
+                .collect(),
+        ),
         ExprF::BoolIf(b, e1, e2) => {
             let b = normalize_whnf(ctx.clone(), b.clone());
             match b {
-                WHNF::BoolLit(true) => return normalize_whnf(ctx, e1.clone()),
-                WHNF::BoolLit(false) => return normalize_whnf(ctx, e2.clone()),
-                _ => expr,
+                WHNF::BoolLit(true) => normalize_whnf(ctx, e1.clone()),
+                WHNF::BoolLit(false) => normalize_whnf(ctx, e2.clone()),
+                _ => normalize_last_layer(ExprF::BoolIf(
+                    b,
+                    normalize_whnf(ctx.clone(), e1.clone()),
+                    normalize_whnf(ctx, e2.clone()),
+                )),
             }
         }
-        _ => expr,
-    };
+        expr => {
+            // Recursively normalize subexpressions
+            let expr: ExprF<WHNF, Label, X, X> = expr
+                .map_ref_with_special_handling_of_binders(
+                    |e| normalize_whnf(ctx.clone(), e.clone()),
+                    |x, e| normalize_whnf(ctx.skip(x), e.clone()),
+                    X::clone,
+                    |_| unreachable!(),
+                    Label::clone,
+                );
 
-    // Recursively normalize all subexpressions
-    let expr: ExprF<WHNF, Label, X, X> =
-        expr.as_ref().map_ref_with_special_handling_of_binders(
-            |e| normalize_whnf(ctx.clone(), e.clone()),
-            |x, e| normalize_whnf(ctx.skip(x), e.clone()),
-            X::clone,
-            |_| unreachable!(),
-            Label::clone,
-        );
-
-    normalize_last_layer(ctx, expr)
+            normalize_last_layer(expr)
+        }
+    }
 }
 
 /// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
-fn normalize_last_layer(
-    ctx: NormalizationContext,
-    expr: ExprF<WHNF, Label, X, X>,
-) -> WHNF {
+fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
     use dhall_core::BinOp::*;
     use WHNF::*;
 
-    let expr = match expr {
-        ExprF::App(v, a) => return v.app(a),
+    match expr {
+        ExprF::App(v, a) => v.app(a),
 
-        ExprF::BinOp(BoolAnd, BoolLit(true), y) => return y,
-        ExprF::BinOp(BoolAnd, x, BoolLit(true)) => return x,
-        ExprF::BinOp(BoolAnd, BoolLit(false), _) => return BoolLit(false),
-        ExprF::BinOp(BoolAnd, _, BoolLit(false)) => return BoolLit(false),
-        ExprF::BinOp(BoolOr, BoolLit(true), _) => return BoolLit(true),
-        ExprF::BinOp(BoolOr, _, BoolLit(true)) => return BoolLit(true),
-        ExprF::BinOp(BoolOr, BoolLit(false), y) => return y,
-        ExprF::BinOp(BoolOr, x, BoolLit(false)) => return x,
-        ExprF::BinOp(BoolEQ, BoolLit(true), y) => return y,
-        ExprF::BinOp(BoolEQ, x, BoolLit(true)) => return x,
-        ExprF::BinOp(BoolNE, BoolLit(false), y) => return y,
-        ExprF::BinOp(BoolNE, x, BoolLit(false)) => return x,
-        ExprF::BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => return BoolLit(x == y),
-        ExprF::BinOp(BoolNE, BoolLit(x), BoolLit(y)) => return BoolLit(x != y),
+        ExprF::BinOp(BoolAnd, BoolLit(true), y) => y,
+        ExprF::BinOp(BoolAnd, x, BoolLit(true)) => x,
+        ExprF::BinOp(BoolAnd, BoolLit(false), _) => BoolLit(false),
+        ExprF::BinOp(BoolAnd, _, BoolLit(false)) => BoolLit(false),
+        ExprF::BinOp(BoolOr, BoolLit(true), _) => BoolLit(true),
+        ExprF::BinOp(BoolOr, _, BoolLit(true)) => BoolLit(true),
+        ExprF::BinOp(BoolOr, BoolLit(false), y) => y,
+        ExprF::BinOp(BoolOr, x, BoolLit(false)) => x,
+        ExprF::BinOp(BoolEQ, BoolLit(true), y) => y,
+        ExprF::BinOp(BoolEQ, x, BoolLit(true)) => x,
+        ExprF::BinOp(BoolNE, BoolLit(false), y) => y,
+        ExprF::BinOp(BoolNE, x, BoolLit(false)) => x,
+        ExprF::BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => BoolLit(x == y),
+        ExprF::BinOp(BoolNE, BoolLit(x), BoolLit(y)) => BoolLit(x != y),
 
-        ExprF::BinOp(NaturalPlus, NaturalLit(0), y) => return y,
-        ExprF::BinOp(NaturalPlus, x, NaturalLit(0)) => return x,
-        ExprF::BinOp(NaturalTimes, NaturalLit(0), _) => return NaturalLit(0),
-        ExprF::BinOp(NaturalTimes, _, NaturalLit(0)) => return NaturalLit(0),
-        ExprF::BinOp(NaturalTimes, NaturalLit(1), y) => return y,
-        ExprF::BinOp(NaturalTimes, x, NaturalLit(1)) => return x,
+        ExprF::BinOp(NaturalPlus, NaturalLit(0), y) => y,
+        ExprF::BinOp(NaturalPlus, x, NaturalLit(0)) => x,
+        ExprF::BinOp(NaturalTimes, NaturalLit(0), _) => NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, _, NaturalLit(0)) => NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, NaturalLit(1), y) => y,
+        ExprF::BinOp(NaturalTimes, x, NaturalLit(1)) => x,
         ExprF::BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            return NaturalLit(x + y)
+            NaturalLit(x + y)
         }
         ExprF::BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            return NaturalLit(x * y)
+            NaturalLit(x * y)
         }
 
-        ExprF::BinOp(ListAppend, EmptyListLit(_), y) => return y,
-        ExprF::BinOp(ListAppend, x, EmptyListLit(_)) => return x,
+        ExprF::BinOp(ListAppend, EmptyListLit(_), y) => y,
+        ExprF::BinOp(ListAppend, x, EmptyListLit(_)) => x,
         ExprF::BinOp(ListAppend, NEListLit(mut xs), NEListLit(mut ys)) => {
             xs.append(&mut ys);
-            return NEListLit(xs);
+            NEListLit(xs)
         }
         ExprF::BinOp(TextAppend, TextLit(mut x), TextLit(mut y)) => {
             x.append(&mut y);
-            return TextLit(x);
+            TextLit(x)
         }
 
-        ExprF::Field(UnionType(ctx, kts), l) => {
-            return UnionConstructor(ctx, l, kts)
-        }
-        ExprF::Field(RecordLit(mut kvs), l) => {
-            match kvs.remove(&l) {
-                Some(r) => return r.normalize(),
-                // Return ownership
-                None => ExprF::Field(RecordLit(kvs), l),
+        ExprF::Field(UnionType(ctx, kts), l) => UnionConstructor(ctx, l, kts),
+        ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
+            Some(r) => r.normalize(),
+            None => {
+                // Couldn't do anything useful, so just normalize subexpressions
+                Expr(rc(ExprF::Field(RecordLit(kvs).normalize_to_expr(), l)))
             }
-        }
-        // Always simplify `x.{}` to `{}`
+        },
         ExprF::Projection(_, ls) if ls.is_empty() => {
-            return RecordLit(std::collections::BTreeMap::new())
+            RecordLit(std::collections::BTreeMap::new())
         }
-        ExprF::Projection(RecordLit(mut kvs), ls) => {
-            return RecordLit(
-                ls.into_iter()
-                    .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
-                    .collect(),
-            )
+        ExprF::Projection(RecordLit(mut kvs), ls) => RecordLit(
+            ls.into_iter()
+                .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
+                .collect(),
+        ),
+        ExprF::Merge(RecordLit(mut handlers), e, t) => {
+            let e = match e {
+                UnionConstructor(ctor_ctx, l, kts) => match handlers.remove(&l)
+                {
+                    Some(h) => return h.normalize(),
+                    None => UnionConstructor(ctor_ctx, l, kts),
+                },
+                UnionLit(l, v, (kts_ctx, kts)) => match handlers.remove(&l) {
+                    Some(h) => {
+                        let h = h.normalize();
+                        let v = v.normalize();
+                        return h.app(v);
+                    }
+                    None => UnionLit(l, v, (kts_ctx, kts)),
+                },
+                e => e,
+            };
+            // Couldn't do anything useful, so just normalize subexpressions
+            Expr(rc(ExprF::Merge(
+                RecordLit(handlers).normalize_to_expr(),
+                e.normalize_to_expr(),
+                t.map(WHNF::normalize_to_expr),
+            )))
         }
-        ExprF::Merge(
-            RecordLit(mut handlers),
-            UnionConstructor(ctor_ctx, l, kts),
-            t,
-        ) => match handlers.remove(&l) {
-            Some(h) => return h.normalize(),
-            // Return ownership
-            None => ExprF::Merge(
-                RecordLit(handlers),
-                UnionConstructor(ctor_ctx, l, kts),
-                t,
-            ),
-        },
-        ExprF::Merge(
-            RecordLit(mut handlers),
-            UnionLit(l, v, (kts_ctx, kts)),
-            t,
-        ) => match handlers.remove(&l) {
-            Some(h) => {
-                let h = h.normalize();
-                let v = v.normalize();
-                return normalize_last_layer(ctx, ExprF::App(h, v));
-            }
-            // Return ownership
-            None => ExprF::Merge(
-                RecordLit(handlers),
-                UnionLit(l, v, (kts_ctx, kts)),
-                t,
-            ),
-        },
-        expr => expr,
-    };
-
-    // Couldn't do anything useful, so just normalize subexpressions
-    Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
+        // Couldn't do anything useful, so just normalize subexpressions
+        expr => {
+            Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
+        }
+    }
 }
 
 /// Reduce an expression to its normal form, performing beta reduction
