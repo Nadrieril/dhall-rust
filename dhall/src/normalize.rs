@@ -29,6 +29,16 @@ impl<'a> Typed<'a> {
     }
 }
 
+fn shift0_mut<N, E>(delta: isize, label: &Label, in_expr: &mut SubExpr<N, E>) {
+    let new_expr = shift0(delta, label, &in_expr);
+    std::mem::replace(in_expr, new_expr);
+}
+
+fn shift_mut<N, E>(delta: isize, var: &V<Label>, in_expr: &mut SubExpr<N, E>) {
+    let new_expr = shift(delta, var, &in_expr);
+    std::mem::replace(in_expr, new_expr);
+}
+
 fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
     use dhall_core::Builtin::*;
     use WHNF::*;
@@ -240,7 +250,11 @@ impl NormalizationContext {
                 .map(|l, e| {
                     use EnvItem::*;
                     match e {
-                        Expr(e) => Expr(e.clone().shift0(1, x)),
+                        Expr(e) => {
+                            let mut e = e.clone();
+                            e.shift0(1, x);
+                            Expr(e)
+                        }
                         Skip(n) if l == x => Skip(*n + 1),
                         Skip(n) => Skip(*n),
                     }
@@ -493,83 +507,64 @@ impl WHNF {
         WHNF::AppliedBuiltin(b, vec![])
     }
 
-    fn shift0(self, delta: isize, label: &Label) -> Self {
+    fn shift0(&mut self, delta: isize, label: &Label) {
         match self {
-            WHNF::Lam(x, t, (ctx, e)) => WHNF::Lam(
-                x,
-                t.shift0(delta, label),
-                (ctx, shift(delta, &V(label.clone(), 1), &e)),
-            ),
-            WHNF::AppliedBuiltin(b, args) => WHNF::AppliedBuiltin(
-                b,
-                args.into_iter().map(|e| e.shift0(delta, label)).collect(),
-            ),
-            WHNF::OptionalSomeClosure(n) => {
-                WHNF::OptionalSomeClosure(n.shift0(delta, label))
+            WHNF::NaturalSuccClosure
+            | WHNF::BoolLit(_)
+            | WHNF::NaturalLit(_)
+            | WHNF::IntegerLit(_) => {}
+            WHNF::EmptyOptionalLit(n)
+            | WHNF::NEOptionalLit(n)
+            | WHNF::OptionalSomeClosure(n)
+            | WHNF::EmptyListLit(n) => {
+                n.shift0(delta, label);
             }
-            WHNF::ListConsClosure(t, v) => WHNF::ListConsClosure(
-                t.shift0(delta, label),
-                v.map(|v| v.shift0(delta, label)),
-            ),
-            WHNF::NaturalSuccClosure => WHNF::NaturalSuccClosure,
-            WHNF::BoolLit(b) => WHNF::BoolLit(b),
-            WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
-            WHNF::IntegerLit(n) => WHNF::IntegerLit(n),
-            WHNF::EmptyOptionalLit(n) => {
-                WHNF::EmptyOptionalLit(n.shift0(delta, label))
+            WHNF::Lam(_, t, (_, e)) => {
+                t.shift0(delta, label);
+                shift_mut(delta, &V(label.clone(), 1), e);
             }
-            WHNF::NEOptionalLit(n) => {
-                WHNF::NEOptionalLit(n.shift0(delta, label))
+            WHNF::AppliedBuiltin(_, args) => {
+                for x in args.iter_mut() {
+                    x.shift0(delta, label);
+                }
             }
-            WHNF::EmptyListLit(n) => WHNF::EmptyListLit(n.shift0(delta, label)),
-            WHNF::NEListLit(elts) => WHNF::NEListLit(
-                elts.into_iter().map(|n| n.shift0(delta, label)).collect(),
-            ),
-            WHNF::RecordLit(kvs) => WHNF::RecordLit(
-                kvs.into_iter()
-                    .map(|(k, v)| (k, v.shift0(delta, label)))
-                    .collect(),
-            ),
-            WHNF::RecordType(kts) => WHNF::RecordType(
-                kts.into_iter()
-                    .map(|(k, v)| (k, v.shift0(delta, label)))
-                    .collect(),
-            ),
-            WHNF::UnionType(ctx, kts) => WHNF::UnionType(
-                ctx,
-                kts.into_iter()
-                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
-                    .collect(),
-            ),
-            WHNF::UnionConstructor(ctx, l, kts) => {
-                let kts = kts
-                    .into_iter()
-                    .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
-                    .collect();
-                WHNF::UnionConstructor(ctx, l, kts)
+            WHNF::ListConsClosure(t, v) => {
+                t.shift0(delta, label);
+                for x in v.iter_mut() {
+                    x.shift0(delta, label);
+                }
             }
-            WHNF::UnionLit(l, v, (kts_ctx, kts)) => WHNF::UnionLit(
-                l,
-                v.shift0(delta, label),
-                (
-                    kts_ctx,
-                    kts.into_iter()
-                        .map(|(k, v)| (k, v.map(|v| shift0(delta, label, &v))))
-                        .collect(),
-                ),
-            ),
-            WHNF::TextLit(elts) => WHNF::TextLit(
-                elts.into_iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(n) => Expr(n.shift0(delta, label)),
-                            Text(s) => Text(s),
-                        }
-                    })
-                    .collect(),
-            ),
-            WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
+            WHNF::NEListLit(elts) => {
+                for x in elts.iter_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::RecordLit(kvs) | WHNF::RecordType(kvs) => {
+                for x in kvs.values_mut() {
+                    x.shift0(delta, label);
+                }
+            }
+            WHNF::UnionType(_, kts) | WHNF::UnionConstructor(_, _, kts) => {
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    shift0_mut(delta, label, x);
+                }
+            }
+            WHNF::UnionLit(_, v, (_, kts)) => {
+                v.shift0(delta, label);
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    shift0_mut(delta, label, x);
+                }
+            }
+            WHNF::TextLit(elts) => {
+                for x in elts.iter_mut() {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match x {
+                        Expr(n) => n.shift0(delta, label),
+                        Text(_) => {}
+                    }
+                }
+            }
+            WHNF::Expr(e) => shift0_mut(delta, label, e),
         }
     }
 }
@@ -599,14 +594,10 @@ impl Now {
         }
     }
 
-    fn shift0(self, delta: isize, label: &Label) -> Self {
+    fn shift0(&mut self, delta: isize, label: &Label) {
         match self {
-            Now::Normalized(v) => {
-                Now::Normalized(Box::new(v.shift0(delta, label)))
-            }
-            Now::Unnormalized(ctx, e) => {
-                Now::Unnormalized(ctx, shift0(delta, label, &e))
-            }
+            Now::Normalized(v) => v.shift0(delta, label),
+            Now::Unnormalized(_, e) => shift0_mut(delta, label, e),
         }
     }
 }
