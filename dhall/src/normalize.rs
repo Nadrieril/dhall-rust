@@ -29,11 +29,7 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin(
-    ctx: NormalizationContext,
-    b: Builtin,
-    args: Vec<WHNF>,
-) -> WHNF {
+fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
     use dhall_core::Builtin::*;
     use WHNF::*;
 
@@ -88,7 +84,7 @@ fn apply_builtin(
                 kts.insert(
                     "index".into(),
                     Now::from_whnf(
-                        AppliedBuiltin(ctx.clone(), Natural, vec![])
+                        WHNF::from_builtin(Natural)
                     ),
                 );
                 kts.insert("value".into(), t);
@@ -111,7 +107,7 @@ fn apply_builtin(
         ),
         ListBuild => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [_, WHNF::AppliedBuiltin(_, ListFold, args)] => {
+            [_, WHNF::AppliedBuiltin(ListFold, args)] => {
                 let mut args = args;
                 if args.len() >= 2 {
                     args.remove(1)
@@ -121,13 +117,13 @@ fn apply_builtin(
                 }
             },
             [t, g] => g
-                .app(AppliedBuiltin(ctx.clone(), List, vec![]).app(t.clone()))
+                .app(WHNF::from_builtin(List).app(t.clone()))
                 .app(ListConsClosure(Now::from_whnf(t.clone()), None))
                 .app(EmptyListLit(Now::from_whnf(t))),
         ),
         ListFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [_, WHNF::AppliedBuiltin(_, ListBuild, args)] => {
+            [_, WHNF::AppliedBuiltin(ListBuild, args)] => {
                 let mut args = args;
                 if args.len() >= 2 {
                     args.remove(1)
@@ -146,7 +142,7 @@ fn apply_builtin(
         ),
         OptionalBuild => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [_, WHNF::AppliedBuiltin(_, OptionalFold, args)] => {
+            [_, WHNF::AppliedBuiltin(OptionalFold, args)] => {
                 let mut args = args;
                 if args.len() >= 2 {
                     args.remove(1)
@@ -155,14 +151,13 @@ fn apply_builtin(
                 }
             },
             [t, g] => g
-                .app(AppliedBuiltin(ctx.clone(), Optional, vec![])
-                    .app(t.clone()))
+                .app(WHNF::from_builtin(Optional).app(t.clone()))
                 .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
                 .app(EmptyOptionalLit(Now::from_whnf(t))),
         ),
         OptionalFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [_, WHNF::AppliedBuiltin(_, OptionalBuild, args)] => {
+            [_, WHNF::AppliedBuiltin(OptionalBuild, args)] => {
                 let mut args = args;
                 if args.len() >= 2 {
                     args.remove(1)
@@ -179,7 +174,7 @@ fn apply_builtin(
         ),
         NaturalBuild => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [WHNF::AppliedBuiltin(_, NaturalFold, args)] => {
+            [WHNF::AppliedBuiltin(NaturalFold, args)] => {
                 let mut args = args;
                 if args.len() >= 1 {
                     args.remove(0)
@@ -188,13 +183,13 @@ fn apply_builtin(
                 }
             },
             [g] => g
-                .app(AppliedBuiltin(ctx.clone(), Natural, vec![]))
+                .app(WHNF::from_builtin(Natural))
                 .app(NaturalSuccClosure)
                 .app(NaturalLit(0)),
         ),
         NaturalFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
-            [WHNF::AppliedBuiltin(_, NaturalBuild, args)] => {
+            [WHNF::AppliedBuiltin(NaturalBuild, args)] => {
                 let mut args = args;
                 if args.len() >= 1 {
                     args.remove(0)
@@ -204,7 +199,7 @@ fn apply_builtin(
             },
             [NaturalLit(0), _, _, zero] => zero,
             [NaturalLit(n), t, succ, zero] => {
-                let fold = AppliedBuiltin(ctx.clone(), NaturalFold, vec![])
+                let fold = WHNF::from_builtin(NaturalFold)
                     .app(NaturalLit(n - 1))
                     .app(t)
                     .app(succ.clone())
@@ -217,7 +212,7 @@ fn apply_builtin(
 
     match ret {
         Ok(x) => x,
-        Err(args) => AppliedBuiltin(ctx, b, args),
+        Err(args) => AppliedBuiltin(b, args),
     }
 }
 
@@ -283,7 +278,7 @@ impl NormalizationContext {
 enum WHNF {
     /// Closures
     Lam(Label, Now, (NormalizationContext, InputSubExpr)),
-    AppliedBuiltin(NormalizationContext, Builtin, Vec<WHNF>),
+    AppliedBuiltin(Builtin, Vec<WHNF>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(Now),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
@@ -328,7 +323,7 @@ impl WHNF {
                     normalize_whnf(ctx2, e).normalize_to_expr(),
                 ))
             }
-            WHNF::AppliedBuiltin(_ctx, b, args) => {
+            WHNF::AppliedBuiltin(b, args) => {
                 let mut e = WHNF::Expr(rc(ExprF::Builtin(b)));
                 for v in args {
                     e = e.app(v);
@@ -463,9 +458,9 @@ impl WHNF {
                 let ctx2 = ctx.insert(&x, val);
                 normalize_whnf(ctx2, e)
             }
-            (WHNF::AppliedBuiltin(ctx, b, mut args), val) => {
+            (WHNF::AppliedBuiltin(b, mut args), val) => {
                 args.push(val);
-                apply_builtin(ctx, b, args)
+                apply_builtin(b, args)
             }
             (WHNF::OptionalSomeClosure(_), val) => {
                 WHNF::NEOptionalLit(Now::from_whnf(val))
@@ -493,6 +488,10 @@ impl WHNF {
         }
     }
 
+    fn from_builtin(b: Builtin) -> WHNF {
+        WHNF::AppliedBuiltin(b, vec![])
+    }
+
     fn shift0(self, delta: isize, label: &Label) -> Self {
         match self {
             WHNF::Lam(x, t, (ctx, e)) => WHNF::Lam(
@@ -500,8 +499,7 @@ impl WHNF {
                 t.shift0(delta, label),
                 (ctx, shift(delta, &V(label.clone(), 1), &e)),
             ),
-            WHNF::AppliedBuiltin(ctx, b, args) => WHNF::AppliedBuiltin(
-                ctx,
+            WHNF::AppliedBuiltin(b, args) => WHNF::AppliedBuiltin(
                 b,
                 args.into_iter().map(|e| e.shift0(delta, label)).collect(),
             ),
@@ -629,7 +627,7 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
             Now::new(ctx.clone(), t.clone()),
             (ctx, e.clone()),
         ),
-        ExprF::Builtin(b) => WHNF::AppliedBuiltin(ctx, *b, vec![]),
+        ExprF::Builtin(b) => WHNF::AppliedBuiltin(*b, vec![]),
         ExprF::BoolLit(b) => WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
