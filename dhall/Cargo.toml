@@ -6,9 +6,6 @@ license = "BSD-2-Clause"
 edition = "2018"
 build = "build.rs"
 
-[features]
-nothreads = [] # disable threads for tarpaulin
-
 [dependencies]
 bytecount = "0.5.1"
 itertools = "0.8.0"
