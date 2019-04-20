@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use dhall_core::context::Context;
 use dhall_core::*;
@@ -26,7 +27,7 @@ impl<'a> Typed<'a> {
 }
 
 fn apply_builtin(
-    ctx: &NormalizationContext,
+    ctx: NormalizationContext,
     b: Builtin,
     args: &[WHNF],
 ) -> Option<WHNF> {
@@ -72,7 +73,7 @@ fn apply_builtin(
                 // TODO: avoid passing through Exprs
                 let t = now_to_expr(t);
                 EmptyListLit(Now::new(
-                    ctx.clone(),
+                    ctx,
                     dhall::subexpr!({ index : Natural, value : t }),
                 ))
             }
@@ -200,17 +201,19 @@ enum EnvItem {
 }
 
 #[derive(Debug, Clone)]
-struct NormalizationContext(Context<Label, EnvItem>);
+struct NormalizationContext(Rc<Context<Label, EnvItem>>);
 
 impl NormalizationContext {
-    fn new() -> NormalizationContext {
-        NormalizationContext(Context::new())
+    fn new() -> Self {
+        NormalizationContext(Rc::new(Context::new()))
     }
-    fn insert(&self, x: &Label, e: WHNF) -> NormalizationContext {
-        NormalizationContext(self.0.insert(x.clone(), EnvItem::Expr(e)))
+    fn insert(&self, x: &Label, e: WHNF) -> Self {
+        NormalizationContext(Rc::new(
+            self.0.insert(x.clone(), EnvItem::Expr(e)),
+        ))
     }
-    fn skip(&self, x: &Label) -> NormalizationContext {
-        NormalizationContext(
+    fn skip(&self, x: &Label) -> Self {
+        NormalizationContext(Rc::new(
             self.0
                 .map(|l, e| {
                     use EnvItem::*;
@@ -221,7 +224,7 @@ impl NormalizationContext {
                     }
                 })
                 .insert(x.clone(), EnvItem::Skip(0)),
-        )
+        ))
     }
     fn lookup(&self, var: &V<Label>) -> WHNF {
         let V(x, n) = var;
@@ -301,7 +304,8 @@ impl WHNF {
                         (
                             k,
                             v.map(|v| {
-                                normalize_whnf(&ctx, v).normalize_to_expr()
+                                normalize_whnf(ctx.clone(), v)
+                                    .normalize_to_expr()
                             }),
                         )
                     })
@@ -315,7 +319,8 @@ impl WHNF {
                         (
                             k,
                             v.map(|v| {
-                                normalize_whnf(&kts_ctx, v).normalize_to_expr()
+                                normalize_whnf(kts_ctx.clone(), v)
+                                    .normalize_to_expr()
                             }),
                         )
                     })
@@ -427,7 +432,7 @@ impl Now {
     fn normalize(self) -> WHNF {
         match self {
             Now::Normalized(v) => *v,
-            Now::Unnormalized(ctx, e) => normalize_whnf(&ctx, e),
+            Now::Unnormalized(ctx, e) => normalize_whnf(ctx, e),
         }
     }
 
@@ -460,11 +465,11 @@ impl Closure {
         match self {
             Closure::Lam(x, _, (ctx, e)) => {
                 let ctx2 = ctx.insert(&x, val);
-                normalize_whnf(&ctx2, e)
+                normalize_whnf(ctx2, e)
             }
             Closure::AppliedBuiltin(ctx, b, mut args) => {
                 args.push(val);
-                match apply_builtin(&ctx, b, &args) {
+                match apply_builtin(ctx.clone(), b, &args) {
                     Some(v) => v,
                     None => {
                         WHNF::Closure(Closure::AppliedBuiltin(ctx, b, args))
@@ -485,7 +490,7 @@ impl Closure {
                 rc(ExprF::Lam(
                     x.clone(),
                     t.normalize().normalize_to_expr(),
-                    normalize_whnf(&ctx2, e).normalize_to_expr(),
+                    normalize_whnf(ctx2, e).normalize_to_expr(),
                 ))
             }
             Closure::AppliedBuiltin(_ctx, b, args) => {
@@ -506,7 +511,8 @@ impl Closure {
                         (
                             k,
                             v.map(|v| {
-                                normalize_whnf(&ctx, v).normalize_to_expr()
+                                normalize_whnf(ctx.clone(), v)
+                                    .normalize_to_expr()
                             }),
                         )
                     })
@@ -540,7 +546,7 @@ impl Closure {
 }
 
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
-fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
+fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
     let expr = match expr.as_ref() {
         ExprF::Var(v) => return ctx.lookup(&v),
         ExprF::Annot(x, _) => return normalize_whnf(ctx, x.clone()),
@@ -548,39 +554,35 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
         // TODO: wasteful to retraverse everything
         ExprF::Embed(e) => return normalize_whnf(ctx, e.0.embed_absurd()),
         ExprF::Let(x, _, r, b) => {
-            let r = normalize_whnf(ctx, r.clone());
-            return normalize_whnf(&ctx.insert(x, r), b.clone());
+            let r = normalize_whnf(ctx.clone(), r.clone());
+            return normalize_whnf(ctx.insert(x, r), b.clone());
         }
         ExprF::Lam(x, t, e) => {
             return WHNF::Closure(Closure::Lam(
                 x.clone(),
                 Now::new(ctx.clone(), t.clone()),
-                (ctx.clone(), e.clone()),
+                (ctx, e.clone()),
             ))
         }
         ExprF::Builtin(b) => {
-            return WHNF::Closure(Closure::AppliedBuiltin(
-                ctx.clone(),
-                *b,
-                vec![],
-            ))
+            return WHNF::Closure(Closure::AppliedBuiltin(ctx, *b, vec![]))
         }
         ExprF::BoolLit(b) => return WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => return WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
-            return WHNF::EmptyOptionalLit(Now::new(ctx.clone(), e.clone()))
+            return WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::OldOptionalLit(Some(e), _) => {
-            return WHNF::NEOptionalLit(Now::new(ctx.clone(), e.clone()))
+            return WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::EmptyOptionalLit(e) => {
-            return WHNF::EmptyOptionalLit(Now::new(ctx.clone(), e.clone()))
+            return WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::NEOptionalLit(e) => {
-            return WHNF::NEOptionalLit(Now::new(ctx.clone(), e.clone()))
+            return WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
         ExprF::EmptyListLit(e) => {
-            return WHNF::EmptyListLit(Now::new(ctx.clone(), e.clone()))
+            return WHNF::EmptyListLit(Now::new(ctx, e.clone()))
         }
         ExprF::NEListLit(elts) => {
             return WHNF::NEListLit(
@@ -596,14 +598,12 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
                     .collect(),
             )
         }
-        ExprF::UnionType(kvs) => {
-            return WHNF::UnionType(ctx.clone(), kvs.clone())
-        }
+        ExprF::UnionType(kvs) => return WHNF::UnionType(ctx, kvs.clone()),
         ExprF::UnionLit(l, x, kts) => {
             return WHNF::UnionLit(
                 l.clone(),
                 Now::new(ctx.clone(), x.clone()),
-                (ctx.clone(), kts.clone()),
+                (ctx, kts.clone()),
             )
         }
         ExprF::TextLit(elts) => {
@@ -620,7 +620,7 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
             )
         }
         ExprF::BoolIf(b, e1, e2) => {
-            let b = normalize_whnf(ctx, b.clone());
+            let b = normalize_whnf(ctx.clone(), b.clone());
             match b {
                 WHNF::BoolLit(true) => return normalize_whnf(ctx, e1.clone()),
                 WHNF::BoolLit(false) => return normalize_whnf(ctx, e2.clone()),
@@ -633,8 +633,8 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
     // Recursively normalize all subexpressions
     let expr: ExprF<WHNF, Label, X, X> =
         expr.as_ref().map_ref_with_special_handling_of_binders(
-            |e| normalize_whnf(ctx, e.clone()),
-            |x, e| normalize_whnf(&ctx.skip(x), e.clone()),
+            |e| normalize_whnf(ctx.clone(), e.clone()),
+            |x, e| normalize_whnf(ctx.skip(x), e.clone()),
             X::clone,
             |_| unreachable!(),
             Label::clone,
@@ -645,7 +645,7 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
 
 /// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
 fn normalize_last_layer(
-    ctx: &NormalizationContext,
+    ctx: NormalizationContext,
     expr: ExprF<WHNF, Label, X, X>,
 ) -> WHNF {
     use dhall_core::BinOp::*;
@@ -768,7 +768,7 @@ fn normalize_last_layer(
 /// leave ill-typed sub-expressions unevaluated.
 ///
 fn normalize(e: InputSubExpr) -> OutputSubExpr {
-    normalize_whnf(&NormalizationContext::new(), e).normalize_to_expr()
+    normalize_whnf(NormalizationContext::new(), e).normalize_to_expr()
 }
 
 #[cfg(test)]
