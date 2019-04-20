@@ -563,13 +563,7 @@ fn type_last_layer(
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
-        EmptyOptionalLit(t) => {
-            let t = t.normalize();
-            ensure_simple_type!(t, mkerr(InvalidOptionalType(t)));
-            let t = t.embed();
-            Ok(RetExpr(dhall::expr!(Optional t)))
-        }
-        NEOptionalLit(x) => {
+        SomeLit(x) => {
             let tx = x.get_type_move()?;
             ensure_simple_type!(
                 tx,

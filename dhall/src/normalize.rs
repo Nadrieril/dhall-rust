@@ -366,10 +366,12 @@ impl WHNF {
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
             WHNF::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
             WHNF::EmptyOptionalLit(n) => {
-                rc(ExprF::EmptyOptionalLit(n.normalize().normalize_to_expr()))
+                WHNF::Expr(rc(ExprF::Builtin(Builtin::OptionalNone)))
+                    .app(n.normalize())
+                    .normalize_to_expr()
             }
             WHNF::NEOptionalLit(n) => {
-                rc(ExprF::NEOptionalLit(n.normalize().normalize_to_expr()))
+                rc(ExprF::SomeLit(n.normalize().normalize_to_expr()))
             }
             WHNF::EmptyListLit(n) => {
                 rc(ExprF::EmptyListLit(n.normalize().normalize_to_expr()))
@@ -628,12 +630,7 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
         ExprF::OldOptionalLit(Some(e), _) => {
             WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
         }
-        ExprF::EmptyOptionalLit(e) => {
-            WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
-        }
-        ExprF::NEOptionalLit(e) => {
-            WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
-        }
+        ExprF::SomeLit(e) => WHNF::NEOptionalLit(Now::new(ctx, e.clone())),
         ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Now::new(ctx, e.clone())),
         ExprF::NEListLit(elts) => WHNF::NEListLit(
             elts.iter()

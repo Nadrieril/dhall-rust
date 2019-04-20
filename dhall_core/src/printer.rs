@@ -38,10 +38,7 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
             OldOptionalLit(Some(x), t) => {
                 write!(f, "[{}] : Optional {}", x, t)?;
             }
-            EmptyOptionalLit(t) => {
-                write!(f, "None {}", t)?;
-            }
-            NEOptionalLit(e) => {
+            SomeLit(e) => {
                 write!(f, "Some {}", e)?;
             }
             Merge(a, b, c) => {
@@ -159,8 +156,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             | EmptyListLit(_)
             | NEListLit(_)
             | OldOptionalLit(_, _)
-            | EmptyOptionalLit(_)
-            | NEOptionalLit(_)
+            | SomeLit(_)
             | Merge(_, _, _)
             | Annot(_, _)
                 if phase > Base =>
@@ -200,8 +196,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             ),
             EmptyListLit(t) => EmptyListLit(t.phase(Import)),
             OldOptionalLit(x, t) => OldOptionalLit(x, t.phase(Import)),
-            EmptyOptionalLit(t) => EmptyOptionalLit(t.phase(Import)),
-            NEOptionalLit(e) => NEOptionalLit(e.phase(Import)),
+            SomeLit(e) => SomeLit(e.phase(Import)),
             ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),

@@ -111,7 +111,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
             }
             [U64(5), Null, x] => {
                 let x = cbor_value_to_dhall(&x)?;
-                NEOptionalLit(x)
+                SomeLit(x)
             }
             [U64(5), t, x] => {
                 let x = cbor_value_to_dhall(&x)?;

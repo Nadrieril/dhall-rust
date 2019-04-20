@@ -754,7 +754,7 @@ make_parser! {
             children!(
         [expression(e)] => e,
         [Some_(()), expression(e)] => {
-            spanned(span, NEOptionalLit(rc(e)))
+            spanned(span, SomeLit(rc(e)))
         },
         [merge(()), expression(x), expression(y)] => {
             spanned(span, Merge(rc(x), rc(y), None))

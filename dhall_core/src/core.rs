@@ -180,10 +180,8 @@ pub enum ExprF<SubExpr, Label, Note, Embed> {
     ///  `[] : Optional a`
     ///  `[x] : Optional a`
     OldOptionalLit(Option<SubExpr>, SubExpr),
-    ///  `None t`
-    EmptyOptionalLit(SubExpr),
     ///  `Some e`
-    NEOptionalLit(SubExpr),
+    SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
     RecordType(BTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
