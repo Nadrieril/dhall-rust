@@ -3,10 +3,13 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use dhall_core::context::Context;
-use dhall_core::*;
+use dhall_core::{
+    rc, shift, shift0, Builtin, ExprF, Integer, InterpolatedText,
+    InterpolatedTextContents, Label, Natural, SubExpr, V, X,
+};
 use dhall_generator as dhall;
 
-use crate::expr::*;
+use crate::expr::{Normalized, Typed};
 
 type InputSubExpr = SubExpr<X, Normalized<'static>>;
 type OutputSubExpr = SubExpr<X, X>;
@@ -39,9 +42,7 @@ fn apply_builtin(
         (NaturalIsZero, [NaturalLit(n)]) => BoolLit(*n == 0),
         (NaturalEven, [NaturalLit(n)]) => BoolLit(*n % 2 == 0),
         (NaturalOdd, [NaturalLit(n)]) => BoolLit(*n % 2 != 0),
-        (NaturalToInteger, [NaturalLit(n)]) => {
-            Expr(rc(ExprF::IntegerLit(*n as isize)))
-        }
+        (NaturalToInteger, [NaturalLit(n)]) => IntegerLit(*n as isize),
         (NaturalShow, [NaturalLit(n)]) => {
             TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
         }
@@ -61,12 +62,13 @@ fn apply_builtin(
             NEListLit(xs)
         }
         (ListIndexed, [_, EmptyListLit(t)]) => {
-            // TODO: avoid passing through Exprs
-            let t = t.clone().normalize().normalize_to_expr().embed_absurd();
-            EmptyListLit(Now::new(
-                ctx,
-                dhall::subexpr!({ index : Natural, value : t }),
-            ))
+            let mut kts = BTreeMap::new();
+            kts.insert(
+                "index".into(),
+                Now::from_whnf(AppliedBuiltin(ctx, Natural, vec![])),
+            );
+            kts.insert("value".into(), t.clone());
+            EmptyListLit(Now::from_whnf(RecordType(kts)))
         }
         (ListIndexed, [_, NEListLit(xs)]) => {
             let xs = xs
@@ -232,11 +234,13 @@ enum WHNF {
 
     BoolLit(bool),
     NaturalLit(Natural),
+    IntegerLit(Integer),
     EmptyOptionalLit(Now),
     NEOptionalLit(Now),
     EmptyListLit(Now),
     NEListLit(Vec<Now>),
     RecordLit(BTreeMap<Label, Now>),
+    RecordType(BTreeMap<Label, Now>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     UnionConstructor(
         NormalizationContext,
@@ -291,6 +295,7 @@ impl WHNF {
             }
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
+            WHNF::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
             WHNF::EmptyOptionalLit(n) => {
                 rc(ExprF::EmptyOptionalLit(n.normalize().normalize_to_expr()))
             }
@@ -307,6 +312,11 @@ impl WHNF {
             )),
             WHNF::RecordLit(kvs) => rc(ExprF::RecordLit(
                 kvs.into_iter()
+                    .map(|(k, v)| (k, v.normalize().normalize_to_expr()))
+                    .collect(),
+            )),
+            WHNF::RecordType(kts) => rc(ExprF::RecordType(
+                kts.into_iter()
                     .map(|(k, v)| (k, v.normalize().normalize_to_expr()))
                     .collect(),
             )),
@@ -446,9 +456,9 @@ impl WHNF {
                 v.map(|v| v.shift0(delta, label)),
             ),
             WHNF::NaturalSuccClosure => WHNF::NaturalSuccClosure,
-            WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
             WHNF::BoolLit(b) => WHNF::BoolLit(b),
             WHNF::NaturalLit(n) => WHNF::NaturalLit(n),
+            WHNF::IntegerLit(n) => WHNF::IntegerLit(n),
             WHNF::EmptyOptionalLit(n) => {
                 WHNF::EmptyOptionalLit(n.shift0(delta, label))
             }
@@ -461,6 +471,11 @@ impl WHNF {
             ),
             WHNF::RecordLit(kvs) => WHNF::RecordLit(
                 kvs.into_iter()
+                    .map(|(k, v)| (k, v.shift0(delta, label)))
+                    .collect(),
+            ),
+            WHNF::RecordType(kts) => WHNF::RecordType(
+                kts.into_iter()
                     .map(|(k, v)| (k, v.shift0(delta, label)))
                     .collect(),
             ),
@@ -498,6 +513,7 @@ impl WHNF {
                     })
                     .collect(),
             ),
+            WHNF::Expr(e) => WHNF::Expr(shift0(delta, label, &e)),
         }
     }
 }
@@ -747,6 +763,7 @@ fn normalize_last_layer(
         expr => expr,
     };
 
+    // Couldn't do anything useful, so just normalize subexpressions
     WHNF::Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
 }
 
