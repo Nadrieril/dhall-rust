@@ -63,20 +63,14 @@ pub struct SimpleType<'a>(
 );
 derive_other_traits!(SimpleType);
 
+pub(crate) use crate::typecheck::TypeInternal;
+
 /// A Dhall expression representing a (possibly higher-kinded) type.
 ///
 /// This includes [SimpleType]s but also higher-kinded expressions like
 /// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type<'a>(pub(crate) TypeInternal<'a>);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TypeInternal<'a> {
-    Expr(Box<Normalized<'a>>),
-    Const(dhall_core::Const),
-    /// The type of `Sort`
-    SuperType,
-}
 
 // Exposed for the macros
 #[doc(hidden)]
@@ -119,12 +113,6 @@ impl<'a> Normalized<'a> {
     }
     pub(crate) fn unnote<'b>(self) -> Normalized<'b> {
         Normalized(self.0, self.1, PhantomData)
-    }
-    pub(crate) fn into_type(self) -> Type<'a> {
-        Type(match self.0.as_ref() {
-            ExprF::Const(c) => TypeInternal::Const(*c),
-            _ => TypeInternal::Expr(Box::new(self)),
-        })
     }
 }
 

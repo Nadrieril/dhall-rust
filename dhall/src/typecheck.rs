@@ -48,6 +48,12 @@ impl<'a> Normalized<'a> {
         // shift the type too ?
         Normalized(shift0(delta, label, &self.0), self.1.clone(), self.2)
     }
+    pub(crate) fn into_type(self) -> Type<'a> {
+        Type(match self.0.as_ref() {
+            ExprF::Const(c) => TypeInternal::Const(*c),
+            _ => TypeInternal::Expr(Box::new(self)),
+        })
+    }
 }
 impl Normalized<'static> {
     fn embed<N>(self) -> SubExpr<N, Normalized<'static>> {
@@ -69,15 +75,7 @@ impl<'a> Type<'a> {
         }
     }
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
-        match self.0 {
-            TypeInternal::Expr(e) => Ok(*e),
-            TypeInternal::Const(c) => Ok(const_to_normalized(c)),
-            TypeInternal::SuperType => Err(TypeError::new(
-                &Context::new(),
-                rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
+        self.0.into_normalized()
     }
     // Expose the outermost constructor
     fn unroll_ref(&self) -> Result<Cow<Expr<X, X>>, TypeError> {
@@ -108,6 +106,28 @@ impl<'a> Type<'a> {
 impl Type<'static> {
     fn embed<N>(self) -> Result<SubExpr<N, Normalized<'static>>, TypeError> {
         Ok(self.into_normalized()?.embed())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypeInternal<'a> {
+    Expr(Box<Normalized<'a>>),
+    Const(dhall_core::Const),
+    /// The type of `Sort`
+    SuperType,
+}
+
+impl<'a> TypeInternal<'a> {
+    fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
+        match self {
+            TypeInternal::Expr(e) => Ok(*e),
+            TypeInternal::Const(c) => Ok(const_to_normalized(c)),
+            TypeInternal::SuperType => Err(TypeError::new(
+                &Context::new(),
+                rc(ExprF::Const(Const::Sort)),
+                TypeMessage::Untyped,
+            )),
+        }
     }
 }
 
