@@ -657,106 +657,98 @@ fn normalize_last_layer(
     expr: ExprF<WHNF, Label, X, X>,
 ) -> WHNF {
     use dhall_core::BinOp::*;
-    use dhall_core::ExprF::*;
+    use WHNF::*;
 
     let expr = match expr {
-        App(v, a) => return v.app(a),
+        ExprF::App(v, a) => return v.app(a),
 
-        BinOp(BoolAnd, WHNF::BoolLit(true), y) => return y,
-        BinOp(BoolAnd, x, WHNF::BoolLit(true)) => return x,
-        BinOp(BoolAnd, WHNF::BoolLit(false), _) => return WHNF::BoolLit(false),
-        BinOp(BoolAnd, _, WHNF::BoolLit(false)) => return WHNF::BoolLit(false),
-        BinOp(BoolOr, WHNF::BoolLit(true), _) => return WHNF::BoolLit(true),
-        BinOp(BoolOr, _, WHNF::BoolLit(true)) => return WHNF::BoolLit(true),
-        BinOp(BoolOr, WHNF::BoolLit(false), y) => return y,
-        BinOp(BoolOr, x, WHNF::BoolLit(false)) => return x,
-        BinOp(BoolEQ, WHNF::BoolLit(true), y) => return y,
-        BinOp(BoolEQ, x, WHNF::BoolLit(true)) => return x,
-        BinOp(BoolNE, WHNF::BoolLit(false), y) => return y,
-        BinOp(BoolNE, x, WHNF::BoolLit(false)) => return x,
-        BinOp(BoolEQ, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
-            return WHNF::BoolLit(x == y)
-        }
-        BinOp(BoolNE, WHNF::BoolLit(x), WHNF::BoolLit(y)) => {
-            return WHNF::BoolLit(x != y)
-        }
+        ExprF::BinOp(BoolAnd, BoolLit(true), y) => return y,
+        ExprF::BinOp(BoolAnd, x, BoolLit(true)) => return x,
+        ExprF::BinOp(BoolAnd, BoolLit(false), _) => return BoolLit(false),
+        ExprF::BinOp(BoolAnd, _, BoolLit(false)) => return BoolLit(false),
+        ExprF::BinOp(BoolOr, BoolLit(true), _) => return BoolLit(true),
+        ExprF::BinOp(BoolOr, _, BoolLit(true)) => return BoolLit(true),
+        ExprF::BinOp(BoolOr, BoolLit(false), y) => return y,
+        ExprF::BinOp(BoolOr, x, BoolLit(false)) => return x,
+        ExprF::BinOp(BoolEQ, BoolLit(true), y) => return y,
+        ExprF::BinOp(BoolEQ, x, BoolLit(true)) => return x,
+        ExprF::BinOp(BoolNE, BoolLit(false), y) => return y,
+        ExprF::BinOp(BoolNE, x, BoolLit(false)) => return x,
+        ExprF::BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => return BoolLit(x == y),
+        ExprF::BinOp(BoolNE, BoolLit(x), BoolLit(y)) => return BoolLit(x != y),
 
-        BinOp(NaturalPlus, WHNF::NaturalLit(0), y) => return y,
-        BinOp(NaturalPlus, x, WHNF::NaturalLit(0)) => return x,
-        BinOp(NaturalTimes, WHNF::NaturalLit(0), _) => {
-            return WHNF::NaturalLit(0)
+        ExprF::BinOp(NaturalPlus, NaturalLit(0), y) => return y,
+        ExprF::BinOp(NaturalPlus, x, NaturalLit(0)) => return x,
+        ExprF::BinOp(NaturalTimes, NaturalLit(0), _) => return NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, _, NaturalLit(0)) => return NaturalLit(0),
+        ExprF::BinOp(NaturalTimes, NaturalLit(1), y) => return y,
+        ExprF::BinOp(NaturalTimes, x, NaturalLit(1)) => return x,
+        ExprF::BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
+            return NaturalLit(x + y)
         }
-        BinOp(NaturalTimes, _, WHNF::NaturalLit(0)) => {
-            return WHNF::NaturalLit(0)
-        }
-        BinOp(NaturalTimes, WHNF::NaturalLit(1), y) => return y,
-        BinOp(NaturalTimes, x, WHNF::NaturalLit(1)) => return x,
-        BinOp(NaturalPlus, WHNF::NaturalLit(x), WHNF::NaturalLit(y)) => {
-            return WHNF::NaturalLit(x + y)
-        }
-        BinOp(NaturalTimes, WHNF::NaturalLit(x), WHNF::NaturalLit(y)) => {
-            return WHNF::NaturalLit(x * y)
+        ExprF::BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
+            return NaturalLit(x * y)
         }
 
-        BinOp(ListAppend, WHNF::EmptyListLit(_), y) => return y,
-        BinOp(ListAppend, x, WHNF::EmptyListLit(_)) => return x,
-        BinOp(ListAppend, WHNF::NEListLit(mut xs), WHNF::NEListLit(mut ys)) => {
+        ExprF::BinOp(ListAppend, EmptyListLit(_), y) => return y,
+        ExprF::BinOp(ListAppend, x, EmptyListLit(_)) => return x,
+        ExprF::BinOp(ListAppend, NEListLit(mut xs), NEListLit(mut ys)) => {
             xs.append(&mut ys);
-            return WHNF::NEListLit(xs);
+            return NEListLit(xs);
         }
-        BinOp(TextAppend, WHNF::TextLit(mut x), WHNF::TextLit(mut y)) => {
+        ExprF::BinOp(TextAppend, TextLit(mut x), TextLit(mut y)) => {
             x.append(&mut y);
-            return WHNF::TextLit(x);
+            return TextLit(x);
         }
 
-        Field(WHNF::UnionType(ctx, kts), l) => {
-            return WHNF::UnionConstructor(ctx, l, kts)
+        ExprF::Field(UnionType(ctx, kts), l) => {
+            return UnionConstructor(ctx, l, kts)
         }
-        Field(WHNF::RecordLit(mut kvs), l) => {
+        ExprF::Field(RecordLit(mut kvs), l) => {
             match kvs.remove(&l) {
                 Some(r) => return r.normalize(),
                 // Return ownership
-                None => Field(WHNF::RecordLit(kvs), l),
+                None => ExprF::Field(RecordLit(kvs), l),
             }
         }
         // Always simplify `x.{}` to `{}`
-        Projection(_, ls) if ls.is_empty() => {
-            return WHNF::RecordLit(std::collections::BTreeMap::new())
+        ExprF::Projection(_, ls) if ls.is_empty() => {
+            return RecordLit(std::collections::BTreeMap::new())
         }
-        Projection(WHNF::RecordLit(mut kvs), ls) => {
-            return WHNF::RecordLit(
+        ExprF::Projection(RecordLit(mut kvs), ls) => {
+            return RecordLit(
                 ls.into_iter()
                     .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
                     .collect(),
             )
         }
-        Merge(
-            WHNF::RecordLit(mut handlers),
-            WHNF::UnionConstructor(ctor_ctx, l, kts),
+        ExprF::Merge(
+            RecordLit(mut handlers),
+            UnionConstructor(ctor_ctx, l, kts),
             t,
         ) => match handlers.remove(&l) {
             Some(h) => return h.normalize(),
             // Return ownership
-            None => Merge(
-                WHNF::RecordLit(handlers),
-                WHNF::UnionConstructor(ctor_ctx, l, kts),
+            None => ExprF::Merge(
+                RecordLit(handlers),
+                UnionConstructor(ctor_ctx, l, kts),
                 t,
             ),
         },
-        Merge(
-            WHNF::RecordLit(mut handlers),
-            WHNF::UnionLit(l, v, (kts_ctx, kts)),
+        ExprF::Merge(
+            RecordLit(mut handlers),
+            UnionLit(l, v, (kts_ctx, kts)),
             t,
         ) => match handlers.remove(&l) {
             Some(h) => {
                 let h = h.normalize();
                 let v = v.normalize();
-                return normalize_last_layer(ctx, App(h, v));
+                return normalize_last_layer(ctx, ExprF::App(h, v));
             }
             // Return ownership
-            None => Merge(
-                WHNF::RecordLit(handlers),
-                WHNF::UnionLit(l, v, (kts_ctx, kts)),
+            None => ExprF::Merge(
+                RecordLit(handlers),
+                UnionLit(l, v, (kts_ctx, kts)),
                 t,
             ),
         },
@@ -764,7 +756,7 @@ fn normalize_last_layer(
     };
 
     // Couldn't do anything useful, so just normalize subexpressions
-    WHNF::Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
+    Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
 }
 
 /// Reduce an expression to its normal form, performing beta reduction
