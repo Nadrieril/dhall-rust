@@ -282,17 +282,35 @@ impl WHNF {
                     })
                     .collect(),
             )),
-            WHNF::TextLit(elts) => rc(ExprF::TextLit(
-                elts.into_iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(n) => Expr(n.normalize().normalize_to_expr()),
-                            Text(s) => Text(s),
-                        }
-                    })
-                    .collect(),
-            )),
+            WHNF::TextLit(elts) => {
+                fn normalize_textlit(
+                    elts: Vec<InterpolatedTextContents<Now>>,
+                ) -> InterpolatedText<OutputSubExpr> {
+                    elts.into_iter()
+                        .flat_map(|contents| {
+                            use InterpolatedTextContents::{Expr, Text};
+                            let new_interpolated = match contents {
+                                Expr(n) => match n.normalize() {
+                                    WHNF::TextLit(elts2) => {
+                                        normalize_textlit(elts2)
+                                    }
+                                    e => InterpolatedText::from((
+                                        String::new(),
+                                        vec![(
+                                            e.normalize_to_expr(),
+                                            String::new(),
+                                        )],
+                                    )),
+                                },
+                                Text(s) => InterpolatedText::from(s),
+                            };
+                            new_interpolated.into_iter()
+                        })
+                        .collect()
+                }
+
+                rc(ExprF::TextLit(normalize_textlit(elts)))
+            }
             WHNF::Expr(e) => e,
         }
     }
@@ -821,8 +839,6 @@ fn normalize_last_layer(
         App(Builtin(_), _) => unreachable!(),
         App(Lam(_, _, _), _) => unreachable!(),
         BoolIf(BoolLit(_), _, _) => unreachable!(),
-        // TODO: interpolation
-        // TextLit(t) =>
         OldOptionalLit(_, _) => unreachable!(),
         BinOp(BoolAnd, BoolLit(_), BoolLit(_)) => unreachable!(),
         BinOp(BoolOr, BoolLit(_), BoolLit(_)) => unreachable!(),
@@ -1006,7 +1022,7 @@ mod spec_tests {
     norm!(success_prelude_Optional_unzip_1, "prelude/Optional/unzip/1");
     norm!(success_prelude_Text_concat_0, "prelude/Text/concat/0");
     norm!(success_prelude_Text_concat_1, "prelude/Text/concat/1");
-    // norm!(success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
+    norm!(success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
     norm!(success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
     // norm!(success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
     // norm!(success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
@@ -1192,7 +1208,7 @@ mod spec_tests {
     norm!(success_unit_SomeNormalizeArguments, "unit/SomeNormalizeArguments");
     norm!(success_unit_Sort, "unit/Sort");
     norm!(success_unit_Text, "unit/Text");
-    // norm!(success_unit_TextInterpolate, "unit/TextInterpolate");
+    norm!(success_unit_TextInterpolate, "unit/TextInterpolate");
     norm!(success_unit_TextLiteral, "unit/TextLiteral");
     norm!(success_unit_TextNormalizeInterpolations, "unit/TextNormalizeInterpolations");
     norm!(success_unit_TextShow, "unit/TextShow");

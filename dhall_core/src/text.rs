@@ -86,7 +86,7 @@ impl<SubExpr> InterpolatedText<SubExpr> {
     }
 }
 
-impl<'a, SubExpr: 'a> FromIterator<InterpolatedTextContents<SubExpr>>
+impl<SubExpr> FromIterator<InterpolatedTextContents<SubExpr>>
     for InterpolatedText<SubExpr>
 {
     fn from_iter<T>(iter: T) -> Self
@@ -94,15 +94,15 @@ impl<'a, SubExpr: 'a> FromIterator<InterpolatedTextContents<SubExpr>>
         T: IntoIterator<Item = InterpolatedTextContents<SubExpr>>,
     {
         let mut res = InterpolatedText {
-            head: "".to_owned(),
-            tail: vec![],
+            head: String::new(),
+            tail: Vec::new(),
         };
         let mut crnt_str = &mut res.head;
         for x in iter.into_iter() {
             match x {
                 InterpolatedTextContents::Text(s) => crnt_str.push_str(&s),
                 InterpolatedTextContents::Expr(e) => {
-                    res.tail.push((e, "".to_owned()));
+                    res.tail.push((e, String::new()));
                     crnt_str = &mut res.tail.last_mut().unwrap().1;
                 }
             }
