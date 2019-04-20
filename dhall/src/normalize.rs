@@ -543,23 +543,18 @@ impl NormalizationContext {
 }
 
 // Small enum to help with being DRY
-enum WhatNext<'a, N, E> {
+enum WhatNext<N, E> {
     // Recurse on this expression
     Continue(Expr<N, E>),
-    // The following expression is the normal form
-    Done(Expr<N, E>),
-    DoneRefSub(&'a SubExpr<N, E>),
     // The current expression is already in normal form
     DoneAsIs,
 }
 
-impl<'a> WhatNext<'a, X, X> {
+impl WhatNext<X, X> {
     fn into_value(self, ctx: &NormalizationContext) -> Option<WHNF> {
         use WhatNext::*;
         match self {
             Continue(e) => Some(normalize_whnf(ctx, e.embed_absurd().roll())),
-            Done(e) => Some(reval(ctx, e.roll())),
-            DoneRefSub(e) => Some(reval(ctx, e.clone())),
             DoneAsIs => None,
         }
     }
@@ -614,6 +609,10 @@ fn reval(ctx: &NormalizationContext, expr: OutputSubExpr) -> WHNF {
 /// Reduces the imput expression to WHNF. See doc on `WHNF` for details.
 fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
     let expr = match expr.as_ref() {
+        ExprF::Var(v) => return ctx.lookup(&v),
+        ExprF::Annot(x, _) => return normalize_whnf(ctx, x.clone()),
+        ExprF::Note(_, e) => return normalize_whnf(ctx, e.clone()),
+        ExprF::Embed(e) => return reval(ctx, e.0.clone()),
         ExprF::Let(x, _, r, b) => {
             let r = normalize_whnf(ctx, r.clone());
             return normalize_whnf(&ctx.insert(x, r), b.clone());
@@ -698,12 +697,12 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
     };
 
     // Recursively normalize all subexpressions
-    let expr: ExprF<WHNF, Label, X, Normalized<'static>> =
+    let expr: ExprF<WHNF, Label, X, X> =
         expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| normalize_whnf(ctx, e.clone()),
             |x, e| normalize_whnf(&ctx.skip(x), e.clone()),
             X::clone,
-            Normalized::clone,
+            |_| unreachable!(),
             Label::clone,
         );
 
@@ -713,16 +712,12 @@ fn normalize_whnf(ctx: &NormalizationContext, expr: InputSubExpr) -> WHNF {
 /// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
 fn normalize_last_layer(
     ctx: &NormalizationContext,
-    expr: ExprF<WHNF, Label, X, Normalized<'static>>,
+    expr: ExprF<WHNF, Label, X, X>,
 ) -> WHNF {
     use dhall_core::BinOp::*;
     use dhall_core::ExprF::*;
-    use WhatNext::*;
 
     let expr = match expr {
-        Var(v) => return ctx.lookup(&v),
-        Annot(x, _) => return x,
-        Note(_, e) => return e,
         App(WHNF::Closure(c), a) => return c.app(a),
 
         BinOp(BoolAnd, WHNF::BoolLit(true), y) => return y,
@@ -826,50 +821,7 @@ fn normalize_last_layer(
         expr => expr,
     };
 
-    let expr: ExprF<Expr<X, X>, Label, X, Normalized<'static>> =
-        expr.map_ref_simple(|e| e.clone().normalize_to_expr().unroll());
-
-    let what_next = match &expr {
-        Embed(e) => DoneRefSub(&e.0),
-        Annot(_, _) => unreachable!(),
-        Note(_, _) => unreachable!(),
-        Var(_) => unreachable!(),
-        Let(_, _, _, _) => unreachable!(),
-        Lam(_, _, _) => unreachable!(),
-        App(Builtin(_), _) => unreachable!(),
-        App(Lam(_, _, _), _) => unreachable!(),
-        BoolIf(BoolLit(_), _, _) => unreachable!(),
-        OldOptionalLit(_, _) => unreachable!(),
-        BinOp(BoolAnd, BoolLit(_), BoolLit(_)) => unreachable!(),
-        BinOp(BoolOr, BoolLit(_), BoolLit(_)) => unreachable!(),
-        BinOp(BoolEQ, BoolLit(_), BoolLit(_)) => unreachable!(),
-        BinOp(BoolNE, BoolLit(_), BoolLit(_)) => unreachable!(),
-        BinOp(NaturalPlus, NaturalLit(_), NaturalLit(_)) => unreachable!(),
-        BinOp(NaturalTimes, NaturalLit(_), NaturalLit(_)) => unreachable!(),
-        BinOp(TextAppend, TextLit(_), TextLit(_)) => unreachable!(),
-        BinOp(ListAppend, EmptyListLit(_), _) => unreachable!(),
-        BinOp(ListAppend, _, EmptyListLit(_)) => unreachable!(),
-        BinOp(ListAppend, NEListLit(_), NEListLit(_)) => unreachable!(),
-        Merge(RecordLit(_), UnionLit(_, _, _), _) => unreachable!(),
-        Field(RecordLit(_), _) => unreachable!(),
-        Field(UnionType(_), _) => unreachable!(),
-        Projection(_, ls) if ls.is_empty() => unreachable!(),
-        Projection(RecordLit(_), _) => unreachable!(),
-        _ => DoneAsIs,
-    };
-
-    match what_next.into_value(ctx) {
-        Some(e) => e,
-        None => reval(
-            ctx,
-            rc(expr.map_ref_simple(ExprF::roll).map_ref(
-                SubExpr::clone,
-                X::clone,
-                |_| unreachable!(),
-                Label::clone,
-            )),
-        ),
-    }
+    WHNF::Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
 }
 
 /// Reduce an expression to its normal form, performing beta reduction
