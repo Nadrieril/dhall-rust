@@ -176,7 +176,7 @@ macro_rules! make_parser {
             [x..] => Err(
                 format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
             )?,
-        ).ok_or_else(|| -> String { unreachable!() })?;
+        ).map_err(|_| -> String { unreachable!() })?;
         Ok(ParsedValue::$group(res))
     });
     (@body,

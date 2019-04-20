@@ -5,6 +5,13 @@ on `Vec`s and iterators using the syntax of [`slice_patterns`][slice_patterns]
 
 [slice_patterns]: https://doc.rust-lang.org/nightly/unstable-book/language-features/slice-patterns.html
 
+## Changelog
+
+### V2.0
+
+- `match_vec` now returns a `Result` instead of an `Option`. The `Err` variant
+is used to return ownership of the passed vec if there was no match.
+
 ## License
 
 Licensed under either of

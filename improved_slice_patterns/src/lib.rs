@@ -1,5 +1,5 @@
 #![feature(slice_patterns)]
-#![doc(html_root_url = "https://docs.rs/improved_slice_patterns/1.0.1")]
+#![doc(html_root_url = "https://docs.rs/improved_slice_patterns/2.0.0")]
 
 //! A tiny crate that provides two macros to help matching
 //! on `Vec`s and iterators using the syntax of
@@ -127,8 +127,8 @@ macro_rules! destructure_iter {
 
 /// Pattern-match on a vec using the syntax of slice_patterns.
 ///
-/// Wraps the match body in `Some` if there was a match; returns
-/// `None` otherwise.
+/// Wraps the match body in `Ok` if there was a match; returns
+/// an `Err` containing the ownership of the vec otherwise.
 ///
 /// Contrary to slice_patterns, this allows moving out
 /// of the `Vec`.
@@ -152,7 +152,7 @@ macro_rules! destructure_iter {
 ///     [..] => vec![]
 /// );
 ///
-/// assert_eq!(res, Some(vec![Some(2), Some(3)]));
+/// assert_eq!(res, Ok(vec![Some(2), Some(3)]));
 ///
 ///
 /// let vec = vec![Some(1), Some(2), Some(3), None];
@@ -166,7 +166,7 @@ macro_rules! destructure_iter {
 ///     },
 /// );
 ///
-/// assert_eq!(res, None); // there was no match
+/// assert!(res.is_err()); // there was no match
 ///
 /// # Ok::<(), ()>(())
 /// ```
@@ -259,10 +259,17 @@ macro_rules! match_vec {
                         // Actually consume the values
                         #[allow(unused_mut)]
                         let mut iter = vec.into_iter();
-                        $crate::destructure_iter!(iter; [$($args)*] => $body)
+                        let ret =
+                            $crate::destructure_iter!(iter;
+                                [$($args)*] => $body
+                            );
+                        match ret {
+                            Some(x) => Ok(x),
+                            None => unreachable!(), // Hopefully
+                        }
                     }
                 )*
-                _ => std::option::Option::None,
+                _ => std::result::Result::Err(vec),
             }
         }
     };
@@ -294,9 +301,16 @@ fn test() {
     assert_eq!(test(vec![Some(0), None, Some(1)]), -1);
 
     // Test move out of pattern
+    #[derive(Debug)]
     struct Foo;
-    let _: (Foo, Foo) = match_vec!(vec![Some(Foo), Some(Foo)].into_iter();
+    let _: (Foo, Foo) = match_vec!(vec![Some(Foo), Some(Foo)];
         [Some(f1), Some(f2)] => (f1, f2),
     )
     .unwrap();
+
+    // Test return ownership if no match
+    let _: Vec<Foo> = match_vec!(vec![Foo];
+        [] => "Error".to_string(),
+    )
+    .unwrap_err();
 }
