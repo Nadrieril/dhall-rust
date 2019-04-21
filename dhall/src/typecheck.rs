@@ -35,7 +35,7 @@ impl<'a> Typed<'a> {
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
         let (expr, ty) = (self.0, self.1);
         ty.ok_or_else(|| {
-            TypeError::new(&Context::new(), expr, TypeMessage::Untyped)
+            TypeError::new(&TypecheckContext::new(), expr, TypeMessage::Untyped)
         })
     }
 }
@@ -66,7 +66,7 @@ impl<'a> Type<'a> {
             TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
             TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
             TypeInternal::SuperType => Err(TypeError::new(
-                &Context::new(),
+                &TypecheckContext::new(),
                 rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
             )),
@@ -129,11 +129,27 @@ impl<'a> TypeInternal<'a> {
             TypeInternal::Expr(e) => Ok(*e),
             TypeInternal::Const(c) => Ok(const_to_normalized(c)),
             TypeInternal::SuperType => Err(TypeError::new(
-                &Context::new(),
+                &TypecheckContext::new(),
                 rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
             )),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypecheckContext(Context<Label, Type<'static>>);
+
+impl TypecheckContext {
+    pub(crate) fn new() -> Self {
+        TypecheckContext(Context::new())
+    }
+    pub(crate) fn insert_and_shift(&self, x: &Label, t: Type<'static>) -> Self {
+        TypecheckContext(self.0.insert(x.clone(), t).map(|_, e| e.shift0(1, x)))
+    }
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<&Type<'static>> {
+        let V(x, n) = var;
+        self.0.lookup(x, *n)
     }
 }
 
@@ -364,7 +380,7 @@ macro_rules! ensure_is_const {
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
 fn mktype(
-    ctx: &Context<Label, Type<'static>>,
+    ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
     Ok(type_with(ctx, e)?.normalize().into_type())
@@ -390,7 +406,7 @@ enum Ret {
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed
 fn type_with(
-    ctx: &Context<Label, Type<'static>>,
+    ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
     use dhall_core::ExprF::*;
@@ -400,8 +416,7 @@ fn type_with(
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
-            let ctx2 =
-                ctx.insert(x.clone(), t.clone()).map(|_, e| e.shift0(1, x));
+            let ctx2 = ctx.insert_and_shift(x, t.clone());
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
@@ -416,8 +431,7 @@ fn type_with(
                 mkerr(InvalidInputType(ta.into_normalized()?)),
             );
 
-            let ctx2 =
-                ctx.insert(x.clone(), ta.clone()).map(|_, e| e.shift0(1, x));
+            let ctx2 = ctx.insert_and_shift(x, ta.clone());
             let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,
@@ -474,7 +488,7 @@ fn type_with(
 /// When all sub-expressions have been typed, check the remaining toplevel
 /// layer.
 fn type_last_layer(
-    ctx: &Context<Label, Type<'static>>,
+    ctx: &TypecheckContext,
     e: ExprF<Typed<'static>, Label, X, Normalized<'static>>,
     original_e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
@@ -492,7 +506,7 @@ fn type_last_layer(
         Pi(_, _, _) => unreachable!(),
         Let(_, _, _, _) => unreachable!(),
         Embed(_) => unreachable!(),
-        Var(V(x, n)) => match ctx.lookup(&x, n) {
+        Var(var) => match ctx.lookup(&var) {
             Some(e) => Ok(RetType(e.clone())),
             None => Err(mkerr(UnboundVariable)),
         },
@@ -740,7 +754,7 @@ fn type_last_layer(
 fn type_of(
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
-    let ctx = Context::new();
+    let ctx = TypecheckContext::new();
     let e = type_with(&ctx, e)?;
     // Ensure the inferred type isn't SuperType
     e.get_type()?.as_normalized()?;
@@ -775,14 +789,14 @@ pub(crate) enum TypeMessage<'a> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
-    context: Context<Label, Type<'static>>,
+    context: TypecheckContext,
     current: SubExpr<X, Normalized<'static>>,
     type_message: TypeMessage<'static>,
 }
 
 impl TypeError {
     pub(crate) fn new(
-        context: &Context<Label, Type<'static>>,
+        context: &TypecheckContext,
         current: SubExpr<X, Normalized<'static>>,
         type_message: TypeMessage<'static>,
     ) -> Self {

@@ -1,7 +1,8 @@
 use crate::expr::*;
 use crate::traits::StaticType;
-use crate::typecheck::{type_of_const, TypeError, TypeMessage};
-use dhall_core::context::Context;
+use crate::typecheck::{
+    type_of_const, TypeError, TypeMessage, TypecheckContext,
+};
 use dhall_core::{Const, ExprF};
 use std::borrow::Cow;
 
@@ -21,7 +22,7 @@ impl<'a> DynamicType for Type<'a> {
             TypeInternal::Expr(e) => e.get_type(),
             TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
             TypeInternal::SuperType => Err(TypeError::new(
-                &Context::new(),
+                &TypecheckContext::new(),
                 dhall_core::rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
             )),
@@ -34,7 +35,7 @@ impl<'a> DynamicType for Normalized<'a> {
         match &self.1 {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
-                &Context::new(),
+                &TypecheckContext::new(),
                 self.0.embed_absurd(),
                 TypeMessage::Untyped,
             )),
@@ -47,7 +48,7 @@ impl<'a> DynamicType for Typed<'a> {
         match &self.1 {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
-                &Context::new(),
+                &TypecheckContext::new(),
                 self.0.clone(),
                 TypeMessage::Untyped,
             )),
