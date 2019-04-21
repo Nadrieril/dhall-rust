@@ -468,15 +468,24 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-/// Applies `shift` to a single var.
-/// The first var is the var to shift away from; the second is the variable to shift
-fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
-    let V(x, n) = var;
-    let V(y, m) = in_expr;
-    if x == y && n <= m {
-        V(y.clone(), add_ui(*m, delta))
-    } else {
-        V(y.clone(), *m)
+impl<Label: PartialEq + Clone> V<Label> {
+    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        let V(x, n) = var;
+        let V(y, m) = self;
+        if x == y && n <= m {
+            V(y.clone(), add_ui(*m, delta))
+        } else {
+            V(y.clone(), *m)
+        }
+    }
+
+    pub fn shift0(&self, delta: isize, x: &Label) -> Self {
+        let V(y, m) = self;
+        if x == y {
+            V(y.clone(), add_ui(*m, delta))
+        } else {
+            V(y.clone(), *m)
+        }
     }
 }
 
@@ -492,12 +501,11 @@ pub fn shift<N, E>(
 ) -> SubExpr<N, E> {
     use crate::ExprF::*;
     match in_expr.as_ref() {
-        Var(v) => rc(Var(shift_var(delta, var, v))),
+        Var(v) => rc(Var(v.shift(delta, var))),
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift(delta, var, e),
             |l: &Label, e| {
-                let vl = V(l.clone(), 0);
-                let newvar = shift_var(1, &vl, var);
+                let newvar = var.shift0(1, l);
                 shift(delta, &newvar, e)
             },
         ),
@@ -567,7 +575,7 @@ fn subst_shift_inner<N, E>(
     let actual_var = V(x.clone(), add_ui(*n, *dn));
     match in_expr.as_ref() {
         Var(v) if v == &actual_var => shift0_multiple(ctx, value),
-        Var(v) => rc(Var(shift_var(-1, &actual_var, v))),
+        Var(v) => rc(Var(v.shift(-1, &actual_var))),
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| subst_shift_inner(ctx, var, value, e),
             |l: &Label, e| {

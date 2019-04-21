@@ -229,7 +229,21 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
 #[derive(Debug, Clone)]
 enum EnvItem {
     Expr(WHNF),
-    Skip(usize),
+    Skip(V<Label>),
+}
+
+impl EnvItem {
+    fn shift0(&self, delta: isize, x: &Label) -> Self {
+        use EnvItem::*;
+        match self {
+            Expr(e) => {
+                let mut e = e.clone();
+                e.shift0(delta, x);
+                Expr(e)
+            }
+            Skip(var) => Skip(var.shift0(delta, x)),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -247,30 +261,36 @@ impl NormalizationContext {
     fn skip(&self, x: &Label) -> Self {
         NormalizationContext(Rc::new(
             self.0
-                .map(|l, e| {
-                    use EnvItem::*;
-                    match e {
-                        Expr(e) => {
-                            let mut e = e.clone();
-                            e.shift0(1, x);
-                            Expr(e)
-                        }
-                        Skip(n) if l == x => Skip(*n + 1),
-                        Skip(n) => Skip(*n),
-                    }
-                })
-                .insert(x.clone(), EnvItem::Skip(0)),
+                .map(|_, e| e.shift0(1, x))
+                .insert(x.clone(), EnvItem::Skip(V(x.clone(), 0))),
         ))
     }
     fn lookup(&self, var: &V<Label>) -> WHNF {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
-            Some(EnvItem::Skip(m)) => {
-                WHNF::Expr(rc(ExprF::Var(V(x.clone(), *m))))
+            Some(EnvItem::Skip(newvar)) => {
+                WHNF::Expr(rc(ExprF::Var(newvar.clone())))
             }
-            None => WHNF::Expr(rc(ExprF::Var(V(x.clone(), *n)))),
+            None => WHNF::Expr(rc(ExprF::Var(var.clone()))),
         }
+    }
+    fn from_typecheck_ctx(tc_ctx: &crate::typecheck::TypecheckContext) -> Self {
+        use crate::typecheck::EnvItem::*;
+        let mut ctx = Context::new();
+        for (k, vs) in tc_ctx.0.iter_keys() {
+            for v in vs.iter().rev() {
+                let new_item = match v {
+                    Type(var, _) => EnvItem::Skip(var.clone()),
+                    Value(e) => EnvItem::Expr(normalize_whnf(
+                        NormalizationContext::new(),
+                        e.as_expr().embed_absurd(),
+                    )),
+                };
+                ctx = ctx.insert(k.clone(), new_item);
+            }
+        }
+        NormalizationContext(Rc::new(ctx))
     }
 }
 

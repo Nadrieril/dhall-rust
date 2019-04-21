@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 use crate::expr::*;
 use crate::traits::DynamicType;
@@ -138,18 +139,56 @@ impl<'a> TypeInternal<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(Context<Label, Type<'static>>);
+pub(crate) enum EnvItem {
+    Type(V<Label>, Type<'static>),
+    Value(Normalized<'static>),
+}
+
+impl EnvItem {
+    fn shift0(&self, delta: isize, x: &Label) -> Self {
+        use EnvItem::*;
+        match self {
+            Type(v, e) => Type(v.shift0(delta, x), e.shift0(delta, x)),
+            Value(e) => Value(e.shift0(delta, x)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypecheckContext(pub(crate) Context<Label, EnvItem>);
 
 impl TypecheckContext {
     pub(crate) fn new() -> Self {
         TypecheckContext(Context::new())
     }
-    pub(crate) fn insert_and_shift(&self, x: &Label, t: Type<'static>) -> Self {
-        TypecheckContext(self.0.insert(x.clone(), t).map(|_, e| e.shift0(1, x)))
+    pub(crate) fn insert_type(&self, x: &Label, t: Type<'static>) -> Self {
+        TypecheckContext(
+            self.0
+                .insert(x.clone(), EnvItem::Type(V(x.clone(), 0), t))
+                .map(|_, e| e.shift0(1, x)),
+        )
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<&Type<'static>> {
+    pub(crate) fn insert_value(
+        &self,
+        x: &Label,
+        t: Normalized<'static>,
+    ) -> Self {
+        TypecheckContext(
+            self.0
+                .insert(x.clone(), EnvItem::Value(t))
+                .map(|_, e| e.shift0(1, x)),
+        )
+    }
+    pub(crate) fn lookup(
+        &self,
+        var: &V<Label>,
+    ) -> Option<Cow<'_, Type<'static>>> {
         let V(x, n) = var;
-        self.0.lookup(x, *n)
+        match self.0.lookup(x, *n) {
+            Some(EnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
+            Some(EnvItem::Value(t)) => Some(t.get_type()?),
+            None => None,
+        }
     }
 }
 
@@ -416,7 +455,7 @@ fn type_with(
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
-            let ctx2 = ctx.insert_and_shift(x, t.clone());
+            let ctx2 = ctx.insert_type(x, t.clone());
             let b = type_with(&ctx2, b.clone())?;
             Ok(RetExpr(Pi(
                 x.clone(),
@@ -431,7 +470,7 @@ fn type_with(
                 mkerr(InvalidInputType(ta.into_normalized()?)),
             );
 
-            let ctx2 = ctx.insert_and_shift(x, ta.clone());
+            let ctx2 = ctx.insert_type(x, ta.clone());
             let tb = type_with(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,
@@ -507,7 +546,7 @@ fn type_last_layer(
         Let(_, _, _, _) => unreachable!(),
         Embed(_) => unreachable!(),
         Var(var) => match ctx.lookup(&var) {
-            Some(e) => Ok(RetType(e.clone())),
+            Some(e) => Ok(RetType(e.into_owned())),
             None => Err(mkerr(UnboundVariable)),
         },
         App(f, a) => {
@@ -805,6 +844,12 @@ impl TypeError {
             current,
             type_message,
         }
+    }
+}
+
+impl From<TypeError> for std::option::NoneError {
+    fn from(_: TypeError) -> std::option::NoneError {
+        std::option::NoneError
     }
 }
 
