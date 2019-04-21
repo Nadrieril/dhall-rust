@@ -3,7 +3,6 @@ use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
-use std::rc::Rc;
 
 use crate::expr::*;
 use crate::traits::DynamicType;
@@ -46,8 +45,11 @@ impl<'a> Normalized<'a> {
         self.as_expr().as_ref()
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
-        // shift the type too ?
-        Normalized(shift0(delta, label, &self.0), self.1.clone(), self.2)
+        Normalized(
+            shift0(delta, label, &self.0),
+            self.1.as_ref().map(|t| t.shift0(delta, label)),
+            self.2,
+        )
     }
     pub(crate) fn into_type(self) -> Type<'a> {
         Type(match self.0.as_ref() {
@@ -164,8 +166,8 @@ impl TypecheckContext {
     pub(crate) fn insert_type(&self, x: &Label, t: Type<'static>) -> Self {
         TypecheckContext(
             self.0
-                .insert(x.clone(), EnvItem::Type(V(x.clone(), 0), t))
-                .map(|_, e| e.shift0(1, x)),
+                .map(|_, e| e.shift0(1, x))
+                .insert(x.clone(), EnvItem::Type(V(x.clone(), 0), t)),
         )
     }
     pub(crate) fn insert_value(
@@ -173,11 +175,7 @@ impl TypecheckContext {
         x: &Label,
         t: Normalized<'static>,
     ) -> Self {
-        TypecheckContext(
-            self.0
-                .insert(x.clone(), EnvItem::Value(t))
-                .map(|_, e| e.shift0(1, x)),
-        )
+        TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
     }
     pub(crate) fn lookup(
         &self,
@@ -422,7 +420,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize().into_type())
+    Ok(type_with(ctx, e)?.normalize_ctx(ctx).into_type())
 }
 
 fn into_simple_type<'a>(e: SubExpr<X, X>) -> Type<'a> {
@@ -500,12 +498,8 @@ fn type_with(
                 v.clone()
             };
 
-            let v = type_with(ctx, v)?.normalize();
-            let e = type_with(
-                ctx,
-                // TODO: Use a substitution context
-                subst_shift(&V(x.clone(), 0), &v.embed(), e),
-            )?;
+            let v = type_with(ctx, v)?.normalize_ctx(ctx);
+            let e = type_with(&ctx.insert_value(x, v.clone()), e.clone())?;
 
             Ok(RetType(e.get_type_move()?))
         }
@@ -547,7 +541,7 @@ fn type_last_layer(
         Embed(_) => unreachable!(),
         Var(var) => match ctx.lookup(&var) {
             Some(e) => Ok(RetType(e.into_owned())),
-            None => Err(mkerr(UnboundVariable)),
+            None => Err(mkerr(UnboundVariable(var.clone()))),
         },
         App(f, a) => {
             let tf = f.get_type()?;
@@ -562,12 +556,12 @@ fn type_last_layer(
             Ok(RetExpr(Let(
                 x.clone(),
                 None,
-                a.normalize().embed(),
+                a.normalize_ctx(ctx).embed(),
                 tb.embed_absurd(),
             )))
         }
         Annot(x, t) => {
-            let t = t.normalize().into_type();
+            let t = t.normalize_ctx(ctx).into_type();
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -601,7 +595,7 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize().into_type();
+            let t = t.normalize_ctx(ctx).into_type();
             ensure_simple_type!(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
@@ -632,13 +626,13 @@ fn type_last_layer(
             Ok(RetExpr(dhall::expr!(List t)))
         }
         OldOptionalLit(None, t) => {
-            let t = t.normalize().embed();
+            let t = t.normalize_ctx(ctx).embed();
             let e = dhall::subexpr!(None t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
         OldOptionalLit(Some(x), t) => {
-            let t = t.normalize().embed();
-            let x = x.normalize().embed();
+            let t = t.normalize_ctx(ctx).embed();
+            let x = x.normalize_ctx(ctx).embed();
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
@@ -708,7 +702,7 @@ fn type_last_layer(
             let mut kts: std::collections::BTreeMap<_, _> = kvs
                 .into_iter()
                 .map(|(x, v)| {
-                    let t = v.map(|x| x.normalize().embed());
+                    let t = v.map(|x| x.normalize_ctx(ctx).embed());
                     Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
@@ -722,7 +716,7 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize();
+                let r = r.normalize_ctx(ctx);
                 match r.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
@@ -803,7 +797,7 @@ fn type_of(
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage<'a> {
-    UnboundVariable,
+    UnboundVariable(V<Label>),
     InvalidInputType(Normalized<'a>),
     InvalidOutputType(Normalized<'a>),
     NotAFunction(Typed<'a>),
@@ -856,7 +850,7 @@ impl From<TypeError> for std::option::NoneError {
 impl ::std::error::Error for TypeMessage<'static> {
     fn description(&self) -> &str {
         match *self {
-            UnboundVariable => "Unbound variable",
+            // UnboundVariable => "Unbound variable",
             InvalidInputType(_) => "Invalid function input",
             InvalidOutputType(_) => "Invalid function output",
             NotAFunction(_) => "Not a function",
@@ -869,9 +863,9 @@ impl ::std::error::Error for TypeMessage<'static> {
 impl fmt::Display for TypeMessage<'static> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            UnboundVariable => {
-                f.write_str(include_str!("errors/UnboundVariable.txt"))
-            }
+            // UnboundVariable(_) => {
+            //     f.write_str(include_str!("errors/UnboundVariable.txt"))
+            // }
             TypeMismatch(e0, e1, e2) => {
                 let template = include_str!("errors/TypeMismatch.txt");
                 let s = template

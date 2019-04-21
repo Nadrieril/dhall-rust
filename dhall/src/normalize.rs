@@ -18,6 +18,20 @@ impl<'a> Typed<'a> {
     pub fn normalize(self) -> Normalized<'a> {
         Normalized(normalize(self.0), self.1, self.2)
     }
+    pub fn normalize_ctx(
+        self,
+        ctx: &crate::typecheck::TypecheckContext,
+    ) -> Normalized<'a> {
+        Normalized(
+            normalize_whnf(
+                NormalizationContext::from_typecheck_ctx(ctx),
+                self.0,
+            )
+            .normalize_to_expr(),
+            self.1,
+            self.2,
+        )
+    }
     /// Pretends this expression is normalized. Use with care.
     #[allow(dead_code)]
     pub fn skip_normalize(self) -> Normalized<'a> {
@@ -279,7 +293,7 @@ impl NormalizationContext {
         use crate::typecheck::EnvItem::*;
         let mut ctx = Context::new();
         for (k, vs) in tc_ctx.0.iter_keys() {
-            for v in vs.iter().rev() {
+            for v in vs.iter() {
                 let new_item = match v {
                     Type(var, _) => EnvItem::Skip(var.clone()),
                     Value(e) => EnvItem::Expr(normalize_whnf(
