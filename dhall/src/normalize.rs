@@ -322,6 +322,7 @@ enum WHNF {
         (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     ),
     TextLit(Vec<InterpolatedTextContents<Now>>),
+    /// This must not contain a value captured by one of the variants above.
     Expr(OutputSubExpr),
 }
 

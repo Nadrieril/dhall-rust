@@ -72,6 +72,15 @@ pub(crate) use crate::typecheck::TypeInternal;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type<'a>(pub(crate) TypeInternal<'a>);
 
+impl<'a> std::fmt::Display for Type<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self.0.clone().into_normalized() {
+            Ok(e) => e.fmt(f),
+            Err(_) => write!(f, "SuperType"),
+        }
+    }
+}
+
 // Exposed for the macros
 #[doc(hidden)]
 impl<'a> From<SimpleType<'a>> for SubExpr<X, X> {

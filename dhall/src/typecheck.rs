@@ -61,9 +61,7 @@ impl Normalized<'static> {
     }
 }
 impl<'a> Type<'a> {
-    pub(crate) fn as_normalized(
-        &self,
-    ) -> Result<Cow<Normalized<'a>>, TypeError> {
+    fn as_normalized(&self) -> Result<Cow<Normalized<'a>>, TypeError> {
         match &self.0 {
             TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
             TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
@@ -83,6 +81,9 @@ impl<'a> Type<'a> {
             Cow::Borrowed(e) => Ok(Cow::Borrowed(e.unroll_ref())),
             Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
         }
+    }
+    fn internal(&self) -> &TypeInternal {
+        &self.0
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
         use TypeInternal::*;
@@ -109,16 +110,21 @@ impl Type<'static> {
     }
 }
 
+/// A semantic type. This is partially redundant with `dhall_core::Expr`, on purpose. `TypeInternal` should
+/// be limited to syntactic expressions: either written by the user or meant to be printed.
+/// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
+/// but only construct `TypeInternal`s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeInternal<'a> {
-    Expr(Box<Normalized<'a>>),
-    Const(dhall_core::Const),
+    Const(Const),
     /// The type of `Sort`
     SuperType,
+    /// This must not contain a value captured by one of the variants above.
+    Expr(Box<Normalized<'a>>),
 }
 
 impl<'a> TypeInternal<'a> {
-    fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
+    pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         match self {
             TypeInternal::Expr(e) => Ok(*e),
             TypeInternal::Const(c) => Ok(const_to_normalized(c)),
@@ -348,8 +354,8 @@ macro_rules! ensure_simple_type {
 
 macro_rules! ensure_is_const {
     ($x:expr, $err:expr $(,)*) => {
-        match $x.unroll_ref()?.as_ref() {
-            Const(k) => *k,
+        match $x.internal() {
+            TypeInternal::Const(k) => *k,
             _ => return Err($err),
         }
     };

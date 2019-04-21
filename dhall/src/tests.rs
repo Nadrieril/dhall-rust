@@ -140,7 +140,7 @@ pub fn run_test(
                 TypeInference => {
                     let expr = expr.typecheck()?;
                     let ty = expr.get_type()?;
-                    assert_eq_display!(ty.as_normalized()?.as_ref(), &expected);
+                    assert_eq_display!(ty.as_ref(), &expected.into_type());
                 }
                 Normalization => {
                     let expr = expr.skip_typecheck().normalize();
