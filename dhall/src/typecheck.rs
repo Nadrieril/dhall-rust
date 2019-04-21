@@ -28,7 +28,7 @@ impl<'a> Resolved<'a> {
     /// Pretends this expression has been typechecked. Use with care.
     #[allow(dead_code)]
     pub fn skip_typecheck(self) -> Typed<'a> {
-        Typed(self.0.unnote(), None, PhantomData)
+        Typed(self.0.unnote(), None, TypecheckContext::new(), PhantomData)
     }
 }
 impl<'a> Typed<'a> {
@@ -420,7 +420,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize_ctx(ctx).into_type())
+    Ok(type_with(ctx, e)?.normalize().into_type())
 }
 
 fn into_simple_type<'a>(e: SubExpr<X, X>) -> Type<'a> {
@@ -498,7 +498,7 @@ fn type_with(
                 v.clone()
             };
 
-            let v = type_with(ctx, v)?.normalize_ctx(ctx);
+            let v = type_with(ctx, v)?.normalize();
             let e = type_with(&ctx.insert_value(x, v.clone()), e.clone())?;
 
             Ok(RetType(e.get_type_move()?))
@@ -513,8 +513,13 @@ fn type_with(
         ),
     }?;
     match ret {
-        RetExpr(ret) => Ok(Typed(e, Some(mktype(ctx, rc(ret))?), PhantomData)),
-        RetType(typ) => Ok(Typed(e, Some(typ), PhantomData)),
+        RetExpr(ret) => Ok(Typed(
+            e,
+            Some(mktype(ctx, rc(ret))?),
+            ctx.clone(),
+            PhantomData,
+        )),
+        RetType(typ) => Ok(Typed(e, Some(typ), ctx.clone(), PhantomData)),
     }
 }
 
@@ -556,12 +561,12 @@ fn type_last_layer(
             Ok(RetExpr(Let(
                 x.clone(),
                 None,
-                a.normalize_ctx(ctx).embed(),
+                a.normalize().embed(),
                 tb.embed_absurd(),
             )))
         }
         Annot(x, t) => {
-            let t = t.normalize_ctx(ctx).into_type();
+            let t = t.normalize().into_type();
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -595,7 +600,7 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize_ctx(ctx).into_type();
+            let t = t.normalize().into_type();
             ensure_simple_type!(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
@@ -626,13 +631,13 @@ fn type_last_layer(
             Ok(RetExpr(dhall::expr!(List t)))
         }
         OldOptionalLit(None, t) => {
-            let t = t.normalize_ctx(ctx).embed();
+            let t = t.normalize().embed();
             let e = dhall::subexpr!(None t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
         OldOptionalLit(Some(x), t) => {
-            let t = t.normalize_ctx(ctx).embed();
-            let x = x.normalize_ctx(ctx).embed();
+            let t = t.normalize().embed();
+            let x = x.normalize().embed();
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
         }
@@ -702,7 +707,7 @@ fn type_last_layer(
             let mut kts: std::collections::BTreeMap<_, _> = kvs
                 .into_iter()
                 .map(|(x, v)| {
-                    let t = v.map(|x| x.normalize_ctx(ctx).embed());
+                    let t = v.map(|x| x.normalize().embed());
                     Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
@@ -716,7 +721,7 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize_ctx(ctx);
+                let r = r.normalize();
                 match r.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >

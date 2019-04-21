@@ -10,6 +10,8 @@ macro_rules! derive_other_traits {
             }
         }
 
+        impl<'a> std::cmp::Eq for $ty<'a> {}
+
         impl<'a> std::fmt::Display for $ty<'a> {
             fn fmt(
                 &self,
@@ -21,28 +23,29 @@ macro_rules! derive_other_traits {
     };
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Parsed<'a>(
     pub(crate) SubExpr<Span<'a>, Import>,
     pub(crate) ImportRoot,
 );
 derive_other_traits!(Parsed);
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Resolved<'a>(
     pub(crate) SubExpr<Span<'a>, Normalized<'static>>,
 );
 derive_other_traits!(Resolved);
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Typed<'a>(
     pub(crate) SubExpr<X, Normalized<'static>>,
     pub(crate) Option<Type<'static>>,
+    pub(crate) crate::typecheck::TypecheckContext,
     pub(crate) PhantomData<&'a ()>,
 );
 derive_other_traits!(Typed);
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Normalized<'a>(
     pub(crate) SubExpr<X, X>,
     pub(crate) Option<Type<'static>>,
@@ -56,7 +59,7 @@ derive_other_traits!(Normalized);
 /// `Bool`, `{ x: Integer }` or `Natural -> Text`.
 ///
 /// For a more general notion of "type", see [Type].
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub struct SimpleType<'a>(
     pub(crate) SubExpr<X, X>,
     pub(crate) PhantomData<&'a ()>,
@@ -101,7 +104,12 @@ impl<'a> From<SubExpr<X, X>> for SimpleType<'a> {
 #[doc(hidden)]
 impl<'a> From<Normalized<'a>> for Typed<'a> {
     fn from(x: Normalized<'a>) -> Typed<'a> {
-        Typed(x.0.embed_absurd(), x.1, x.2)
+        Typed(
+            x.0.embed_absurd(),
+            x.1,
+            crate::typecheck::TypecheckContext::new(),
+            x.2,
+        )
     }
 }
 

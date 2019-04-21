@@ -16,20 +16,13 @@ type OutputSubExpr = SubExpr<X, X>;
 
 impl<'a> Typed<'a> {
     pub fn normalize(self) -> Normalized<'a> {
-        Normalized(normalize(self.0), self.1, self.2)
-    }
-    pub fn normalize_ctx(
-        self,
-        ctx: &crate::typecheck::TypecheckContext,
-    ) -> Normalized<'a> {
         Normalized(
-            normalize_whnf(
-                NormalizationContext::from_typecheck_ctx(ctx),
+            normalize(
+                NormalizationContext::from_typecheck_ctx(&self.2),
                 self.0,
-            )
-            .normalize_to_expr(),
+            ),
             self.1,
-            self.2,
+            self.3,
         )
     }
     /// Pretends this expression is normalized. Use with care.
@@ -38,7 +31,7 @@ impl<'a> Typed<'a> {
         Normalized(
             self.0.unroll().squash_embed(|e| e.0.clone()),
             self.1,
-            self.2,
+            self.3,
         )
     }
 }
@@ -832,8 +825,8 @@ fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
 /// However, `normalize` will not fail if the expression is ill-typed and will
 /// leave ill-typed sub-expressions unevaluated.
 ///
-fn normalize(e: InputSubExpr) -> OutputSubExpr {
-    normalize_whnf(NormalizationContext::new(), e).normalize_to_expr()
+fn normalize(ctx: NormalizationContext, e: InputSubExpr) -> OutputSubExpr {
+    normalize_whnf(ctx, e).normalize_to_expr()
 }
 
 #[cfg(test)]
