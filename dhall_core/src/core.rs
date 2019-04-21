@@ -520,7 +520,7 @@ pub fn shift0<N, E>(
     shift(delta, &V(label.clone(), 0), in_expr)
 }
 
-fn shift0_multiple<N, E>(
+pub fn shift0_multiple<N, E>(
     deltas: &HashMap<Label, isize>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
@@ -542,47 +542,6 @@ fn shift0_multiple_inner<N, E>(
             |e| shift0_multiple_inner(ctx, deltas, e),
             |l: &Label, e| {
                 shift0_multiple_inner(&ctx.insert(l.clone(), ()), deltas, e)
-            },
-        ),
-    }
-}
-
-/// Substitute all occurrences of a variable with an expression, and
-/// removes the variable from the environment by shifting the indices
-/// of other variables appropriately.
-///
-/// ```text
-/// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
-/// ```
-///
-pub fn subst_shift<N, E>(
-    var: &V<Label>,
-    value: &SubExpr<N, E>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    subst_shift_inner(&HashMap::new(), var, value, in_expr)
-}
-
-fn subst_shift_inner<N, E>(
-    ctx: &HashMap<Label, isize>,
-    var: &V<Label>,
-    value: &SubExpr<N, E>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    use crate::ExprF::*;
-    let V(x, n) = var;
-    let dn = ctx.get(x).unwrap_or(&0);
-    let actual_var = V(x.clone(), add_ui(*n, *dn));
-    match in_expr.as_ref() {
-        Var(v) if v == &actual_var => shift0_multiple(ctx, value),
-        Var(v) => rc(Var(v.shift(-1, &actual_var))),
-        _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| subst_shift_inner(ctx, var, value, e),
-            |l: &Label, e| {
-                let mut ctx = ctx.clone();
-                let count = ctx.entry(l.clone()).or_insert(0);
-                *count += 1;
-                subst_shift_inner(&ctx, var, value, e)
             },
         ),
     }
