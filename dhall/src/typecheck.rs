@@ -32,6 +32,9 @@ impl<'a> Resolved<'a> {
     }
 }
 impl<'a> Typed<'a> {
+    fn normalize_to_type(self) -> Type<'a> {
+        self.normalize().into_type()
+    }
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
         let (expr, ty) = (self.0, self.1);
         ty.ok_or_else(|| {
@@ -55,6 +58,16 @@ impl<'a> Normalized<'a> {
         Type(match self.0.as_ref() {
             ExprF::Const(c) => TypeInternal::Const(*c),
             _ => TypeInternal::Expr(Box::new(self)),
+        })
+    }
+    fn get_type_move(self) -> Result<Type<'static>, TypeError> {
+        let (expr, ty) = (self.0, self.1);
+        ty.ok_or_else(|| {
+            TypeError::new(
+                &TypecheckContext::new(),
+                expr.embed_absurd(),
+                TypeMessage::Untyped,
+            )
         })
     }
 }
@@ -141,6 +154,30 @@ impl<'a> TypeInternal<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) enum TypedImproved {
+    // Pi(TypecheckContext, Const, Label, Type<'static>, Type<'static>),
+    Expr(Typed<'static>),
+}
+
+impl TypedImproved {
+    fn into_typed(self) -> Result<Typed<'static>, TypeError> {
+        match self {
+            // TypedImproved::Pi(ctx, c, x, t, e) => Ok(Typed(
+            //     rc(ExprF::Pi(
+            //         x,
+            //         t.into_normalized()?.embed(),
+            //         e.into_normalized()?.embed(),
+            //     )),
+            //     Some(const_to_type(c)),
+            //     ctx,
+            //     PhantomData,
+            // )),
+            TypedImproved::Expr(e) => Ok(e),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
     Type(V<Label>, Type<'static>),
     Value(Normalized<'static>),
@@ -189,6 +226,15 @@ impl TypecheckContext {
         }
     }
 }
+
+impl PartialEq for TypecheckContext {
+    fn eq(&self, _: &Self) -> bool {
+        // don't count contexts when comparing stuff
+        // this is dirty but needed for now
+        true
+    }
+}
+impl Eq for TypecheckContext {}
 
 fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     use dhall_core::Const::*;
@@ -420,7 +466,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize().into_type())
+    Ok(type_with(ctx, e)?.into_typed()?.normalize_to_type())
 }
 
 fn into_simple_type<'a>(e: SubExpr<X, X>) -> Type<'a> {
@@ -445,7 +491,7 @@ enum Ret {
 fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
-) -> Result<Typed<'static>, TypeError> {
+) -> Result<TypedImproved, TypeError> {
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, e.clone(), msg);
 
@@ -454,7 +500,7 @@ fn type_with(
         Lam(x, t, b) => {
             let t = mktype(ctx, t.clone())?;
             let ctx2 = ctx.insert_type(x, t.clone());
-            let b = type_with(&ctx2, b.clone())?;
+            let b = type_with(&ctx2, b.clone())?.into_typed()?;
             Ok(RetExpr(Pi(
                 x.clone(),
                 t.embed()?,
@@ -469,13 +515,17 @@ fn type_with(
             );
 
             let ctx2 = ctx.insert_type(x, ta.clone());
-            let tb = type_with(&ctx2, tb.clone())?;
+            let tb = mktype(&ctx2, tb.clone())?;
             let kB = ensure_is_const!(
                 &tb.get_type()?,
                 TypeError::new(
                     &ctx2,
                     e.clone(),
-                    InvalidOutputType(tb.get_type_move()?.into_normalized()?),
+                    InvalidOutputType(
+                        tb.into_normalized()?
+                            .get_type_move()?
+                            .into_normalized()?
+                    ),
                 ),
             );
 
@@ -484,11 +534,14 @@ fn type_with(
                 Err(()) => {
                     return Err(mkerr(NoDependentTypes(
                         ta.clone().into_normalized()?,
-                        tb.get_type_move()?.into_normalized()?,
+                        tb.into_normalized()?
+                            .get_type_move()?
+                            .into_normalized()?,
                     )))
                 }
             };
 
+            // return Ok(TypedImproved::Pi(ctx.clone(), k, x.clone(), ta, tb));
             Ok(RetExpr(Const(k)))
         }
         Let(x, t, v, e) => {
@@ -498,28 +551,35 @@ fn type_with(
                 v.clone()
             };
 
-            let v = type_with(ctx, v)?.normalize();
-            let e = type_with(&ctx.insert_value(x, v.clone()), e.clone())?;
+            let v = type_with(ctx, v)?.into_typed()?.normalize();
+            let e = type_with(&ctx.insert_value(x, v.clone()), e.clone())?
+                .into_typed()?;
 
             Ok(RetType(e.get_type_move()?))
         }
-        Embed(p) => return Ok(p.clone().into()),
+        Embed(p) => return Ok(TypedImproved::Expr(p.clone().into())),
         _ => type_last_layer(
             ctx,
             // Typecheck recursively all subexpressions
-            e.as_ref()
-                .traverse_ref_simple(|e| type_with(ctx, e.clone()))?,
+            e.as_ref().traverse_ref_simple(|e| {
+                Ok(type_with(ctx, e.clone())?.into_typed()?)
+            })?,
             e.clone(),
         ),
     }?;
     match ret {
-        RetExpr(ret) => Ok(Typed(
+        RetExpr(ret) => Ok(TypedImproved::Expr(Typed(
             e,
             Some(mktype(ctx, rc(ret))?),
             ctx.clone(),
             PhantomData,
-        )),
-        RetType(typ) => Ok(Typed(e, Some(typ), ctx.clone(), PhantomData)),
+        ))),
+        RetType(typ) => Ok(TypedImproved::Expr(Typed(
+            e,
+            Some(typ),
+            ctx.clone(),
+            PhantomData,
+        ))),
     }
 }
 
@@ -566,7 +626,7 @@ fn type_last_layer(
             )))
         }
         Annot(x, t) => {
-            let t = t.normalize().into_type();
+            let t = t.normalize_to_type();
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -600,7 +660,7 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize().into_type();
+            let t = t.normalize_to_type();
             ensure_simple_type!(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
@@ -633,13 +693,17 @@ fn type_last_layer(
         OldOptionalLit(None, t) => {
             let t = t.normalize().embed();
             let e = dhall::subexpr!(None t);
-            Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
+            Ok(RetType(
+                type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
+            ))
         }
         OldOptionalLit(Some(x), t) => {
             let t = t.normalize().embed();
             let x = x.normalize().embed();
             let e = dhall::subexpr!(Some x : Optional t);
-            Ok(RetType(type_with(ctx, e)?.get_type()?.into_owned()))
+            Ok(RetType(
+                type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
+            ))
         }
         SomeLit(x) => {
             let tx = x.get_type_move()?;
@@ -721,20 +785,23 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize();
-                match r.as_expr().as_ref() {
+                let r = r.normalize_to_type();
+                match r.as_normalized()?.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x
                         Some(Some(t)) => Ok(RetExpr(Pi(
                             x.clone(),
                             t.embed_absurd(),
-                            r.embed(),
+                            r.into_normalized()?.embed(),
                         ))),
-                        Some(None) => Ok(RetType(r.into_type())),
-                        None => Err(mkerr(MissingUnionField(x, r))),
+                        Some(None) => Ok(RetType(r)),
+                        None => Err(mkerr(MissingUnionField(
+                            x,
+                            r.into_normalized()?,
+                        ))),
                     },
-                    _ => Err(mkerr(NotARecord(x, r))),
+                    _ => Err(mkerr(NotARecord(x, r.into_normalized()?))),
                 }
             }
         },
@@ -793,7 +860,7 @@ fn type_of(
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
     let ctx = TypecheckContext::new();
-    let e = type_with(&ctx, e)?;
+    let e = type_with(&ctx, e)?.into_typed()?;
     // Ensure the inferred type isn't SuperType
     e.get_type()?.as_normalized()?;
     Ok(e)
