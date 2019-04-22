@@ -18,15 +18,18 @@ impl<T: StaticType> DynamicType for T {
 
 impl<'a> DynamicType for Type<'a> {
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        match &self.0 {
-            TypeInternal::Expr(e) => e.get_type(),
-            TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
-            TypeInternal::SuperType => Err(TypeError::new(
-                &TypecheckContext::new(),
-                dhall_core::rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
+        Ok(Cow::Owned(
+            self.clone().into_normalized()?.get_type()?.into_owned(),
+        ))
+        // match &self.0 {
+        //     TypeInternal::Expr(e) => e.get_type(),
+        //     TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
+        //     TypeInternal::SuperType => Err(TypeError::new(
+        //         &TypecheckContext::new(),
+        //         dhall_core::rc(ExprF::Const(Const::Sort)),
+        //         TypeMessage::Untyped,
+        //     )),
+        // }
     }
 }
 

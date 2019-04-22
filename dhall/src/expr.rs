@@ -136,12 +136,15 @@ impl<'a> Normalized<'a> {
 #[doc(hidden)]
 impl<'a> Type<'a> {
     pub(crate) fn unnote<'b>(self) -> Type<'b> {
-        use TypeInternal::*;
-        Type(match self.0 {
-            Expr(e) => Expr(Box::new(e.unnote())),
-            Const(c) => Const(c),
-            SuperType => SuperType,
-        })
+        // use TypeInternal::*;
+        // Type(match self.0 {
+        //     Expr(e) => Expr(Box::new(e.unnote())),
+        //     Const(c) => Const(c),
+        //     SuperType => SuperType,
+        // })
+
+        // Yes, this is positively horrible. Please forgive me.
+        unsafe { std::mem::transmute::<Type<'a>, Type<'b>>(self) }
     }
 }
 

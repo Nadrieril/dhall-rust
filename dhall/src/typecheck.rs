@@ -78,15 +78,16 @@ impl Normalized<'static> {
 }
 impl<'a> Type<'a> {
     fn as_normalized(&self) -> Result<Cow<Normalized<'a>>, TypeError> {
-        match &self.0 {
-            TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
-            TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
-            TypeInternal::SuperType => Err(TypeError::new(
-                &TypecheckContext::new(),
-                rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
+        Ok(Cow::Owned(self.0.clone().into_normalized()?))
+        // match &self.0 {
+        //     TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
+        //     TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
+        //     TypeInternal::SuperType => Err(TypeError::new(
+        //         &TypecheckContext::new(),
+        //         rc(ExprF::Const(Const::Sort)),
+        //         TypeMessage::Untyped,
+        //     )),
+        // }
     }
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
@@ -427,20 +428,6 @@ macro_rules! ensure_equal {
     };
 }
 
-// Do not use with Const because they will never match
-macro_rules! ensure_matches {
-    ($x:expr, $pat:pat => $branch:expr, $err:expr $(,)*) => {
-        match $x.unroll_ref()? {
-            Cow::Borrowed(e) => match e {
-                $pat => $branch,
-                _ => return Err($err),
-            },
-            // Can't pattern match because lifetimes
-            Cow::Owned(_) => return Err($err),
-        }
-    };
-}
-
 // Ensure the provided type has type `Type`
 macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {{
@@ -610,10 +597,11 @@ fn type_last_layer(
         },
         App(f, a) => {
             let tf = f.get_type()?;
-            let (x, tx, tb) = ensure_matches!(tf,
+            let tf_expr = tf.unroll_ref()?;
+            let (x, tx, tb) = match tf_expr.as_ref() {
                 Pi(x, tx, tb) => (x, tx, tb),
-                mkerr(NotAFunction(f))
-            );
+                _ => return Err(mkerr(NotAFunction(f))),
+            };
             let tx = mktype(ctx, tx.embed_absurd())?;
             ensure_equal!(a.get_type()?, &tx, {
                 mkerr(TypeMismatch(f, tx.into_normalized()?, a))
