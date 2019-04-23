@@ -195,25 +195,16 @@ impl<'a> TypeInternal<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum TypedImproved {
-    Pi(TypecheckContext, Const, Label, Type<'static>, Type<'static>),
-    Expr(Typed<'static>),
+pub(crate) enum TypedOrType {
+    Typed(Typed<'static>),
+    Type(Type<'static>),
 }
 
-impl TypedImproved {
+impl TypedOrType {
     fn into_typed(self) -> Result<Typed<'static>, TypeError> {
         match self {
-            TypedImproved::Pi(ctx, c, x, t, e) => Ok(Typed(
-                rc(ExprF::Pi(
-                    x,
-                    t.into_normalized()?.embed(),
-                    e.into_normalized()?.embed(),
-                )),
-                Some(const_to_type(c)),
-                ctx,
-                PhantomData,
-            )),
-            TypedImproved::Expr(e) => Ok(e),
+            TypedOrType::Typed(e) => Ok(e),
+            TypedOrType::Type(t) => Ok(t.into_normalized()?.into()),
         }
     }
     fn normalize_to_type(
@@ -221,21 +212,27 @@ impl TypedImproved {
         ctx: &TypecheckContext,
     ) -> Result<Type<'static>, TypeError> {
         match self {
-            TypedImproved::Expr(e) => Ok(e.normalize_to_type(ctx)?),
-            TypedImproved::Pi(ctx, c, x, t, e) => {
-                Ok(Type(TypeInternal::Pi(ctx, c, x, Box::new(t), Box::new(e))))
-            }
+            TypedOrType::Typed(e) => Ok(e.normalize_to_type(ctx)?),
+            TypedOrType::Type(t) => Ok(t),
         }
-        // Ok(self.into_typed()?.normalize_to_type())
     }
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        Ok(Cow::Owned(self.clone().get_type_move()?))
+        match self {
+            TypedOrType::Typed(e) => e.get_type(),
+            TypedOrType::Type(t) => t.get_type(),
+        }
     }
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
-        Ok(self.into_typed()?.get_type_move()?)
+        match self {
+            TypedOrType::Typed(e) => Ok(e.get_type_move()?),
+            TypedOrType::Type(t) => Ok(t.get_type()?.into_owned()),
+        }
     }
     fn normalize(self) -> Result<Normalized<'static>, TypeError> {
-        Ok(self.into_typed()?.normalize())
+        match self {
+            TypedOrType::Typed(e) => Ok(e.normalize()),
+            TypedOrType::Type(t) => Ok(t.into_normalized()?),
+        }
     }
 }
 
@@ -521,7 +518,7 @@ pub(crate) enum TypeIntermediate {
 }
 
 impl TypeIntermediate {
-    fn typecheck(self) -> Result<TypedImproved, TypeError> {
+    fn typecheck(self) -> Result<TypedOrType, TypeError> {
         match &self {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
@@ -566,13 +563,13 @@ impl TypeIntermediate {
                     }
                 };
 
-                Ok(TypedImproved::Pi(
+                Ok(TypedOrType::Type(Type(TypeInternal::Pi(
                     ctx.clone(),
                     k,
                     x.clone(),
-                    ta.clone(),
-                    tb.clone(),
-                ))
+                    Box::new(ta.clone()),
+                    Box::new(tb.clone()),
+                ))))
             }
         }
     }
@@ -618,9 +615,8 @@ enum Ret {
 fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
-) -> Result<TypedImproved, TypeError> {
+) -> Result<TypedOrType, TypeError> {
     use dhall_core::ExprF::*;
-    let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, e.clone(), msg);
 
     use Ret::*;
     let ret = match e.as_ref() {
@@ -655,7 +651,7 @@ fn type_with(
 
             Ok(RetType(e.get_type_move()?))
         }
-        Embed(p) => return Ok(TypedImproved::Expr(p.clone().into())),
+        Embed(p) => return Ok(TypedOrType::Typed(p.clone().into())),
         _ => type_last_layer(
             ctx,
             // Typecheck recursively all subexpressions
@@ -665,13 +661,13 @@ fn type_with(
         ),
     }?;
     match ret {
-        RetExpr(ret) => Ok(TypedImproved::Expr(Typed(
+        RetExpr(ret) => Ok(TypedOrType::Typed(Typed(
             e,
             Some(mktype(ctx, rc(ret))?),
             ctx.clone(),
             PhantomData,
         ))),
-        RetType(typ) => Ok(TypedImproved::Expr(Typed(
+        RetType(typ) => Ok(TypedOrType::Typed(Typed(
             e,
             Some(typ),
             ctx.clone(),
@@ -684,7 +680,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<TypedImproved, Label, X, Normalized<'static>>,
+    e: ExprF<TypedOrType, Label, X, Normalized<'static>>,
     original_e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
     use dhall_core::BinOp::*;
@@ -976,21 +972,21 @@ pub(crate) enum TypeMessage<'a> {
     UnboundVariable(V<Label>),
     InvalidInputType(Normalized<'a>),
     InvalidOutputType(Normalized<'a>),
-    NotAFunction(TypedImproved),
-    TypeMismatch(TypedImproved, Normalized<'a>, TypedImproved),
-    AnnotMismatch(TypedImproved, Normalized<'a>),
+    NotAFunction(TypedOrType),
+    TypeMismatch(TypedOrType, Normalized<'a>, TypedOrType),
+    AnnotMismatch(TypedOrType, Normalized<'a>),
     Untyped,
-    InvalidListElement(usize, Normalized<'a>, TypedImproved),
+    InvalidListElement(usize, Normalized<'a>, TypedOrType),
     InvalidListType(Normalized<'a>),
     InvalidOptionalType(Normalized<'a>),
-    InvalidPredicate(TypedImproved),
-    IfBranchMismatch(TypedImproved, TypedImproved),
-    IfBranchMustBeTerm(bool, TypedImproved),
-    InvalidFieldType(Label, TypedImproved),
+    InvalidPredicate(TypedOrType),
+    IfBranchMismatch(TypedOrType, TypedOrType),
+    IfBranchMustBeTerm(bool, TypedOrType),
+    InvalidFieldType(Label, TypedOrType),
     NotARecord(Label, Normalized<'a>),
-    MissingRecordField(Label, TypedImproved),
+    MissingRecordField(Label, TypedOrType),
     MissingUnionField(Label, Normalized<'a>),
-    BinOpTypeMismatch(BinOp, TypedImproved),
+    BinOpTypeMismatch(BinOp, TypedOrType),
     NoDependentTypes(Normalized<'a>, Normalized<'a>),
     Unimplemented,
 }
