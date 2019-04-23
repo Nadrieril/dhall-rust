@@ -176,6 +176,18 @@ impl TypedImproved {
             TypedImproved::Expr(e) => Ok(e),
         }
     }
+    fn normalize_to_type(self) -> Result<Type<'static>, TypeError> {
+        Ok(self.into_typed()?.normalize_to_type())
+    }
+    fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
+        Ok(Cow::Owned(self.clone().get_type_move()?))
+    }
+    fn get_type_move(self) -> Result<Type<'static>, TypeError> {
+        Ok(self.into_typed()?.get_type_move()?)
+    }
+    fn normalize(self) -> Result<Normalized<'static>, TypeError> {
+        Ok(self.into_typed()?.normalize())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -453,7 +465,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.into_typed()?.normalize_to_type())
+    Ok(type_with(ctx, e)?.normalize_to_type()?)
 }
 
 fn into_simple_type<'a>(e: SubExpr<X, X>) -> Type<'a> {
@@ -549,7 +561,7 @@ fn type_with(
             ctx,
             // Typecheck recursively all subexpressions
             e.as_ref().traverse_ref_simple(|e| {
-                Ok(type_with(ctx, e.clone())?.into_typed()?)
+                Ok(type_with(ctx, e.clone())?)
             })?,
             e.clone(),
         ),
@@ -574,7 +586,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<Typed<'static>, Label, X, Normalized<'static>>,
+    e: ExprF<TypedImproved, Label, X, Normalized<'static>>,
     original_e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
     use dhall_core::BinOp::*;
@@ -609,12 +621,12 @@ fn type_last_layer(
             Ok(RetExpr(Let(
                 x.clone(),
                 None,
-                a.normalize().embed(),
+                a.normalize()?.embed(),
                 tb.embed_absurd(),
             )))
         }
         Annot(x, t) => {
-            let t = t.normalize_to_type();
+            let t = t.normalize_to_type()?;
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -648,7 +660,7 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize_to_type();
+            let t = t.normalize_to_type()?;
             ensure_simple_type!(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
@@ -679,15 +691,15 @@ fn type_last_layer(
             Ok(RetExpr(dhall::expr!(List t)))
         }
         OldOptionalLit(None, t) => {
-            let t = t.normalize().embed();
+            let t = t.normalize()?.embed();
             let e = dhall::subexpr!(None t);
             Ok(RetType(
                 type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
             ))
         }
         OldOptionalLit(Some(x), t) => {
-            let t = t.normalize().embed();
-            let x = x.normalize().embed();
+            let t = t.normalize()?.embed();
+            let x = x.normalize()?.embed();
             let e = dhall::subexpr!(Some x : Optional t);
             Ok(RetType(
                 type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
@@ -759,7 +771,10 @@ fn type_last_layer(
             let mut kts: std::collections::BTreeMap<_, _> = kvs
                 .into_iter()
                 .map(|(x, v)| {
-                    let t = v.map(|x| x.normalize().embed());
+                    let t = match v {
+                        Some(x) => Some(x.normalize()?.embed()),
+                        None => None,
+                    };
                     Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
@@ -773,7 +788,7 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize_to_type();
+                let r = r.normalize_to_type()?;
                 match r.as_normalized()?.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
@@ -860,21 +875,21 @@ pub(crate) enum TypeMessage<'a> {
     UnboundVariable(V<Label>),
     InvalidInputType(Normalized<'a>),
     InvalidOutputType(Normalized<'a>),
-    NotAFunction(Typed<'a>),
-    TypeMismatch(Typed<'a>, Normalized<'a>, Typed<'a>),
-    AnnotMismatch(Typed<'a>, Normalized<'a>),
+    NotAFunction(TypedImproved),
+    TypeMismatch(TypedImproved, Normalized<'a>, TypedImproved),
+    AnnotMismatch(TypedImproved, Normalized<'a>),
     Untyped,
-    InvalidListElement(usize, Normalized<'a>, Typed<'a>),
+    InvalidListElement(usize, Normalized<'a>, TypedImproved),
     InvalidListType(Normalized<'a>),
     InvalidOptionalType(Normalized<'a>),
-    InvalidPredicate(Typed<'a>),
-    IfBranchMismatch(Typed<'a>, Typed<'a>),
-    IfBranchMustBeTerm(bool, Typed<'a>),
-    InvalidFieldType(Label, Typed<'a>),
+    InvalidPredicate(TypedImproved),
+    IfBranchMismatch(TypedImproved, TypedImproved),
+    IfBranchMustBeTerm(bool, TypedImproved),
+    InvalidFieldType(Label, TypedImproved),
     NotARecord(Label, Normalized<'a>),
-    MissingRecordField(Label, Typed<'a>),
+    MissingRecordField(Label, TypedImproved),
     MissingUnionField(Label, Normalized<'a>),
-    BinOpTypeMismatch(BinOp, Typed<'a>),
+    BinOpTypeMismatch(BinOp, TypedImproved),
     NoDependentTypes(Normalized<'a>, Normalized<'a>),
     Unimplemented,
 }
@@ -926,25 +941,25 @@ impl fmt::Display for TypeMessage<'static> {
             // UnboundVariable(_) => {
             //     f.write_str(include_str!("errors/UnboundVariable.txt"))
             // }
-            TypeMismatch(e0, e1, e2) => {
-                let template = include_str!("errors/TypeMismatch.txt");
-                let s = template
-                    .replace("$txt0", &format!("{}", e0.as_expr()))
-                    .replace("$txt1", &format!("{}", e1.as_expr()))
-                    .replace("$txt2", &format!("{}", e2.as_expr()))
-                    .replace(
-                        "$txt3",
-                        &format!(
-                            "{}",
-                            e2.get_type()
-                                .unwrap()
-                                .as_normalized()
-                                .unwrap()
-                                .as_expr()
-                        ),
-                    );
-                f.write_str(&s)
-            }
+            // TypeMismatch(e0, e1, e2) => {
+            //     let template = include_str!("errors/TypeMismatch.txt");
+            //     let s = template
+            //         .replace("$txt0", &format!("{}", e0.as_expr()))
+            //         .replace("$txt1", &format!("{}", e1.as_expr()))
+            //         .replace("$txt2", &format!("{}", e2.as_expr()))
+            //         .replace(
+            //             "$txt3",
+            //             &format!(
+            //                 "{}",
+            //                 e2.get_type()
+            //                     .unwrap()
+            //                     .as_normalized()
+            //                     .unwrap()
+            //                     .as_expr()
+            //             ),
+            //         );
+            //     f.write_str(&s)
+            // }
             _ => f.write_str("Unhandled error message"),
         }
     }
