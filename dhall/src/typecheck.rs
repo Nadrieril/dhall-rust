@@ -57,6 +57,13 @@ impl<'a> Normalized<'a> {
             self.2,
         )
     }
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        Normalized(
+            shift(delta, var, &self.0),
+            self.1.as_ref().map(|t| t.shift(delta, var)),
+            self.2,
+        )
+    }
     pub(crate) fn into_type(self) -> Result<Type<'a>, TypeError> {
         self.into_type_ctx(&TypecheckContext::new())
     }
@@ -118,19 +125,10 @@ impl<'a> Type<'a> {
         &self.0
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
-        use TypeInternal::*;
-        Type(match &self.0 {
-            Expr(e) => Expr(Box::new(e.shift0(delta, label))),
-            Pi(ctx, c, x, t, e) => Pi(
-                ctx.clone(),
-                *c,
-                x.clone(),
-                Box::new(t.shift0(delta, label)),
-                Box::new(e.shift0(delta, label)),
-            ),
-            Const(c) => Const(*c),
-            SuperType => SuperType,
-        })
+        Type(self.0.shift0(delta, label))
+    }
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        Type(self.0.shift(delta, var))
     }
 
     fn const_sort() -> Self {
@@ -190,6 +188,24 @@ impl<'a> TypeInternal<'a> {
                 rc(ExprF::Const(Const::Sort)),
                 TypeMessage::Untyped,
             )),
+        }
+    }
+    fn shift0(&self, delta: isize, label: &Label) -> Self {
+        self.shift(delta, &V(label.clone(), 0))
+    }
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        use TypeInternal::*;
+        match self {
+            Expr(e) => Expr(Box::new(e.shift(delta, var))),
+            Pi(ctx, c, x, t, e) => Pi(
+                ctx.clone(),
+                *c,
+                x.clone(),
+                Box::new(t.shift(delta, var)),
+                Box::new(e.shift(delta, &var.shift0(1, x))),
+            ),
+            Const(c) => Const(*c),
+            SuperType => SuperType,
         }
     }
 }
