@@ -44,6 +44,7 @@ impl<T: SimpleStaticType> StaticType for T {
             std::marker::PhantomData,
         )
         .into_type()
+        .unwrap()
     }
 }
 

@@ -139,6 +139,7 @@ impl<'a> Type<'a> {
         // use TypeInternal::*;
         // Type(match self.0 {
         //     Expr(e) => Expr(Box::new(e.unnote())),
+        //     Pi(ctx, c, x, t, e) => Pi(ctx, c, x, t, e),
         //     Const(c) => Const(c),
         //     SuperType => SuperType,
         // })
@@ -150,6 +151,14 @@ impl<'a> Type<'a> {
 
 impl<'a> SimpleType<'a> {
     pub(crate) fn into_type(self) -> Type<'a> {
-        Normalized(self.0, Some(Type::const_type()), PhantomData).into_type()
+        self.into_type_ctx(&crate::typecheck::TypecheckContext::new())
+    }
+    pub(crate) fn into_type_ctx(
+        self,
+        ctx: &crate::typecheck::TypecheckContext,
+    ) -> Type<'a> {
+        Normalized(self.0, Some(Type::const_type()), PhantomData)
+            .into_type_ctx(ctx)
+            .unwrap()
     }
 }
