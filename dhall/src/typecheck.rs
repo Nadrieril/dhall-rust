@@ -222,18 +222,6 @@ impl TypedImproved {
     ) -> Result<Type<'static>, TypeError> {
         match self {
             TypedImproved::Expr(e) => Ok(e.normalize_to_type(ctx)?),
-            // TypedImproved::Pi(ctx, c, x, t, e) => Ok(Typed(
-            //     rc(ExprF::Pi(
-            //         x,
-            //         t.into_normalized()?.embed(),
-            //         e.into_normalized()?.embed(),
-            //     )),
-            //     Some(const_to_type(c)),
-            //     ctx,
-            //     PhantomData,
-            // )
-            // .normalize()
-            // .into_type()?),
             TypedImproved::Pi(ctx, c, x, t, e) => {
                 Ok(Type(TypeInternal::Pi(ctx, c, x, Box::new(t), Box::new(e))))
             }
@@ -527,6 +515,78 @@ macro_rules! ensure_is_const {
     };
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypeIntermediate {
+    Pi(TypecheckContext, Label, Type<'static>, Type<'static>),
+}
+
+impl TypeIntermediate {
+    fn typecheck(self) -> Result<TypedImproved, TypeError> {
+        match &self {
+            TypeIntermediate::Pi(ctx, x, ta, tb) => {
+                let ctx2 = ctx.insert_type(x, ta.clone());
+
+                let kA = ensure_is_const!(
+                    &ta.get_type()?,
+                    TypeError::new(
+                        ctx,
+                        self.clone().into_expr()?,
+                        InvalidInputType(ta.clone().into_normalized()?),
+                    ),
+                );
+
+                let kB = ensure_is_const!(
+                    &tb.get_type()?,
+                    TypeError::new(
+                        &ctx2,
+                        self.clone().into_expr()?,
+                        InvalidOutputType(
+                            tb.clone()
+                                .into_normalized()?
+                                .get_type_move()?
+                                .into_normalized()?
+                        ),
+                    ),
+                );
+
+                let k = match function_check(kA, kB) {
+                    Ok(k) => k,
+                    Err(()) => {
+                        return Err(TypeError::new(
+                            ctx,
+                            self.clone().into_expr()?,
+                            NoDependentTypes(
+                                ta.clone().into_normalized()?,
+                                tb.clone()
+                                    .into_normalized()?
+                                    .get_type_move()?
+                                    .into_normalized()?,
+                            ),
+                        ))
+                    }
+                };
+
+                Ok(TypedImproved::Pi(
+                    ctx.clone(),
+                    k,
+                    x.clone(),
+                    ta.clone(),
+                    tb.clone(),
+                ))
+            }
+        }
+    }
+    fn into_expr(self) -> Result<SubExpr<X, Normalized<'static>>, TypeError> {
+        match self {
+            TypeIntermediate::Pi(_, x, t, e) => Ok(rc(ExprF::Pi(
+                x,
+                t.into_normalized()?.embed(),
+                e.into_normalized()?.embed(),
+            ))),
+        }
+    }
+}
+
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
 fn mktype(
@@ -565,51 +625,22 @@ fn type_with(
     use Ret::*;
     let ret = match e.as_ref() {
         Lam(x, t, b) => {
-            let t = mktype(ctx, t.clone())?;
-            let ctx2 = ctx.insert_type(x, t.clone());
+            let tx = mktype(ctx, t.clone())?;
+            let ctx2 = ctx.insert_type(x, tx.clone());
             let b = type_with(&ctx2, b.clone())?.into_typed()?;
-            Ok(RetExpr(Pi(
-                x.clone(),
-                t.embed()?,
-                b.get_type_move()?.embed()?,
-            )))
+            let tb = b.get_type_move()?;
+            Ok(RetType(
+                TypeIntermediate::Pi(ctx.clone(), x.clone(), tx, tb)
+                    .typecheck()?
+                    .normalize_to_type(ctx)?,
+            ))
         }
         Pi(x, ta, tb) => {
             let ta = mktype(ctx, ta.clone())?;
-            let kA = ensure_is_const!(
-                &ta.get_type()?,
-                mkerr(InvalidInputType(ta.into_normalized()?)),
-            );
-
             let ctx2 = ctx.insert_type(x, ta.clone());
             let tb = mktype(&ctx2, tb.clone())?;
-            let kB = ensure_is_const!(
-                &tb.get_type()?,
-                TypeError::new(
-                    &ctx2,
-                    e.clone(),
-                    InvalidOutputType(
-                        tb.into_normalized()?
-                            .get_type_move()?
-                            .into_normalized()?
-                    ),
-                ),
-            );
-
-            let k = match function_check(kA, kB) {
-                Ok(k) => k,
-                Err(()) => {
-                    return Err(mkerr(NoDependentTypes(
-                        ta.clone().into_normalized()?,
-                        tb.into_normalized()?
-                            .get_type_move()?
-                            .into_normalized()?,
-                    )))
-                }
-            };
-
-            return Ok(TypedImproved::Pi(ctx.clone(), k, x.clone(), ta, tb));
-            // Ok(RetExpr(Const(k)))
+            return TypeIntermediate::Pi(ctx.clone(), x.clone(), ta, tb)
+                .typecheck();
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -857,12 +888,17 @@ fn type_last_layer(
                 match r.as_normalized()?.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
-                        // TODO: use "_" instead of x
-                        Some(Some(t)) => Ok(RetExpr(Pi(
-                            x.clone(),
-                            t.embed_absurd(),
-                            r.into_normalized()?.embed(),
-                        ))),
+                        // TODO: use "_" instead of x (i.e. compare types using equivalence)
+                        Some(Some(t)) => Ok(RetType(
+                            TypeIntermediate::Pi(
+                                ctx.clone(),
+                                x.clone(),
+                                mktype(ctx, t.embed_absurd())?,
+                                r,
+                            )
+                            .typecheck()?
+                            .normalize_to_type(ctx)?,
+                        )),
                         Some(None) => Ok(RetType(r)),
                         None => Err(mkerr(MissingUnionField(
                             x,
