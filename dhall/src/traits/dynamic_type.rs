@@ -1,8 +1,10 @@
 use crate::expr::*;
 use crate::traits::StaticType;
+#[allow(unused_imports)]
 use crate::typecheck::{
     type_of_const, TypeError, TypeMessage, TypecheckContext,
 };
+#[allow(unused_imports)]
 use dhall_core::{Const, ExprF};
 use std::borrow::Cow;
 

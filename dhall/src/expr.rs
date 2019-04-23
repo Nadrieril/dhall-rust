@@ -114,6 +114,7 @@ impl<'a> From<Normalized<'a>> for Typed<'a> {
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 impl<'a> Typed<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, Normalized<'a>> {
         &self.0
@@ -128,6 +129,7 @@ impl<'a> Normalized<'a> {
     pub(crate) fn into_expr(self) -> SubExpr<X, X> {
         self.0
     }
+    #[allow(dead_code)]
     pub(crate) fn unnote<'b>(self) -> Normalized<'b> {
         Normalized(self.0, self.1, PhantomData)
     }
@@ -150,6 +152,7 @@ impl<'a> Type<'a> {
 }
 
 impl<'a> SimpleType<'a> {
+    #[allow(dead_code)]
     pub(crate) fn into_type(self) -> Type<'a> {
         self.into_type_ctx(&crate::typecheck::TypecheckContext::new())
     }
