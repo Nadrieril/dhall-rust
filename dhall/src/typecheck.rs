@@ -284,9 +284,10 @@ impl TypecheckContext {
     }
     pub(crate) fn insert_type(&self, x: &Label, t: Type<'static>) -> Self {
         TypecheckContext(
-            self.0
-                .map(|_, e| e.shift0(1, x))
-                .insert(x.clone(), EnvItem::Type(V(x.clone(), 0), t)),
+            self.0.map(|_, e| e.shift0(1, x)).insert(
+                x.clone(),
+                EnvItem::Type(V(x.clone(), 0), t.shift0(1, x)),
+            ),
         )
     }
     pub(crate) fn insert_value(
@@ -294,7 +295,9 @@ impl TypecheckContext {
         x: &Label,
         t: Normalized<'static>,
     ) -> Self {
-        TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
+        TypecheckContext(
+            self.0.insert(x.clone(), EnvItem::Value(t.shift0(1, x))),
+        )
     }
     pub(crate) fn lookup(
         &self,
