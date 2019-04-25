@@ -69,6 +69,7 @@ impl<'a> Normalized<'a> {
         Ok(match self.0.as_ref() {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
             ExprF::Pi(_, _, _) | ExprF::RecordType(_) => {
+                // TODO: wasteful
                 type_with(ctx, self.0.embed_absurd())?.normalize_to_type()?
             }
             _ => Type(TypeInternal::Expr(Box::new(self))),
@@ -295,9 +296,7 @@ impl TypecheckContext {
         x: &Label,
         t: Normalized<'static>,
     ) -> Self {
-        TypecheckContext(
-            self.0.insert(x.clone(), EnvItem::Value(t.shift0(1, x))),
-        )
+        TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
     }
     pub(crate) fn lookup(
         &self,
@@ -776,16 +775,13 @@ fn type_last_layer(
             ensure_equal!(a.get_type()?, tx.as_ref(), {
                 mkerr(TypeMismatch(f, tx.into_normalized()?, a))
             });
-            Ok(RetExpr(Let(
-                x.clone(),
-                None,
-                a.normalize()?.embed(),
-                tb.into_normalized()?.into_expr().embed_absurd(),
-            )))
-            // Ok(RetType(mktype(
-            //     &ctx.insert_value(&x, a),
-            //     tb.into_normalized()?.into_expr().embed_absurd(),
-            // )?))
+
+            let ctx2 = ctx.insert_value(&x, a.normalize()?);
+            let tb: Typed = tb.into_normalized()?.into();
+            // Normalize with the updated context
+            let tb = Typed(tb.0, tb.1, ctx2, tb.3).normalize();
+            // Convert to type with the current context
+            Ok(RetType(tb.into_type_ctx(&ctx)?))
         }
         Annot(x, t) => {
             let t = t.normalize_to_type()?;
