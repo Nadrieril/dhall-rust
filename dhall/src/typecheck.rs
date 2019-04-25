@@ -69,7 +69,7 @@ impl<'a> Normalized<'a> {
         Ok(match self.0.as_ref() {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
             ExprF::Pi(_, _, _) => {
-                type_with(ctx, self.0.embed_absurd())?.normalize_to_type(ctx)?
+                type_with(ctx, self.0.embed_absurd())?.normalize_to_type()?
             }
             _ => Type(TypeInternal::Expr(Box::new(self))),
         })
@@ -230,12 +230,12 @@ impl TypedOrType {
             TypedOrType::Type(t) => Ok(t.into_normalized()?.into()),
         }
     }
-    fn normalize_to_type(
-        self,
-        ctx: &TypecheckContext,
-    ) -> Result<Type<'static>, TypeError> {
+    fn normalize_to_type(self) -> Result<Type<'static>, TypeError> {
         match self {
-            TypedOrType::Typed(e) => Ok(e.normalize().into_type_ctx(ctx)?),
+            TypedOrType::Typed(e) => {
+                let ctx = e.2.clone();
+                Ok(e.normalize().into_type_ctx(&ctx)?)
+            }
             TypedOrType::Type(t) => Ok(t),
         }
     }
@@ -648,7 +648,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize_to_type(ctx)?)
+    Ok(type_with(ctx, e)?.normalize_to_type()?)
 }
 
 fn into_simple_type<'a>(ctx: &TypecheckContext, e: SubExpr<X, X>) -> Type<'a> {
@@ -688,7 +688,7 @@ fn type_with(
             Ok(RetType(
                 TypeIntermediate::Pi(ctx.clone(), x.clone(), tx, tb)
                     .typecheck()?
-                    .normalize_to_type(ctx)?,
+                    .normalize_to_type()?,
             ))
         }
         Pi(x, ta, tb) => {
@@ -785,7 +785,7 @@ fn type_last_layer(
             // )?))
         }
         Annot(x, t) => {
-            let t = t.normalize_to_type(ctx)?;
+            let t = t.normalize_to_type()?;
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -819,7 +819,7 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize_to_type(ctx)?;
+            let t = t.normalize_to_type()?;
             ensure_simple_type!(
                 t,
                 mkerr(InvalidListType(t.into_normalized()?)),
@@ -876,7 +876,7 @@ fn type_last_layer(
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
                 .into_iter()
-                .map(|(x, t)| Ok((x, t.normalize_to_type(ctx)?)))
+                .map(|(x, t)| Ok((x, t.normalize_to_type()?)))
                 .collect::<Result<_, _>>()?;
             Ok(RetTypedOrType(
                 TypeIntermediate::RecordType(ctx.clone(), kts).typecheck()?,
@@ -913,7 +913,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::RecordType(ctx.clone(), kts)
                     .typecheck()?
-                    .normalize_to_type(ctx)?,
+                    .normalize_to_type()?,
             ))
         }
         UnionLit(x, v, kvs) => {
@@ -942,7 +942,7 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize_to_type(ctx)?;
+                let r = r.normalize_to_type()?;
                 match r.as_normalized()?.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
@@ -955,7 +955,7 @@ fn type_last_layer(
                                 r,
                             )
                             .typecheck()?
-                            .normalize_to_type(ctx)?,
+                            .normalize_to_type()?,
                         )),
                         Some(None) => Ok(RetType(r)),
                         None => Err(mkerr(MissingUnionField(
