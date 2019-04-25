@@ -19,6 +19,7 @@ dhall_generator = { path = "../dhall_generator" }
 [dev-dependencies]
 pretty_assertions = "0.6.1"
 stacker = "0.1.5"
+proptest = "0.9.2"
 
 [build-dependencies]
 walkdir = "2"
