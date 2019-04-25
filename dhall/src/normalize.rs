@@ -639,7 +639,9 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
         ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
         ExprF::Note(_, e) => normalize_whnf(ctx, e.clone()),
         // TODO: wasteful to retraverse everything
-        ExprF::Embed(e) => normalize_whnf(ctx, e.0.embed_absurd()),
+        ExprF::Embed(e) => {
+            normalize_whnf(NormalizationContext::new(), e.0.embed_absurd())
+        }
         ExprF::Let(x, _, r, b) => {
             let r = normalize_whnf(ctx.clone(), r.clone());
             normalize_whnf(ctx.insert(x, r), b.clone())
