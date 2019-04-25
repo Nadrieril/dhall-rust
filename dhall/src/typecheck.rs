@@ -68,7 +68,7 @@ impl<'a> Normalized<'a> {
     ) -> Result<Type<'a>, TypeError> {
         Ok(match self.0.as_ref() {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
-            ExprF::Pi(_, _, _) => {
+            ExprF::Pi(_, _, _) | ExprF::RecordType(_) => {
                 type_with(ctx, self.0.embed_absurd())?.normalize_to_type()?
             }
             _ => Type(TypeInternal::Expr(Box::new(self))),
@@ -934,22 +934,17 @@ fn type_last_layer(
             kts.insert(x, Some(t));
             Ok(RetExpr(UnionType(kts)))
         }
-        // Field(r, x) => match &r.get_type()?.0 {
-        //     TypeInternal::RecordType(_, _, kts) => match kts.get(&x) {
-        //         Some(t) => Ok(RetType(t.clone())),
-        //         None => Err(mkerr(MissingRecordField(x, r))),
-        //     },
-        Field(r, x) => match r.get_type()?.unroll_ref()?.as_ref() {
-            RecordType(kts) => match kts.get(&x) {
-                Some(t) => Ok(RetExpr(t.unroll().embed_absurd())),
+        Field(r, x) => match &r.get_type()?.0 {
+            TypeInternal::RecordType(_, _, kts) => match kts.get(&x) {
+                Some(t) => Ok(RetType(t.clone())),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
-            _ => {
+            TypeInternal::Const(_) => {
                 let r = r.normalize_to_type()?;
                 match r.as_normalized()?.as_expr().as_ref() {
                     UnionType(kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
-                        // TODO: use "_" instead of x (i.e. compare types using equivalence)
+                        // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                         Some(Some(t)) => Ok(RetType(
                             TypeIntermediate::Pi(
                                 ctx.clone(),
@@ -969,6 +964,10 @@ fn type_last_layer(
                     _ => Err(mkerr(NotARecord(x, r.into_normalized()?))),
                 }
             }
+            _ => Err(mkerr(NotARecord(
+                x,
+                r.normalize_to_type()?.into_normalized()?,
+            ))),
         },
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
