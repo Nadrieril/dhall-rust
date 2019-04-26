@@ -96,15 +96,6 @@ impl<'a> Type<'a> {
         &self,
     ) -> Result<Cow<Normalized<'a>>, TypeError> {
         Ok(Cow::Owned(self.0.clone().into_normalized()?))
-        // match &self.0 {
-        //     TypeInternal::Expr(e) => Ok(Cow::Borrowed(e)),
-        //     TypeInternal::Const(c) => Ok(Cow::Owned(const_to_normalized(*c))),
-        //     TypeInternal::SuperType => Err(TypeError::new(
-        //         &TypecheckContext::new(),
-        //         rc(ExprF::Const(Const::Sort)),
-        //         TypeMessage::Untyped,
-        //     )),
-        // }
     }
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
@@ -165,6 +156,8 @@ pub(crate) enum TypeInternal<'a> {
         Const,
         BTreeMap<Label, Option<Type<'static>>>,
     ),
+    ListType(TypecheckContext, Box<Type<'static>>),
+    OptionalType(TypecheckContext, Box<Type<'static>>),
     /// The type of `Sort`
     SuperType,
     /// This must not contain a value captured by one of the variants above.
@@ -191,6 +184,30 @@ impl<'a> TypeInternal<'a> {
             }
             TypeInternal::UnionType(ctx, c, kts) => {
                 (ctx, ExprF::UnionType(kts), const_to_type(c))
+            }
+            TypeInternal::ListType(ctx, t) => {
+                return Ok(Typed(
+                    rc(ExprF::App(
+                        rc(ExprF::Builtin(Builtin::List)),
+                        t.embed()?,
+                    )),
+                    Some(Type::const_type()),
+                    ctx,
+                    PhantomData,
+                )
+                .normalize())
+            }
+            TypeInternal::OptionalType(ctx, t) => {
+                return Ok(Typed(
+                    rc(ExprF::App(
+                        rc(ExprF::Builtin(Builtin::Optional)),
+                        t.embed()?,
+                    )),
+                    Some(Type::const_type()),
+                    ctx,
+                    PhantomData,
+                )
+                .normalize())
             }
         };
         let typed = Typed(
@@ -231,6 +248,12 @@ impl<'a> TypeInternal<'a> {
                     })
                     .collect(),
             ),
+            ListType(ctx, t) => {
+                ListType(ctx.clone(), Box::new(t.shift(delta, var)))
+            }
+            OptionalType(ctx, t) => {
+                OptionalType(ctx.clone(), Box::new(t.shift(delta, var)))
+            }
             Const(c) => Const(*c),
             SuperType => SuperType,
         }
@@ -533,7 +556,7 @@ macro_rules! ensure_equal {
 macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {{
         match $x.get_type()?.internal() {
-            TypeInternal::Const(Type) => {}
+            TypeInternal::Const(dhall_core::Const::Type) => {}
             _ => return Err($err),
         }
     }};
@@ -544,6 +567,8 @@ pub(crate) enum TypeIntermediate {
     Pi(TypecheckContext, Label, Type<'static>, Type<'static>),
     RecordType(TypecheckContext, BTreeMap<Label, Type<'static>>),
     UnionType(TypecheckContext, BTreeMap<Label, Option<Type<'static>>>),
+    ListType(TypecheckContext, Type<'static>),
+    OptionalType(TypecheckContext, Type<'static>),
 }
 
 impl TypeIntermediate {
@@ -661,6 +686,29 @@ impl TypeIntermediate {
                     kts.clone(),
                 ))))
             }
+            TypeIntermediate::ListType(ctx, t) => {
+                ensure_simple_type!(
+                    t,
+                    mkerr(ctx, InvalidListType(t.clone().into_normalized()?))?,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::ListType(
+                    ctx.clone(),
+                    Box::new(t.clone()),
+                ))))
+            }
+            TypeIntermediate::OptionalType(ctx, t) => {
+                ensure_simple_type!(
+                    t,
+                    mkerr(
+                        ctx,
+                        InvalidOptionalType(t.clone().into_normalized()?)
+                    )?,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::OptionalType(
+                    ctx.clone(),
+                    Box::new(t.clone()),
+                ))))
+            }
         }
     }
     fn into_expr(self) -> Result<SubExpr<X, Normalized<'static>>, TypeError> {
@@ -668,6 +716,18 @@ impl TypeIntermediate {
             TypeIntermediate::Pi(_, x, t, e) => ExprF::Pi(x, t, e),
             TypeIntermediate::RecordType(_, kts) => ExprF::RecordType(kts),
             TypeIntermediate::UnionType(_, kts) => ExprF::UnionType(kts),
+            TypeIntermediate::ListType(_, t) => {
+                return Ok(rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::List)),
+                    t.embed()?,
+                )))
+            }
+            TypeIntermediate::OptionalType(_, t) => {
+                return Ok(rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::Optional)),
+                    t.embed()?,
+                )))
+            }
         }
         .traverse_ref_simple(|e| e.clone().embed())?))
     }
@@ -744,6 +804,17 @@ fn type_with(
 
             Ok(RetType(e.get_type_move()?))
         }
+        OldOptionalLit(None, t) => {
+            let t = t.clone();
+            let e = dhall::subexpr!(None t);
+            return type_with(ctx, e);
+        }
+        OldOptionalLit(Some(x), t) => {
+            let t = t.clone();
+            let x = x.clone();
+            let e = dhall::subexpr!(Some x : Optional t);
+            return type_with(ctx, e);
+        }
         Embed(p) => Ok(RetTypedOrType(TypedOrType::Typed(p.clone().into()))),
         _ => type_last_layer(
             ctx,
@@ -779,7 +850,6 @@ fn type_last_layer(
 ) -> Result<Ret, TypeError> {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
-    use dhall_core::Const::*;
     use dhall_core::ExprF::*;
     let mkerr = |msg: TypeMessage<'static>| {
         TypeError::new(ctx, original_e.clone(), msg)
@@ -848,20 +918,15 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let t = t.normalize_to_type()?;
-            ensure_simple_type!(
-                t,
-                mkerr(InvalidListType(t.into_normalized()?)),
-            );
-            let t = t.embed()?;
-            Ok(RetExpr(dhall::expr!(List t)))
+            Ok(RetType(
+                TypeIntermediate::ListType(ctx.clone(), t)
+                    .typecheck()?
+                    .normalize_to_type()?,
+            ))
         }
         NEListLit(xs) => {
             let mut iter = xs.into_iter().enumerate();
             let (_, x) = iter.next().unwrap();
-            ensure_simple_type!(
-                x.get_type()?,
-                mkerr(InvalidListType(x.get_type_move()?.into_normalized()?)),
-            );
             for (i, y) in iter {
                 ensure_equal!(
                     x.get_type()?,
@@ -874,32 +939,19 @@ fn type_last_layer(
                 );
             }
             let t = x.get_type_move()?;
-            let t = t.embed()?;
-            Ok(RetExpr(dhall::expr!(List t)))
-        }
-        OldOptionalLit(None, t) => {
-            let t = t.normalize()?.embed();
-            let e = dhall::subexpr!(None t);
             Ok(RetType(
-                type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
-            ))
-        }
-        OldOptionalLit(Some(x), t) => {
-            let t = t.normalize()?.embed();
-            let x = x.normalize()?.embed();
-            let e = dhall::subexpr!(Some x : Optional t);
-            Ok(RetType(
-                type_with(ctx, e)?.into_typed()?.get_type()?.into_owned(),
+                TypeIntermediate::ListType(ctx.clone(), t)
+                    .typecheck()?
+                    .normalize_to_type()?,
             ))
         }
         SomeLit(x) => {
-            let tx = x.get_type_move()?;
-            ensure_simple_type!(
-                tx,
-                mkerr(InvalidOptionalType(tx.into_normalized()?)),
-            );
-            let t = tx.embed()?;
-            Ok(RetExpr(dhall::expr!(Optional t)))
+            let t = x.get_type_move()?;
+            Ok(RetType(
+                TypeIntermediate::OptionalType(ctx.clone(), t)
+                    .typecheck()?
+                    .normalize_to_type()?,
+            ))
         }
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
