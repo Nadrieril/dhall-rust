@@ -532,20 +532,11 @@ macro_rules! ensure_equal {
 // Ensure the provided type has type `Type`
 macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {{
-        let k = ensure_is_const!($x.get_type()?, $err);
-        if k != Type {
-            return Err($err);
-        }
-    }};
-}
-
-macro_rules! ensure_is_const {
-    ($x:expr, $err:expr $(,)*) => {
-        match $x.internal() {
-            TypeInternal::Const(k) => *k,
+        match $x.get_type()?.internal() {
+            TypeInternal::Const(Type) => {}
             _ => return Err($err),
         }
-    };
+    }};
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -563,26 +554,30 @@ impl TypeIntermediate {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
 
-                let kA = ensure_is_const!(
-                    &ta.get_type()?,
-                    mkerr(
-                        ctx,
-                        InvalidInputType(ta.clone().into_normalized()?),
-                    )?,
-                );
+                let kA = match ta.get_type()?.internal() {
+                    TypeInternal::Const(k) => *k,
+                    _ => {
+                        return Err(mkerr(
+                            ctx,
+                            InvalidInputType(ta.clone().into_normalized()?),
+                        )?)
+                    }
+                };
 
-                let kB = ensure_is_const!(
-                    &tb.get_type()?,
-                    mkerr(
-                        &ctx2,
-                        InvalidOutputType(
-                            tb.clone()
-                                .into_normalized()?
-                                .get_type_move()?
-                                .into_normalized()?
-                        ),
-                    )?,
-                );
+                let kB = match tb.get_type()?.internal() {
+                    TypeInternal::Const(k) => *k,
+                    _ => {
+                        return Err(mkerr(
+                            &ctx2,
+                            InvalidOutputType(
+                                tb.clone()
+                                    .into_normalized()?
+                                    .get_type_move()?
+                                    .into_normalized()?,
+                            ),
+                        )?)
+                    }
+                };
 
                 let k = match function_check(kA, kB) {
                     Ok(k) => k,
@@ -612,19 +607,10 @@ impl TypeIntermediate {
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
-                    let k2 = ensure_is_const!(
-                        t.get_type()?,
-                        mkerr(
-                            ctx,
-                            InvalidFieldType(
-                                x.clone(),
-                                TypedOrType::Type(t.clone())
-                            )
-                        )?
-                    );
-                    match k {
-                        None => k = Some(k2),
-                        Some(k1) if k1 != k2 => {
+                    match (k, t.get_type()?.internal()) {
+                        (None, TypeInternal::Const(k2)) => k = Some(*k2),
+                        (Some(k1), TypeInternal::Const(k2)) if k1 == *k2 => {}
+                        _ => {
                             return Err(mkerr(
                                 ctx,
                                 InvalidFieldType(
@@ -633,7 +619,6 @@ impl TypeIntermediate {
                                 ),
                             )?)
                         }
-                        Some(_) => {}
                     }
                 }
                 // An empty record type has type Type
@@ -650,19 +635,11 @@ impl TypeIntermediate {
                 let mut k = None;
                 for (x, t) in kts {
                     if let Some(t) = t {
-                        let k2 = ensure_is_const!(
-                            t.get_type()?,
-                            mkerr(
-                                ctx,
-                                InvalidFieldType(
-                                    x.clone(),
-                                    TypedOrType::Type(t.clone())
-                                )
-                            )?
-                        );
-                        match k {
-                            None => k = Some(k2),
-                            Some(k1) if k1 != k2 => {
+                        match (k, t.get_type()?.internal()) {
+                            (None, TypeInternal::Const(k2)) => k = Some(*k2),
+                            (Some(k1), TypeInternal::Const(k2))
+                                if k1 == *k2 => {}
+                            _ => {
                                 return Err(mkerr(
                                     ctx,
                                     InvalidFieldType(
@@ -671,7 +648,6 @@ impl TypeIntermediate {
                                     ),
                                 )?)
                             }
-                            Some(_) => {}
                         }
                     }
                 }
