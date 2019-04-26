@@ -68,7 +68,7 @@ impl<'a> Normalized<'a> {
     ) -> Result<Type<'a>, TypeError> {
         Ok(match self.0.as_ref() {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
-            ExprF::Pi(_, _, _) | ExprF::RecordType(_) => {
+            ExprF::Pi(_, _, _) | ExprF::RecordType(_) | ExprF::UnionType(_) => {
                 // TODO: wasteful
                 type_with(ctx, self.0.embed_absurd())?.normalize_to_type()?
             }
@@ -116,8 +116,11 @@ impl<'a> Type<'a> {
             Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
         }
     }
-    fn internal(&self) -> &TypeInternal {
+    fn internal(&self) -> &TypeInternal<'a> {
         &self.0
+    }
+    fn into_internal(self) -> TypeInternal<'a> {
+        self.0
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
         Type(self.0.shift0(delta, label))
@@ -157,6 +160,11 @@ pub(crate) enum TypeInternal<'a> {
         Box<Type<'static>>,
     ),
     RecordType(TypecheckContext, Const, BTreeMap<Label, Type<'static>>),
+    UnionType(
+        TypecheckContext,
+        Const,
+        BTreeMap<Label, Option<Type<'static>>>,
+    ),
     /// The type of `Sort`
     SuperType,
     /// This must not contain a value captured by one of the variants above.
@@ -165,31 +173,33 @@ pub(crate) enum TypeInternal<'a> {
 
 impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
-        match self {
-            TypeInternal::Expr(e) => Ok(*e),
-            TypeInternal::Pi(ctx, c, x, t, e) => Ok(Typed(
-                rc(ExprF::Pi(x, t, e)
-                    .traverse_ref_simple(|e| e.clone().embed())?),
-                Some(const_to_type(c)),
-                ctx,
-                PhantomData,
-            )
-            .normalize()),
-            TypeInternal::RecordType(ctx, c, kts) => Ok(Typed(
-                rc(ExprF::RecordType(kts)
-                    .traverse_ref_simple(|e| e.clone().embed())?),
-                Some(const_to_type(c)),
-                ctx,
-                PhantomData,
-            )
-            .normalize()),
-            TypeInternal::Const(c) => Ok(const_to_normalized(c)),
-            TypeInternal::SuperType => Err(TypeError::new(
-                &TypecheckContext::new(),
-                rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
+        let (ctx, e, t) = match self {
+            TypeInternal::Expr(e) => return Ok(*e),
+            TypeInternal::Const(c) => return Ok(const_to_normalized(c)),
+            TypeInternal::SuperType => {
+                return Err(TypeError::new(
+                    &TypecheckContext::new(),
+                    rc(ExprF::Const(Const::Sort)),
+                    TypeMessage::Untyped,
+                ))
+            }
+            TypeInternal::Pi(ctx, c, x, t, e) => {
+                (ctx, ExprF::Pi(x, *t, *e), const_to_type(c))
+            }
+            TypeInternal::RecordType(ctx, c, kts) => {
+                (ctx, ExprF::RecordType(kts), const_to_type(c))
+            }
+            TypeInternal::UnionType(ctx, c, kts) => {
+                (ctx, ExprF::UnionType(kts), const_to_type(c))
+            }
+        };
+        let typed = Typed(
+            rc(e.traverse_ref_simple(|e| e.clone().embed())?),
+            Some(t),
+            ctx,
+            PhantomData,
+        );
+        Ok(typed.normalize())
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
         self.shift(delta, &V(label.clone(), 0))
@@ -210,6 +220,15 @@ impl<'a> TypeInternal<'a> {
                 *c,
                 kts.iter()
                     .map(|(k, v)| (k.clone(), v.shift(delta, var)))
+                    .collect(),
+            ),
+            UnionType(ctx, c, kts) => UnionType(
+                ctx.clone(),
+                *c,
+                kts.iter()
+                    .map(|(k, v)| {
+                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                    })
                     .collect(),
             ),
             Const(c) => Const(*c),
@@ -401,7 +420,7 @@ where
             (_, _) => false,
         }
     }
-    match (&eL0.borrow().0, &eR0.borrow().0) {
+    match (eL0.borrow().internal(), eR0.borrow().internal()) {
         (TypeInternal::SuperType, TypeInternal::SuperType) => true,
         (TypeInternal::SuperType, _) => false,
         (_, TypeInternal::SuperType) => false,
@@ -420,15 +439,7 @@ where
 }
 
 fn const_to_normalized<'a>(c: Const) -> Normalized<'a> {
-    Normalized(
-        rc(ExprF::Const(c)),
-        Some(Type(match c {
-            Const::Type => TypeInternal::Const(Const::Kind),
-            Const::Kind => TypeInternal::Const(Const::Sort),
-            Const::Sort => TypeInternal::SuperType,
-        })),
-        PhantomData,
-    )
+    Normalized(rc(ExprF::Const(c)), Some(type_of_const(c)), PhantomData)
 }
 
 fn const_to_type<'a>(c: Const) -> Type<'a> {
@@ -541,6 +552,7 @@ macro_rules! ensure_is_const {
 pub(crate) enum TypeIntermediate {
     Pi(TypecheckContext, Label, Type<'static>, Type<'static>),
     RecordType(TypecheckContext, BTreeMap<Label, Type<'static>>),
+    UnionType(TypecheckContext, BTreeMap<Label, Option<Type<'static>>>),
 }
 
 impl TypeIntermediate {
@@ -633,12 +645,53 @@ impl TypeIntermediate {
                     kts.clone(),
                 ))))
             }
+            TypeIntermediate::UnionType(ctx, kts) => {
+                // Check that all types are the same const
+                let mut k = None;
+                for (x, t) in kts {
+                    if let Some(t) = t {
+                        let k2 = ensure_is_const!(
+                            t.get_type()?,
+                            mkerr(
+                                ctx,
+                                InvalidFieldType(
+                                    x.clone(),
+                                    TypedOrType::Type(t.clone())
+                                )
+                            )?
+                        );
+                        match k {
+                            None => k = Some(k2),
+                            Some(k1) if k1 != k2 => {
+                                return Err(mkerr(
+                                    ctx,
+                                    InvalidFieldType(
+                                        x.clone(),
+                                        TypedOrType::Type(t.clone()),
+                                    ),
+                                )?)
+                            }
+                            Some(_) => {}
+                        }
+                    }
+                }
+
+                // An empty union type has type Type;
+                // an union type with only unary variants also has type Type
+                let k = k.unwrap_or(dhall_core::Const::Type);
+                Ok(TypedOrType::Type(Type(TypeInternal::UnionType(
+                    ctx.clone(),
+                    k,
+                    kts.clone(),
+                ))))
+            }
         }
     }
     fn into_expr(self) -> Result<SubExpr<X, Normalized<'static>>, TypeError> {
         Ok(rc(match self {
             TypeIntermediate::Pi(_, x, t, e) => ExprF::Pi(x, t, e),
             TypeIntermediate::RecordType(_, kts) => ExprF::RecordType(kts),
+            TypeIntermediate::UnionType(_, kts) => ExprF::UnionType(kts),
         }
         .traverse_ref_simple(|e| e.clone().embed())?))
     }
@@ -768,7 +821,7 @@ fn type_last_layer(
         },
         App(f, a) => {
             let tf = f.get_type()?.into_owned();
-            let (x, tx, tb) = match tf.0 {
+            let (x, tx, tb) = match tf.into_internal() {
                 TypeInternal::Pi(_, _, x, tx, tb) => (x, tx, tb),
                 _ => return Err(mkerr(NotAFunction(f))),
             };
@@ -882,27 +935,21 @@ fn type_last_layer(
             ))
         }
         UnionType(kts) => {
-            // Check that all types are the same const
-            let mut k = None;
-            for (x, t) in kts {
-                if let Some(t) = t {
-                    let k2 = ensure_is_const!(
-                        t.get_type()?,
-                        mkerr(InvalidFieldType(x, t))
-                    );
-                    match k {
-                        None => k = Some(k2),
-                        Some(k1) if k1 != k2 => {
-                            return Err(mkerr(InvalidFieldType(x, t)))
-                        }
-                        Some(_) => {}
-                    }
-                }
-            }
-            // An empty union type has type Type;
-            // an union type with only unary variants also has type Type
-            let k = k.unwrap_or(dhall_core::Const::Type);
-            Ok(RetType(const_to_type(k)))
+            let kts: BTreeMap<_, _> = kts
+                .into_iter()
+                .map(|(x, t)| {
+                    Ok((
+                        x,
+                        match t {
+                            None => None,
+                            Some(t) => Some(t.normalize_to_type()?),
+                        },
+                    ))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(RetTypedOrType(
+                TypeIntermediate::UnionType(ctx.clone(), kts).typecheck()?,
+            ))
         }
         RecordLit(kvs) => {
             let kts = kvs
@@ -920,32 +967,36 @@ fn type_last_layer(
                 .into_iter()
                 .map(|(x, v)| {
                     let t = match v {
-                        Some(x) => Some(x.normalize()?.embed()),
+                        Some(x) => Some(x.normalize_to_type()?),
                         None => None,
                     };
                     Ok((x, t))
                 })
                 .collect::<Result<_, _>>()?;
-            let t = v.get_type_move()?.embed()?;
+            let t = v.get_type_move()?;
             kts.insert(x, Some(t));
-            Ok(RetExpr(UnionType(kts)))
+            Ok(RetType(
+                TypeIntermediate::UnionType(ctx.clone(), kts)
+                    .typecheck()?
+                    .normalize_to_type()?,
+            ))
         }
-        Field(r, x) => match &r.get_type()?.0 {
+        Field(r, x) => match r.get_type()?.internal() {
             TypeInternal::RecordType(_, _, kts) => match kts.get(&x) {
                 Some(t) => Ok(RetType(t.clone())),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             TypeInternal::Const(_) => {
                 let r = r.normalize_to_type()?;
-                match r.as_normalized()?.as_expr().as_ref() {
-                    UnionType(kts) => match kts.get(&x) {
+                match r.internal() {
+                    TypeInternal::UnionType(_, _, kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                         Some(Some(t)) => Ok(RetType(
                             TypeIntermediate::Pi(
                                 ctx.clone(),
                                 x.clone(),
-                                mktype(ctx, t.embed_absurd())?,
+                                t.clone(),
                                 r,
                             )
                             .typecheck()?
