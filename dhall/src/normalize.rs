@@ -36,10 +36,6 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn shift0_mut<N, E>(delta: isize, label: &Label, in_expr: &mut SubExpr<N, E>) {
-    let new_expr = shift0(delta, label, &in_expr);
-    std::mem::replace(in_expr, new_expr);
-}
 
 fn shift_mut<N, E>(delta: isize, var: &V<Label>, in_expr: &mut SubExpr<N, E>) {
     let new_expr = shift(delta, var, &in_expr);
@@ -245,7 +241,7 @@ impl EnvItem {
         match self {
             Expr(e) => {
                 let mut e = e.clone();
-                e.shift0(delta, x);
+                e.shift(delta, &V(x.clone(), 0));
                 Expr(e)
             }
             Skip(var) => Skip(var.shift0(delta, x)),
@@ -537,7 +533,7 @@ impl WHNF {
         WHNF::AppliedBuiltin(b, vec![])
     }
 
-    fn shift0(&mut self, delta: isize, label: &Label) {
+    fn shift(&mut self, delta: isize, var: &V<Label>) {
         match self {
             WHNF::NaturalSuccClosure
             | WHNF::BoolLit(_)
@@ -547,54 +543,54 @@ impl WHNF {
             | WHNF::NEOptionalLit(n)
             | WHNF::OptionalSomeClosure(n)
             | WHNF::EmptyListLit(n) => {
-                n.shift0(delta, label);
+                n.shift(delta, var);
             }
-            WHNF::Lam(_, t, (_, e)) => {
-                t.shift0(delta, label);
-                shift_mut(delta, &V(label.clone(), 1), e);
+            WHNF::Lam(x, t, (_, e)) => {
+                t.shift(delta, var);
+                shift_mut(delta, &var.shift0(1, x), e);
             }
             WHNF::AppliedBuiltin(_, args) => {
                 for x in args.iter_mut() {
-                    x.shift0(delta, label);
+                    x.shift(delta, var);
                 }
             }
             WHNF::ListConsClosure(t, v) => {
-                t.shift0(delta, label);
+                t.shift(delta, var);
                 for x in v.iter_mut() {
-                    x.shift0(delta, label);
+                    x.shift(delta, var);
                 }
             }
             WHNF::NEListLit(elts) => {
                 for x in elts.iter_mut() {
-                    x.shift0(delta, label);
+                    x.shift(delta, var);
                 }
             }
             WHNF::RecordLit(kvs) | WHNF::RecordType(kvs) => {
                 for x in kvs.values_mut() {
-                    x.shift0(delta, label);
+                    x.shift(delta, var);
                 }
             }
             WHNF::UnionType(_, kts) | WHNF::UnionConstructor(_, _, kts) => {
                 for x in kts.values_mut().flat_map(|opt| opt) {
-                    shift0_mut(delta, label, x);
+                    shift_mut(delta, var, x);
                 }
             }
             WHNF::UnionLit(_, v, (_, kts)) => {
-                v.shift0(delta, label);
+                v.shift(delta, var);
                 for x in kts.values_mut().flat_map(|opt| opt) {
-                    shift0_mut(delta, label, x);
+                    shift_mut(delta, var, x);
                 }
             }
             WHNF::TextLit(elts) => {
                 for x in elts.iter_mut() {
                     use InterpolatedTextContents::{Expr, Text};
                     match x {
-                        Expr(n) => n.shift0(delta, label),
+                        Expr(n) => n.shift(delta, var),
                         Text(_) => {}
                     }
                 }
             }
-            WHNF::Expr(e) => shift0_mut(delta, label, e),
+            WHNF::Expr(e) => shift_mut(delta, var, e),
         }
     }
 }
@@ -624,10 +620,10 @@ impl Now {
         }
     }
 
-    fn shift0(&mut self, delta: isize, label: &Label) {
+    fn shift(&mut self, delta: isize, var: &V<Label>) {
         match self {
-            Now::Normalized(v) => v.shift0(delta, label),
-            Now::Unnormalized(_, e) => shift0_mut(delta, label, e),
+            Now::Normalized(v) => v.shift(delta, var),
+            Now::Unnormalized(_, e) => shift_mut(delta, var, e),
         }
     }
 }
