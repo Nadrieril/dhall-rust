@@ -63,7 +63,7 @@ impl<'a> Normalized<'a> {
     pub(crate) fn into_type(self) -> Result<Type<'a>, TypeError> {
         self.into_type_ctx(&TypecheckContext::new())
     }
-    pub(crate) fn into_type_ctx(
+    fn into_type_ctx(
         self,
         ctx: &TypecheckContext,
     ) -> Result<Type<'a>, TypeError> {
@@ -754,12 +754,8 @@ fn mktype(
     Ok(type_with(ctx, e)?.normalize_to_type()?)
 }
 
-fn into_simple_type<'a>(ctx: &TypecheckContext, e: SubExpr<X, X>) -> Type<'a> {
-    SimpleType(e, PhantomData).into_type_ctx(ctx)
-}
-
-fn simple_type_from_builtin<'a>(b: Builtin) -> Type<'a> {
-    into_simple_type(&TypecheckContext::new(), rc(ExprF::Builtin(b)))
+fn builtin_to_type<'a>(b: Builtin) -> Result<Type<'a>, TypeError> {
+    mktype(&TypecheckContext::new(), rc(ExprF::Builtin(b)))
 }
 
 /// Intermediary return type
@@ -906,7 +902,7 @@ fn type_last_layer(
         BoolIf(x, y, z) => {
             ensure_equal!(
                 x.get_type()?,
-                &simple_type_from_builtin(Bool),
+                &builtin_to_type(Bool)?,
                 mkerr(InvalidPredicate(x)),
             );
 
@@ -1058,12 +1054,12 @@ fn type_last_layer(
         },
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
-        BoolLit(_) => Ok(RetType(simple_type_from_builtin(Bool))),
-        NaturalLit(_) => Ok(RetType(simple_type_from_builtin(Natural))),
-        IntegerLit(_) => Ok(RetType(simple_type_from_builtin(Integer))),
-        DoubleLit(_) => Ok(RetType(simple_type_from_builtin(Double))),
+        BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
+        NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
+        IntegerLit(_) => Ok(RetType(builtin_to_type(Integer)?)),
+        DoubleLit(_) => Ok(RetType(builtin_to_type(Double)?)),
         // TODO: check type of interpolations
-        TextLit(_) => Ok(RetType(simple_type_from_builtin(Text))),
+        TextLit(_) => Ok(RetType(builtin_to_type(Text)?)),
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.unroll_ref()?.as_ref() {
                 App(f, _) => match f.as_ref() {
@@ -1082,7 +1078,7 @@ fn type_last_layer(
             Ok(RetType(l.get_type()?.into_owned()))
         }
         BinOp(o, l, r) => {
-            let t = simple_type_from_builtin(match o {
+            let t = builtin_to_type(match o {
                 BoolAnd => Bool,
                 BoolOr => Bool,
                 BoolEQ => Bool,
@@ -1092,7 +1088,7 @@ fn type_last_layer(
                 TextAppend => Text,
                 ListAppend => unreachable!(),
                 _ => return Err(mkerr(Unimplemented)),
-            });
+            })?;
 
             ensure_equal!(l.get_type()?, &t, mkerr(BinOpTypeMismatch(o, l)));
 

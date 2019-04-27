@@ -157,18 +157,3 @@ impl<'a> Type<'a> {
         unsafe { std::mem::transmute::<Type<'a>, Type<'b>>(self) }
     }
 }
-
-impl<'a> SimpleType<'a> {
-    #[allow(dead_code)]
-    pub(crate) fn into_type(self) -> Type<'a> {
-        self.into_type_ctx(&crate::typecheck::TypecheckContext::new())
-    }
-    pub(crate) fn into_type_ctx(
-        self,
-        ctx: &crate::typecheck::TypecheckContext,
-    ) -> Type<'a> {
-        Normalized(self.0, Some(Type::const_type()), PhantomData)
-            .into_type_ctx(ctx)
-            .unwrap()
-    }
-}
