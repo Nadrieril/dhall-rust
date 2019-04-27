@@ -162,7 +162,6 @@ impl TypeThunk {
 pub(crate) enum TypeInternal<'a> {
     Const(Const),
     Pi(Const, Label, Box<Type<'static>>, Box<Type<'static>>),
-    UnionType(Const, BTreeMap<Label, Option<Type<'static>>>),
     ListType(Box<Type<'static>>),
     OptionalType(Box<Type<'static>>),
     /// The type of `Sort`
@@ -191,13 +190,6 @@ impl<'a> TypeInternal<'a> {
                     t.into_normalized()?.into_expr(),
                     e.into_normalized()?.into_expr(),
                 )),
-                Some(const_to_type(c)),
-                PhantomData,
-            ),
-            TypeInternal::UnionType(c, kts) => Normalized(
-                rc(ExprF::UnionType(kts).traverse_ref_simple(|e| {
-                    Ok(e.clone().into_normalized()?.into_expr())
-                })?),
                 Some(const_to_type(c)),
                 PhantomData,
             ),
@@ -238,14 +230,6 @@ impl<'a> TypeInternal<'a> {
                 x.clone(),
                 Box::new(t.shift(delta, var)),
                 Box::new(e.shift(delta, &var.shift0(1, x))),
-            ),
-            UnionType(c, kts) => UnionType(
-                *c,
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
-                    })
-                    .collect(),
             ),
             ListType(t) => ListType(Box::new(t.shift(delta, var))),
             OptionalType(t) => OptionalType(Box::new(t.shift(delta, var))),
@@ -695,10 +679,26 @@ impl TypeIntermediate {
                 // An empty union type has type Type;
                 // an union type with only unary variants also has type Type
                 let k = k.unwrap_or(dhall_core::Const::Type);
-                Ok(TypedOrType::Type(Type(TypeInternal::UnionType(
-                    k,
-                    kts.clone(),
-                ))))
+
+                let pnormalized = PartiallyNormalized(
+                    WHNF::UnionType(
+                        kts.iter()
+                            .map(|(k, t)| {
+                                (
+                                    k.clone(),
+                                    t.as_ref().map(|t| {
+                                        TypeThunk::from_type(t.clone())
+                                    }),
+                                )
+                            })
+                            .collect(),
+                    ),
+                    Some(const_to_type(k)),
+                    PhantomData,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
+                    pnormalized,
+                )))))
             }
             TypeIntermediate::ListType(ctx, t) => {
                 ensure_simple_type!(
@@ -1028,15 +1028,15 @@ fn type_last_layer(
             },
             _ => {
                 let r = r.normalize_to_type()?;
-                match r.internal() {
-                    TypeInternal::UnionType(_, kts) => match kts.get(&x) {
+                match r.internal_whnf() {
+                    Some(WHNF::UnionType(kts)) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                         Some(Some(t)) => Ok(RetType(
                             TypeIntermediate::Pi(
                                 ctx.clone(),
                                 x.clone(),
-                                t.clone(),
+                                t.clone().normalize_to_type(ctx)?,
                                 r,
                             )
                             .typecheck()?
