@@ -345,6 +345,7 @@ pub(crate) enum WHNF {
     ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
+    Pi(Label, TypeThunk, TypeThunk),
 
     BoolLit(bool),
     NaturalLit(Natural),
@@ -400,6 +401,11 @@ impl WHNF {
             WHNF::NaturalSuccClosure => {
                 dhall::subexpr!(λ(x : Natural) -> x + 1)
             }
+            WHNF::Pi(x, t, e) => rc(ExprF::Pi(
+                x,
+                t.normalize().normalize_to_expr(),
+                e.normalize().normalize_to_expr(),
+            )),
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
             WHNF::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
@@ -557,6 +563,10 @@ impl WHNF {
                 for x in v.iter_mut() {
                     x.shift(delta, var);
                 }
+            }
+            WHNF::Pi(x, t, e) => {
+                t.shift(delta, var);
+                e.shift(delta, &var.shift0(1, x));
             }
             WHNF::NEListLit(elts) => {
                 for x in elts.iter_mut() {

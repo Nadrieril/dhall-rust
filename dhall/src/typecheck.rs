@@ -92,6 +92,22 @@ impl Normalized<'static> {
         rc(ExprF::Embed(self))
     }
 }
+impl<'a> PartiallyNormalized<'a> {
+    fn normalize_to_type(self) -> Result<Type<'a>, TypeError> {
+        Ok(match &self.0 {
+            WHNF::RecordType(_) | WHNF::UnionType(_) | WHNF::Pi(_, _, _) => {
+                Type(TypeInternal::PNzed(Box::new(self)))
+            }
+            _ => {
+                let e = self.normalize();
+                match e.0.as_ref() {
+                    ExprF::Const(c) => Type(TypeInternal::Const(*c)),
+                    _ => Type(TypeInternal::Expr(Box::new(e))),
+                }
+            }
+        })
+    }
+}
 impl<'a> Type<'a> {
     pub(crate) fn as_normalized(
         &self,
@@ -110,9 +126,6 @@ impl<'a> Type<'a> {
     }
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
-    }
-    fn into_internal(self) -> TypeInternal<'a> {
-        self.0
     }
     fn internal_whnf(&self) -> Option<&WHNF> {
         self.0.whnf()
@@ -161,7 +174,6 @@ impl TypeThunk {
 #[derive(Debug, Clone)]
 pub(crate) enum TypeInternal<'a> {
     Const(Const),
-    Pi(Const, Label, Box<Type<'static>>, Box<Type<'static>>),
     ListType(Box<Type<'static>>),
     OptionalType(Box<Type<'static>>),
     /// The type of `Sort`
@@ -184,15 +196,6 @@ impl<'a> TypeInternal<'a> {
                     TypeMessage::Untyped,
                 ))
             }
-            TypeInternal::Pi(c, x, t, e) => Normalized(
-                rc(ExprF::Pi(
-                    x,
-                    t.into_normalized()?.into_expr(),
-                    e.into_normalized()?.into_expr(),
-                )),
-                Some(const_to_type(c)),
-                PhantomData,
-            ),
             TypeInternal::ListType(t) => Normalized(
                 rc(ExprF::App(
                     rc(ExprF::Builtin(Builtin::List)),
@@ -225,12 +228,6 @@ impl<'a> TypeInternal<'a> {
         match self {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
             PNzed(e) => PNzed(Box::new(e.shift(delta, var))),
-            Pi(c, x, t, e) => Pi(
-                *c,
-                x.clone(),
-                Box::new(t.shift(delta, var)),
-                Box::new(e.shift(delta, &var.shift0(1, x))),
-            ),
             ListType(t) => ListType(Box::new(t.shift(delta, var))),
             OptionalType(t) => OptionalType(Box::new(t.shift(delta, var))),
             Const(c) => Const(*c),
@@ -266,10 +263,7 @@ impl TypedOrType {
     }
     fn normalize_to_type(self) -> Result<Type<'static>, TypeError> {
         match self {
-            TypedOrType::Typed(e) => {
-                let ctx = e.2.clone();
-                Ok(e.normalize().into_type_ctx(&ctx)?)
-            }
+            TypedOrType::Typed(e) => e.normalize_whnf().normalize_to_type(),
             TypedOrType::Type(t) => Ok(t),
         }
     }
@@ -611,12 +605,18 @@ impl TypeIntermediate {
                     }
                 };
 
-                Ok(TypedOrType::Type(Type(TypeInternal::Pi(
-                    k,
-                    x.clone(),
-                    Box::new(ta.clone()),
-                    Box::new(tb.clone()),
-                ))))
+                let pnormalized = PartiallyNormalized(
+                    WHNF::Pi(
+                        x.clone(),
+                        TypeThunk::from_type(ta.clone()),
+                        TypeThunk::from_type(tb.clone()),
+                    ),
+                    Some(const_to_type(k)),
+                    PhantomData,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
+                    pnormalized,
+                )))))
             }
             TypeIntermediate::RecordType(ctx, kts) => {
                 // Check that all types are the same const
@@ -874,17 +874,22 @@ fn type_last_layer(
             None => Err(mkerr(UnboundVariable(var.clone()))),
         },
         App(f, a) => {
-            let tf = f.get_type()?.into_owned();
-            let (x, tx, tb) = match tf.into_internal() {
-                TypeInternal::Pi(_, x, tx, tb) => (x, tx, tb),
+            let tf = f.get_type()?;
+            let (x, tx, tb) = match tf.internal_whnf() {
+                Some(WHNF::Pi(x, TypeThunk::Type(tx), TypeThunk::Type(tb))) => {
+                    (x, tx, tb)
+                }
+                Some(WHNF::Pi(_, _, _)) => {
+                    panic!("ICE: this should not have happened")
+                }
                 _ => return Err(mkerr(NotAFunction(f))),
             };
-            ensure_equal!(a.get_type()?, tx.as_ref(), {
-                mkerr(TypeMismatch(f, tx.into_normalized()?, a))
+            ensure_equal!(a.get_type()?, tx, {
+                mkerr(TypeMismatch(f.clone(), tx.clone().into_normalized()?, a))
             });
 
-            let ctx2 = ctx.insert_value(&x, a.normalize()?);
-            let tb: Typed = tb.into_normalized()?.into();
+            let ctx2 = ctx.insert_value(x, a.normalize()?);
+            let tb: Typed = tb.clone().into_normalized()?.into();
             // Normalize with the updated context
             let tb = Typed(tb.0, tb.1, ctx2, tb.3).normalize();
             // Convert to type with the current context
