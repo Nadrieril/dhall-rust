@@ -78,7 +78,7 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
 
     let ret = match b {
         OptionalNone => improved_slice_patterns::match_vec!(args;
-            [t] => EmptyOptionalLit(Thunk::from_whnf(t)),
+            [t] => EmptyOptionalLit(TypeThunk::from_whnf(t)),
         ),
         NaturalIsZero => improved_slice_patterns::match_vec!(args;
             [NaturalLit(n)] => BoolLit(n == 0),
@@ -126,12 +126,12 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
                 let mut kts = BTreeMap::new();
                 kts.insert(
                     "index".into(),
-                    Thunk::from_whnf(
+                    TypeThunk::from_whnf(
                         WHNF::from_builtin(Natural)
                     ),
                 );
                 kts.insert("value".into(), t);
-                EmptyListLit(Thunk::from_whnf(RecordType(kts)))
+                EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))
             },
             [_, NEListLit(xs)] => {
                 let xs = xs
@@ -161,8 +161,8 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
             },
             [t, g] => g
                 .app(WHNF::from_builtin(List).app(t.clone()))
-                .app(ListConsClosure(Thunk::from_whnf(t.clone()), None))
-                .app(EmptyListLit(Thunk::from_whnf(t))),
+                .app(ListConsClosure(TypeThunk::from_whnf(t.clone()), None))
+                .app(EmptyListLit(TypeThunk::from_whnf(t))),
         ),
         ListFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
@@ -195,8 +195,8 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
             },
             [t, g] => g
                 .app(WHNF::from_builtin(Optional).app(t.clone()))
-                .app(OptionalSomeClosure(Thunk::from_whnf(t.clone())))
-                .app(EmptyOptionalLit(Thunk::from_whnf(t))),
+                .app(OptionalSomeClosure(TypeThunk::from_whnf(t.clone())))
+                .app(EmptyOptionalLit(TypeThunk::from_whnf(t))),
         ),
         OptionalFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
@@ -347,22 +347,22 @@ pub(crate) enum WHNF {
     Lam(Label, Thunk, (NormalizationContext, InputSubExpr)),
     AppliedBuiltin(Builtin, Vec<WHNF>),
     /// `λ(x: a) -> Some x`
-    OptionalSomeClosure(Thunk),
+    OptionalSomeClosure(TypeThunk),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
     /// `λ(xs : List a) -> [ x ] # xs`
-    ListConsClosure(Thunk, Option<Thunk>),
+    ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
 
     BoolLit(bool),
     NaturalLit(Natural),
     IntegerLit(Integer),
-    EmptyOptionalLit(Thunk),
+    EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
-    EmptyListLit(Thunk),
+    EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(BTreeMap<Label, Thunk>),
-    RecordType(BTreeMap<Label, Thunk>),
+    RecordType(BTreeMap<Label, TypeThunk>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     UnionConstructor(
         NormalizationContext,
@@ -569,11 +569,13 @@ impl WHNF {
             | WHNF::BoolLit(_)
             | WHNF::NaturalLit(_)
             | WHNF::IntegerLit(_) => {}
-            WHNF::EmptyOptionalLit(n)
-            | WHNF::NEOptionalLit(n)
-            | WHNF::OptionalSomeClosure(n)
-            | WHNF::EmptyListLit(n) => {
-                n.shift(delta, var);
+            WHNF::EmptyOptionalLit(tth)
+            | WHNF::OptionalSomeClosure(tth)
+            | WHNF::EmptyListLit(tth) => {
+                tth.shift(delta, var);
+            }
+            WHNF::NEOptionalLit(th) => {
+                th.shift(delta, var);
             }
             WHNF::Lam(x, t, (_, e)) => {
                 t.shift(delta, var);
@@ -595,7 +597,12 @@ impl WHNF {
                     x.shift(delta, var);
                 }
             }
-            WHNF::RecordLit(kvs) | WHNF::RecordType(kvs) => {
+            WHNF::RecordLit(kvs) => {
+                for x in kvs.values_mut() {
+                    x.shift(delta, var);
+                }
+            }
+            WHNF::RecordType(kvs) => {
                 for x in kvs.values_mut() {
                     x.shift(delta, var);
                 }
@@ -634,11 +641,11 @@ pub(crate) enum Thunk {
 }
 
 impl Thunk {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Self {
         Thunk::Unnormalized(ctx, e)
     }
 
-    fn from_whnf(v: WHNF) -> Thunk {
+    fn from_whnf(v: WHNF) -> Self {
         Thunk::Normalized(Box::new(v))
     }
 
@@ -653,6 +660,39 @@ impl Thunk {
         match self {
             Thunk::Normalized(v) => v.shift(delta, var),
             Thunk::Unnormalized(_, e) => shift_mut(delta, var, e),
+        }
+    }
+}
+
+/// A thunk in type position.
+#[derive(Debug, Clone)]
+pub(crate) enum TypeThunk {
+    Thunk(Thunk),
+    // Type(Type<'static>),
+}
+
+impl TypeThunk {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Self {
+        TypeThunk::from_thunk(Thunk::new(ctx, e))
+    }
+
+    fn from_thunk(th: Thunk) -> Self {
+        TypeThunk::Thunk(th)
+    }
+
+    fn from_whnf(v: WHNF) -> Self {
+        TypeThunk::from_thunk(Thunk::from_whnf(v))
+    }
+
+    fn normalize(self) -> WHNF {
+        match self {
+            TypeThunk::Thunk(th) => th.normalize(),
+        }
+    }
+
+    fn shift(&mut self, delta: isize, var: &V<Label>) {
+        match self {
+            TypeThunk::Thunk(th) => th.shift(delta, var),
         }
     }
 }
@@ -680,13 +720,15 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
         ExprF::BoolLit(b) => WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
-            WHNF::EmptyOptionalLit(Thunk::new(ctx, e.clone()))
+            WHNF::EmptyOptionalLit(TypeThunk::new(ctx, e.clone()))
         }
         ExprF::OldOptionalLit(Some(e), _) => {
             WHNF::NEOptionalLit(Thunk::new(ctx, e.clone()))
         }
         ExprF::SomeLit(e) => WHNF::NEOptionalLit(Thunk::new(ctx, e.clone())),
-        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Thunk::new(ctx, e.clone())),
+        ExprF::EmptyListLit(e) => {
+            WHNF::EmptyListLit(TypeThunk::new(ctx, e.clone()))
+        }
         ExprF::NEListLit(elts) => WHNF::NEListLit(
             elts.iter()
                 .map(|e| Thunk::new(ctx.clone(), e.clone()))
