@@ -9,7 +9,7 @@ use dhall_core::{
 };
 use dhall_generator as dhall;
 
-use crate::expr::{Normalized, PartiallyNormalized, Typed};
+use crate::expr::{Normalized, PartiallyNormalized, Type, Typed};
 
 type InputSubExpr = SubExpr<X, Normalized<'static>>;
 type OutputSubExpr = SubExpr<X, X>;
@@ -365,7 +365,7 @@ pub(crate) enum WHNF {
 
 impl WHNF {
     /// Convert the value back to a (normalized) syntactic expression
-    fn normalize_to_expr(self) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
             WHNF::Lam(x, t, (ctx, e)) => {
                 let ctx2 = ctx.skip(&x);
@@ -615,7 +615,7 @@ impl Thunk {
         Thunk::Normalized(Box::new(v))
     }
 
-    fn normalize(self) -> WHNF {
+    pub(crate) fn normalize(self) -> WHNF {
         match self {
             Thunk::Normalized(v) => *v,
             Thunk::Unnormalized(ctx, e) => normalize_whnf(ctx, e),
@@ -634,7 +634,7 @@ impl Thunk {
 #[derive(Debug, Clone)]
 pub(crate) enum TypeThunk {
     Thunk(Thunk),
-    // Type(Type<'static>),
+    Type(Type<'static>),
 }
 
 impl TypeThunk {
@@ -646,6 +646,10 @@ impl TypeThunk {
         TypeThunk::Thunk(th)
     }
 
+    pub(crate) fn from_type(t: Type<'static>) -> Self {
+        TypeThunk::Type(t)
+    }
+
     fn from_whnf(v: WHNF) -> Self {
         TypeThunk::from_thunk(Thunk::from_whnf(v))
     }
@@ -653,12 +657,21 @@ impl TypeThunk {
     fn normalize(self) -> WHNF {
         match self {
             TypeThunk::Thunk(th) => th.normalize(),
+            // TODO: let's hope for the best with the unwraps
+            TypeThunk::Type(t) => normalize_whnf(
+                NormalizationContext::new(),
+                t.into_normalized().unwrap().0.embed_absurd(),
+            ),
         }
     }
 
     fn shift(&mut self, delta: isize, var: &V<Label>) {
         match self {
             TypeThunk::Thunk(th) => th.shift(delta, var),
+            TypeThunk::Type(t) => {
+                let shifted = t.shift(delta, var);
+                std::mem::replace(t, shifted);
+            }
         }
     }
 }

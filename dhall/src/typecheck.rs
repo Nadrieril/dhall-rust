@@ -6,6 +6,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::expr::*;
+use crate::normalize::{TypeThunk, WHNF};
 use crate::traits::DynamicType;
 use dhall_core;
 use dhall_core::context::Context;
@@ -113,10 +114,13 @@ impl<'a> Type<'a> {
     fn into_internal(self) -> TypeInternal<'a> {
         self.0
     }
-    fn shift0(&self, delta: isize, label: &Label) -> Self {
+    fn internal_whnf(&self) -> Option<&WHNF> {
+        self.0.whnf()
+    }
+    pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
         Type(self.0.shift0(delta, label))
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Type(self.0.shift(delta, var))
     }
 
@@ -136,6 +140,20 @@ impl Type<'static> {
     }
 }
 
+impl TypeThunk {
+    fn normalize_to_type(
+        self,
+        ctx: &TypecheckContext,
+    ) -> Result<Type<'static>, TypeError> {
+        match self {
+            TypeThunk::Type(t) => Ok(t),
+            TypeThunk::Thunk(th) => {
+                mktype(ctx, th.normalize().normalize_to_expr().embed_absurd())
+            }
+        }
+    }
+}
+
 /// A semantic type. This is partially redundant with `dhall_core::Expr`, on purpose. `TypeInternal` should
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
 /// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
@@ -144,7 +162,6 @@ impl Type<'static> {
 pub(crate) enum TypeInternal<'a> {
     Const(Const),
     Pi(Const, Label, Box<Type<'static>>, Box<Type<'static>>),
-    RecordType(Const, BTreeMap<Label, Type<'static>>),
     UnionType(Const, BTreeMap<Label, Option<Type<'static>>>),
     ListType(Box<Type<'static>>),
     OptionalType(Box<Type<'static>>),
@@ -152,12 +169,14 @@ pub(crate) enum TypeInternal<'a> {
     SuperType,
     /// This must not contain a value captured by one of the variants above.
     Expr(Box<Normalized<'a>>),
+    PNzed(Box<PartiallyNormalized<'a>>),
 }
 
 impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         Ok(match self {
             TypeInternal::Expr(e) => *e,
+            TypeInternal::PNzed(e) => e.normalize(),
             TypeInternal::Const(c) => const_to_normalized(c),
             TypeInternal::SuperType => {
                 return Err(TypeError::new(
@@ -172,13 +191,6 @@ impl<'a> TypeInternal<'a> {
                     t.into_normalized()?.into_expr(),
                     e.into_normalized()?.into_expr(),
                 )),
-                Some(const_to_type(c)),
-                PhantomData,
-            ),
-            TypeInternal::RecordType(c, kts) => Normalized(
-                rc(ExprF::RecordType(kts).traverse_ref_simple(|e| {
-                    Ok(e.clone().into_normalized()?.into_expr())
-                })?),
                 Some(const_to_type(c)),
                 PhantomData,
             ),
@@ -207,6 +219,12 @@ impl<'a> TypeInternal<'a> {
             ),
         })
     }
+    fn whnf(&self) -> Option<&WHNF> {
+        match self {
+            TypeInternal::PNzed(e) => Some(&e.0),
+            _ => None,
+        }
+    }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
         self.shift(delta, &V(label.clone(), 0))
     }
@@ -214,17 +232,12 @@ impl<'a> TypeInternal<'a> {
         use TypeInternal::*;
         match self {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
+            PNzed(e) => PNzed(Box::new(e.shift(delta, var))),
             Pi(c, x, t, e) => Pi(
                 *c,
                 x.clone(),
                 Box::new(t.shift(delta, var)),
                 Box::new(e.shift(delta, &var.shift0(1, x))),
-            ),
-            RecordType(c, kts) => RecordType(
-                *c,
-                kts.iter()
-                    .map(|(k, v)| (k.clone(), v.shift(delta, var)))
-                    .collect(),
             ),
             UnionType(c, kts) => UnionType(
                 *c,
@@ -642,10 +655,20 @@ impl TypeIntermediate {
                 // An empty record type has type Type
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
-                Ok(TypedOrType::Type(Type(TypeInternal::RecordType(
-                    k,
-                    kts.clone(),
-                ))))
+                let pnormalized = PartiallyNormalized(
+                    WHNF::RecordType(
+                        kts.iter()
+                            .map(|(k, t)| {
+                                (k.clone(), TypeThunk::from_type(t.clone()))
+                            })
+                            .collect(),
+                    ),
+                    Some(const_to_type(k)),
+                    PhantomData,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
+                    pnormalized,
+                )))))
             }
             TypeIntermediate::UnionType(ctx, kts) => {
                 // Check that all types are the same const
@@ -998,12 +1021,12 @@ fn type_last_layer(
                     .normalize_to_type()?,
             ))
         }
-        Field(r, x) => match r.get_type()?.internal() {
-            TypeInternal::RecordType(_, kts) => match kts.get(&x) {
-                Some(t) => Ok(RetType(t.clone())),
+        Field(r, x) => match r.get_type()?.internal_whnf() {
+            Some(WHNF::RecordType(kts)) => match kts.get(&x) {
+                Some(tth) => Ok(RetType(tth.clone().normalize_to_type(ctx)?)),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
-            TypeInternal::Const(_) => {
+            _ => {
                 let r = r.normalize_to_type()?;
                 match r.internal() {
                     TypeInternal::UnionType(_, kts) => match kts.get(&x) {
@@ -1028,10 +1051,10 @@ fn type_last_layer(
                     _ => Err(mkerr(NotARecord(x, r.into_normalized()?))),
                 }
             }
-            _ => Err(mkerr(NotARecord(
-                x,
-                r.normalize_to_type()?.into_normalized()?,
-            ))),
+            // _ => Err(mkerr(NotARecord(
+            //     x,
+            //     r.normalize_to_type()?.into_normalized()?,
+            // ))),
         },
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
