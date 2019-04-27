@@ -140,24 +140,14 @@ impl Type<'static> {
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
 /// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
 /// but only construct `TypeInternal`s.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) enum TypeInternal<'a> {
     Const(Const),
-    Pi(
-        TypecheckContext,
-        Const,
-        Label,
-        Box<Type<'static>>,
-        Box<Type<'static>>,
-    ),
-    RecordType(TypecheckContext, Const, BTreeMap<Label, Type<'static>>),
-    UnionType(
-        TypecheckContext,
-        Const,
-        BTreeMap<Label, Option<Type<'static>>>,
-    ),
-    ListType(TypecheckContext, Box<Type<'static>>),
-    OptionalType(TypecheckContext, Box<Type<'static>>),
+    Pi(Const, Label, Box<Type<'static>>, Box<Type<'static>>),
+    RecordType(Const, BTreeMap<Label, Type<'static>>),
+    UnionType(Const, BTreeMap<Label, Option<Type<'static>>>),
+    ListType(Box<Type<'static>>),
+    OptionalType(Box<Type<'static>>),
     /// The type of `Sort`
     SuperType,
     /// This must not contain a value captured by one of the variants above.
@@ -166,9 +156,9 @@ pub(crate) enum TypeInternal<'a> {
 
 impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
-        let (ctx, e, t) = match self {
-            TypeInternal::Expr(e) => return Ok(*e),
-            TypeInternal::Const(c) => return Ok(const_to_normalized(c)),
+        Ok(match self {
+            TypeInternal::Expr(e) => *e,
+            TypeInternal::Const(c) => const_to_normalized(c),
             TypeInternal::SuperType => {
                 return Err(TypeError::new(
                     &TypecheckContext::new(),
@@ -176,47 +166,46 @@ impl<'a> TypeInternal<'a> {
                     TypeMessage::Untyped,
                 ))
             }
-            TypeInternal::Pi(ctx, c, x, t, e) => {
-                (ctx, ExprF::Pi(x, *t, *e), const_to_type(c))
-            }
-            TypeInternal::RecordType(ctx, c, kts) => {
-                (ctx, ExprF::RecordType(kts), const_to_type(c))
-            }
-            TypeInternal::UnionType(ctx, c, kts) => {
-                (ctx, ExprF::UnionType(kts), const_to_type(c))
-            }
-            TypeInternal::ListType(ctx, t) => {
-                return Ok(Typed(
-                    rc(ExprF::App(
-                        rc(ExprF::Builtin(Builtin::List)),
-                        t.embed()?,
-                    )),
-                    Some(Type::const_type()),
-                    ctx,
-                    PhantomData,
-                )
-                .normalize())
-            }
-            TypeInternal::OptionalType(ctx, t) => {
-                return Ok(Typed(
-                    rc(ExprF::App(
-                        rc(ExprF::Builtin(Builtin::Optional)),
-                        t.embed()?,
-                    )),
-                    Some(Type::const_type()),
-                    ctx,
-                    PhantomData,
-                )
-                .normalize())
-            }
-        };
-        let typed = Typed(
-            rc(e.traverse_ref_simple(|e| e.clone().embed())?),
-            Some(t),
-            ctx,
-            PhantomData,
-        );
-        Ok(typed.normalize())
+            TypeInternal::Pi(c, x, t, e) => Normalized(
+                rc(ExprF::Pi(
+                    x,
+                    t.into_normalized()?.into_expr(),
+                    e.into_normalized()?.into_expr(),
+                )),
+                Some(const_to_type(c)),
+                PhantomData,
+            ),
+            TypeInternal::RecordType(c, kts) => Normalized(
+                rc(ExprF::RecordType(kts).traverse_ref_simple(|e| {
+                    Ok(e.clone().into_normalized()?.into_expr())
+                })?),
+                Some(const_to_type(c)),
+                PhantomData,
+            ),
+            TypeInternal::UnionType(c, kts) => Normalized(
+                rc(ExprF::UnionType(kts).traverse_ref_simple(|e| {
+                    Ok(e.clone().into_normalized()?.into_expr())
+                })?),
+                Some(const_to_type(c)),
+                PhantomData,
+            ),
+            TypeInternal::ListType(t) => Normalized(
+                rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::List)),
+                    t.into_normalized()?.into_expr(),
+                )),
+                Some(Type::const_type()),
+                PhantomData,
+            ),
+            TypeInternal::OptionalType(t) => Normalized(
+                rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::Optional)),
+                    t.into_normalized()?.into_expr(),
+                )),
+                Some(Type::const_type()),
+                PhantomData,
+            ),
+        })
     }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
         self.shift(delta, &V(label.clone(), 0))
@@ -225,22 +214,19 @@ impl<'a> TypeInternal<'a> {
         use TypeInternal::*;
         match self {
             Expr(e) => Expr(Box::new(e.shift(delta, var))),
-            Pi(ctx, c, x, t, e) => Pi(
-                ctx.clone(),
+            Pi(c, x, t, e) => Pi(
                 *c,
                 x.clone(),
                 Box::new(t.shift(delta, var)),
                 Box::new(e.shift(delta, &var.shift0(1, x))),
             ),
-            RecordType(ctx, c, kts) => RecordType(
-                ctx.clone(),
+            RecordType(c, kts) => RecordType(
                 *c,
                 kts.iter()
                     .map(|(k, v)| (k.clone(), v.shift(delta, var)))
                     .collect(),
             ),
-            UnionType(ctx, c, kts) => UnionType(
-                ctx.clone(),
+            UnionType(c, kts) => UnionType(
                 *c,
                 kts.iter()
                     .map(|(k, v)| {
@@ -248,14 +234,22 @@ impl<'a> TypeInternal<'a> {
                     })
                     .collect(),
             ),
-            ListType(ctx, t) => {
-                ListType(ctx.clone(), Box::new(t.shift(delta, var)))
-            }
-            OptionalType(ctx, t) => {
-                OptionalType(ctx.clone(), Box::new(t.shift(delta, var)))
-            }
+            ListType(t) => ListType(Box::new(t.shift(delta, var))),
+            OptionalType(t) => OptionalType(Box::new(t.shift(delta, var))),
             Const(c) => Const(*c),
             SuperType => SuperType,
+        }
+    }
+}
+
+impl<'a> Eq for TypeInternal<'a> {}
+impl<'a> PartialEq for TypeInternal<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        let self_nzed = self.clone().into_normalized();
+        let other_nzed = other.clone().into_normalized();
+        match (self_nzed, other_nzed) {
+            (Ok(x), Ok(y)) => x == y,
+            _ => false,
         }
     }
 }
@@ -621,7 +615,6 @@ impl TypeIntermediate {
                 };
 
                 Ok(TypedOrType::Type(Type(TypeInternal::Pi(
-                    ctx.clone(),
                     k,
                     x.clone(),
                     Box::new(ta.clone()),
@@ -650,7 +643,6 @@ impl TypeIntermediate {
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
                 Ok(TypedOrType::Type(Type(TypeInternal::RecordType(
-                    ctx.clone(),
                     k,
                     kts.clone(),
                 ))))
@@ -681,7 +673,6 @@ impl TypeIntermediate {
                 // an union type with only unary variants also has type Type
                 let k = k.unwrap_or(dhall_core::Const::Type);
                 Ok(TypedOrType::Type(Type(TypeInternal::UnionType(
-                    ctx.clone(),
                     k,
                     kts.clone(),
                 ))))
@@ -691,10 +682,9 @@ impl TypeIntermediate {
                     t,
                     mkerr(ctx, InvalidListType(t.clone().into_normalized()?))?,
                 );
-                Ok(TypedOrType::Type(Type(TypeInternal::ListType(
-                    ctx.clone(),
-                    Box::new(t.clone()),
-                ))))
+                Ok(TypedOrType::Type(Type(TypeInternal::ListType(Box::new(
+                    t.clone(),
+                )))))
             }
             TypeIntermediate::OptionalType(ctx, t) => {
                 ensure_simple_type!(
@@ -705,7 +695,6 @@ impl TypeIntermediate {
                     )?,
                 );
                 Ok(TypedOrType::Type(Type(TypeInternal::OptionalType(
-                    ctx.clone(),
                     Box::new(t.clone()),
                 ))))
             }
@@ -868,7 +857,7 @@ fn type_last_layer(
         App(f, a) => {
             let tf = f.get_type()?.into_owned();
             let (x, tx, tb) = match tf.into_internal() {
-                TypeInternal::Pi(_, _, x, tx, tb) => (x, tx, tb),
+                TypeInternal::Pi(_, x, tx, tb) => (x, tx, tb),
                 _ => return Err(mkerr(NotAFunction(f))),
             };
             ensure_equal!(a.get_type()?, tx.as_ref(), {
@@ -1010,14 +999,14 @@ fn type_last_layer(
             ))
         }
         Field(r, x) => match r.get_type()?.internal() {
-            TypeInternal::RecordType(_, _, kts) => match kts.get(&x) {
+            TypeInternal::RecordType(_, kts) => match kts.get(&x) {
                 Some(t) => Ok(RetType(t.clone())),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             TypeInternal::Const(_) => {
                 let r = r.normalize_to_type()?;
                 match r.internal() {
-                    TypeInternal::UnionType(_, _, kts) => match kts.get(&x) {
+                    TypeInternal::UnionType(_, kts) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                         Some(Some(t)) => Ok(RetType(
