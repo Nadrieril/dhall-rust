@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use dhall_core::context::Context;
 use dhall_core::{
-    rc, shift, shift0, Builtin, ExprF, Integer, InterpolatedText,
+    rc, shift, shift0, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
 use dhall_generator as dhall;
@@ -347,6 +347,7 @@ pub(crate) enum WHNF {
     NaturalSuccClosure,
     Pi(Label, TypeThunk, TypeThunk),
 
+    Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
     IntegerLit(Integer),
@@ -406,6 +407,7 @@ impl WHNF {
                 t.normalize().normalize_to_expr(),
                 e.normalize().normalize_to_expr(),
             )),
+            WHNF::Const(c) => rc(ExprF::Const(c)),
             WHNF::BoolLit(b) => rc(ExprF::BoolLit(b)),
             WHNF::NaturalLit(n) => rc(ExprF::NaturalLit(n)),
             WHNF::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
@@ -494,7 +496,7 @@ impl WHNF {
     }
 
     /// Apply to a value
-    fn app(self, val: WHNF) -> WHNF {
+    pub(crate) fn app(self, val: WHNF) -> WHNF {
         match (self, val) {
             (WHNF::Lam(x, _, (ctx, e)), val) => {
                 let ctx2 = ctx.insert(&x, val);
@@ -531,13 +533,14 @@ impl WHNF {
         }
     }
 
-    fn from_builtin(b: Builtin) -> WHNF {
+    pub(crate) fn from_builtin(b: Builtin) -> WHNF {
         WHNF::AppliedBuiltin(b, vec![])
     }
 
     fn shift(&mut self, delta: isize, var: &V<Label>) {
         match self {
             WHNF::NaturalSuccClosure
+            | WHNF::Const(_)
             | WHNF::BoolLit(_)
             | WHNF::NaturalLit(_)
             | WHNF::IntegerLit(_) => {}
@@ -705,7 +708,8 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
             Thunk::new(ctx.clone(), t.clone()),
             (ctx, e.clone()),
         ),
-        ExprF::Builtin(b) => WHNF::AppliedBuiltin(*b, vec![]),
+        ExprF::Builtin(b) => WHNF::from_builtin(*b),
+        ExprF::Const(c) => WHNF::Const(*c),
         ExprF::BoolLit(b) => WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {

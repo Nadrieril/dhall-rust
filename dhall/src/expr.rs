@@ -133,9 +133,6 @@ impl<'a> Normalized<'a> {
     pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
         &self.0
     }
-    pub(crate) fn into_expr(self) -> SubExpr<X, X> {
-        self.0
-    }
     #[allow(dead_code)]
     pub(crate) fn unnote<'b>(self) -> Normalized<'b> {
         Normalized(self.0, self.1, PhantomData)

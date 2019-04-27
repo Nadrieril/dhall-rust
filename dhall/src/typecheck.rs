@@ -42,16 +42,8 @@ impl<'a> Typed<'a> {
     }
 }
 impl<'a> Normalized<'a> {
-    // Expose the outermost constructor
-    fn unroll_ref(&self) -> &Expr<X, X> {
-        self.as_expr().as_ref()
-    }
     fn shift0(&self, delta: isize, label: &Label) -> Self {
-        Normalized(
-            shift0(delta, label, &self.0),
-            self.1.as_ref().map(|t| t.shift0(delta, label)),
-            self.2,
-        )
+        self.shift(delta, &V(label.clone(), 0))
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Normalized(
@@ -71,9 +63,13 @@ impl<'a> Normalized<'a> {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
             ExprF::Pi(_, _, _) | ExprF::RecordType(_) | ExprF::UnionType(_) => {
                 // TODO: wasteful
-                type_with(ctx, self.0.embed_absurd())?.normalize_to_type()?
+                type_with(ctx, self.0.embed_absurd())?.normalize_to_type()
             }
-            _ => Type(TypeInternal::Expr(Box::new(self))),
+            _ => Type(TypeInternal::PNzed(Box::new(PartiallyNormalized(
+                WHNF::Expr(self.0),
+                self.1,
+                self.2,
+            )))),
         })
     }
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
@@ -93,19 +89,11 @@ impl Normalized<'static> {
     }
 }
 impl<'a> PartiallyNormalized<'a> {
-    fn normalize_to_type(self) -> Result<Type<'a>, TypeError> {
-        Ok(match &self.0 {
-            WHNF::RecordType(_) | WHNF::UnionType(_) | WHNF::Pi(_, _, _) => {
-                Type(TypeInternal::PNzed(Box::new(self)))
-            }
-            _ => {
-                let e = self.normalize();
-                match e.0.as_ref() {
-                    ExprF::Const(c) => Type(TypeInternal::Const(*c)),
-                    _ => Type(TypeInternal::Expr(Box::new(e))),
-                }
-            }
-        })
+    fn normalize_to_type(self) -> Type<'a> {
+        match &self.0 {
+            WHNF::Const(c) => Type(TypeInternal::Const(*c)),
+            _ => Type(TypeInternal::PNzed(Box::new(self))),
+        }
     }
 }
 impl<'a> Type<'a> {
@@ -117,12 +105,8 @@ impl<'a> Type<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
     }
-    // Expose the outermost constructor
-    fn unroll_ref(&self) -> Result<Cow<Expr<X, X>>, TypeError> {
-        match self.as_normalized()? {
-            Cow::Borrowed(e) => Ok(Cow::Borrowed(e.unroll_ref())),
-            Cow::Owned(e) => Ok(Cow::Owned(e.into_expr().unroll())),
-        }
+    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
+        self.0.normalize_whnf()
     }
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
@@ -135,6 +119,38 @@ impl<'a> Type<'a> {
     }
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Type(self.0.shift(delta, var))
+    }
+    fn subst(
+        self,
+        ctx: &TypecheckContext,
+        x: &Label,
+        val: Normalized<'static>,
+    ) -> Result<Self, TypeError> {
+        let tval = val.get_type()?.into_owned();
+        let ctx_type = ctx.insert_type(x, tval);
+        let ctx_val = ctx.insert_value(x, val);
+
+        let pnzed = match self.0 {
+            TypeInternal::PNzed(e) => e,
+            internal => return Ok(Type(internal)),
+        };
+        let nzed = pnzed.normalize();
+        let pnzed = Typed(nzed.0.embed_absurd(), nzed.1, ctx_val, nzed.2)
+            .normalize_whnf();
+
+        Ok(match &pnzed.0 {
+            WHNF::Expr(e) => {
+                let e = e.clone();
+                match e.as_ref() {
+                    ExprF::Pi(_, _, _) | ExprF::RecordType(_) => {
+                        type_with(&ctx_type, e.embed_absurd())?
+                            .normalize_to_type()
+                    }
+                    _ => pnzed.normalize_to_type(),
+                }
+            }
+            _ => pnzed.normalize_to_type(),
+        })
     }
 
     fn const_sort() -> Self {
@@ -174,19 +190,15 @@ impl TypeThunk {
 #[derive(Debug, Clone)]
 pub(crate) enum TypeInternal<'a> {
     Const(Const),
-    ListType(Box<Type<'static>>),
-    OptionalType(Box<Type<'static>>),
     /// The type of `Sort`
     SuperType,
-    /// This must not contain a value captured by one of the variants above.
-    Expr(Box<Normalized<'a>>),
+    /// This must not contain Const value.
     PNzed(Box<PartiallyNormalized<'a>>),
 }
 
 impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         Ok(match self {
-            TypeInternal::Expr(e) => *e,
             TypeInternal::PNzed(e) => e.normalize(),
             TypeInternal::Const(c) => const_to_normalized(c),
             TypeInternal::SuperType => {
@@ -196,23 +208,11 @@ impl<'a> TypeInternal<'a> {
                     TypeMessage::Untyped,
                 ))
             }
-            TypeInternal::ListType(t) => Normalized(
-                rc(ExprF::App(
-                    rc(ExprF::Builtin(Builtin::List)),
-                    t.into_normalized()?.into_expr(),
-                )),
-                Some(Type::const_type()),
-                PhantomData,
-            ),
-            TypeInternal::OptionalType(t) => Normalized(
-                rc(ExprF::App(
-                    rc(ExprF::Builtin(Builtin::Optional)),
-                    t.into_normalized()?.into_expr(),
-                )),
-                Some(Type::const_type()),
-                PhantomData,
-            ),
         })
+    }
+    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
+        let typed: Typed = self.into_normalized()?.into();
+        Ok(typed.normalize_whnf().0)
     }
     fn whnf(&self) -> Option<&WHNF> {
         match self {
@@ -226,10 +226,7 @@ impl<'a> TypeInternal<'a> {
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
         match self {
-            Expr(e) => Expr(Box::new(e.shift(delta, var))),
             PNzed(e) => PNzed(Box::new(e.shift(delta, var))),
-            ListType(t) => ListType(Box::new(t.shift(delta, var))),
-            OptionalType(t) => OptionalType(Box::new(t.shift(delta, var))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         }
@@ -261,10 +258,10 @@ impl TypedOrType {
             TypedOrType::Type(t) => Ok(t.into_normalized()?.into()),
         }
     }
-    fn normalize_to_type(self) -> Result<Type<'static>, TypeError> {
+    fn normalize_to_type(self) -> Type<'static> {
         match self {
             TypedOrType::Typed(e) => e.normalize_whnf().normalize_to_type(),
-            TypedOrType::Type(t) => Ok(t),
+            TypedOrType::Type(t) => t,
         }
     }
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
@@ -705,8 +702,14 @@ impl TypeIntermediate {
                     t,
                     mkerr(ctx, InvalidListType(t.clone().into_normalized()?))?,
                 );
-                Ok(TypedOrType::Type(Type(TypeInternal::ListType(Box::new(
-                    t.clone(),
+                let pnormalized = PartiallyNormalized(
+                    WHNF::from_builtin(Builtin::List)
+                        .app(t.clone().normalize_whnf()?),
+                    Some(const_to_type(Const::Type)),
+                    PhantomData,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
+                    pnormalized,
                 )))))
             }
             TypeIntermediate::OptionalType(ctx, t) => {
@@ -717,9 +720,15 @@ impl TypeIntermediate {
                         InvalidOptionalType(t.clone().into_normalized()?)
                     )?,
                 );
-                Ok(TypedOrType::Type(Type(TypeInternal::OptionalType(
-                    Box::new(t.clone()),
-                ))))
+                let pnormalized = PartiallyNormalized(
+                    WHNF::from_builtin(Builtin::Optional)
+                        .app(t.clone().normalize_whnf()?),
+                    Some(const_to_type(Const::Type)),
+                    PhantomData,
+                );
+                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
+                    pnormalized,
+                )))))
             }
         }
     }
@@ -751,7 +760,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize_to_type()?)
+    Ok(type_with(ctx, e)?.normalize_to_type())
 }
 
 fn builtin_to_type<'a>(b: Builtin) -> Result<Type<'a>, TypeError> {
@@ -787,7 +796,7 @@ fn type_with(
             Ok(RetType(
                 TypeIntermediate::Pi(ctx.clone(), x.clone(), tx, tb)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         Pi(x, ta, tb) => {
@@ -888,15 +897,10 @@ fn type_last_layer(
                 mkerr(TypeMismatch(f.clone(), tx.clone().into_normalized()?, a))
             });
 
-            let ctx2 = ctx.insert_value(x, a.normalize()?);
-            let tb: Typed = tb.clone().into_normalized()?.into();
-            // Normalize with the updated context
-            let tb = Typed(tb.0, tb.1, ctx2, tb.3).normalize();
-            // Convert to type with the current context
-            Ok(RetType(tb.into_type_ctx(&ctx)?))
+            Ok(RetType(tb.clone().subst(&ctx, x, a.normalize()?)?))
         }
         Annot(x, t) => {
-            let t = t.normalize_to_type()?;
+            let t = t.normalize_to_type();
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -930,11 +934,11 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize_to_type()?;
+            let t = t.normalize_to_type();
             Ok(RetType(
                 TypeIntermediate::ListType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         NEListLit(xs) => {
@@ -955,7 +959,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::ListType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         SomeLit(x) => {
@@ -963,13 +967,13 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::OptionalType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
                 .into_iter()
-                .map(|(x, t)| Ok((x, t.normalize_to_type()?)))
+                .map(|(x, t)| Ok((x, t.normalize_to_type())))
                 .collect::<Result<_, _>>()?;
             Ok(RetTypedOrType(
                 TypeIntermediate::RecordType(ctx.clone(), kts).typecheck()?,
@@ -983,7 +987,7 @@ fn type_last_layer(
                         x,
                         match t {
                             None => None,
-                            Some(t) => Some(t.normalize_to_type()?),
+                            Some(t) => Some(t.normalize_to_type()),
                         },
                     ))
                 })
@@ -1000,7 +1004,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::RecordType(ctx.clone(), kts)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         UnionLit(x, v, kvs) => {
@@ -1008,7 +1012,7 @@ fn type_last_layer(
                 .into_iter()
                 .map(|(x, v)| {
                     let t = match v {
-                        Some(x) => Some(x.normalize_to_type()?),
+                        Some(x) => Some(x.normalize_to_type()),
                         None => None,
                     };
                     Ok((x, t))
@@ -1019,7 +1023,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::UnionType(ctx.clone(), kts)
                     .typecheck()?
-                    .normalize_to_type()?,
+                    .normalize_to_type(),
             ))
         }
         Field(r, x) => match r.get_type()?.internal_whnf() {
@@ -1028,7 +1032,7 @@ fn type_last_layer(
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
-                let r = r.normalize_to_type()?;
+                let r = r.normalize_to_type();
                 match r.internal_whnf() {
                     Some(WHNF::UnionType(kts)) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
@@ -1041,7 +1045,7 @@ fn type_last_layer(
                                 r,
                             )
                             .typecheck()?
-                            .normalize_to_type()?,
+                            .normalize_to_type(),
                         )),
                         Some(None) => Ok(RetType(r)),
                         None => Err(mkerr(MissingUnionField(
@@ -1066,11 +1070,8 @@ fn type_last_layer(
         // TODO: check type of interpolations
         TextLit(_) => Ok(RetType(builtin_to_type(Text)?)),
         BinOp(o @ ListAppend, l, r) => {
-            match l.get_type()?.unroll_ref()?.as_ref() {
-                App(f, _) => match f.as_ref() {
-                    Builtin(List) => {}
-                    _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
-                },
+            match l.get_type()?.internal_whnf() {
+                Some(WHNF::AppliedBuiltin(List, _)) => {}
                 _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
             }
 
