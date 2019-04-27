@@ -50,11 +50,7 @@ impl<'a> Typed<'a> {
 
 impl<'a> PartiallyNormalized<'a> {
     pub(crate) fn normalize(self) -> Normalized<'a> {
-        Normalized(
-            self.0.normalize_to_expr(),
-            self.1,
-            self.2,
-        )
+        Normalized(self.0.normalize_to_expr(), self.1, self.2)
     }
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         let mut e = self.0.clone();
@@ -332,15 +328,11 @@ impl NormalizationContext {
 /// The rule is the following: we must _not_ construct values of type `Expr` while normalizing,
 /// but only construct `WHNF`s.
 ///
-/// WHNFs store subexpressions unnormalized, to enable lazy normalization. They approximate
+/// WHNFs store some subexpressions unnormalized, to enable lazy normalization. They approximate
 /// what's called Weak Head Normal-Form (WHNF). This means that the expression is normalized as
 /// little as possible, but just enough to know the first constructor of the normal form. This is
 /// identical to full normalization for simple types like integers, but for e.g. a record literal
 /// this means knowing just the field names.
-///
-/// Each variant captures the relevant contexts when it is constructed. Conceptually each
-/// subexpression has its own context, but in practice some contexts can be shared when sensible, to
-/// avoid unnecessary allocations.
 #[derive(Debug, Clone)]
 pub(crate) enum WHNF {
     /// Closures
@@ -363,17 +355,9 @@ pub(crate) enum WHNF {
     NEListLit(Vec<Thunk>),
     RecordLit(BTreeMap<Label, Thunk>),
     RecordType(BTreeMap<Label, TypeThunk>),
-    UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
-    UnionConstructor(
-        NormalizationContext,
-        Label,
-        BTreeMap<Label, Option<InputSubExpr>>,
-    ),
-    UnionLit(
-        Label,
-        Thunk,
-        (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
-    ),
+    UnionType(BTreeMap<Label, Option<TypeThunk>>),
+    UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk>>),
+    UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
     /// This must not contain a value captured by one of the variants above.
     Expr(OutputSubExpr),
@@ -445,46 +429,28 @@ impl WHNF {
                     .map(|(k, v)| (k, v.normalize().normalize_to_expr()))
                     .collect(),
             )),
-            WHNF::UnionType(ctx, kts) => rc(ExprF::UnionType(
+            WHNF::UnionType(kts) => rc(ExprF::UnionType(
                 kts.into_iter()
                     .map(|(k, v)| {
-                        (
-                            k,
-                            v.map(|v| {
-                                normalize_whnf(ctx.clone(), v)
-                                    .normalize_to_expr()
-                            }),
-                        )
+                        (k, v.map(|v| v.normalize().normalize_to_expr()))
                     })
                     .collect(),
             )),
-            WHNF::UnionConstructor(ctx, l, kts) => {
+            WHNF::UnionConstructor(l, kts) => {
                 let kts = kts
                     .into_iter()
                     .map(|(k, v)| {
-                        (
-                            k,
-                            v.map(|v| {
-                                normalize_whnf(ctx.clone(), v)
-                                    .normalize_to_expr()
-                            }),
-                        )
+                        (k, v.map(|v| v.normalize().normalize_to_expr()))
                     })
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
             }
-            WHNF::UnionLit(l, v, (kts_ctx, kts)) => rc(ExprF::UnionLit(
+            WHNF::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
                 l,
                 v.normalize().normalize_to_expr(),
                 kts.into_iter()
                     .map(|(k, v)| {
-                        (
-                            k,
-                            v.map(|v| {
-                                normalize_whnf(kts_ctx.clone(), v)
-                                    .normalize_to_expr()
-                            }),
-                        )
+                        (k, v.map(|v| v.normalize().normalize_to_expr()))
                     })
                     .collect(),
             )),
@@ -548,8 +514,8 @@ impl WHNF {
             (WHNF::NaturalSuccClosure, WHNF::NaturalLit(n)) => {
                 WHNF::NaturalLit(n + 1)
             }
-            (WHNF::UnionConstructor(ctx, l, kts), val) => {
-                WHNF::UnionLit(l, Thunk::from_whnf(val), (ctx, kts))
+            (WHNF::UnionConstructor(l, kts), val) => {
+                WHNF::UnionLit(l, Thunk::from_whnf(val), kts)
             }
             // Can't do anything useful, convert to expr
             (f, a) => WHNF::Expr(rc(ExprF::App(
@@ -607,15 +573,15 @@ impl WHNF {
                     x.shift(delta, var);
                 }
             }
-            WHNF::UnionType(_, kts) | WHNF::UnionConstructor(_, _, kts) => {
+            WHNF::UnionType(kts) | WHNF::UnionConstructor(_, kts) => {
                 for x in kts.values_mut().flat_map(|opt| opt) {
-                    shift_mut(delta, var, x);
+                    x.shift(delta, var);
                 }
             }
-            WHNF::UnionLit(_, v, (_, kts)) => {
+            WHNF::UnionLit(_, v, kts) => {
                 v.shift(delta, var);
                 for x in kts.values_mut().flat_map(|opt| opt) {
-                    shift_mut(delta, var, x);
+                    x.shift(delta, var);
                 }
             }
             WHNF::TextLit(elts) => {
@@ -739,11 +705,29 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
                 .map(|(k, e)| (k.clone(), Thunk::new(ctx.clone(), e.clone())))
                 .collect(),
         ),
-        ExprF::UnionType(kvs) => WHNF::UnionType(ctx, kvs.clone()),
+        ExprF::UnionType(kts) => WHNF::UnionType(
+            kts.iter()
+                .map(|(k, t)| {
+                    (
+                        k.clone(),
+                        t.as_ref()
+                            .map(|t| TypeThunk::new(ctx.clone(), t.clone())),
+                    )
+                })
+                .collect(),
+        ),
         ExprF::UnionLit(l, x, kts) => WHNF::UnionLit(
             l.clone(),
             Thunk::new(ctx.clone(), x.clone()),
-            (ctx, kts.clone()),
+            kts.iter()
+                .map(|(k, t)| {
+                    (
+                        k.clone(),
+                        t.as_ref()
+                            .map(|t| TypeThunk::new(ctx.clone(), t.clone())),
+                    )
+                })
+                .collect(),
         ),
         ExprF::TextLit(elts) => WHNF::TextLit(
             elts.iter()
@@ -838,7 +822,7 @@ fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
         ExprF::BinOp(TextAppend, TextLit(x), y) if x.is_empty() => y,
         ExprF::BinOp(TextAppend, x, TextLit(y)) if y.is_empty() => x,
 
-        ExprF::Field(UnionType(ctx, kts), l) => UnionConstructor(ctx, l, kts),
+        ExprF::Field(UnionType(kts), l) => UnionConstructor(l, kts),
         ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
             Some(r) => r.normalize(),
             None => {
@@ -856,18 +840,17 @@ fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
         ),
         ExprF::Merge(RecordLit(mut handlers), e, t) => {
             let e = match e {
-                UnionConstructor(ctor_ctx, l, kts) => match handlers.remove(&l)
-                {
+                UnionConstructor(l, kts) => match handlers.remove(&l) {
                     Some(h) => return h.normalize(),
-                    None => UnionConstructor(ctor_ctx, l, kts),
+                    None => UnionConstructor(l, kts),
                 },
-                UnionLit(l, v, (kts_ctx, kts)) => match handlers.remove(&l) {
+                UnionLit(l, v, kts) => match handlers.remove(&l) {
                     Some(h) => {
                         let h = h.normalize();
                         let v = v.normalize();
                         return h.app(v);
                     }
-                    None => UnionLit(l, v, (kts_ctx, kts)),
+                    None => UnionLit(l, v, kts),
                 },
                 e => e,
             };
