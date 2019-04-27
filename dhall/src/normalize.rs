@@ -78,7 +78,7 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
 
     let ret = match b {
         OptionalNone => improved_slice_patterns::match_vec!(args;
-            [t] => EmptyOptionalLit(Now::from_whnf(t)),
+            [t] => EmptyOptionalLit(Thunk::from_whnf(t)),
         ),
         NaturalIsZero => improved_slice_patterns::match_vec!(args;
             [NaturalLit(n)] => BoolLit(n == 0),
@@ -126,12 +126,12 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
                 let mut kts = BTreeMap::new();
                 kts.insert(
                     "index".into(),
-                    Now::from_whnf(
+                    Thunk::from_whnf(
                         WHNF::from_builtin(Natural)
                     ),
                 );
                 kts.insert("value".into(), t);
-                EmptyListLit(Now::from_whnf(RecordType(kts)))
+                EmptyListLit(Thunk::from_whnf(RecordType(kts)))
             },
             [_, NEListLit(xs)] => {
                 let xs = xs
@@ -140,9 +140,9 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
                         let mut kvs = BTreeMap::new();
-                        kvs.insert("index".into(), Now::from_whnf(i));
+                        kvs.insert("index".into(), Thunk::from_whnf(i));
                         kvs.insert("value".into(), e);
-                        Now::from_whnf(RecordLit(kvs))
+                        Thunk::from_whnf(RecordLit(kvs))
                     })
                     .collect();
                 NEListLit(xs)
@@ -161,8 +161,8 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
             },
             [t, g] => g
                 .app(WHNF::from_builtin(List).app(t.clone()))
-                .app(ListConsClosure(Now::from_whnf(t.clone()), None))
-                .app(EmptyListLit(Now::from_whnf(t))),
+                .app(ListConsClosure(Thunk::from_whnf(t.clone()), None))
+                .app(EmptyListLit(Thunk::from_whnf(t))),
         ),
         ListFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
@@ -195,8 +195,8 @@ fn apply_builtin(b: Builtin, args: Vec<WHNF>) -> WHNF {
             },
             [t, g] => g
                 .app(WHNF::from_builtin(Optional).app(t.clone()))
-                .app(OptionalSomeClosure(Now::from_whnf(t.clone())))
-                .app(EmptyOptionalLit(Now::from_whnf(t))),
+                .app(OptionalSomeClosure(Thunk::from_whnf(t.clone())))
+                .app(EmptyOptionalLit(Thunk::from_whnf(t))),
         ),
         OptionalFold => improved_slice_patterns::match_vec!(args;
             // fold/build fusion
@@ -344,25 +344,25 @@ impl NormalizationContext {
 #[derive(Debug, Clone)]
 pub(crate) enum WHNF {
     /// Closures
-    Lam(Label, Now, (NormalizationContext, InputSubExpr)),
+    Lam(Label, Thunk, (NormalizationContext, InputSubExpr)),
     AppliedBuiltin(Builtin, Vec<WHNF>),
     /// `λ(x: a) -> Some x`
-    OptionalSomeClosure(Now),
+    OptionalSomeClosure(Thunk),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
     /// `λ(xs : List a) -> [ x ] # xs`
-    ListConsClosure(Now, Option<Now>),
+    ListConsClosure(Thunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
 
     BoolLit(bool),
     NaturalLit(Natural),
     IntegerLit(Integer),
-    EmptyOptionalLit(Now),
-    NEOptionalLit(Now),
-    EmptyListLit(Now),
-    NEListLit(Vec<Now>),
-    RecordLit(BTreeMap<Label, Now>),
-    RecordType(BTreeMap<Label, Now>),
+    EmptyOptionalLit(Thunk),
+    NEOptionalLit(Thunk),
+    EmptyListLit(Thunk),
+    NEListLit(Vec<Thunk>),
+    RecordLit(BTreeMap<Label, Thunk>),
+    RecordType(BTreeMap<Label, Thunk>),
     UnionType(NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     UnionConstructor(
         NormalizationContext,
@@ -371,10 +371,10 @@ pub(crate) enum WHNF {
     ),
     UnionLit(
         Label,
-        Now,
+        Thunk,
         (NormalizationContext, BTreeMap<Label, Option<InputSubExpr>>),
     ),
-    TextLit(Vec<InterpolatedTextContents<Now>>),
+    TextLit(Vec<InterpolatedTextContents<Thunk>>),
     /// This must not contain a value captured by one of the variants above.
     Expr(OutputSubExpr),
 }
@@ -490,7 +490,7 @@ impl WHNF {
             )),
             WHNF::TextLit(elts) => {
                 fn normalize_textlit(
-                    elts: Vec<InterpolatedTextContents<Now>>,
+                    elts: Vec<InterpolatedTextContents<Thunk>>,
                 ) -> InterpolatedText<OutputSubExpr> {
                     elts.into_iter()
                         .flat_map(|contents| {
@@ -533,10 +533,10 @@ impl WHNF {
                 apply_builtin(b, args)
             }
             (WHNF::OptionalSomeClosure(_), val) => {
-                WHNF::NEOptionalLit(Now::from_whnf(val))
+                WHNF::NEOptionalLit(Thunk::from_whnf(val))
             }
             (WHNF::ListConsClosure(t, None), val) => {
-                WHNF::ListConsClosure(t, Some(Now::from_whnf(val)))
+                WHNF::ListConsClosure(t, Some(Thunk::from_whnf(val)))
             }
             (WHNF::ListConsClosure(_, Some(x)), WHNF::EmptyListLit(_)) => {
                 WHNF::NEListLit(vec![x])
@@ -549,7 +549,7 @@ impl WHNF {
                 WHNF::NaturalLit(n + 1)
             }
             (WHNF::UnionConstructor(ctx, l, kts), val) => {
-                WHNF::UnionLit(l, Now::from_whnf(val), (ctx, kts))
+                WHNF::UnionLit(l, Thunk::from_whnf(val), (ctx, kts))
             }
             // Can't do anything useful, convert to expr
             (f, a) => WHNF::Expr(rc(ExprF::App(
@@ -625,35 +625,34 @@ impl WHNF {
     }
 }
 
-/// Normalize-on-write smart container. Contains either a (partially) normalized value or a
+/// Contains either a (partially) normalized value or a
 /// non-normalized value alongside a normalization context.
-/// The name is a pun on std::borrow::Cow.
 #[derive(Debug, Clone)]
-pub(crate) enum Now {
+pub(crate) enum Thunk {
     Normalized(Box<WHNF>),
     Unnormalized(NormalizationContext, InputSubExpr),
 }
 
-impl Now {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Now {
-        Now::Unnormalized(ctx, e)
+impl Thunk {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+        Thunk::Unnormalized(ctx, e)
     }
 
-    fn from_whnf(v: WHNF) -> Now {
-        Now::Normalized(Box::new(v))
+    fn from_whnf(v: WHNF) -> Thunk {
+        Thunk::Normalized(Box::new(v))
     }
 
     fn normalize(self) -> WHNF {
         match self {
-            Now::Normalized(v) => *v,
-            Now::Unnormalized(ctx, e) => normalize_whnf(ctx, e),
+            Thunk::Normalized(v) => *v,
+            Thunk::Unnormalized(ctx, e) => normalize_whnf(ctx, e),
         }
     }
 
     fn shift(&mut self, delta: isize, var: &V<Label>) {
         match self {
-            Now::Normalized(v) => v.shift(delta, var),
-            Now::Unnormalized(_, e) => shift_mut(delta, var, e),
+            Thunk::Normalized(v) => v.shift(delta, var),
+            Thunk::Unnormalized(_, e) => shift_mut(delta, var, e),
         }
     }
 }
@@ -674,34 +673,34 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
         }
         ExprF::Lam(x, t, e) => WHNF::Lam(
             x.clone(),
-            Now::new(ctx.clone(), t.clone()),
+            Thunk::new(ctx.clone(), t.clone()),
             (ctx, e.clone()),
         ),
         ExprF::Builtin(b) => WHNF::AppliedBuiltin(*b, vec![]),
         ExprF::BoolLit(b) => WHNF::BoolLit(*b),
         ExprF::NaturalLit(n) => WHNF::NaturalLit(*n),
         ExprF::OldOptionalLit(None, e) => {
-            WHNF::EmptyOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::EmptyOptionalLit(Thunk::new(ctx, e.clone()))
         }
         ExprF::OldOptionalLit(Some(e), _) => {
-            WHNF::NEOptionalLit(Now::new(ctx, e.clone()))
+            WHNF::NEOptionalLit(Thunk::new(ctx, e.clone()))
         }
-        ExprF::SomeLit(e) => WHNF::NEOptionalLit(Now::new(ctx, e.clone())),
-        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Now::new(ctx, e.clone())),
+        ExprF::SomeLit(e) => WHNF::NEOptionalLit(Thunk::new(ctx, e.clone())),
+        ExprF::EmptyListLit(e) => WHNF::EmptyListLit(Thunk::new(ctx, e.clone())),
         ExprF::NEListLit(elts) => WHNF::NEListLit(
             elts.iter()
-                .map(|e| Now::new(ctx.clone(), e.clone()))
+                .map(|e| Thunk::new(ctx.clone(), e.clone()))
                 .collect(),
         ),
         ExprF::RecordLit(kvs) => WHNF::RecordLit(
             kvs.iter()
-                .map(|(k, e)| (k.clone(), Now::new(ctx.clone(), e.clone())))
+                .map(|(k, e)| (k.clone(), Thunk::new(ctx.clone(), e.clone())))
                 .collect(),
         ),
         ExprF::UnionType(kvs) => WHNF::UnionType(ctx, kvs.clone()),
         ExprF::UnionLit(l, x, kts) => WHNF::UnionLit(
             l.clone(),
-            Now::new(ctx.clone(), x.clone()),
+            Thunk::new(ctx.clone(), x.clone()),
             (ctx, kts.clone()),
         ),
         ExprF::TextLit(elts) => WHNF::TextLit(
@@ -709,7 +708,7 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> WHNF {
                 .map(|contents| {
                     use InterpolatedTextContents::{Expr, Text};
                     match contents {
-                        Expr(n) => Expr(Now::new(ctx.clone(), n.clone())),
+                        Expr(n) => Expr(Thunk::new(ctx.clone(), n.clone())),
                         Text(s) => Text(s.clone()),
                     }
                 })
