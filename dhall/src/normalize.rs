@@ -9,15 +9,27 @@ use dhall_core::{
 };
 use dhall_generator as dhall;
 
-use crate::expr::{Normalized, Typed};
+use crate::expr::{Normalized, PartiallyNormalized, Typed};
 
 type InputSubExpr = SubExpr<X, Normalized<'static>>;
 type OutputSubExpr = SubExpr<X, X>;
 
 impl<'a> Typed<'a> {
+    /// Reduce an expression to its normal form, performing beta reduction
+    ///
+    /// `normalize` does not type-check the expression.  You may want to type-check
+    /// expressions before normalizing them since normalization can convert an
+    /// ill-typed expression into a well-typed expression.
+    ///
+    /// However, `normalize` will not fail if the expression is ill-typed and will
+    /// leave ill-typed sub-expressions unevaluated.
+    ///
     pub fn normalize(self) -> Normalized<'a> {
-        Normalized(
-            normalize(
+        self.normalize_whnf().normalize()
+    }
+    pub(crate) fn normalize_whnf(self) -> PartiallyNormalized<'a> {
+        PartiallyNormalized(
+            normalize_whnf(
                 NormalizationContext::from_typecheck_ctx(&self.2),
                 self.0,
             ),
@@ -36,6 +48,24 @@ impl<'a> Typed<'a> {
     }
 }
 
+impl<'a> PartiallyNormalized<'a> {
+    pub(crate) fn normalize(self) -> Normalized<'a> {
+        Normalized(
+            self.0.normalize_to_expr(),
+            self.1,
+            self.2,
+        )
+    }
+    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        let mut e = self.0.clone();
+        e.shift(delta, var);
+        PartiallyNormalized(
+            e,
+            self.1.as_ref().map(|x| x.shift(delta, var)),
+            self.2,
+        )
+    }
+}
 
 fn shift_mut<N, E>(delta: isize, var: &V<Label>, in_expr: &mut SubExpr<N, E>) {
     let new_expr = shift(delta, var, &in_expr);
@@ -250,7 +280,7 @@ impl EnvItem {
 }
 
 #[derive(Debug, Clone)]
-struct NormalizationContext(Rc<Context<Label, EnvItem>>);
+pub(crate) struct NormalizationContext(Rc<Context<Label, EnvItem>>);
 
 impl NormalizationContext {
     fn new() -> Self {
@@ -312,7 +342,7 @@ impl NormalizationContext {
 /// subexpression has its own context, but in practice some contexts can be shared when sensible, to
 /// avoid unnecessary allocations.
 #[derive(Debug, Clone)]
-enum WHNF {
+pub(crate) enum WHNF {
     /// Closures
     Lam(Label, Now, (NormalizationContext, InputSubExpr)),
     AppliedBuiltin(Builtin, Vec<WHNF>),
@@ -599,7 +629,7 @@ impl WHNF {
 /// non-normalized value alongside a normalization context.
 /// The name is a pun on std::borrow::Cow.
 #[derive(Debug, Clone)]
-enum Now {
+pub(crate) enum Now {
     Normalized(Box<WHNF>),
     Unnormalized(NormalizationContext, InputSubExpr),
 }
@@ -812,19 +842,6 @@ fn normalize_last_layer(expr: ExprF<WHNF, Label, X, X>) -> WHNF {
             Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
         }
     }
-}
-
-/// Reduce an expression to its normal form, performing beta reduction
-///
-/// `normalize` does not type-check the expression.  You may want to type-check
-/// expressions before normalizing them since normalization can convert an
-/// ill-typed expression into a well-typed expression.
-///
-/// However, `normalize` will not fail if the expression is ill-typed and will
-/// leave ill-typed sub-expressions unevaluated.
-///
-fn normalize(ctx: NormalizationContext, e: InputSubExpr) -> OutputSubExpr {
-    normalize_whnf(ctx, e).normalize_to_expr()
 }
 
 #[cfg(test)]
