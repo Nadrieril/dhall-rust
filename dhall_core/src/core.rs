@@ -434,6 +434,24 @@ impl<N, E> SubExpr<N, E> {
         rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
     }
 
+    /// `shift` is used by both normalization and type-checking to avoid variable
+    /// capture by shifting variable indices
+    /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
+    /// for details
+    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        match self.as_ref() {
+            ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
+            _ => self.map_subexprs_with_special_handling_of_binders(
+                |e| e.shift(delta, var),
+                |x: &Label, e| e.shift(delta, &var.shift0(1, x)),
+            ),
+        }
+    }
+
+    pub fn shift0(&self, delta: isize, label: &Label) -> Self {
+        self.shift(delta, &V(label.clone(), 0))
+    }
+
     pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
         match self.as_ref() {
             ExprF::Var(v) if v == var => val.clone(),
@@ -510,13 +528,7 @@ pub fn shift<N, E>(
     var: &V<Label>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
-    match in_expr.as_ref() {
-        ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
-        _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| shift(delta, var, e),
-            |x: &Label, e| shift(delta, &var.shift0(1, x), e),
-        ),
-    }
+    in_expr.shift(delta, var)
 }
 
 pub fn shift0<N, E>(

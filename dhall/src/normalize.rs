@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use dhall_core::context::Context;
 use dhall_core::{
-    rc, shift, shift0, Builtin, Const, ExprF, Integer, InterpolatedText,
+    rc, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
 use dhall_generator as dhall;
@@ -53,10 +53,8 @@ impl<'a> PartiallyNormalized<'a> {
         Normalized(self.0.normalize_to_expr(), self.1, self.2)
     }
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        let mut e = self.0.clone();
-        e.shift(delta, var);
         PartiallyNormalized(
-            e,
+            self.0.shift(delta, var),
             self.1.as_ref().map(|x| x.shift(delta, var)),
             self.2,
         )
@@ -75,11 +73,6 @@ impl<'a> PartiallyNormalized<'a> {
     pub(crate) fn into_whnf(self) -> Value<WHNF> {
         self.0
     }
-}
-
-fn shift_mut<N, E>(delta: isize, var: &V<Label>, in_expr: &mut SubExpr<N, E>) {
-    let new_expr = shift(delta, var, &in_expr);
-    std::mem::replace(in_expr, new_expr);
 }
 
 fn apply_builtin(b: Builtin, args: Vec<Value<WHNF>>) -> Value<WHNF> {
@@ -277,16 +270,17 @@ enum EnvItem {
 
 impl EnvItem {
     fn shift0(&self, delta: isize, x: &Label) -> Self {
+        self.shift(delta, &V(x.clone(), 0))
+    }
+
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use EnvItem::*;
         match self {
-            Expr(e) => {
-                let mut e = e.clone();
-                e.shift(delta, &V(x.clone(), 0));
-                Expr(e)
-            }
-            Skip(var) => Skip(var.shift0(delta, x)),
+            Expr(e) => Expr(e.shift(delta, var)),
+            Skip(v) => Skip(v.shift(delta, var)),
         }
     }
+
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
@@ -344,6 +338,10 @@ impl NormalizationContext {
             }
         }
         NormalizationContext(Rc::new(ctx))
+    }
+
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
     fn subst_shift(
@@ -424,14 +422,14 @@ impl Value<NF> {
             Value::ListConsClosure(n, None) => {
                 let a = n.to_nf().normalize_to_expr();
                 // Avoid accidental capture of the new `x` variable
-                let a1 = shift0(1, &"x".into(), &a);
+                let a1 = a.shift0(1, &"x".into());
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
                 let v = v.to_nf().normalize_to_expr();
                 let a = n.to_nf().normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
-                let v = shift0(1, &"xs".into(), &v);
+                let v = v.shift0(1, &"xs".into());
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
             }
             Value::NaturalSuccClosure => {
@@ -655,79 +653,93 @@ impl Value<WHNF> {
         Value::AppliedBuiltin(b, vec![])
     }
 
-    fn shift(&mut self, delta: isize, var: &V<Label>) {
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         match self {
-            Value::Var(v) => {
-                std::mem::replace(v, v.shift(delta, var));
+            Value::Lam(x, t, e) => Value::Lam(
+                x.clone(),
+                t.shift(delta, var),
+                e.shift(delta, &var.shift0(1, x)),
+            ),
+            Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
+                *b,
+                args.iter().map(|v| v.shift(delta, var)).collect(),
+            ),
+            Value::NaturalSuccClosure => Value::NaturalSuccClosure,
+            Value::OptionalSomeClosure(tth) => {
+                Value::OptionalSomeClosure(tth.shift(delta, var))
             }
-            Value::NaturalSuccClosure
-            | Value::Const(_)
-            | Value::BoolLit(_)
-            | Value::NaturalLit(_)
-            | Value::IntegerLit(_) => {}
-            Value::EmptyOptionalLit(tth)
-            | Value::OptionalSomeClosure(tth)
-            | Value::EmptyListLit(tth) => {
-                tth.shift(delta, var);
+            Value::ListConsClosure(t, v) => Value::ListConsClosure(
+                t.shift(delta, var),
+                v.as_ref().map(|v| v.shift(delta, var)),
+            ),
+            Value::Pi(x, t, e) => Value::Pi(
+                x.clone(),
+                t.shift(delta, var),
+                e.shift(delta, &var.shift0(1, x)),
+            ),
+            Value::Var(v) => Value::Var(v.shift(delta, var)),
+            Value::Const(c) => Value::Const(*c),
+            Value::BoolLit(b) => Value::BoolLit(*b),
+            Value::NaturalLit(n) => Value::NaturalLit(*n),
+            Value::IntegerLit(n) => Value::IntegerLit(*n),
+            Value::EmptyOptionalLit(tth) => {
+                Value::EmptyOptionalLit(tth.shift(delta, var))
             }
             Value::NEOptionalLit(th) => {
-                th.shift(delta, var);
+                Value::NEOptionalLit(th.shift(delta, var))
             }
-            Value::Lam(x, t, e) => {
-                t.shift(delta, var);
-                e.shift(delta, &var.shift0(1, x));
+            Value::EmptyListLit(tth) => {
+                Value::EmptyListLit(tth.shift(delta, var))
             }
-            Value::AppliedBuiltin(_, args) => {
-                for x in args.iter_mut() {
-                    x.shift(delta, var);
-                }
-            }
-            Value::ListConsClosure(t, v) => {
-                t.shift(delta, var);
-                for x in v.iter_mut() {
-                    x.shift(delta, var);
-                }
-            }
-            Value::Pi(x, t, e) => {
-                t.shift(delta, var);
-                e.shift(delta, &var.shift0(1, x));
-            }
-            Value::NEListLit(elts) => {
-                for x in elts.iter_mut() {
-                    x.shift(delta, var);
-                }
-            }
-            Value::RecordLit(kvs) => {
-                for x in kvs.values_mut() {
-                    x.shift(delta, var);
-                }
-            }
-            Value::RecordType(kvs) => {
-                for x in kvs.values_mut() {
-                    x.shift(delta, var);
-                }
-            }
-            Value::UnionType(kts) | Value::UnionConstructor(_, kts) => {
-                for x in kts.values_mut().flat_map(|opt| opt) {
-                    x.shift(delta, var);
-                }
-            }
-            Value::UnionLit(_, v, kts) => {
-                v.shift(delta, var);
-                for x in kts.values_mut().flat_map(|opt| opt) {
-                    x.shift(delta, var);
-                }
-            }
-            Value::TextLit(elts) => {
-                for x in elts.iter_mut() {
-                    use InterpolatedTextContents::{Expr, Text};
-                    match x {
-                        Expr(n) => n.shift(delta, var),
-                        Text(_) => {}
-                    }
-                }
-            }
-            Value::Expr(e) => shift_mut(delta, var, e),
+            Value::NEListLit(elts) => Value::NEListLit(
+                elts.iter().map(|v| v.shift(delta, var)).collect(),
+            ),
+            Value::RecordLit(kvs) => Value::RecordLit(
+                kvs.iter()
+                    .map(|(k, v)| (k.clone(), v.shift(delta, var)))
+                    .collect(),
+            ),
+            Value::RecordType(kvs) => Value::RecordType(
+                kvs.iter()
+                    .map(|(k, v)| (k.clone(), v.shift(delta, var)))
+                    .collect(),
+            ),
+            Value::UnionType(kts) => Value::UnionType(
+                kts.iter()
+                    .map(|(k, v)| {
+                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                    })
+                    .collect(),
+            ),
+            Value::UnionConstructor(x, kts) => Value::UnionConstructor(
+                x.clone(),
+                kts.iter()
+                    .map(|(k, v)| {
+                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                    })
+                    .collect(),
+            ),
+            Value::UnionLit(x, v, kts) => Value::UnionLit(
+                x.clone(),
+                v.shift(delta, var),
+                kts.iter()
+                    .map(|(k, v)| {
+                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                    })
+                    .collect(),
+            ),
+            Value::TextLit(elts) => Value::TextLit(
+                elts.iter()
+                    .map(|contents| {
+                        use InterpolatedTextContents::{Expr, Text};
+                        match contents {
+                            Expr(th) => Expr(th.shift(delta, var)),
+                            Text(s) => Text(s.clone()),
+                        }
+                    })
+                    .collect(),
+            ),
+            Value::Expr(e) => Value::Expr(e.shift(delta, var)),
         }
     }
 
@@ -859,10 +871,14 @@ impl Thunk<WHNF> {
         Thunk::Value(Box::new(self.normalize_whnf().normalize()))
     }
 
-    fn shift(&mut self, delta: isize, var: &V<Label>) {
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         match self {
-            Thunk::Value(v) => v.shift(delta, var),
-            Thunk::Unnormalized(_, _, e) => shift_mut(delta, var, e),
+            Thunk::Value(v) => Thunk::Value(Box::new(v.shift(delta, var))),
+            Thunk::Unnormalized(marker, ctx, e) => Thunk::Unnormalized(
+                marker.clone(),
+                ctx.shift(delta, var),
+                e.clone(),
+            ),
         }
     }
 
@@ -922,13 +938,10 @@ impl TypeThunk<WHNF> {
         }
     }
 
-    fn shift(&mut self, delta: isize, var: &V<Label>) {
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         match self {
-            TypeThunk::Thunk(th) => th.shift(delta, var),
-            TypeThunk::Type(t) => {
-                let shifted = t.shift(delta, var);
-                std::mem::replace(t, shifted);
-            }
+            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
+            TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
         }
     }
 
