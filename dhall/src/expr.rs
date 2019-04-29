@@ -47,7 +47,7 @@ derive_other_traits!(Typed);
 
 #[derive(Debug, Clone)]
 pub(crate) struct PartiallyNormalized<'a>(
-    pub(crate) crate::normalize::Value<crate::normalize::WHNF>,
+    pub(crate) crate::normalize::Value,
     pub(crate) Option<Type<'static>>,
     pub(crate) PhantomData<&'a ()>,
 );

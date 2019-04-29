@@ -70,12 +70,12 @@ impl<'a> PartiallyNormalized<'a> {
             self.2,
         )
     }
-    pub(crate) fn into_whnf(self) -> Value<WHNF> {
+    pub(crate) fn into_whnf(self) -> Value {
         self.0
     }
 }
 
-fn apply_builtin(b: Builtin, args: Vec<Value<WHNF>>) -> Value<WHNF> {
+fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
     use dhall_core::Builtin::*;
     use Value::*;
 
@@ -264,7 +264,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value<WHNF>>) -> Value<WHNF> {
 
 #[derive(Debug, Clone)]
 enum EnvItem {
-    Expr(Value<WHNF>),
+    Expr(Value),
     Skip(V<Label>),
 }
 
@@ -302,7 +302,7 @@ impl NormalizationContext {
     fn new() -> Self {
         NormalizationContext(Rc::new(Context::new()))
     }
-    fn insert(&self, x: &Label, e: Value<WHNF>) -> Self {
+    fn insert(&self, x: &Label, e: Value) -> Self {
         NormalizationContext(Rc::new(
             self.0.insert(x.clone(), EnvItem::Expr(e)),
         ))
@@ -314,7 +314,7 @@ impl NormalizationContext {
                 .insert(x.clone(), EnvItem::Skip(V(x.clone(), 0))),
         ))
     }
-    fn lookup(&self, var: &V<Label>) -> Value<WHNF> {
+    fn lookup(&self, var: &V<Label>) -> Value {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Expr(e)) => e.clone(),
@@ -355,53 +355,41 @@ impl NormalizationContext {
     }
 }
 
+/// A semantic value.
 #[derive(Debug, Clone)]
-pub(crate) struct WHNF;
-#[derive(Debug, Clone)]
-pub(crate) enum NF {}
-
-/// A semantic value. `Form` should be either `WHNF` or `NF`.
-/// `NF` stands for Normal Form and indicates that all subexpressions are normalized.
-/// `WHNF` stands for Weak Head Normal-Form and indicates that subexpressions may not be normalized.
-///
-/// Weak Head Normal-Form means that the expression is normalized as
-/// little as possible, but just enough to know the first constructor of the normal form. This is
-/// identical to normal form for simple types like integers, but for e.g. a record literal
-/// this means knowing just the field names.
-#[derive(Debug, Clone)]
-pub(crate) enum Value<Form> {
+pub(crate) enum Value {
     /// Closures
-    Lam(Label, Thunk<Form>, Thunk<Form>),
-    AppliedBuiltin(Builtin, Vec<Value<Form>>),
+    Lam(Label, Thunk, Thunk),
+    AppliedBuiltin(Builtin, Vec<Value>),
     /// `λ(x: a) -> Some x`
-    OptionalSomeClosure(TypeThunk<Form>),
+    OptionalSomeClosure(TypeThunk),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
     /// `λ(xs : List a) -> [ x ] # xs`
-    ListConsClosure(TypeThunk<Form>, Option<Thunk<Form>>),
+    ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
-    Pi(Label, TypeThunk<Form>, TypeThunk<Form>),
+    Pi(Label, TypeThunk, TypeThunk),
 
     Var(V<Label>),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
     IntegerLit(Integer),
-    EmptyOptionalLit(TypeThunk<Form>),
-    NEOptionalLit(Thunk<Form>),
-    EmptyListLit(TypeThunk<Form>),
-    NEListLit(Vec<Thunk<Form>>),
-    RecordLit(BTreeMap<Label, Thunk<Form>>),
-    RecordType(BTreeMap<Label, TypeThunk<Form>>),
-    UnionType(BTreeMap<Label, Option<TypeThunk<Form>>>),
-    UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk<Form>>>),
-    UnionLit(Label, Thunk<Form>, BTreeMap<Label, Option<TypeThunk<Form>>>),
-    TextLit(Vec<InterpolatedTextContents<Thunk<Form>>>),
+    EmptyOptionalLit(TypeThunk),
+    NEOptionalLit(Thunk),
+    EmptyListLit(TypeThunk),
+    NEListLit(Vec<Thunk>),
+    RecordLit(BTreeMap<Label, Thunk>),
+    RecordType(BTreeMap<Label, TypeThunk>),
+    UnionType(BTreeMap<Label, Option<TypeThunk>>),
+    UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk>>),
+    UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
+    TextLit(Vec<InterpolatedTextContents<Thunk>>),
     /// This must not contain a value captured by one of the variants above.
     Expr(OutputSubExpr),
 }
 
-impl Value<NF> {
+impl Value {
     /// Convert the value back to a (normalized) syntactic expression
     pub(crate) fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
@@ -493,7 +481,7 @@ impl Value<NF> {
             )),
             Value::TextLit(elts) => {
                 fn normalize_textlit(
-                    elts: Vec<InterpolatedTextContents<Thunk<NF>>>,
+                    elts: Vec<InterpolatedTextContents<Thunk>>,
                 ) -> InterpolatedText<OutputSubExpr> {
                     elts.into_iter()
                         .flat_map(|contents| {
@@ -523,14 +511,8 @@ impl Value<NF> {
             Value::Expr(e) => e,
         }
     }
-}
 
-impl Value<WHNF> {
-    pub(crate) fn normalize_to_expr(self) -> OutputSubExpr {
-        self.normalize().normalize_to_expr()
-    }
-
-    pub(crate) fn normalize(&self) -> Value<NF> {
+    pub(crate) fn normalize(&self) -> Value {
         match self {
             Value::Lam(x, t, e) => {
                 Value::Lam(x.clone(), t.normalize(), e.normalize())
@@ -613,7 +595,7 @@ impl Value<WHNF> {
     }
 
     /// Apply to a value
-    pub(crate) fn app(self, val: Value<WHNF>) -> Value<WHNF> {
+    pub(crate) fn app(self, val: Value) -> Value {
         match (self, val) {
             (Value::Lam(x, _, e), val) => {
                 let val =
@@ -651,7 +633,7 @@ impl Value<WHNF> {
         }
     }
 
-    pub(crate) fn from_builtin(b: Builtin) -> Value<WHNF> {
+    pub(crate) fn from_builtin(b: Builtin) -> Value {
         Value::AppliedBuiltin(b, vec![])
     }
 
@@ -846,41 +828,44 @@ impl Value<WHNF> {
 /// Contains either a (partially) normalized value or a
 /// non-normalized value alongside a normalization context.
 #[derive(Debug, Clone)]
-pub(crate) enum Thunk<Form> {
-    Value(Box<Value<Form>>),
-    Unnormalized(Form, NormalizationContext, InputSubExpr),
+pub(crate) enum Thunk {
+    // Normal form, i.e. completely normalized
+    NF(Box<Value>),
+    // Weak Head Normal Form, i.e. subexpressions may not be normalized
+    WHNF(Box<Value>),
+    Unnormalized(NormalizationContext, InputSubExpr),
 }
 
-impl Thunk<WHNF> {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk<WHNF> {
-        Thunk::Unnormalized(WHNF, ctx, e)
+impl Thunk {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+        Thunk::Unnormalized(ctx, e)
     }
 
-    fn from_whnf(v: Value<WHNF>) -> Thunk<WHNF> {
-        Thunk::Value(Box::new(v))
+    fn from_whnf(v: Value) -> Thunk {
+        Thunk::WHNF(Box::new(v))
     }
 
-    pub(crate) fn normalize_whnf(&self) -> Value<WHNF> {
+    pub(crate) fn normalize_whnf(&self) -> Value {
         match self {
-            Thunk::Value(v) => (**v).clone(),
-            Thunk::Unnormalized(_, ctx, e) => {
+            Thunk::WHNF(v) => (**v).clone(),
+            Thunk::NF(v) => (**v).clone(),
+            Thunk::Unnormalized(ctx, e) => {
                 normalize_whnf(ctx.clone(), e.clone())
             }
         }
     }
 
-    fn normalize(&self) -> Thunk<NF> {
-        Thunk::Value(Box::new(self.normalize_whnf().normalize()))
+    fn normalize(&self) -> Thunk {
+        Thunk::NF(Box::new(self.normalize_whnf().normalize()))
     }
 
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         match self {
-            Thunk::Value(v) => Thunk::Value(Box::new(v.shift(delta, var))),
-            Thunk::Unnormalized(marker, ctx, e) => Thunk::Unnormalized(
-                marker.clone(),
-                ctx.shift(delta, var),
-                e.clone(),
-            ),
+            Thunk::WHNF(v) => Thunk::WHNF(Box::new(v.shift(delta, var))),
+            Thunk::NF(v) => Thunk::NF(Box::new(v.shift(delta, var))),
+            Thunk::Unnormalized(ctx, e) => {
+                Thunk::Unnormalized(ctx.shift(delta, var), e.clone())
+            }
         }
     }
 
@@ -890,50 +875,49 @@ impl Thunk<WHNF> {
         val: &PartiallyNormalized<'static>,
     ) -> Self {
         match self {
-            Thunk::Value(v) => Thunk::Value(Box::new(v.subst_shift(var, val))),
-            Thunk::Unnormalized(marker, ctx, e) => Thunk::Unnormalized(
-                marker.clone(),
-                ctx.subst_shift(var, val),
-                e.clone(),
-            ),
+            Thunk::WHNF(v) => Thunk::WHNF(Box::new(v.subst_shift(var, val))),
+            Thunk::NF(v) => Thunk::NF(Box::new(v.subst_shift(var, val))),
+            Thunk::Unnormalized(ctx, e) => {
+                Thunk::Unnormalized(ctx.subst_shift(var, val), e.clone())
+            }
         }
     }
-}
 
-impl Thunk<NF> {
-    pub(crate) fn to_nf(&self) -> Value<NF> {
+    pub(crate) fn to_nf(&self) -> Value {
         match self {
-            Thunk::Value(v) => (**v).clone(),
-            Thunk::Unnormalized(m, _, _) => match *m {},
+            Thunk::NF(v) => (**v).clone(),
+            Thunk::WHNF(_) | Thunk::Unnormalized(_, _) => {
+                self.normalize_whnf().normalize()
+            }
         }
     }
 }
 
 /// A thunk in type position.
 #[derive(Debug, Clone)]
-pub(crate) enum TypeThunk<Form> {
-    Thunk(Thunk<Form>),
+pub(crate) enum TypeThunk {
+    Thunk(Thunk),
     Type(Type<'static>),
 }
 
-impl TypeThunk<WHNF> {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> TypeThunk<WHNF> {
+impl TypeThunk {
+    fn new(ctx: NormalizationContext, e: InputSubExpr) -> TypeThunk {
         TypeThunk::from_thunk(Thunk::new(ctx, e))
     }
 
-    fn from_whnf(v: Value<WHNF>) -> TypeThunk<WHNF> {
+    fn from_whnf(v: Value) -> TypeThunk {
         TypeThunk::from_thunk(Thunk::from_whnf(v))
     }
 
-    fn from_thunk(th: Thunk<WHNF>) -> TypeThunk<WHNF> {
+    fn from_thunk(th: Thunk) -> TypeThunk {
         TypeThunk::Thunk(th)
     }
 
-    pub(crate) fn from_type(t: Type<'static>) -> TypeThunk<WHNF> {
+    pub(crate) fn from_type(t: Type<'static>) -> TypeThunk {
         TypeThunk::Type(t)
     }
 
-    fn normalize(&self) -> TypeThunk<NF> {
+    fn normalize(&self) -> TypeThunk {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.normalize()),
             TypeThunk::Type(t) => TypeThunk::Type(t.clone()),
@@ -957,10 +941,8 @@ impl TypeThunk<WHNF> {
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),
         }
     }
-}
 
-impl TypeThunk<NF> {
-    pub(crate) fn to_nf(&self) -> Value<NF> {
+    pub(crate) fn to_nf(&self) -> Value {
         match self {
             TypeThunk::Thunk(th) => th.to_nf(),
             // TODO: let's hope for the best with the unwrap
@@ -975,10 +957,7 @@ impl TypeThunk<NF> {
 }
 
 /// Reduces the imput expression to Value. See doc on `Value` for details.
-fn normalize_whnf(
-    ctx: NormalizationContext,
-    expr: InputSubExpr,
-) -> Value<WHNF> {
+fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     match expr.as_ref() {
         ExprF::Var(v) => ctx.lookup(&v),
         ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
@@ -1074,7 +1053,7 @@ fn normalize_whnf(
         }
         expr => {
             // Recursively normalize subexpressions
-            let expr: ExprF<Value<WHNF>, Label, X, X> = expr
+            let expr: ExprF<Value, Label, X, X> = expr
                 .map_ref_with_special_handling_of_binders(
                     |e| normalize_whnf(ctx.clone(), e.clone()),
                     |x, e| normalize_whnf(ctx.skip(x), e.clone()),
@@ -1089,7 +1068,7 @@ fn normalize_whnf(
 }
 
 /// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
-fn normalize_last_layer(expr: ExprF<Value<WHNF>, Label, X, X>) -> Value<WHNF> {
+fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
     use dhall_core::BinOp::*;
     use Value::*;
 
@@ -1173,7 +1152,7 @@ fn normalize_last_layer(expr: ExprF<Value<WHNF>, Label, X, X>) -> Value<WHNF> {
             Expr(rc(ExprF::Merge(
                 RecordLit(handlers).normalize_to_expr(),
                 e.normalize_to_expr(),
-                t.map(<Value<WHNF>>::normalize_to_expr),
+                t.map(<Value>::normalize_to_expr),
             )))
         }
         // Couldn't do anything useful, so just normalize subexpressions

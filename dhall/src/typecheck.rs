@@ -6,7 +6,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::expr::*;
-use crate::normalize::{TypeThunk, Value, WHNF};
+use crate::normalize::{TypeThunk, Value};
 use crate::traits::DynamicType;
 use dhall_core;
 use dhall_core::context::Context;
@@ -99,7 +99,7 @@ impl<'a> Type<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
     }
-    fn normalize_whnf(self) -> Result<Value<WHNF>, TypeError> {
+    fn normalize_whnf(self) -> Result<Value, TypeError> {
         self.0.normalize_whnf()
     }
     pub(crate) fn partially_normalize(
@@ -110,7 +110,7 @@ impl<'a> Type<'a> {
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
     }
-    fn internal_whnf(&self) -> Option<&Value<WHNF>> {
+    fn internal_whnf(&self) -> Option<&Value> {
         self.0.whnf()
     }
     pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
@@ -143,7 +143,7 @@ impl Type<'static> {
     }
 }
 
-impl TypeThunk<WHNF> {
+impl TypeThunk {
     fn normalize_to_type(
         self,
         ctx: &TypecheckContext,
@@ -178,7 +178,7 @@ impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         Ok(self.partially_normalize()?.normalize())
     }
-    fn normalize_whnf(self) -> Result<Value<WHNF>, TypeError> {
+    fn normalize_whnf(self) -> Result<Value, TypeError> {
         Ok(self.partially_normalize()?.into_whnf())
     }
     fn partially_normalize(self) -> Result<PartiallyNormalized<'a>, TypeError> {
@@ -193,7 +193,7 @@ impl<'a> TypeInternal<'a> {
             }
         })
     }
-    fn whnf(&self) -> Option<&Value<WHNF>> {
+    fn whnf(&self) -> Option<&Value> {
         match self {
             TypeInternal::PNzed(e) => Some(&e.0),
             _ => None,
