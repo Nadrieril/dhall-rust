@@ -6,7 +6,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::expr::*;
-use crate::normalize::{TypeThunk, WHNF};
+use crate::normalize::{TypeThunk, Value, WHNF};
 use crate::traits::DynamicType;
 use dhall_core;
 use dhall_core::context::Context;
@@ -65,7 +65,7 @@ impl<'a> Normalized<'a> {
                 type_with(ctx, self.0.embed_absurd())?.normalize_to_type()
             }
             _ => Type(TypeInternal::PNzed(Box::new(PartiallyNormalized(
-                WHNF::Expr(self.0),
+                Value::Expr(self.0),
                 self.1,
                 self.2,
             )))),
@@ -85,7 +85,7 @@ impl Normalized<'static> {
 impl<'a> PartiallyNormalized<'a> {
     fn normalize_to_type(self) -> Type<'a> {
         match &self.0 {
-            WHNF::Const(c) => Type(TypeInternal::Const(*c)),
+            Value::Const(c) => Type(TypeInternal::Const(*c)),
             _ => Type(TypeInternal::PNzed(Box::new(self))),
         }
     }
@@ -99,7 +99,7 @@ impl<'a> Type<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
     }
-    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
+    fn normalize_whnf(self) -> Result<Value<WHNF>, TypeError> {
         self.0.normalize_whnf()
     }
     pub(crate) fn partially_normalize(
@@ -110,7 +110,7 @@ impl<'a> Type<'a> {
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
     }
-    fn internal_whnf(&self) -> Option<&WHNF> {
+    fn internal_whnf(&self) -> Option<&Value<WHNF>> {
         self.0.whnf()
     }
     pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
@@ -143,7 +143,7 @@ impl Type<'static> {
     }
 }
 
-impl TypeThunk {
+impl TypeThunk<WHNF> {
     fn normalize_to_type(
         self,
         ctx: &TypecheckContext,
@@ -152,7 +152,10 @@ impl TypeThunk {
             TypeThunk::Type(t) => Ok(t),
             TypeThunk::Thunk(th) => {
                 // TODO: rule out statically
-                mktype(ctx, th.normalize().normalize_to_expr().embed_absurd())
+                mktype(
+                    ctx,
+                    th.normalize_whnf().normalize_to_expr().embed_absurd(),
+                )
             }
         }
     }
@@ -175,7 +178,7 @@ impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         Ok(self.partially_normalize()?.normalize())
     }
-    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
+    fn normalize_whnf(self) -> Result<Value<WHNF>, TypeError> {
         Ok(self.partially_normalize()?.into_whnf())
     }
     fn partially_normalize(self) -> Result<PartiallyNormalized<'a>, TypeError> {
@@ -190,7 +193,7 @@ impl<'a> TypeInternal<'a> {
             }
         })
     }
-    fn whnf(&self) -> Option<&WHNF> {
+    fn whnf(&self) -> Option<&Value<WHNF>> {
         match self {
             TypeInternal::PNzed(e) => Some(&e.0),
             _ => None,
@@ -436,7 +439,7 @@ where
 }
 
 fn const_to_pnormalized<'a>(c: Const) -> PartiallyNormalized<'a> {
-    PartiallyNormalized(WHNF::Const(c), Some(type_of_const(c)), PhantomData)
+    PartiallyNormalized(Value::Const(c), Some(type_of_const(c)), PhantomData)
 }
 
 fn const_to_type<'a>(c: Const) -> Type<'a> {
@@ -594,7 +597,7 @@ impl TypeIntermediate {
                 };
 
                 let pnormalized = PartiallyNormalized(
-                    WHNF::Pi(
+                    Value::Pi(
                         x.clone(),
                         TypeThunk::from_type(ta.clone()),
                         TypeThunk::from_type(tb.clone()),
@@ -628,7 +631,7 @@ impl TypeIntermediate {
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
                 let pnormalized = PartiallyNormalized(
-                    WHNF::RecordType(
+                    Value::RecordType(
                         kts.iter()
                             .map(|(k, t)| {
                                 (k.clone(), TypeThunk::from_type(t.clone()))
@@ -669,7 +672,7 @@ impl TypeIntermediate {
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
                 let pnormalized = PartiallyNormalized(
-                    WHNF::UnionType(
+                    Value::UnionType(
                         kts.iter()
                             .map(|(k, t)| {
                                 (
@@ -694,7 +697,7 @@ impl TypeIntermediate {
                     mkerr(ctx, InvalidListType(t.clone().into_normalized()?)),
                 );
                 let pnormalized = PartiallyNormalized(
-                    WHNF::from_builtin(Builtin::List)
+                    Value::from_builtin(Builtin::List)
                         .app(t.clone().normalize_whnf()?),
                     Some(const_to_type(Const::Type)),
                     PhantomData,
@@ -712,7 +715,7 @@ impl TypeIntermediate {
                     ),
                 );
                 let pnormalized = PartiallyNormalized(
-                    WHNF::from_builtin(Builtin::Optional)
+                    Value::from_builtin(Builtin::Optional)
                         .app(t.clone().normalize_whnf()?),
                     Some(const_to_type(Const::Type)),
                     PhantomData,
@@ -852,10 +855,12 @@ fn type_last_layer(
         App(f, a) => {
             let tf = f.get_type()?;
             let (x, tx, tb) = match tf.internal_whnf() {
-                Some(WHNF::Pi(x, TypeThunk::Type(tx), TypeThunk::Type(tb))) => {
-                    (x, tx, tb)
-                }
-                Some(WHNF::Pi(_, _, _)) => {
+                Some(Value::Pi(
+                    x,
+                    TypeThunk::Type(tx),
+                    TypeThunk::Type(tb),
+                )) => (x, tx, tb),
+                Some(Value::Pi(_, _, _)) => {
                     panic!("ICE: this should not have happened")
                 }
                 _ => return Err(mkerr(NotAFunction(f))),
@@ -996,14 +1001,14 @@ fn type_last_layer(
             ))
         }
         Field(r, x) => match r.get_type()?.internal_whnf() {
-            Some(WHNF::RecordType(kts)) => match kts.get(&x) {
+            Some(Value::RecordType(kts)) => match kts.get(&x) {
                 Some(tth) => Ok(RetType(tth.clone().normalize_to_type(ctx)?)),
                 None => Err(mkerr(MissingRecordField(x, r))),
             },
             _ => {
                 let r = r.normalize_to_type();
                 match r.internal_whnf() {
-                    Some(WHNF::UnionType(kts)) => match kts.get(&x) {
+                    Some(Value::UnionType(kts)) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                         Some(Some(t)) => Ok(RetType(
@@ -1040,7 +1045,7 @@ fn type_last_layer(
         TextLit(_) => Ok(RetType(builtin_to_type(Text)?)),
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.internal_whnf() {
-                Some(WHNF::AppliedBuiltin(List, _)) => {}
+                Some(Value::AppliedBuiltin(List, _)) => {}
                 _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
             }
 
