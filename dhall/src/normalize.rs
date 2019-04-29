@@ -181,7 +181,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
             [_, NEListLit(xs), _, cons, nil] => {
                 let mut v = nil;
                 for x in xs.into_iter().rev() {
-                    v = cons.clone().app(x.normalize_whnf()).app(v);
+                    v = cons.clone().app(x.as_whnf()).app(v);
                 }
                 v
             }
@@ -215,7 +215,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
                 nothing
             },
             [_, NEOptionalLit(x), _, just, _] => {
-                just.app(x.normalize_whnf())
+                just.app(x.as_whnf())
             }
         ),
         NaturalBuild => improved_slice_patterns::match_vec!(args;
@@ -395,8 +395,8 @@ impl Value {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.clone(),
-                t.to_nf().normalize_to_expr(),
-                e.to_nf().normalize_to_expr(),
+                t.as_nf().normalize_to_expr(),
+                e.as_nf().normalize_to_expr(),
             )),
             Value::AppliedBuiltin(b, args) => {
                 let mut e = rc(ExprF::Builtin(b));
@@ -406,18 +406,18 @@ impl Value {
                 e
             }
             Value::OptionalSomeClosure(n) => {
-                let a = n.to_nf().normalize_to_expr();
+                let a = n.as_nf().normalize_to_expr();
                 dhall::subexpr!(λ(x: a) -> Some x)
             }
             Value::ListConsClosure(n, None) => {
-                let a = n.to_nf().normalize_to_expr();
+                let a = n.as_nf().normalize_to_expr();
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.shift0(1, &"x".into());
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
-                let v = v.to_nf().normalize_to_expr();
-                let a = n.to_nf().normalize_to_expr();
+                let v = v.as_nf().normalize_to_expr();
+                let a = n.as_nf().normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.shift0(1, &"xs".into());
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
@@ -427,8 +427,8 @@ impl Value {
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
                 x,
-                t.to_nf().normalize_to_expr(),
-                e.to_nf().normalize_to_expr(),
+                t.as_nf().normalize_to_expr(),
+                e.as_nf().normalize_to_expr(),
             )),
             Value::Var(v) => rc(ExprF::Var(v)),
             Value::Const(c) => rc(ExprF::Const(c)),
@@ -437,46 +437,46 @@ impl Value {
             Value::IntegerLit(n) => rc(ExprF::IntegerLit(n)),
             Value::EmptyOptionalLit(n) => rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::OptionalNone)),
-                n.to_nf().normalize_to_expr(),
+                n.as_nf().normalize_to_expr(),
             )),
             Value::NEOptionalLit(n) => {
-                rc(ExprF::SomeLit(n.to_nf().normalize_to_expr()))
+                rc(ExprF::SomeLit(n.as_nf().normalize_to_expr()))
             }
             Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.to_nf().normalize_to_expr()))
+                rc(ExprF::EmptyListLit(n.as_nf().normalize_to_expr()))
             }
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
                 elts.into_iter()
-                    .map(|n| n.to_nf().normalize_to_expr())
+                    .map(|n| n.as_nf().normalize_to_expr())
                     .collect(),
             )),
             Value::RecordLit(kvs) => rc(ExprF::RecordLit(
                 kvs.into_iter()
-                    .map(|(k, v)| (k, v.to_nf().normalize_to_expr()))
+                    .map(|(k, v)| (k, v.as_nf().normalize_to_expr()))
                     .collect(),
             )),
             Value::RecordType(kts) => rc(ExprF::RecordType(
                 kts.into_iter()
-                    .map(|(k, v)| (k, v.to_nf().normalize_to_expr()))
+                    .map(|(k, v)| (k, v.as_nf().normalize_to_expr()))
                     .collect(),
             )),
             Value::UnionType(kts) => rc(ExprF::UnionType(
                 kts.into_iter()
-                    .map(|(k, v)| (k, v.map(|v| v.to_nf().normalize_to_expr())))
+                    .map(|(k, v)| (k, v.map(|v| v.as_nf().normalize_to_expr())))
                     .collect(),
             )),
             Value::UnionConstructor(l, kts) => {
                 let kts = kts
                     .into_iter()
-                    .map(|(k, v)| (k, v.map(|v| v.to_nf().normalize_to_expr())))
+                    .map(|(k, v)| (k, v.map(|v| v.as_nf().normalize_to_expr())))
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l))
             }
             Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
                 l,
-                v.to_nf().normalize_to_expr(),
+                v.as_nf().normalize_to_expr(),
                 kts.into_iter()
-                    .map(|(k, v)| (k, v.map(|v| v.to_nf().normalize_to_expr())))
+                    .map(|(k, v)| (k, v.map(|v| v.as_nf().normalize_to_expr())))
                     .collect(),
             )),
             Value::TextLit(elts) => {
@@ -487,7 +487,7 @@ impl Value {
                         .flat_map(|contents| {
                             use InterpolatedTextContents::{Expr, Text};
                             let new_interpolated = match contents {
-                                Expr(n) => match n.to_nf() {
+                                Expr(n) => match n.as_nf() {
                                     Value::TextLit(elts2) => {
                                         normalize_textlit(elts2)
                                     }
@@ -600,7 +600,7 @@ impl Value {
             (Value::Lam(x, _, e), val) => {
                 let val =
                     PartiallyNormalized(val, None, std::marker::PhantomData);
-                e.subst_shift(&V(x, 0), &val).normalize_whnf()
+                e.subst_shift(&V(x, 0), &val).as_whnf()
             }
             (Value::AppliedBuiltin(b, mut args), val) => {
                 args.push(val);
@@ -825,73 +825,155 @@ impl Value {
     }
 }
 
-/// Contains either a (partially) normalized value or a
-/// non-normalized value alongside a normalization context.
-#[derive(Debug, Clone)]
-pub(crate) enum Thunk {
-    // Normal form, i.e. completely normalized
-    NF(Box<Value>),
-    // Weak Head Normal Form, i.e. subexpressions may not be normalized
-    WHNF(Box<Value>),
-    Unnormalized(NormalizationContext, InputSubExpr),
+mod thunk {
+    use super::{normalize_whnf, InputSubExpr, NormalizationContext, Value};
+    use crate::expr::PartiallyNormalized;
+    use dhall_core::{Label, V};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    enum ThunkInternal {
+        /// Non-normalized value alongside a normalization context
+        Unnormalized(NormalizationContext, InputSubExpr),
+        /// Weak Head Normal Form, i.e. subexpressions may not be normalized
+        WHNF(Box<Value>),
+        /// Normal form, i.e. completely normalized
+        NF(Box<Value>),
+    }
+
+    /// Stores a possibl unevaluated value. Uses RefCell to ensure that
+    /// the value gets normalized at most once.
+    #[derive(Debug, Clone)]
+    pub struct Thunk(Rc<RefCell<ThunkInternal>>);
+
+    impl ThunkInternal {
+        fn into_thunk(self) -> Thunk {
+            Thunk(Rc::new(RefCell::new(self)))
+        }
+
+        fn normalize_whnf(&mut self) {
+            match self {
+                ThunkInternal::Unnormalized(ctx, e) => {
+                    let new = ThunkInternal::WHNF(Box::new(normalize_whnf(
+                        ctx.clone(),
+                        e.clone(),
+                    )));
+                    std::mem::replace(self, new);
+                }
+                ThunkInternal::WHNF(_) => {}
+                ThunkInternal::NF(_) => {}
+            }
+        }
+
+        fn normalize_nf(&mut self) {
+            self.normalize_whnf();
+            match self {
+                ThunkInternal::Unnormalized(_, _) => unreachable!(),
+                ThunkInternal::WHNF(v) => {
+                    let new = ThunkInternal::NF(Box::new(v.normalize()));
+                    std::mem::replace(self, new);
+                }
+                ThunkInternal::NF(_) => {}
+            }
+        }
+
+        // Always use normalize_whnf before
+        fn as_whnf(&self) -> Value {
+            match self {
+                ThunkInternal::Unnormalized(_, _) => unreachable!(),
+                ThunkInternal::WHNF(v) => v.as_ref().clone(),
+                ThunkInternal::NF(v) => v.as_ref().clone(),
+            }
+        }
+
+        // Always use normalize_nf before
+        fn as_nf(&self) -> Value {
+            match self {
+                ThunkInternal::Unnormalized(_, _) => unreachable!(),
+                ThunkInternal::WHNF(_) => unreachable!(),
+                ThunkInternal::NF(v) => v.as_ref().clone(),
+            }
+        }
+
+        fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+            match self {
+                ThunkInternal::Unnormalized(ctx, e) => {
+                    ThunkInternal::Unnormalized(
+                        ctx.shift(delta, var),
+                        e.clone(),
+                    )
+                }
+                ThunkInternal::WHNF(v) => {
+                    ThunkInternal::WHNF(Box::new(v.shift(delta, var)))
+                }
+                ThunkInternal::NF(v) => {
+                    ThunkInternal::NF(Box::new(v.shift(delta, var)))
+                }
+            }
+        }
+
+        fn subst_shift(
+            &self,
+            var: &V<Label>,
+            val: &PartiallyNormalized<'static>,
+        ) -> Self {
+            match self {
+                ThunkInternal::Unnormalized(ctx, e) => {
+                    ThunkInternal::Unnormalized(
+                        ctx.subst_shift(var, val),
+                        e.clone(),
+                    )
+                }
+                ThunkInternal::WHNF(v) => {
+                    ThunkInternal::WHNF(Box::new(v.subst_shift(var, val)))
+                }
+                ThunkInternal::NF(v) => {
+                    ThunkInternal::NF(Box::new(v.subst_shift(var, val)))
+                }
+            }
+        }
+    }
+
+    impl Thunk {
+        pub(crate) fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+            ThunkInternal::Unnormalized(ctx, e).into_thunk()
+        }
+
+        pub(crate) fn from_whnf(v: Value) -> Thunk {
+            ThunkInternal::WHNF(Box::new(v)).into_thunk()
+        }
+
+        pub(crate) fn normalize(&self) -> Thunk {
+            self.0.borrow_mut().normalize_nf();
+            self.clone()
+        }
+
+        pub(crate) fn as_whnf(&self) -> Value {
+            self.0.borrow_mut().normalize_whnf();
+            self.0.borrow().as_whnf()
+        }
+
+        pub(crate) fn as_nf(&self) -> Value {
+            self.0.borrow_mut().normalize_nf();
+            self.0.borrow().as_nf()
+        }
+
+        pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+            self.0.borrow().shift(delta, var).into_thunk()
+        }
+
+        pub(crate) fn subst_shift(
+            &self,
+            var: &V<Label>,
+            val: &PartiallyNormalized<'static>,
+        ) -> Self {
+            self.0.borrow().subst_shift(var, val).into_thunk()
+        }
+    }
 }
 
-impl Thunk {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
-        Thunk::Unnormalized(ctx, e)
-    }
-
-    fn from_whnf(v: Value) -> Thunk {
-        Thunk::WHNF(Box::new(v))
-    }
-
-    pub(crate) fn normalize_whnf(&self) -> Value {
-        match self {
-            Thunk::WHNF(v) => (**v).clone(),
-            Thunk::NF(v) => (**v).clone(),
-            Thunk::Unnormalized(ctx, e) => {
-                normalize_whnf(ctx.clone(), e.clone())
-            }
-        }
-    }
-
-    fn normalize(&self) -> Thunk {
-        Thunk::NF(Box::new(self.normalize_whnf().normalize()))
-    }
-
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        match self {
-            Thunk::WHNF(v) => Thunk::WHNF(Box::new(v.shift(delta, var))),
-            Thunk::NF(v) => Thunk::NF(Box::new(v.shift(delta, var))),
-            Thunk::Unnormalized(ctx, e) => {
-                Thunk::Unnormalized(ctx.shift(delta, var), e.clone())
-            }
-        }
-    }
-
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
-    ) -> Self {
-        match self {
-            Thunk::WHNF(v) => Thunk::WHNF(Box::new(v.subst_shift(var, val))),
-            Thunk::NF(v) => Thunk::NF(Box::new(v.subst_shift(var, val))),
-            Thunk::Unnormalized(ctx, e) => {
-                Thunk::Unnormalized(ctx.subst_shift(var, val), e.clone())
-            }
-        }
-    }
-
-    pub(crate) fn to_nf(&self) -> Value {
-        match self {
-            Thunk::NF(v) => (**v).clone(),
-            Thunk::WHNF(_) | Thunk::Unnormalized(_, _) => {
-                self.normalize_whnf().normalize()
-            }
-        }
-    }
-}
+pub(crate) use thunk::Thunk;
 
 /// A thunk in type position.
 #[derive(Debug, Clone)]
@@ -942,9 +1024,9 @@ impl TypeThunk {
         }
     }
 
-    pub(crate) fn to_nf(&self) -> Value {
+    pub(crate) fn as_nf(&self) -> Value {
         match self {
-            TypeThunk::Thunk(th) => th.to_nf(),
+            TypeThunk::Thunk(th) => th.as_nf(),
             // TODO: let's hope for the best with the unwrap
             TypeThunk::Type(t) => t
                 .clone()
@@ -1118,7 +1200,7 @@ fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
 
         ExprF::Field(UnionType(kts), l) => UnionConstructor(l, kts),
         ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
-            Some(r) => r.normalize_whnf(),
+            Some(r) => r.as_whnf(),
             None => {
                 // Couldn't do anything useful, so just normalize subexpressions
                 Expr(rc(ExprF::Field(RecordLit(kvs).normalize_to_expr(), l)))
@@ -1135,13 +1217,13 @@ fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
         ExprF::Merge(RecordLit(mut handlers), e, t) => {
             let e = match e {
                 UnionConstructor(l, kts) => match handlers.remove(&l) {
-                    Some(h) => return h.normalize_whnf(),
+                    Some(h) => return h.as_whnf(),
                     None => UnionConstructor(l, kts),
                 },
                 UnionLit(l, v, kts) => match handlers.remove(&l) {
                     Some(h) => {
-                        let h = h.normalize_whnf();
-                        let v = v.normalize_whnf();
+                        let h = h.as_whnf();
+                        let v = v.as_whnf();
                         return h.app(v);
                     }
                     None => UnionLit(l, v, kts),

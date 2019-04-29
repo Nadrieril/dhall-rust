@@ -152,10 +152,7 @@ impl TypeThunk {
             TypeThunk::Type(t) => Ok(t),
             TypeThunk::Thunk(th) => {
                 // TODO: rule out statically
-                mktype(
-                    ctx,
-                    th.normalize_whnf().normalize_to_expr().embed_absurd(),
-                )
+                mktype(ctx, th.as_whnf().normalize_to_expr().embed_absurd())
             }
         }
     }
