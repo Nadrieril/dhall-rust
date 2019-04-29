@@ -23,15 +23,6 @@ impl<'a> DynamicType for Type<'a> {
         Ok(Cow::Owned(
             self.clone().into_normalized()?.get_type()?.into_owned(),
         ))
-        // match &self.0 {
-        //     TypeInternal::Expr(e) => e.get_type(),
-        //     TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
-        //     TypeInternal::SuperType => Err(TypeError::new(
-        //         &TypecheckContext::new(),
-        //         dhall_core::rc(ExprF::Const(Const::Sort)),
-        //         TypeMessage::Untyped,
-        //     )),
-        // }
     }
 }
 
@@ -41,7 +32,6 @@ impl<'a> DynamicType for Normalized<'a> {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
                 &TypecheckContext::new(),
-                self.0.embed_absurd(),
                 TypeMessage::Untyped,
             )),
         }
@@ -54,7 +44,6 @@ impl<'a> DynamicType for Typed<'a> {
             Some(t) => Ok(Cow::Borrowed(t)),
             None => Err(TypeError::new(
                 &TypecheckContext::new(),
-                self.0.clone(),
                 TypeMessage::Untyped,
             )),
         }

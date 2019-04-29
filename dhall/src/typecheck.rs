@@ -35,9 +35,8 @@ impl<'a> Resolved<'a> {
 }
 impl<'a> Typed<'a> {
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
-        let (expr, ty) = (self.0, self.1);
-        ty.ok_or_else(|| {
-            TypeError::new(&TypecheckContext::new(), expr, TypeMessage::Untyped)
+        self.1.ok_or_else(|| {
+            TypeError::new(&TypecheckContext::new(), TypeMessage::Untyped)
         })
     }
 }
@@ -73,13 +72,8 @@ impl<'a> Normalized<'a> {
         })
     }
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
-        let (expr, ty) = (self.0, self.1);
-        ty.ok_or_else(|| {
-            TypeError::new(
-                &TypecheckContext::new(),
-                expr.embed_absurd(),
-                TypeMessage::Untyped,
-            )
+        self.1.ok_or_else(|| {
+            TypeError::new(&TypecheckContext::new(), TypeMessage::Untyped)
         })
     }
 }
@@ -157,6 +151,7 @@ impl TypeThunk {
         match self {
             TypeThunk::Type(t) => Ok(t),
             TypeThunk::Thunk(th) => {
+                // TODO: rule out statically
                 mktype(ctx, th.normalize().normalize_to_expr().embed_absurd())
             }
         }
@@ -190,7 +185,6 @@ impl<'a> TypeInternal<'a> {
             TypeInternal::SuperType => {
                 return Err(TypeError::new(
                     &TypecheckContext::new(),
-                    rc(ExprF::Const(Const::Sort)),
                     TypeMessage::Untyped,
                 ))
             }
@@ -553,8 +547,7 @@ pub(crate) enum TypeIntermediate {
 
 impl TypeIntermediate {
     fn typecheck(self) -> Result<TypedOrType, TypeError> {
-        let mkerr =
-            |ctx, msg| Ok(TypeError::new(ctx, self.clone().into_expr()?, msg));
+        let mkerr = |ctx, msg| TypeError::new(ctx, msg);
         match &self {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
@@ -565,7 +558,7 @@ impl TypeIntermediate {
                         return Err(mkerr(
                             ctx,
                             InvalidInputType(ta.clone().into_normalized()?),
-                        )?)
+                        ))
                     }
                 };
 
@@ -580,7 +573,7 @@ impl TypeIntermediate {
                                     .get_type_move()?
                                     .into_normalized()?,
                             ),
-                        )?)
+                        ))
                     }
                 };
 
@@ -596,7 +589,7 @@ impl TypeIntermediate {
                                     .get_type_move()?
                                     .into_normalized()?,
                             ),
-                        )?)
+                        ))
                     }
                 };
 
@@ -627,7 +620,7 @@ impl TypeIntermediate {
                                     x.clone(),
                                     TypedOrType::Type(t.clone()),
                                 ),
-                            )?)
+                            ))
                         }
                     }
                 }
@@ -665,7 +658,7 @@ impl TypeIntermediate {
                                         x.clone(),
                                         TypedOrType::Type(t.clone()),
                                     ),
-                                )?)
+                                ))
                             }
                         }
                     }
@@ -698,7 +691,7 @@ impl TypeIntermediate {
             TypeIntermediate::ListType(ctx, t) => {
                 ensure_simple_type!(
                     t,
-                    mkerr(ctx, InvalidListType(t.clone().into_normalized()?))?,
+                    mkerr(ctx, InvalidListType(t.clone().into_normalized()?)),
                 );
                 let pnormalized = PartiallyNormalized(
                     WHNF::from_builtin(Builtin::List)
@@ -716,7 +709,7 @@ impl TypeIntermediate {
                     mkerr(
                         ctx,
                         InvalidOptionalType(t.clone().into_normalized()?)
-                    )?,
+                    ),
                 );
                 let pnormalized = PartiallyNormalized(
                     WHNF::from_builtin(Builtin::Optional)
@@ -729,26 +722,6 @@ impl TypeIntermediate {
                 )))))
             }
         }
-    }
-    fn into_expr(self) -> Result<SubExpr<X, Normalized<'static>>, TypeError> {
-        Ok(rc(match self {
-            TypeIntermediate::Pi(_, x, t, e) => ExprF::Pi(x, t, e),
-            TypeIntermediate::RecordType(_, kts) => ExprF::RecordType(kts),
-            TypeIntermediate::UnionType(_, kts) => ExprF::UnionType(kts),
-            TypeIntermediate::ListType(_, t) => {
-                return Ok(rc(ExprF::App(
-                    rc(ExprF::Builtin(Builtin::List)),
-                    t.embed()?,
-                )))
-            }
-            TypeIntermediate::OptionalType(_, t) => {
-                return Ok(rc(ExprF::App(
-                    rc(ExprF::Builtin(Builtin::Optional)),
-                    t.embed()?,
-                )))
-            }
-        }
-        .traverse_ref_simple(|e| e.clone().embed())?))
     }
 }
 
@@ -836,7 +809,6 @@ fn type_with(
             // Typecheck recursively all subexpressions
             e.as_ref()
                 .traverse_ref_simple(|e| Ok(type_with(ctx, e.clone())?))?,
-            e.clone(),
         ),
     }?;
     match ret {
@@ -861,14 +833,11 @@ fn type_with(
 fn type_last_layer(
     ctx: &TypecheckContext,
     e: ExprF<TypedOrType, Label, X, Normalized<'static>>,
-    original_e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
     use dhall_core::BinOp::*;
     use dhall_core::Builtin::*;
     use dhall_core::ExprF::*;
-    let mkerr = |msg: TypeMessage<'static>| {
-        TypeError::new(ctx, original_e.clone(), msg)
-    };
+    let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, msg);
 
     use Ret::*;
     match e {
@@ -1149,18 +1118,15 @@ pub(crate) enum TypeMessage<'a> {
 pub struct TypeError {
     type_message: TypeMessage<'static>,
     context: TypecheckContext,
-    current: SubExpr<X, Normalized<'static>>,
 }
 
 impl TypeError {
     pub(crate) fn new(
         context: &TypecheckContext,
-        current: SubExpr<X, Normalized<'static>>,
         type_message: TypeMessage<'static>,
     ) -> Self {
         TypeError {
             context: context.clone(),
-            current,
             type_message,
         }
     }
