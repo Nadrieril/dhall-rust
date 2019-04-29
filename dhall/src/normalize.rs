@@ -371,7 +371,7 @@ pub(crate) type NF = X;
 #[derive(Debug, Clone)]
 pub(crate) enum Value<Form> {
     /// Closures
-    Lam(Label, Thunk<Form>, (NormalizationContext, InputSubExpr)),
+    Lam(Label, Thunk<Form>, Thunk<Form>),
     AppliedBuiltin(Builtin, Vec<Value<Form>>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(TypeThunk<Form>),
@@ -405,14 +405,11 @@ impl Value<NF> {
     /// Convert the value back to a (normalized) syntactic expression
     pub(crate) fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
-            Value::Lam(x, t, (ctx, e)) => {
-                let ctx2 = ctx.skip(&x);
-                rc(ExprF::Lam(
-                    x.clone(),
-                    t.to_nf().normalize_to_expr(),
-                    normalize_whnf(ctx2, e).normalize_to_expr(),
-                ))
-            }
+            Value::Lam(x, t, e) => rc(ExprF::Lam(
+                x.clone(),
+                t.to_nf().normalize_to_expr(),
+                e.to_nf().normalize_to_expr(),
+            )),
             Value::AppliedBuiltin(b, args) => {
                 let mut e = rc(ExprF::Builtin(b));
                 for v in args {
@@ -535,8 +532,8 @@ impl Value<WHNF> {
 
     pub(crate) fn normalize(&self) -> Value<NF> {
         match self {
-            Value::Lam(x, t, (ctx, e)) => {
-                Value::Lam(x.clone(), t.normalize(), (ctx.clone(), e.clone()))
+            Value::Lam(x, t, e) => {
+                Value::Lam(x.clone(), t.normalize(), e.normalize())
             }
             Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
                 *b,
@@ -618,9 +615,10 @@ impl Value<WHNF> {
     /// Apply to a value
     pub(crate) fn app(self, val: Value<WHNF>) -> Value<WHNF> {
         match (self, val) {
-            (Value::Lam(x, _, (ctx, e)), val) => {
-                let ctx2 = ctx.insert(&x, val);
-                normalize_whnf(ctx2, e)
+            (Value::Lam(x, _, e), val) => {
+                let val =
+                    PartiallyNormalized(val, None, std::marker::PhantomData);
+                e.subst_shift(&V(x, 0), &val).normalize_whnf()
             }
             (Value::AppliedBuiltin(b, mut args), val) => {
                 args.push(val);
@@ -675,9 +673,9 @@ impl Value<WHNF> {
             Value::NEOptionalLit(th) => {
                 th.shift(delta, var);
             }
-            Value::Lam(x, t, (_, e)) => {
+            Value::Lam(x, t, e) => {
                 t.shift(delta, var);
-                shift_mut(delta, &var.shift0(1, x), e);
+                e.shift(delta, &var.shift0(1, x));
             }
             Value::AppliedBuiltin(_, args) => {
                 for x in args.iter_mut() {
@@ -739,10 +737,10 @@ impl Value<WHNF> {
         val: &PartiallyNormalized<'static>,
     ) -> Self {
         match self {
-            Value::Lam(x, t, (ctx, e)) => Value::Lam(
+            Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
-                (ctx.subst_shift(var, val), e.clone()),
+                e.subst_shift(&var.shift0(1, x), val),
             ),
             Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
                 *b,
@@ -981,7 +979,7 @@ fn normalize_whnf(
         ExprF::Lam(x, t, e) => Value::Lam(
             x.clone(),
             Thunk::new(ctx.clone(), t.clone()),
-            (ctx, e.clone()),
+            Thunk::new(ctx.skip(x), e.clone()),
         ),
         ExprF::Builtin(b) => Value::from_builtin(*b),
         ExprF::Const(c) => Value::Const(*c),
