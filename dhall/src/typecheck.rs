@@ -108,6 +108,11 @@ impl<'a> Type<'a> {
     fn normalize_whnf(self) -> Result<WHNF, TypeError> {
         self.0.normalize_whnf()
     }
+    pub(crate) fn partially_normalize(
+        self,
+    ) -> Result<PartiallyNormalized<'a>, TypeError> {
+        self.0.partially_normalize()
+    }
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
     }
@@ -120,37 +125,12 @@ impl<'a> Type<'a> {
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Type(self.0.shift(delta, var))
     }
-    fn subst(
-        self,
-        ctx: &TypecheckContext,
-        x: &Label,
-        val: Normalized<'static>,
-    ) -> Result<Self, TypeError> {
-        let tval = val.get_type()?.into_owned();
-        let ctx_type = ctx.insert_type(x, tval);
-        let ctx_val = ctx.insert_value(x, val);
-
-        let pnzed = match self.0 {
-            TypeInternal::PNzed(e) => e,
-            internal => return Ok(Type(internal)),
-        };
-        let nzed = pnzed.normalize();
-        let pnzed = Typed(nzed.0.embed_absurd(), nzed.1, ctx_val, nzed.2)
-            .normalize_whnf();
-
-        Ok(match &pnzed.0 {
-            WHNF::Expr(e) => {
-                let e = e.clone();
-                match e.as_ref() {
-                    ExprF::Pi(_, _, _) | ExprF::RecordType(_) => {
-                        type_with(&ctx_type, e.embed_absurd())?
-                            .normalize_to_type()
-                    }
-                    _ => pnzed.normalize_to_type(),
-                }
-            }
-            _ => pnzed.normalize_to_type(),
-        })
+    pub(crate) fn subst_shift(
+        &self,
+        var: &V<Label>,
+        val: &PartiallyNormalized<'static>,
+    ) -> Self {
+        Type(self.0.subst_shift(var, val))
     }
 
     fn const_sort() -> Self {
@@ -198,9 +178,15 @@ pub(crate) enum TypeInternal<'a> {
 
 impl<'a> TypeInternal<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
+        Ok(self.partially_normalize()?.normalize())
+    }
+    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
+        Ok(self.partially_normalize()?.into_whnf())
+    }
+    fn partially_normalize(self) -> Result<PartiallyNormalized<'a>, TypeError> {
         Ok(match self {
-            TypeInternal::PNzed(e) => e.normalize(),
-            TypeInternal::Const(c) => const_to_normalized(c),
+            TypeInternal::PNzed(e) => *e,
+            TypeInternal::Const(c) => const_to_pnormalized(c),
             TypeInternal::SuperType => {
                 return Err(TypeError::new(
                     &TypecheckContext::new(),
@@ -209,10 +195,6 @@ impl<'a> TypeInternal<'a> {
                 ))
             }
         })
-    }
-    fn normalize_whnf(self) -> Result<WHNF, TypeError> {
-        let typed: Typed = self.into_normalized()?.into();
-        Ok(typed.normalize_whnf().0)
     }
     fn whnf(&self) -> Option<&WHNF> {
         match self {
@@ -227,6 +209,18 @@ impl<'a> TypeInternal<'a> {
         use TypeInternal::*;
         match self {
             PNzed(e) => PNzed(Box::new(e.shift(delta, var))),
+            Const(c) => Const(*c),
+            SuperType => SuperType,
+        }
+    }
+    fn subst_shift(
+        &self,
+        var: &V<Label>,
+        val: &PartiallyNormalized<'static>,
+    ) -> Self {
+        use TypeInternal::*;
+        match self {
+            PNzed(e) => PNzed(Box::new(e.subst_shift(var, val))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         }
@@ -260,7 +254,9 @@ impl TypedOrType {
     }
     fn normalize_to_type(self) -> Type<'static> {
         match self {
-            TypedOrType::Typed(e) => e.normalize_whnf().normalize_to_type(),
+            TypedOrType::Typed(e) => {
+                e.partially_normalize().normalize_to_type()
+            }
             TypedOrType::Type(t) => t,
         }
     }
@@ -276,10 +272,12 @@ impl TypedOrType {
             TypedOrType::Type(t) => Ok(t.get_type()?.into_owned()),
         }
     }
-    fn normalize(self) -> Result<Normalized<'static>, TypeError> {
+    fn partially_normalize(
+        self,
+    ) -> Result<PartiallyNormalized<'static>, TypeError> {
         match self {
-            TypedOrType::Typed(e) => Ok(e.normalize()),
-            TypedOrType::Type(t) => Ok(t.into_normalized()?),
+            TypedOrType::Typed(e) => Ok(e.partially_normalize()),
+            TypedOrType::Type(t) => Ok(t.partially_normalize()?),
         }
     }
 }
@@ -443,8 +441,8 @@ where
     }
 }
 
-fn const_to_normalized<'a>(c: Const) -> Normalized<'a> {
-    Normalized(rc(ExprF::Const(c)), Some(type_of_const(c)), PhantomData)
+fn const_to_pnormalized<'a>(c: Const) -> PartiallyNormalized<'a> {
+    PartiallyNormalized(WHNF::Const(c), Some(type_of_const(c)), PhantomData)
 }
 
 fn const_to_type<'a>(c: Const) -> Type<'a> {
@@ -897,7 +895,9 @@ fn type_last_layer(
                 mkerr(TypeMismatch(f.clone(), tx.clone().into_normalized()?, a))
             });
 
-            Ok(RetType(tb.clone().subst(&ctx, x, a.normalize()?)?))
+            Ok(RetType(
+                tb.subst_shift(&V(x.clone(), 0), &a.partially_normalize()?),
+            ))
         }
         Annot(x, t) => {
             let t = t.normalize_to_type();
@@ -1147,9 +1147,9 @@ pub(crate) enum TypeMessage<'a> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
+    type_message: TypeMessage<'static>,
     context: TypecheckContext,
     current: SubExpr<X, Normalized<'static>>,
-    type_message: TypeMessage<'static>,
 }
 
 impl TypeError {

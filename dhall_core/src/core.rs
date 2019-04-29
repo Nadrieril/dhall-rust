@@ -433,6 +433,17 @@ impl<N, E> SubExpr<N, E> {
     {
         rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
     }
+
+    pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
+        match self.as_ref() {
+            ExprF::Var(v) if v == var => val.clone(),
+            ExprF::Var(v) => rc(ExprF::Var(v.shift(-1, var))),
+            _ => self.map_subexprs_with_special_handling_of_binders(
+                |e| e.subst_shift(var, val),
+                |x: &Label, e| e.subst_shift(&var.shift0(1, x), val),
+            ),
+        }
+    }
 }
 
 impl<N: Clone> SubExpr<N, X> {
@@ -499,15 +510,11 @@ pub fn shift<N, E>(
     var: &V<Label>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
-    use crate::ExprF::*;
     match in_expr.as_ref() {
-        Var(v) => rc(Var(v.shift(delta, var))),
+        ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift(delta, var, e),
-            |l: &Label, e| {
-                let newvar = var.shift0(1, l);
-                shift(delta, &newvar, e)
-            },
+            |x: &Label, e| shift(delta, &var.shift0(1, x), e),
         ),
     }
 }
@@ -540,8 +547,8 @@ fn shift0_multiple_inner<N, E>(
         }
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift0_multiple_inner(ctx, deltas, e),
-            |l: &Label, e| {
-                shift0_multiple_inner(&ctx.insert(l.clone(), ()), deltas, e)
+            |x: &Label, e| {
+                shift0_multiple_inner(&ctx.insert(x.clone(), ()), deltas, e)
             },
         ),
     }
