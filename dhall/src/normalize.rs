@@ -355,8 +355,10 @@ impl NormalizationContext {
     }
 }
 
-pub(crate) type WHNF = ();
-pub(crate) type NF = X;
+#[derive(Debug, Clone)]
+pub(crate) struct WHNF;
+#[derive(Debug, Clone)]
+pub(crate) enum NF {}
 
 /// A semantic value. `Form` should be either `WHNF` or `NF`.
 /// `NF` stands for Normal Form and indicates that all subexpressions are normalized.
@@ -851,7 +853,7 @@ pub(crate) enum Thunk<Form> {
 
 impl Thunk<WHNF> {
     fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk<WHNF> {
-        Thunk::Unnormalized((), ctx, e)
+        Thunk::Unnormalized(WHNF, ctx, e)
     }
 
     fn from_whnf(v: Value<WHNF>) -> Thunk<WHNF> {
