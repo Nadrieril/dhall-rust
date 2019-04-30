@@ -458,7 +458,9 @@ impl<N, E> SubExpr<N, E> {
             ExprF::Var(v) => rc(ExprF::Var(v.shift(-1, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.subst_shift(var, val),
-                |x: &Label, e| e.subst_shift(&var.shift0(1, x), val),
+                |x: &Label, e| {
+                    e.subst_shift(&var.shift0(1, x), &val.shift0(1, x))
+                },
             ),
         }
     }
