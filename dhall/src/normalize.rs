@@ -264,7 +264,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
 
 #[derive(Debug, Clone)]
 enum EnvItem {
-    Expr(Value),
+    Thunk(Thunk),
     Skip(V<Label>),
 }
 
@@ -276,7 +276,7 @@ impl EnvItem {
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use EnvItem::*;
         match self {
-            Expr(e) => Expr(e.shift(delta, var)),
+            Thunk(e) => Thunk(e.shift(delta, var)),
             Skip(v) => Skip(v.shift(delta, var)),
         }
     }
@@ -286,11 +286,12 @@ impl EnvItem {
         var: &V<Label>,
         val: &PartiallyNormalized<'static>,
     ) -> Self {
-        use EnvItem::*;
         match self {
-            Expr(e) => Expr(e.subst_shift(var, val)),
-            Skip(v) if v == var => Expr(val.clone().into_whnf()),
-            Skip(v) => Skip(v.shift(-1, var)),
+            EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
+            EnvItem::Skip(v) if v == var => {
+                EnvItem::Thunk(Thunk::from_whnf(val.clone().into_whnf()))
+            }
+            EnvItem::Skip(v) => EnvItem::Skip(v.shift(-1, var)),
         }
     }
 }
@@ -302,9 +303,9 @@ impl NormalizationContext {
     fn new() -> Self {
         NormalizationContext(Rc::new(Context::new()))
     }
-    fn insert(&self, x: &Label, e: Value) -> Self {
+    fn insert(&self, x: &Label, e: Thunk) -> Self {
         NormalizationContext(Rc::new(
-            self.0.insert(x.clone(), EnvItem::Expr(e)),
+            self.0.insert(x.clone(), EnvItem::Thunk(e)),
         ))
     }
     fn skip(&self, x: &Label) -> Self {
@@ -317,7 +318,7 @@ impl NormalizationContext {
     fn lookup(&self, var: &V<Label>) -> Value {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
-            Some(EnvItem::Expr(e)) => e.clone(),
+            Some(EnvItem::Thunk(t)) => t.as_whnf(),
             Some(EnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
             None => Value::Var(var.clone()),
         }
@@ -329,7 +330,7 @@ impl NormalizationContext {
             for v in vs.iter() {
                 let new_item = match v {
                     Type(var, _) => EnvItem::Skip(var.clone()),
-                    Value(e) => EnvItem::Expr(normalize_whnf(
+                    Value(e) => EnvItem::Thunk(Thunk::new(
                         NormalizationContext::new(),
                         e.as_expr().embed_absurd(),
                     )),
@@ -1049,8 +1050,8 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
             normalize_whnf(NormalizationContext::new(), e.0.embed_absurd())
         }
         ExprF::Let(x, _, r, b) => {
-            let r = normalize_whnf(ctx.clone(), r.clone());
-            normalize_whnf(ctx.insert(x, r), b.clone())
+            let t = Thunk::new(ctx.clone(), r.clone());
+            normalize_whnf(ctx.insert(x, t), b.clone())
         }
         ExprF::Lam(x, t, e) => Value::Lam(
             x.clone(),
