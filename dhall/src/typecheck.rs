@@ -87,11 +87,10 @@ impl Normalized<'static> {
     }
 }
 impl<'a> Typed<'a> {
-    fn normalize_to_type(self) -> Type<'a> {
-        // TODO: avoid cloning Value
-        match &self.normalize_whnf() {
+    fn normalize_to_type(&self) -> Type<'a> {
+        match &*self.normalize_whnf() {
             Value::Const(c) => Type(TypeInternal::Const(*c)),
-            _ => Type(TypeInternal::Typed(Box::new(self))),
+            _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
         }
     }
 }
@@ -105,7 +104,7 @@ impl<'a> Type<'a> {
         self.0.into_normalized()
     }
     pub(crate) fn normalize_whnf(&self) -> Result<Value, TypeError> {
-        self.0.normalize_whnf()
+        Ok(self.0.normalize_whnf()?)
     }
     pub(crate) fn as_typed(&self) -> Result<Typed<'a>, TypeError> {
         self.0.as_typed()
@@ -113,7 +112,7 @@ impl<'a> Type<'a> {
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
     }
-    fn internal_whnf(&self) -> Option<Value> {
+    fn internal_whnf(&self) -> Option<std::cell::Ref<Value>> {
         self.0.whnf()
     }
     pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
@@ -148,14 +147,17 @@ impl Type<'static> {
 
 impl TypeThunk {
     fn normalize_to_type(
-        self,
+        &self,
         ctx: &TypecheckContext,
     ) -> Result<Type<'static>, TypeError> {
         match self {
-            TypeThunk::Type(t) => Ok(t),
+            TypeThunk::Type(t) => Ok(t.clone()),
             TypeThunk::Thunk(th) => {
                 // TODO: rule out statically
-                mktype(ctx, th.as_whnf().normalize_to_expr().embed_absurd())
+                mktype(
+                    ctx,
+                    th.normalize_whnf().normalize_to_expr().embed_absurd(),
+                )
             }
         }
     }
@@ -179,7 +181,7 @@ impl<'a> TypeInternal<'a> {
         Ok(self.as_typed()?.normalize())
     }
     fn normalize_whnf(&self) -> Result<Value, TypeError> {
-        Ok(self.as_typed()?.normalize_whnf())
+        Ok(self.as_typed()?.normalize_whnf().clone())
     }
     fn as_typed(&self) -> Result<Typed<'a>, TypeError> {
         Ok(match self {
@@ -193,8 +195,7 @@ impl<'a> TypeInternal<'a> {
             }
         })
     }
-    fn whnf(&self) -> Option<Value> {
-        // TODO: return reference
+    fn whnf(&self) -> Option<std::cell::Ref<Value>> {
         match self {
             TypeInternal::Typed(e) => Some(e.normalize_whnf()),
             _ => None,
@@ -246,10 +247,10 @@ impl TypedOrType {
             TypedOrType::Type(t) => Ok(t.into_normalized()?.into()),
         }
     }
-    fn normalize_to_type(self) -> Type<'static> {
+    fn normalize_to_type(&self) -> Type<'static> {
         match self {
             TypedOrType::Typed(e) => e.normalize_to_type(),
-            TypedOrType::Type(t) => t,
+            TypedOrType::Type(t) => t.clone(),
         }
     }
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
@@ -845,7 +846,8 @@ fn type_last_layer(
         },
         App(f, a) => {
             let tf = f.get_type()?;
-            let (x, tx, tb) = match tf.internal_whnf() {
+            let tf_internal = tf.internal_whnf();
+            let (x, tx, tb) = match tf_internal.deref() {
                 Some(Value::Pi(
                     x,
                     TypeThunk::Type(tx),
@@ -854,9 +856,9 @@ fn type_last_layer(
                 Some(Value::Pi(_, _, _)) => {
                     panic!("ICE: this should not have happened")
                 }
-                _ => return Err(mkerr(NotAFunction(f))),
+                _ => return Err(mkerr(NotAFunction(f.clone()))),
             };
-            ensure_equal!(a.get_type()?, &tx, {
+            ensure_equal!(a.get_type()?, tx, {
                 mkerr(TypeMismatch(f.clone(), tx.clone().into_normalized()?, a))
             });
 
@@ -989,14 +991,16 @@ fn type_last_layer(
                     .normalize_to_type(),
             ))
         }
-        Field(r, x) => match r.get_type()?.internal_whnf() {
+        Field(r, x) => match r.get_type()?.internal_whnf().deref() {
             Some(Value::RecordType(kts)) => match kts.get(&x) {
                 Some(tth) => Ok(RetType(tth.clone().normalize_to_type(ctx)?)),
-                None => Err(mkerr(MissingRecordField(x, r))),
+                None => Err(mkerr(MissingRecordField(x, r.clone()))),
             },
+            // TODO: branch here only when r.get_type() is a Const
             _ => {
                 let r = r.normalize_to_type();
-                match r.internal_whnf() {
+                let r_internal = r.internal_whnf();
+                match r_internal.deref() {
                     Some(Value::UnionType(kts)) => match kts.get(&x) {
                         // Constructor has type T -> < x: T, ... >
                         // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
@@ -1005,18 +1009,21 @@ fn type_last_layer(
                                 ctx.clone(),
                                 x.clone(),
                                 t.clone().normalize_to_type(ctx)?,
-                                r,
+                                r.clone(),
                             )
                             .typecheck()?
                             .normalize_to_type(),
                         )),
-                        Some(None) => Ok(RetType(r)),
+                        Some(None) => Ok(RetType(r.clone())),
                         None => Err(mkerr(MissingUnionField(
                             x,
-                            r.into_normalized()?,
+                            r.clone().into_normalized()?,
                         ))),
                     },
-                    _ => Err(mkerr(NotARecord(x, r.into_normalized()?))),
+                    _ => Err(mkerr(NotARecord(
+                        x,
+                        r.clone().into_normalized()?
+                    ))),
                 }
             }
             // _ => Err(mkerr(NotARecord(
@@ -1033,9 +1040,9 @@ fn type_last_layer(
         // TODO: check type of interpolations
         TextLit(_) => Ok(RetType(builtin_to_type(Text)?)),
         BinOp(o @ ListAppend, l, r) => {
-            match l.get_type()?.internal_whnf() {
+            match l.get_type()?.internal_whnf().deref() {
                 Some(Value::AppliedBuiltin(List, _)) => {}
-                _ => return Err(mkerr(BinOpTypeMismatch(o, l))),
+                _ => return Err(mkerr(BinOpTypeMismatch(o, l.clone()))),
             }
 
             ensure_equal!(
