@@ -68,8 +68,8 @@ impl<'a> Normalized<'a> {
                 // TODO: wasteful
                 type_with(ctx, self.0.embed_absurd())?.normalize_to_type()
             }
-            _ => Type(TypeInternal::PNzed(Box::new(PartiallyNormalized(
-                Value::Expr(self.0),
+            _ => Type(TypeInternal::Typed(Box::new(Typed(
+                Value::Expr(self.0).into_thunk(),
                 self.1,
                 self.2,
             )))),
@@ -86,11 +86,12 @@ impl Normalized<'static> {
         rc(ExprF::Embed(self))
     }
 }
-impl<'a> PartiallyNormalized<'a> {
+impl<'a> Typed<'a> {
     fn normalize_to_type(self) -> Type<'a> {
-        match &self.0 {
+        // TODO: avoid cloning Value
+        match &self.normalize_whnf() {
             Value::Const(c) => Type(TypeInternal::Const(*c)),
-            _ => Type(TypeInternal::PNzed(Box::new(self))),
+            _ => Type(TypeInternal::Typed(Box::new(self))),
         }
     }
 }
@@ -103,18 +104,16 @@ impl<'a> Type<'a> {
     pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
         self.0.into_normalized()
     }
-    fn normalize_whnf(self) -> Result<Value, TypeError> {
+    pub(crate) fn normalize_whnf(&self) -> Result<Value, TypeError> {
         self.0.normalize_whnf()
     }
-    pub(crate) fn partially_normalize(
-        self,
-    ) -> Result<PartiallyNormalized<'a>, TypeError> {
-        self.0.partially_normalize()
+    pub(crate) fn as_typed(&self) -> Result<Typed<'a>, TypeError> {
+        self.0.as_typed()
     }
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
     }
-    fn internal_whnf(&self) -> Option<&Value> {
+    fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
     pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
@@ -126,7 +125,7 @@ impl<'a> Type<'a> {
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
+        val: &Typed<'static>,
     ) -> Self {
         Type(self.0.subst_shift(var, val))
     }
@@ -172,20 +171,20 @@ pub(crate) enum TypeInternal<'a> {
     /// The type of `Sort`
     SuperType,
     /// This must not contain Const value.
-    PNzed(Box<PartiallyNormalized<'a>>),
+    Typed(Box<Typed<'a>>),
 }
 
 impl<'a> TypeInternal<'a> {
-    pub(crate) fn into_normalized(self) -> Result<Normalized<'a>, TypeError> {
-        Ok(self.partially_normalize()?.normalize())
+    pub(crate) fn into_normalized(&self) -> Result<Normalized<'a>, TypeError> {
+        Ok(self.as_typed()?.normalize())
     }
-    fn normalize_whnf(self) -> Result<Value, TypeError> {
-        Ok(self.partially_normalize()?.into_whnf())
+    fn normalize_whnf(&self) -> Result<Value, TypeError> {
+        Ok(self.as_typed()?.normalize_whnf())
     }
-    fn partially_normalize(self) -> Result<PartiallyNormalized<'a>, TypeError> {
+    fn as_typed(&self) -> Result<Typed<'a>, TypeError> {
         Ok(match self {
-            TypeInternal::PNzed(e) => *e,
-            TypeInternal::Const(c) => const_to_pnormalized(c),
+            TypeInternal::Typed(e) => e.as_ref().clone(),
+            TypeInternal::Const(c) => const_to_typed(*c),
             TypeInternal::SuperType => {
                 return Err(TypeError::new(
                     &TypecheckContext::new(),
@@ -194,9 +193,10 @@ impl<'a> TypeInternal<'a> {
             }
         })
     }
-    fn whnf(&self) -> Option<&Value> {
+    fn whnf(&self) -> Option<Value> {
+        // TODO: return reference
         match self {
-            TypeInternal::PNzed(e) => Some(&e.0),
+            TypeInternal::Typed(e) => Some(e.normalize_whnf()),
             _ => None,
         }
     }
@@ -206,19 +206,15 @@ impl<'a> TypeInternal<'a> {
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
         match self {
-            PNzed(e) => PNzed(Box::new(e.shift(delta, var))),
+            Typed(e) => Typed(Box::new(e.shift(delta, var))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         }
     }
-    fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
-    ) -> Self {
+    fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
         use TypeInternal::*;
         match self {
-            PNzed(e) => PNzed(Box::new(e.subst_shift(var, val))),
+            Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
             Const(c) => Const(*c),
             SuperType => SuperType,
         }
@@ -252,9 +248,7 @@ impl TypedOrType {
     }
     fn normalize_to_type(self) -> Type<'static> {
         match self {
-            TypedOrType::Typed(e) => {
-                e.partially_normalize().normalize_to_type()
-            }
+            TypedOrType::Typed(e) => e.normalize_to_type(),
             TypedOrType::Type(t) => t,
         }
     }
@@ -270,12 +264,10 @@ impl TypedOrType {
             TypedOrType::Type(t) => Ok(t.get_type()?.into_owned()),
         }
     }
-    fn partially_normalize(
-        self,
-    ) -> Result<PartiallyNormalized<'static>, TypeError> {
+    fn as_typed(&self) -> Result<Typed<'static>, TypeError> {
         match self {
-            TypedOrType::Typed(e) => Ok(e.partially_normalize()),
-            TypedOrType::Type(t) => Ok(t.partially_normalize()?),
+            TypedOrType::Typed(e) => Ok(e.clone()),
+            TypedOrType::Type(t) => Ok(t.as_typed()?),
         }
     }
 }
@@ -442,8 +434,12 @@ where
     }
 }
 
-fn const_to_pnormalized<'a>(c: Const) -> PartiallyNormalized<'a> {
-    PartiallyNormalized(Value::Const(c), Some(type_of_const(c)), PhantomData)
+fn const_to_typed<'a>(c: Const) -> Typed<'a> {
+    Typed(
+        Value::Const(c).into_thunk(),
+        Some(type_of_const(c)),
+        PhantomData,
+    )
 }
 
 fn const_to_type<'a>(c: Const) -> Type<'a> {
@@ -555,7 +551,7 @@ pub(crate) enum TypeIntermediate {
 impl TypeIntermediate {
     fn typecheck(self) -> Result<TypedOrType, TypeError> {
         let mkerr = |ctx, msg| TypeError::new(ctx, msg);
-        match &self {
+        let typed = match &self {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
 
@@ -600,18 +596,16 @@ impl TypeIntermediate {
                     }
                 };
 
-                let pnormalized = PartiallyNormalized(
+                Typed(
                     Value::Pi(
                         x.clone(),
                         TypeThunk::from_type(ta.clone()),
                         TypeThunk::from_type(tb.clone()),
-                    ),
+                    )
+                    .into_thunk(),
                     Some(const_to_type(k)),
                     PhantomData,
-                );
-                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
-                    pnormalized,
-                )))))
+                )
             }
             TypeIntermediate::RecordType(ctx, kts) => {
                 // Check that all types are the same const
@@ -634,20 +628,18 @@ impl TypeIntermediate {
                 // An empty record type has type Type
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
-                let pnormalized = PartiallyNormalized(
+                Typed(
                     Value::RecordType(
                         kts.iter()
                             .map(|(k, t)| {
                                 (k.clone(), TypeThunk::from_type(t.clone()))
                             })
                             .collect(),
-                    ),
+                    )
+                    .into_thunk(),
                     Some(const_to_type(k)),
                     PhantomData,
-                );
-                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
-                    pnormalized,
-                )))))
+                )
             }
             TypeIntermediate::UnionType(ctx, kts) => {
                 // Check that all types are the same const
@@ -675,7 +667,7 @@ impl TypeIntermediate {
                 // an union type with only unary variants also has type Type
                 let k = k.unwrap_or(dhall_core::Const::Type);
 
-                let pnormalized = PartiallyNormalized(
+                Typed(
                     Value::UnionType(
                         kts.iter()
                             .map(|(k, t)| {
@@ -687,28 +679,24 @@ impl TypeIntermediate {
                                 )
                             })
                             .collect(),
-                    ),
+                    )
+                    .into_thunk(),
                     Some(const_to_type(k)),
                     PhantomData,
-                );
-                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
-                    pnormalized,
-                )))))
+                )
             }
             TypeIntermediate::ListType(ctx, t) => {
                 ensure_simple_type!(
                     t,
                     mkerr(ctx, InvalidListType(t.clone().into_normalized()?)),
                 );
-                let pnormalized = PartiallyNormalized(
+                Typed(
                     Value::from_builtin(Builtin::List)
-                        .app(t.clone().normalize_whnf()?),
+                        .app(t.clone().normalize_whnf()?)
+                        .into_thunk(),
                     Some(const_to_type(Const::Type)),
                     PhantomData,
-                );
-                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
-                    pnormalized,
-                )))))
+                )
             }
             TypeIntermediate::OptionalType(ctx, t) => {
                 ensure_simple_type!(
@@ -718,17 +706,18 @@ impl TypeIntermediate {
                         InvalidOptionalType(t.clone().into_normalized()?)
                     ),
                 );
-                let pnormalized = PartiallyNormalized(
+                Typed(
                     Value::from_builtin(Builtin::Optional)
-                        .app(t.clone().normalize_whnf()?),
+                        .app(t.clone().normalize_whnf()?)
+                        .into_thunk(),
                     Some(const_to_type(Const::Type)),
                     PhantomData,
-                );
-                Ok(TypedOrType::Type(Type(TypeInternal::PNzed(Box::new(
-                    pnormalized,
-                )))))
+                )
             }
-        }
+        };
+        Ok(TypedOrType::Type(Type(TypeInternal::Typed(Box::new(
+            typed,
+        )))))
     }
 }
 
@@ -867,13 +856,11 @@ fn type_last_layer(
                 }
                 _ => return Err(mkerr(NotAFunction(f))),
             };
-            ensure_equal!(a.get_type()?, tx, {
+            ensure_equal!(a.get_type()?, &tx, {
                 mkerr(TypeMismatch(f.clone(), tx.clone().into_normalized()?, a))
             });
 
-            Ok(RetType(
-                tb.subst_shift(&V(x.clone(), 0), &a.partially_normalize()?),
-            ))
+            Ok(RetType(tb.subst_shift(&V(x.clone(), 0), &a.as_typed()?)))
         }
         Annot(x, t) => {
             let t = t.normalize_to_type();

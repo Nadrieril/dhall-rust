@@ -9,7 +9,7 @@ use dhall_core::{
 };
 use dhall_generator as dhall;
 
-use crate::expr::{Normalized, PartiallyNormalized, Type, Typed};
+use crate::expr::{Normalized, Type, Typed};
 
 type InputSubExpr = SubExpr<X, Normalized<'static>>;
 type OutputSubExpr = SubExpr<X, X>;
@@ -25,37 +25,35 @@ impl<'a> Typed<'a> {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized<'a> {
-        self.partially_normalize().normalize()
+        Normalized(self.0.as_whnf().normalize_to_expr(), self.1, self.2)
     }
-    pub(crate) fn partially_normalize(self) -> PartiallyNormalized<'a> {
-        PartiallyNormalized(self.0.as_whnf(), self.1, self.2)
-    }
-}
 
-impl<'a> PartiallyNormalized<'a> {
-    pub(crate) fn normalize(self) -> Normalized<'a> {
-        Normalized(self.0.normalize_to_expr(), self.1, self.2)
-    }
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        PartiallyNormalized(
+        Typed(
             self.0.shift(delta, var),
             self.1.as_ref().map(|x| x.shift(delta, var)),
             self.2,
         )
     }
+
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
+        val: &Typed<'static>,
     ) -> Self {
-        PartiallyNormalized(
+        Typed(
             self.0.subst_shift(var, val),
             self.1.as_ref().map(|x| x.subst_shift(var, val)),
             self.2,
         )
     }
-    pub(crate) fn into_whnf(self) -> Value {
-        self.0
+
+    pub(crate) fn normalize_whnf(&self) -> Value {
+        self.0.as_whnf()
+    }
+
+    pub(crate) fn as_thunk(&self) -> Thunk {
+        self.0.clone()
     }
 }
 
@@ -268,13 +266,11 @@ impl EnvItem {
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
+        val: &Typed<'static>,
     ) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
-            EnvItem::Skip(v) if v == var => {
-                EnvItem::Thunk(Thunk::from_whnf(val.clone().into_whnf()))
-            }
+            EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.as_thunk()),
             EnvItem::Skip(v) => EnvItem::Skip(v.shift(-1, var)),
         }
     }
@@ -331,11 +327,7 @@ impl NormalizationContext {
         NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
-    fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
-    ) -> Self {
+    fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
         NormalizationContext(Rc::new(
             self.0.map(|_, e| e.subst_shift(var, val)),
         ))
@@ -377,6 +369,10 @@ pub(crate) enum Value {
 }
 
 impl Value {
+    pub(crate) fn into_thunk(self) -> Thunk {
+        Thunk::from_whnf(self)
+    }
+
     /// Convert the value back to a (normalized) syntactic expression
     pub(crate) fn normalize_to_expr(self) -> OutputSubExpr {
         match self {
@@ -585,8 +581,11 @@ impl Value {
     pub(crate) fn app(self, val: Value) -> Value {
         match (self, val) {
             (Value::Lam(x, _, e), val) => {
-                let val =
-                    PartiallyNormalized(val, None, std::marker::PhantomData);
+                let val = Typed(
+                    Thunk::from_whnf(val),
+                    None,
+                    std::marker::PhantomData,
+                );
                 e.subst_shift(&V(x, 0), &val).as_whnf()
             }
             (Value::AppliedBuiltin(b, mut args), val) => {
@@ -717,7 +716,7 @@ impl Value {
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
+        val: &Typed<'static>,
     ) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
@@ -742,7 +741,7 @@ impl Value {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.shift0(1, x), val),
             ),
-            Value::Var(v) if v == var => val.clone().into_whnf(),
+            Value::Var(v) if v == var => val.normalize_whnf(),
             Value::Var(v) => Value::Var(v.shift(-1, var)),
             Value::Const(c) => Value::Const(*c),
             Value::BoolLit(b) => Value::BoolLit(*b),
@@ -814,7 +813,7 @@ impl Value {
 
 mod thunk {
     use super::{normalize_whnf, InputSubExpr, NormalizationContext, Value};
-    use crate::expr::PartiallyNormalized;
+    use crate::expr::Typed;
     use dhall_core::{Label, V};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -900,11 +899,7 @@ mod thunk {
             }
         }
 
-        fn subst_shift(
-            &self,
-            var: &V<Label>,
-            val: &PartiallyNormalized<'static>,
-        ) -> Self {
+        fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -953,7 +948,7 @@ mod thunk {
         pub(crate) fn subst_shift(
             &self,
             var: &V<Label>,
-            val: &PartiallyNormalized<'static>,
+            val: &Typed<'static>,
         ) -> Self {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
@@ -1003,7 +998,7 @@ impl TypeThunk {
     pub(crate) fn subst_shift(
         &self,
         var: &V<Label>,
-        val: &PartiallyNormalized<'static>,
+        val: &Typed<'static>,
     ) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
@@ -1015,12 +1010,7 @@ impl TypeThunk {
         match self {
             TypeThunk::Thunk(th) => th.as_nf(),
             // TODO: let's hope for the best with the unwrap
-            TypeThunk::Type(t) => t
-                .clone()
-                .partially_normalize()
-                .unwrap()
-                .into_whnf()
-                .normalize(),
+            TypeThunk::Type(t) => t.normalize_whnf().unwrap().normalize(),
         }
     }
 }

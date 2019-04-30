@@ -44,13 +44,6 @@ pub(crate) struct Typed<'a>(
 );
 
 #[derive(Debug, Clone)]
-pub(crate) struct PartiallyNormalized<'a>(
-    pub(crate) crate::normalize::Value,
-    pub(crate) Option<Type<'static>>,
-    pub(crate) PhantomData<&'a ()>,
-);
-
-#[derive(Debug, Clone)]
 pub(crate) struct Normalized<'a>(
     pub(crate) SubExpr<X, X>,
     pub(crate) Option<Type<'static>>,
