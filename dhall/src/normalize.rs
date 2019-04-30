@@ -364,7 +364,8 @@ pub(crate) enum Value {
     UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk>>),
     UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
-    /// This must not contain a value captured by one of the variants above.
+    /// Invariant: This must not contain a value captured by one of the variants above.
+    PartialExpr(Box<ExprF<Value, Label, X, X>>),
     Expr(OutputSubExpr),
 }
 
@@ -513,6 +514,9 @@ impl Value {
 
                 rc(ExprF::TextLit(normalize_textlit(elts)))
             }
+            Value::PartialExpr(e) => {
+                rc(e.map_ref_simple(|v| v.normalize_to_expr()))
+            }
             Value::Expr(e) => e.clone(),
         }
     }
@@ -596,6 +600,9 @@ impl Value {
                     })
                     .collect(),
             ),
+            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
+                e.map_ref_simple(|v| v.normalize()),
+            )),
             Value::Expr(e) => Value::Expr(e.clone()),
         }
     }
@@ -673,6 +680,12 @@ impl Value {
                     }
                 }
             }
+            Value::PartialExpr(e) => {
+                // TODO: need map_mut_simple
+                *self = Value::PartialExpr(Box::new(
+                    e.map_ref_simple(|v| v.normalize()),
+                ))
+            }
         }
     }
 
@@ -683,11 +696,10 @@ impl Value {
 
     /// Apply to a thunk
     pub(crate) fn app_thunk(self, th: Thunk) -> Value {
-        // If nothing else matches, convert to Expr
         let fallback = |f: Value, a: Thunk| {
-            Value::Expr(rc(ExprF::App(
-                f.normalize_to_expr(),
-                a.normalize_whnf().normalize_to_expr(),
+            Value::PartialExpr(Box::new(ExprF::App(
+                f,
+                a.normalize_whnf().clone(),
             )))
         };
 
@@ -824,6 +836,15 @@ impl Value {
                     })
                     .collect(),
             ),
+            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
+                e.map_ref_with_special_handling_of_binders(
+                    |v| v.shift(delta, var),
+                    |x, v| v.shift(delta, &var.shift0(1, x)),
+                    X::clone,
+                    X::clone,
+                    Label::clone,
+                ),
+            )),
             Value::Expr(e) => Value::Expr(e.shift(delta, var)),
         }
     }
@@ -919,6 +940,15 @@ impl Value {
                     })
                     .collect(),
             ),
+            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
+                e.map_ref_with_special_handling_of_binders(
+                    |v| v.subst_shift(var, val),
+                    |x, v| v.subst_shift(&var.shift0(1, x), &val.shift0(1, x)),
+                    X::clone,
+                    X::clone,
+                    Label::clone,
+                ),
+            )),
             Value::Expr(e) => Value::Expr(
                 e.subst_shift(var, &val.clone().normalize().as_expr()),
             ),
@@ -1352,10 +1382,7 @@ fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
                 t.as_ref().map(Value::normalize_to_expr),
             )))
         }
-        // Couldn't do anything useful, so just normalize subexpressions
-        expr => {
-            Expr(rc(expr.map_ref_simple(|e| e.clone().normalize_to_expr())))
-        }
+        expr => PartialExpr(Box::new(expr)),
     }
 }
 
