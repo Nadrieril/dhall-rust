@@ -517,6 +517,7 @@ impl Value {
         }
     }
 
+    // Deprecated
     pub(crate) fn normalize(&self) -> Value {
         match self {
             Value::Lam(x, t, e) => {
@@ -596,6 +597,82 @@ impl Value {
                     .collect(),
             ),
             Value::Expr(e) => Value::Expr(e.clone()),
+        }
+    }
+
+    pub(crate) fn normalize_mut(&mut self) {
+        match self {
+            Value::NaturalSuccClosure
+            | Value::Var(_)
+            | Value::Const(_)
+            | Value::BoolLit(_)
+            | Value::NaturalLit(_)
+            | Value::IntegerLit(_)
+            | Value::Expr(_) => {}
+
+            Value::EmptyOptionalLit(tth)
+            | Value::OptionalSomeClosure(tth)
+            | Value::EmptyListLit(tth) => {
+                tth.normalize_mut();
+            }
+
+            Value::NEOptionalLit(th) => {
+                th.normalize_mut();
+            }
+            Value::Lam(_, t, e) => {
+                t.normalize_mut();
+                e.normalize_mut();
+            }
+            Value::Pi(_, t, e) => {
+                t.normalize_mut();
+                e.normalize_mut();
+            }
+            Value::AppliedBuiltin(_, args) => {
+                for x in args.iter_mut() {
+                    x.normalize_mut();
+                }
+            }
+            Value::ListConsClosure(t, v) => {
+                t.normalize_mut();
+                for x in v.iter_mut() {
+                    x.normalize_mut();
+                }
+            }
+            Value::NEListLit(elts) => {
+                for x in elts.iter_mut() {
+                    x.normalize_mut();
+                }
+            }
+            Value::RecordLit(kvs) => {
+                for x in kvs.values_mut() {
+                    x.normalize_mut();
+                }
+            }
+            Value::RecordType(kvs) => {
+                for x in kvs.values_mut() {
+                    x.normalize_mut();
+                }
+            }
+            Value::UnionType(kts) | Value::UnionConstructor(_, kts) => {
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    x.normalize_mut();
+                }
+            }
+            Value::UnionLit(_, v, kts) => {
+                v.normalize_mut();
+                for x in kts.values_mut().flat_map(|opt| opt) {
+                    x.normalize_mut();
+                }
+            }
+            Value::TextLit(elts) => {
+                for x in elts.iter_mut() {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match x {
+                        Expr(n) => n.normalize_mut(),
+                        Text(_) => {}
+                    }
+                }
+            }
         }
     }
 
@@ -840,14 +917,22 @@ mod thunk {
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 
+    #[derive(Debug, Clone, Copy)]
+    enum Marker {
+        /// Weak Head Normal Form, i.e. subexpressions may not be normalized
+        WHNF,
+        /// Normal form, i.e. completely normalized
+        NF,
+    }
+    use Marker::{NF, WHNF};
+
     #[derive(Debug)]
     enum ThunkInternal {
         /// Non-normalized value alongside a normalization context
         Unnormalized(NormalizationContext, InputSubExpr),
-        /// Weak Head Normal Form, i.e. subexpressions may not be normalized
-        WHNF(Box<Value>),
-        /// Normal form, i.e. completely normalized
-        NF(Box<Value>),
+        /// Partially normalized value.
+        /// Invariant: if the marker is `NF`, the value must be fully normalized
+        Value(Marker, Value),
     }
 
     /// Stores a possibl unevaluated value. Uses RefCell to ensure that
@@ -863,14 +948,13 @@ mod thunk {
         fn normalize_whnf(&mut self) {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
-                    let new = ThunkInternal::WHNF(Box::new(normalize_whnf(
-                        ctx.clone(),
-                        e.clone(),
-                    )));
-                    std::mem::replace(self, new);
+                    *self = ThunkInternal::Value(
+                        WHNF,
+                        normalize_whnf(ctx.clone(), e.clone()),
+                    )
                 }
-                ThunkInternal::WHNF(_) => {}
-                ThunkInternal::NF(_) => {}
+                // Already at least in WHNF
+                ThunkInternal::Value(_, _) => {}
             }
         }
 
@@ -878,11 +962,12 @@ mod thunk {
             self.normalize_whnf();
             match self {
                 ThunkInternal::Unnormalized(_, _) => unreachable!(),
-                ThunkInternal::WHNF(v) => {
-                    let new = ThunkInternal::NF(Box::new(v.normalize()));
-                    std::mem::replace(self, new);
+                ThunkInternal::Value(m @ WHNF, v) => {
+                    v.normalize_mut();
+                    *m = NF;
                 }
-                ThunkInternal::NF(_) => {}
+                // Already in NF
+                ThunkInternal::Value(NF, _) => {}
             }
         }
 
@@ -890,8 +975,7 @@ mod thunk {
         fn as_whnf(&self) -> &Value {
             match self {
                 ThunkInternal::Unnormalized(_, _) => unreachable!(),
-                ThunkInternal::WHNF(v) => v.as_ref(),
-                ThunkInternal::NF(v) => v.as_ref(),
+                ThunkInternal::Value(_, v) => v,
             }
         }
 
@@ -899,8 +983,8 @@ mod thunk {
         fn as_nf(&self) -> &Value {
             match self {
                 ThunkInternal::Unnormalized(_, _) => unreachable!(),
-                ThunkInternal::WHNF(_) => unreachable!(),
-                ThunkInternal::NF(v) => v.as_ref(),
+                ThunkInternal::Value(WHNF, _) => unreachable!(),
+                ThunkInternal::Value(NF, v) => v,
             }
         }
 
@@ -912,11 +996,8 @@ mod thunk {
                         e.clone(),
                     )
                 }
-                ThunkInternal::WHNF(v) => {
-                    ThunkInternal::WHNF(Box::new(v.shift(delta, var)))
-                }
-                ThunkInternal::NF(v) => {
-                    ThunkInternal::NF(Box::new(v.shift(delta, var)))
+                ThunkInternal::Value(m, v) => {
+                    ThunkInternal::Value(*m, v.shift(delta, var))
                 }
             }
         }
@@ -929,11 +1010,8 @@ mod thunk {
                         e.clone(),
                     )
                 }
-                ThunkInternal::WHNF(v) => {
-                    ThunkInternal::WHNF(Box::new(v.subst_shift(var, val)))
-                }
-                ThunkInternal::NF(v) => {
-                    ThunkInternal::NF(Box::new(v.subst_shift(var, val)))
+                ThunkInternal::Value(m, v) => {
+                    ThunkInternal::Value(*m, v.subst_shift(var, val))
                 }
             }
         }
@@ -945,13 +1023,18 @@ mod thunk {
         }
 
         pub(crate) fn from_whnf(v: Value) -> Thunk {
-            ThunkInternal::WHNF(Box::new(v)).into_thunk()
+            ThunkInternal::Value(WHNF, v).into_thunk()
         }
 
         // Deprecated
         pub(crate) fn normalize(&self) -> Thunk {
             self.normalize_nf();
             self.clone()
+        }
+
+        pub(crate) fn normalize_mut(&mut self) {
+            // TODO: optimize if sole owner
+            self.normalize_nf();
         }
 
         // WARNING: avoid normalizing any thunk while holding on to this ref
@@ -1012,6 +1095,13 @@ impl TypeThunk {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.normalize()),
             TypeThunk::Type(t) => TypeThunk::Type(t.clone()),
+        }
+    }
+
+    fn normalize_mut(&mut self) {
+        match self {
+            TypeThunk::Thunk(th) => th.normalize_mut(),
+            TypeThunk::Type(_) => {}
         }
     }
 
