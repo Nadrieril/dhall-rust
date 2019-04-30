@@ -693,7 +693,7 @@ impl TypeIntermediate {
                 );
                 Typed(
                     Value::from_builtin(Builtin::List)
-                        .app(t.clone().normalize_whnf()?)
+                        .app(t.normalize_whnf()?)
                         .into_thunk(),
                     Some(const_to_type(Const::Type)),
                     PhantomData,
@@ -709,7 +709,7 @@ impl TypeIntermediate {
                 );
                 Typed(
                     Value::from_builtin(Builtin::Optional)
-                        .app(t.clone().normalize_whnf()?)
+                        .app(t.normalize_whnf()?)
                         .into_thunk(),
                     Some(const_to_type(Const::Type)),
                     PhantomData,

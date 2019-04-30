@@ -163,7 +163,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
             [_, NEListLit(xs), _, cons, nil] => {
                 let mut v = nil;
                 for x in xs.into_iter().rev() {
-                    v = cons.clone().app(x.normalize_whnf().clone()).app(v);
+                    v = cons.clone().app_thunk(x).app(v);
                 }
                 v
             }
@@ -197,7 +197,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
                 nothing
             },
             [_, NEOptionalLit(x), _, just, _] => {
-                just.app(x.normalize_whnf().clone())
+                just.app_thunk(x)
             }
         ),
         NaturalBuild => improved_slice_patterns::match_vec!(args;
@@ -678,43 +678,59 @@ impl Value {
 
     /// Apply to a value
     pub(crate) fn app(self, val: Value) -> Value {
-        match (self, val) {
-            (Value::Lam(x, _, e), val) => {
-                let val = Typed(
-                    Thunk::from_whnf(val),
-                    None,
-                    std::marker::PhantomData,
-                );
+        self.app_thunk(val.into_thunk())
+    }
+
+    /// Apply to a thunk
+    pub(crate) fn app_thunk(self, th: Thunk) -> Value {
+        // If nothing else matches, convert to Expr
+        let fallback = |f: Value, a: Thunk| {
+            Value::Expr(rc(ExprF::App(
+                f.normalize_to_expr(),
+                a.normalize_whnf().normalize_to_expr(),
+            )))
+        };
+
+        match self {
+            Value::Lam(x, _, e) => {
+                let val = Typed(th, None, std::marker::PhantomData);
                 e.subst_shift(&V(x, 0), &val).normalize_whnf().clone()
             }
-            (Value::AppliedBuiltin(b, mut args), val) => {
-                args.push(val);
+            Value::AppliedBuiltin(b, mut args) => {
+                args.push(th.normalize_whnf().clone());
                 apply_builtin(b, args)
             }
-            (Value::OptionalSomeClosure(_), val) => {
-                Value::NEOptionalLit(Thunk::from_whnf(val))
+            Value::OptionalSomeClosure(_) => Value::NEOptionalLit(th),
+            Value::ListConsClosure(t, None) => {
+                Value::ListConsClosure(t, Some(th))
             }
-            (Value::ListConsClosure(t, None), val) => {
-                Value::ListConsClosure(t, Some(Thunk::from_whnf(val)))
+            Value::ListConsClosure(t, Some(x)) => {
+                let v = th.normalize_whnf();
+                match &*v {
+                    Value::EmptyListLit(_) => Value::NEListLit(vec![x]),
+                    Value::NEListLit(xs) => {
+                        let mut xs = xs.clone();
+                        xs.insert(0, x);
+                        Value::NEListLit(xs)
+                    }
+                    _ => {
+                        drop(v);
+                        fallback(Value::ListConsClosure(t, Some(x)), th)
+                    }
+                }
             }
-            (Value::ListConsClosure(_, Some(x)), Value::EmptyListLit(_)) => {
-                Value::NEListLit(vec![x])
+            Value::NaturalSuccClosure => {
+                let v = th.normalize_whnf();
+                match &*v {
+                    Value::NaturalLit(n) => Value::NaturalLit(n + 1),
+                    _ => {
+                        drop(v);
+                        fallback(Value::NaturalSuccClosure, th)
+                    }
+                }
             }
-            (Value::ListConsClosure(_, Some(x)), Value::NEListLit(mut xs)) => {
-                xs.insert(0, x);
-                Value::NEListLit(xs)
-            }
-            (Value::NaturalSuccClosure, Value::NaturalLit(n)) => {
-                Value::NaturalLit(n + 1)
-            }
-            (Value::UnionConstructor(l, kts), val) => {
-                Value::UnionLit(l, Thunk::from_whnf(val), kts)
-            }
-            // Can't do anything useful, convert to expr
-            (f, a) => Value::Expr(rc(ExprF::App(
-                f.normalize_to_expr(),
-                a.normalize_to_expr(),
-            ))),
+            Value::UnionConstructor(l, kts) => Value::UnionLit(l, th, kts),
+            f => fallback(f, th),
         }
     }
 
@@ -1323,8 +1339,7 @@ fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
                 UnionLit(l, v, kts) => match handlers.remove(&l) {
                     Some(h) => {
                         let h = h.normalize_whnf().clone();
-                        let v = v.normalize_whnf().clone();
-                        return h.app(v);
+                        return h.app_thunk(v);
                     }
                     None => UnionLit(l, v, kts),
                 },
