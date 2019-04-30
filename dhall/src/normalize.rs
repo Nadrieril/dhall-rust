@@ -28,23 +28,7 @@ impl<'a> Typed<'a> {
         self.partially_normalize().normalize()
     }
     pub(crate) fn partially_normalize(self) -> PartiallyNormalized<'a> {
-        PartiallyNormalized(
-            normalize_whnf(
-                NormalizationContext::from_typecheck_ctx(&self.2),
-                self.0,
-            ),
-            self.1,
-            self.3,
-        )
-    }
-    /// Pretends this expression is normalized. Use with care.
-    #[allow(dead_code)]
-    pub fn skip_normalize(self) -> Normalized<'a> {
-        Normalized(
-            self.0.unroll().squash_embed(|e| e.0.clone()),
-            self.1,
-            self.3,
-        )
+        PartiallyNormalized(self.0.as_whnf(), self.1, self.2)
     }
 }
 
@@ -300,7 +284,7 @@ impl EnvItem {
 pub(crate) struct NormalizationContext(Rc<Context<Label, EnvItem>>);
 
 impl NormalizationContext {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         NormalizationContext(Rc::new(Context::new()))
     }
     fn insert(&self, x: &Label, e: Thunk) -> Self {
@@ -323,7 +307,9 @@ impl NormalizationContext {
             None => Value::Var(var.clone()),
         }
     }
-    fn from_typecheck_ctx(tc_ctx: &crate::typecheck::TypecheckContext) -> Self {
+    pub(crate) fn from_typecheck_ctx(
+        tc_ctx: &crate::typecheck::TypecheckContext,
+    ) -> Self {
         use crate::typecheck::EnvItem::*;
         let mut ctx = Context::new();
         for (k, vs) in tc_ctx.0.iter_keys() {

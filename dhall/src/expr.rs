@@ -38,12 +38,10 @@ derive_other_traits!(Resolved);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Typed<'a>(
-    pub(crate) SubExpr<X, Normalized<'static>>,
+    pub(crate) crate::normalize::Thunk,
     pub(crate) Option<Type<'static>>,
-    pub(crate) crate::typecheck::TypecheckContext,
     pub(crate) PhantomData<&'a ()>,
 );
-derive_other_traits!(Typed);
 
 #[derive(Debug, Clone)]
 pub(crate) struct PartiallyNormalized<'a>(
@@ -112,19 +110,13 @@ impl<'a> From<SubExpr<X, X>> for SimpleType<'a> {
 impl<'a> From<Normalized<'a>> for Typed<'a> {
     fn from(x: Normalized<'a>) -> Typed<'a> {
         Typed(
-            x.0.embed_absurd(),
+            crate::normalize::Thunk::new(
+                crate::normalize::NormalizationContext::new(),
+                x.0.embed_absurd(),
+            ),
             x.1,
-            crate::typecheck::TypecheckContext::new(),
             x.2,
         )
-    }
-}
-
-#[doc(hidden)]
-#[allow(dead_code)]
-impl<'a> Typed<'a> {
-    pub(crate) fn as_expr(&self) -> &SubExpr<X, Normalized<'a>> {
-        &self.0
     }
 }
 

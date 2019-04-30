@@ -130,8 +130,7 @@ pub fn run_test(
             match feature {
                 Parser => unreachable!(),
                 Import => {
-                    // Not sure whether to normalize or not
-                    let expr = expr.skip_typecheck().skip_normalize();
+                    let expr = expr.skip_typecheck().normalize();
                     assert_eq_display!(expr, expected);
                 }
                 Typecheck => {

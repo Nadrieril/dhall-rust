@@ -6,7 +6,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::expr::*;
-use crate::normalize::{TypeThunk, Value};
+use crate::normalize::{NormalizationContext, Thunk, TypeThunk, Value};
 use crate::traits::DynamicType;
 use dhall_core;
 use dhall_core::context::Context;
@@ -30,7 +30,11 @@ impl<'a> Resolved<'a> {
     /// Pretends this expression has been typechecked. Use with care.
     #[allow(dead_code)]
     pub fn skip_typecheck(self) -> Typed<'a> {
-        Typed(self.0.unnote(), None, TypecheckContext::new(), PhantomData)
+        Typed(
+            Thunk::new(NormalizationContext::new(), self.0.unnote()),
+            None,
+            PhantomData,
+        )
     }
 }
 impl<'a> Typed<'a> {
@@ -324,6 +328,9 @@ impl TypecheckContext {
             Some(EnvItem::Value(t)) => Some(t.get_type()?),
             None => None,
         }
+    }
+    fn to_normalization_ctx(&self) -> NormalizationContext {
+        NormalizationContext::from_typecheck_ctx(self)
     }
 }
 
@@ -813,15 +820,13 @@ fn type_with(
     }?;
     match ret {
         RetExpr(ret) => Ok(TypedOrType::Typed(Typed(
-            e,
+            Thunk::new(ctx.to_normalization_ctx(), e),
             Some(mktype(ctx, rc(ret))?),
-            ctx.clone(),
             PhantomData,
         ))),
         RetType(typ) => Ok(TypedOrType::Typed(Typed(
-            e,
+            Thunk::new(ctx.to_normalization_ctx(), e),
             Some(typ),
-            ctx.clone(),
             PhantomData,
         ))),
         RetTypedOrType(tt) => Ok(tt),
