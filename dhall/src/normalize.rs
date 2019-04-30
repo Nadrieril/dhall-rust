@@ -1060,8 +1060,9 @@ mod thunk {
                         e.clone(),
                     )
                 }
-                ThunkInternal::Value(m, v) => {
-                    ThunkInternal::Value(*m, v.subst_shift(var, val))
+                ThunkInternal::Value(_, v) => {
+                    // The resulting value may not stay in normal form after substitution
+                    ThunkInternal::Value(WHNF, v.subst_shift(var, val))
                 }
             }
         }
