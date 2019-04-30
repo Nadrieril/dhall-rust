@@ -991,46 +991,67 @@ fn type_last_layer(
                     .normalize_to_type(),
             ))
         }
-        Field(r, x) => match r.get_type()?.internal_whnf().deref() {
-            Some(Value::RecordType(kts)) => match kts.get(&x) {
-                Some(tth) => Ok(RetType(tth.clone().normalize_to_type(ctx)?)),
-                None => Err(mkerr(MissingRecordField(x, r.clone()))),
-            },
-            // TODO: branch here only when r.get_type() is a Const
-            _ => {
-                let r = r.normalize_to_type();
-                let r_internal = r.internal_whnf();
-                match r_internal.deref() {
-                    Some(Value::UnionType(kts)) => match kts.get(&x) {
-                        // Constructor has type T -> < x: T, ... >
-                        // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
-                        Some(Some(t)) => Ok(RetType(
-                            TypeIntermediate::Pi(
-                                ctx.clone(),
-                                x.clone(),
-                                t.clone().normalize_to_type(ctx)?,
-                                r.clone(),
-                            )
-                            .typecheck()?
-                            .normalize_to_type(),
-                        )),
-                        Some(None) => Ok(RetType(r.clone())),
-                        None => Err(mkerr(MissingUnionField(
-                            x,
-                            r.clone().into_normalized()?,
-                        ))),
+        Field(r, x) => {
+            let tr = r.get_type()?;
+            let tr_internal = tr.internal_whnf();
+            match tr_internal.deref() {
+                Some(Value::RecordType(kts)) => match kts.get(&x) {
+                    Some(tth) => {
+                        let tth = tth.clone();
+                        drop(tr_internal);
+                        Ok(RetType(tth.normalize_to_type(ctx)?))
                     },
-                    _ => Err(mkerr(NotARecord(
-                        x,
-                        r.clone().into_normalized()?
-                    ))),
+                    None => Err(mkerr(MissingRecordField(x, r.clone()))),
+                },
+                // TODO: branch here only when r.get_type() is a Const
+                _ => {
+                    let r = r.normalize_to_type();
+                    let r_internal = r.internal_whnf();
+                    match r_internal.deref() {
+                        Some(Value::UnionType(kts)) => match kts.get(&x) {
+                            // Constructor has type T -> < x: T, ... >
+                            // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
+                            Some(Some(t)) => {
+                                let t = t.clone();
+                                drop(r_internal);
+                                Ok(RetType(
+                                    TypeIntermediate::Pi(
+                                        ctx.clone(),
+                                        x.clone(),
+                                        t.normalize_to_type(ctx)?,
+                                        r,
+                                    )
+                                    .typecheck()?
+                                    .normalize_to_type(),
+                                ))
+                            },
+                            Some(None) => {
+                                drop(r_internal);
+                                Ok(RetType(r))
+                            },
+                            None => {
+                                drop(r_internal);
+                                Err(mkerr(MissingUnionField(
+                                    x,
+                                    r.into_normalized()?,
+                                )))
+                            },
+                        },
+                        _ => {
+                            drop(r_internal);
+                            Err(mkerr(NotARecord(
+                                x,
+                                r.into_normalized()?
+                            )))
+                        },
+                    }
                 }
+                // _ => Err(mkerr(NotARecord(
+                //     x,
+                //     r.normalize_to_type()?.into_normalized()?,
+                // ))),
             }
-            // _ => Err(mkerr(NotARecord(
-            //     x,
-            //     r.normalize_to_type()?.into_normalized()?,
-            // ))),
-        },
+        }
         Const(c) => Ok(RetType(type_of_const(c))),
         Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),

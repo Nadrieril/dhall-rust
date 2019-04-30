@@ -954,11 +954,15 @@ mod thunk {
             self.clone()
         }
 
+        // WARNING: avoid normalizing any thunk while holding on to this ref
+        // or you will run into BorrowMut panics
         pub(crate) fn normalize_whnf(&self) -> Ref<Value> {
             self.0.borrow_mut().normalize_whnf();
             Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
         }
 
+        // WARNING: avoid normalizing any thunk while holding on to this ref
+        // or you will run into BorrowMut panics
         pub(crate) fn normalize_nf(&self) -> Ref<Value> {
             self.0.borrow_mut().normalize_nf();
             Ref::map(self.0.borrow(), ThunkInternal::as_nf)
