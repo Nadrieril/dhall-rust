@@ -1032,9 +1032,15 @@ mod thunk {
             self.clone()
         }
 
+        // Normalizes contents to normal form; faster than `normalize_nf` if
+        // no one else shares this thunk
         pub(crate) fn normalize_mut(&mut self) {
-            // TODO: optimize if sole owner
-            self.normalize_nf();
+            match Rc::get_mut(&mut self.0) {
+                // Mutate directly if sole owner
+                Some(refcell) => RefCell::get_mut(refcell).normalize_nf(),
+                // Otherwise mutate through the refcell
+                None => self.0.borrow_mut().normalize_nf(),
+            }
         }
 
         // WARNING: avoid normalizing any thunk while holding on to this ref
