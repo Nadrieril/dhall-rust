@@ -1470,7 +1470,7 @@ mod spec_tests {
     norm!(success_prelude_List_head_1, "prelude/List/head/1");
     norm!(success_prelude_List_indexed_0, "prelude/List/indexed/0");
     norm!(success_prelude_List_indexed_1, "prelude/List/indexed/1");
-    // norm!(success_prelude_List_iterate_0, "prelude/List/iterate/0");
+    norm!(success_prelude_List_iterate_0, "prelude/List/iterate/0");
     norm!(success_prelude_List_iterate_1, "prelude/List/iterate/1");
     norm!(success_prelude_List_last_0, "prelude/List/last/0");
     norm!(success_prelude_List_last_1, "prelude/List/last/1");
@@ -1503,25 +1503,25 @@ mod spec_tests {
     norm!(success_prelude_Natural_odd_1, "prelude/Natural/odd/1");
     norm!(success_prelude_Natural_product_0, "prelude/Natural/product/0");
     norm!(success_prelude_Natural_product_1, "prelude/Natural/product/1");
-    // norm!(success_prelude_Natural_show_0, "prelude/Natural/show/0");
-    // norm!(success_prelude_Natural_show_1, "prelude/Natural/show/1");
+    norm!(success_prelude_Natural_show_0, "prelude/Natural/show/0");
+    norm!(success_prelude_Natural_show_1, "prelude/Natural/show/1");
     norm!(success_prelude_Natural_sum_0, "prelude/Natural/sum/0");
     norm!(success_prelude_Natural_sum_1, "prelude/Natural/sum/1");
     // norm!(success_prelude_Natural_toDouble_0, "prelude/Natural/toDouble/0");
     // norm!(success_prelude_Natural_toDouble_1, "prelude/Natural/toDouble/1");
-    // norm!(success_prelude_Natural_toInteger_0, "prelude/Natural/toInteger/0");
-    // norm!(success_prelude_Natural_toInteger_1, "prelude/Natural/toInteger/1");
+    norm!(success_prelude_Natural_toInteger_0, "prelude/Natural/toInteger/0");
+    norm!(success_prelude_Natural_toInteger_1, "prelude/Natural/toInteger/1");
     norm!(success_prelude_Optional_all_0, "prelude/Optional/all/0");
     norm!(success_prelude_Optional_all_1, "prelude/Optional/all/1");
     norm!(success_prelude_Optional_any_0, "prelude/Optional/any/0");
     norm!(success_prelude_Optional_any_1, "prelude/Optional/any/1");
-    // norm!(success_prelude_Optional_build_0, "prelude/Optional/build/0");
-    // norm!(success_prelude_Optional_build_1, "prelude/Optional/build/1");
+    norm!(success_prelude_Optional_build_0, "prelude/Optional/build/0");
+    norm!(success_prelude_Optional_build_1, "prelude/Optional/build/1");
     norm!(success_prelude_Optional_concat_0, "prelude/Optional/concat/0");
     norm!(success_prelude_Optional_concat_1, "prelude/Optional/concat/1");
     norm!(success_prelude_Optional_concat_2, "prelude/Optional/concat/2");
-    // norm!(success_prelude_Optional_filter_0, "prelude/Optional/filter/0");
-    // norm!(success_prelude_Optional_filter_1, "prelude/Optional/filter/1");
+    norm!(success_prelude_Optional_filter_0, "prelude/Optional/filter/0");
+    norm!(success_prelude_Optional_filter_1, "prelude/Optional/filter/1");
     norm!(success_prelude_Optional_fold_0, "prelude/Optional/fold/0");
     norm!(success_prelude_Optional_fold_1, "prelude/Optional/fold/1");
     norm!(success_prelude_Optional_head_0, "prelude/Optional/head/0");
@@ -1553,9 +1553,10 @@ mod spec_tests {
     // norm!(success_remoteSystems, "remoteSystems");
 
     // norm!(success_simple_doubleShow, "simple/doubleShow");
+    norm!(success_simple_enum, "simple/enum");
     // norm!(success_simple_integerShow, "simple/integerShow");
     // norm!(success_simple_integerToDouble, "simple/integerToDouble");
-    // norm!(success_simple_letlet, "simple/letlet");
+    norm!(success_simple_letlet, "simple/letlet");
     norm!(success_simple_listBuild, "simple/listBuild");
     norm!(success_simple_multiLine, "simple/multiLine");
     norm!(success_simple_naturalBuild, "simple/naturalBuild");
@@ -1572,12 +1573,12 @@ mod spec_tests {
     // norm!(success_simplifications_ne, "simplifications/ne");
     // norm!(success_simplifications_or, "simplifications/or");
 
-
     norm!(success_unit_Bool, "unit/Bool");
     norm!(success_unit_Double, "unit/Double");
     norm!(success_unit_DoubleLiteral, "unit/DoubleLiteral");
     norm!(success_unit_DoubleShow, "unit/DoubleShow");
     // norm!(success_unit_DoubleShowValue, "unit/DoubleShowValue");
+    norm!(success_unit_EmptyAlternative, "unit/EmptyAlternative");
     norm!(success_unit_FunctionApplicationCapture, "unit/FunctionApplicationCapture");
     norm!(success_unit_FunctionApplicationNoSubstitute, "unit/FunctionApplicationNoSubstitute");
     norm!(success_unit_FunctionApplicationNormalizeArguments, "unit/FunctionApplicationNormalizeArguments");
