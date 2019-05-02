@@ -46,9 +46,6 @@ impl<'a> Typed<'a> {
 }
 
 impl<'a> Normalized<'a> {
-    fn shift0(&self, delta: isize, label: &Label) -> Self {
-        self.shift(delta, &V(label.clone(), 0))
-    }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Normalized(self.0.shift(delta, var), self.1)
     }
@@ -78,9 +75,6 @@ impl<'a> Type<'a> {
     }
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
-    }
-    pub(crate) fn shift0(&self, delta: isize, label: &Label) -> Self {
-        Type(self.0.shift0(delta, label))
     }
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Type(self.0.shift(delta, var))
@@ -164,9 +158,6 @@ impl<'a> TypeInternal<'a> {
             _ => None,
         }
     }
-    fn shift0(&self, delta: isize, label: &Label) -> Self {
-        self.shift(delta, &V(label.clone(), 0))
-    }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use TypeInternal::*;
         match self {
@@ -197,11 +188,11 @@ pub(crate) enum EnvItem {
 }
 
 impl EnvItem {
-    fn shift0(&self, delta: isize, x: &Label) -> Self {
+    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use EnvItem::*;
         match self {
-            Type(v, e) => Type(v.shift0(delta, x), e.shift0(delta, x)),
-            Value(e) => Value(e.shift0(delta, x)),
+            Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
+            Value(e) => Value(e.shift(delta, var)),
         }
     }
 }
@@ -215,9 +206,9 @@ impl TypecheckContext {
     }
     pub(crate) fn insert_type(&self, x: &Label, t: Type<'static>) -> Self {
         TypecheckContext(
-            self.0.map(|_, e| e.shift0(1, x)).insert(
+            self.0.map(|_, e| e.shift(1, &x.into())).insert(
                 x.clone(),
-                EnvItem::Type(V(x.clone(), 0), t.shift0(1, x)),
+                EnvItem::Type(x.into(), t.shift(1, &x.into())),
             ),
         )
     }

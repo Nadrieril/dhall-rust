@@ -62,6 +62,18 @@ pub enum Const {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct V<Label>(pub Label, pub usize);
 
+// This is only for the specific `Label` type, not generic
+impl From<Label> for V<Label> {
+    fn from(x: Label) -> V<Label> {
+        V(x, 0)
+    }
+}
+impl<'a> From<&'a Label> for V<Label> {
+    fn from(x: &'a Label) -> V<Label> {
+        V(x.clone(), 0)
+    }
+}
+
 // Definition order must match precedence order for
 // pretty-printing to work correctly
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -443,13 +455,9 @@ impl<N, E> SubExpr<N, E> {
             ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.shift(delta, var),
-                |x: &Label, e| e.shift(delta, &var.shift0(1, x)),
+                |x: &Label, e| e.shift(delta, &var.shift(1, &x.into())),
             ),
         }
-    }
-
-    pub fn shift0(&self, delta: isize, label: &Label) -> Self {
-        self.shift(delta, &V(label.clone(), 0))
     }
 
     pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
@@ -459,7 +467,10 @@ impl<N, E> SubExpr<N, E> {
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.subst_shift(var, val),
                 |x: &Label, e| {
-                    e.subst_shift(&var.shift0(1, x), &val.shift0(1, x))
+                    e.subst_shift(
+                        &var.shift(1, &x.into()),
+                        &val.shift(1, &x.into()),
+                    )
                 },
             ),
         }
@@ -509,15 +520,6 @@ impl<Label: PartialEq + Clone> V<Label> {
             V(y.clone(), *m)
         }
     }
-
-    pub fn shift0(&self, delta: isize, x: &Label) -> Self {
-        let V(y, m) = self;
-        if x == y {
-            V(y.clone(), add_ui(*m, delta))
-        } else {
-            V(y.clone(), *m)
-        }
-    }
 }
 
 /// `shift` is used by both normalization and type-checking to avoid variable
@@ -531,14 +533,6 @@ pub fn shift<N, E>(
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
     in_expr.shift(delta, var)
-}
-
-pub fn shift0<N, E>(
-    delta: isize,
-    label: &Label,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    shift(delta, &V(label.clone(), 0), in_expr)
 }
 
 pub fn shift0_multiple<N, E>(

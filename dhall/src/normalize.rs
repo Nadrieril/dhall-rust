@@ -38,10 +38,6 @@ impl<'a> Typed<'a> {
         Normalized(internal, self.1)
     }
 
-    pub(crate) fn shift0(&self, delta: isize, x: &Label) -> Self {
-        self.shift(delta, &V(x.clone(), 0))
-    }
-
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Typed(self.0.shift(delta, var), self.1)
     }
@@ -257,10 +253,6 @@ enum EnvItem {
 }
 
 impl EnvItem {
-    fn shift0(&self, delta: isize, x: &Label) -> Self {
-        self.shift(delta, &V(x.clone(), 0))
-    }
-
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         use EnvItem::*;
         match self {
@@ -297,8 +289,8 @@ impl NormalizationContext {
     fn skip(&self, x: &Label) -> Self {
         NormalizationContext(Rc::new(
             self.0
-                .map(|_, e| e.shift0(1, x))
-                .insert(x.clone(), EnvItem::Skip(V(x.clone(), 0))),
+                .map(|_, e| e.shift(1, &x.into()))
+                .insert(x.clone(), EnvItem::Skip(x.into())),
         ))
     }
     fn lookup(&self, var: &V<Label>) -> Value {
@@ -402,14 +394,14 @@ impl Value {
             Value::ListConsClosure(n, None) => {
                 let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `x` variable
-                let a1 = a.shift0(1, &"x".into());
+                let a1 = a.shift(1, &Label::from("x").into());
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
                 let v = v.normalize_to_expr();
                 let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
-                let v = v.shift0(1, &"xs".into());
+                let v = v.shift(1, &Label::from("xs").into());
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
             }
             Value::NaturalSuccClosure => {
@@ -746,7 +738,7 @@ impl Value {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.shift(delta, var),
-                e.shift(delta, &var.shift0(1, x)),
+                e.shift(delta, &var.shift(1, &x.into())),
             ),
             Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
                 *b,
@@ -763,7 +755,7 @@ impl Value {
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),
                 t.shift(delta, var),
-                e.shift(delta, &var.shift0(1, x)),
+                e.shift(delta, &var.shift(1, &x.into())),
             ),
             Value::Var(v) => Value::Var(v.shift(delta, var)),
             Value::Const(c) => Value::Const(*c),
@@ -830,7 +822,7 @@ impl Value {
             Value::PartialExpr(e) => Value::PartialExpr(Box::new(
                 e.map_ref_with_special_handling_of_binders(
                     |v| v.shift(delta, var),
-                    |x, v| v.shift(delta, &var.shift0(1, x)),
+                    |x, v| v.shift(delta, &var.shift(1, &x.into())),
                     X::clone,
                     X::clone,
                     Label::clone,
@@ -849,7 +841,10 @@ impl Value {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
-                e.subst_shift(&var.shift0(1, x), &val.shift0(1, x)),
+                e.subst_shift(
+                    &var.shift(1, &x.into()),
+                    &val.shift(1, &x.into()),
+                ),
             ),
             Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
                 *b,
@@ -866,7 +861,10 @@ impl Value {
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),
                 t.subst_shift(var, val),
-                e.subst_shift(&var.shift0(1, x), &val.shift0(1, x)),
+                e.subst_shift(
+                    &var.shift(1, &x.into()),
+                    &val.shift(1, &x.into()),
+                ),
             ),
             Value::Var(v) if v == var => val.to_value().clone(),
             Value::Var(v) => Value::Var(v.shift(-1, var)),
@@ -934,7 +932,12 @@ impl Value {
             Value::PartialExpr(e) => Value::PartialExpr(Box::new(
                 e.map_ref_with_special_handling_of_binders(
                     |v| v.subst_shift(var, val),
-                    |x, v| v.subst_shift(&var.shift0(1, x), &val.shift0(1, x)),
+                    |x, v| {
+                        v.subst_shift(
+                            &var.shift(1, &x.into()),
+                            &val.shift(1, &x.into()),
+                        )
+                    },
                     X::clone,
                     X::clone,
                     Label::clone,
