@@ -16,9 +16,9 @@
 simple_label
 # quoted_label_char
 quoted_label
-# label
-nonreserved_label
-any_label
+label
+# nonreserved_label
+# any_label
 double_quote_chunk
 double_quote_escaped
 double_quote_char
@@ -43,9 +43,40 @@ missing
 NaN
 Some_
 # keyword
+builtin
 Optional
 Text
 List
+# Bool
+# True
+# False
+# None_
+# Natural
+# Integer
+# Double
+# Type
+# Kind
+# Sort
+# Natural_fold
+# Natural_build
+# Natural_isZero
+# Natural_even
+# Natural_odd
+# Natural_toInteger
+# Natural_show
+# Integer_toDouble
+# Integer_show
+# Double_show
+# List_build
+# List_fold
+# List_length
+# List_head
+# List_last
+# List_indexed
+# List_reverse
+# Optional_fold
+# Optional_build
+# Text_show
 # combine
 # combine_types
 # prefer
@@ -60,6 +91,7 @@ double_literal
 natural_literal
 integer_literal
 identifier
+variable
 # path_character
 # quoted_path_character
 unquoted_path_component

@@ -27,6 +27,7 @@ fn main() -> std::io::Result<()> {
         }
     }
     rules.remove("simple_label");
+    rules.remove("nonreserved_label");
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
@@ -38,6 +39,12 @@ fn main() -> std::io::Result<()> {
         "simple_label = {{
               keyword ~ simple_label_next_char+
             | !keyword ~ simple_label_first_char ~ simple_label_next_char*
+    }}"
+    )?;
+    writeln!(
+        &mut file,
+        "nonreserved_label = _{{
+            !(builtin ~ !simple_label_next_char) ~ label
     }}"
     )?;
     writeln!(

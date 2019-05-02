@@ -308,22 +308,9 @@ make_parser! {
     rule!(quoted_label<Label>;
         captured_str!(s) => Label::from(s.trim().to_owned())
     );
-    rule!(any_label<(Label, bool)>; children!(
-        [simple_label(l)] => (l, false),
-        [quoted_label(l)] => (l, true),
-    ));
-    rule!(nonreserved_label<Label>; children!(
-        [simple_label(l)] => {
-            if crate::Builtin::parse(&String::from(&l)).is_some() {
-                Err(
-                    "Builtin names are not allowed as bound variables".to_string()
-                )?
-            }
-            l
-        },
-        [quoted_label(l)] => {
-            l
-        },
+    rule!(label<Label>; children!(
+        [simple_label(l)] => l,
+        [quoted_label(l)] => l,
     ));
 
     rule!(double_quote_literal<ParsedText<'a>>; children!(
@@ -438,6 +425,24 @@ make_parser! {
         },
     ));
 
+    rule!(builtin<ParsedExpr<'a>>; span;
+        captured_str!(s) => {
+            spanned(span, match crate::Builtin::parse(s) {
+                Some(b) => Builtin(b),
+                None => match s {
+                    "True" => BoolLit(true),
+                    "False" => BoolLit(false),
+                    "Type" => Const(crate::Const::Type),
+                    "Kind" => Const(crate::Const::Kind),
+                    "Sort" => Const(crate::Const::Sort),
+                    _ => Err(
+                        format!("Unrecognized builtin: '{}'", s)
+                    )?,
+                }
+            })
+        }
+    );
+
     token_rule!(NaN<()>);
     token_rule!(minus_infinity_literal<()>);
     token_rule!(plus_infinity_literal<()>);
@@ -476,6 +481,22 @@ make_parser! {
                 .map_err(|e| format!("{}", e))?
         }
     );
+
+    rule!(identifier<ParsedExpr<'a>> as expression; span; children!(
+        [variable(v)] => {
+            spanned(span, Var(v))
+        },
+        [builtin(e)] => e,
+    ));
+
+    rule!(variable<V<Label>>; children!(
+        [label(l), natural_literal(idx)] => {
+            V(l, idx)
+        },
+        [label(l)] => {
+            V(l, 0)
+        },
+    ));
 
     rule!(unquoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(quoted_path_component<&'a str>; captured_str!(s) => s);
@@ -604,7 +625,7 @@ make_parser! {
     token_rule!(in_<()>);
 
     rule!(expression<ParsedExpr<'a>> as expression; span; children!(
-        [lambda(()), nonreserved_label(l), expression(typ),
+        [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
             spanned(span, Lam(l, rc(typ), rc(body)))
         },
@@ -617,7 +638,7 @@ make_parser! {
                 |acc, x| Let(x.0, x.1, x.2, rc(acc))
             )
         },
-        [forall(()), nonreserved_label(l), expression(typ),
+        [forall(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
             spanned(span, Pi(l, rc(typ), rc(body)))
         },
@@ -632,9 +653,9 @@ make_parser! {
 
     rule!(let_binding<(Label, Option<ParsedSubExpr<'a>>, ParsedSubExpr<'a>)>;
             children!(
-        [nonreserved_label(name), expression(annot), expression(expr)] =>
+        [label(name), expression(annot), expression(expr)] =>
             (name, Some(rc(annot)), rc(expr)),
-        [nonreserved_label(name), expression(expr)] =>
+        [label(name), expression(expr)] =>
             (name, None, rc(expr)),
     ));
 
@@ -779,12 +800,12 @@ make_parser! {
     ));
 
     rule!(selector<Either<Label, Vec<Label>>>; children!(
-        [any_label((l, _))] => Either::Left(l),
+        [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
     ));
 
     rule!(labels<Vec<Label>>; children!(
-        [any_label(ls)..] => ls.map(|(l, _)| l).collect(),
+        [label(ls)..] => ls.collect(),
     ));
 
     rule!(primitive_expression<ParsedExpr<'a>> as expression; span; children!(
@@ -794,47 +815,6 @@ make_parser! {
         [double_quote_literal(s)] => spanned(span, TextLit(s)),
         [single_quote_literal(s)] => spanned(span, TextLit(s)),
         [expression(e)] => e,
-    ));
-
-    rule!(identifier<ParsedExpr<'a>> as expression; span; children!(
-        // Quoted label
-        [any_label((l, true)), natural_literal(idx)] => {
-            let name = String::from(&l);
-            spanned(span, Var(V(l, idx)))
-        },
-        [any_label((l, true))] => {
-            let name = String::from(&l);
-            spanned(span, Var(V(l, 0)))
-        },
-        // Unquoted label; could be a builtin
-        [any_label((l, false)), natural_literal(idx)] => {
-            let name = String::from(&l);
-            spanned(span, match crate::Builtin::parse(name.as_str()) {
-                Some(_) => Err(
-                    "Builtin names cannot have an index".to_string()
-                )?,
-                None => match name.as_str() {
-                    "True" | "False" | "Type" | "Kind" | "Sort" => Err(
-                        "Builtin names cannot have an index".to_string()
-                    )?,
-                    _ => Var(V(l, idx)),
-                }
-            })
-        },
-        [any_label((l, false))] => {
-            let name = String::from(&l);
-            spanned(span, match crate::Builtin::parse(name.as_str()) {
-                Some(b) => Builtin(b),
-                None => match name.as_str() {
-                    "True" => BoolLit(true),
-                    "False" => BoolLit(false),
-                    "Type" => Const(crate::Const::Type),
-                    "Kind" => Const(crate::Const::Kind),
-                    "Sort" => Const(crate::Const::Sort),
-                    _ => Var(V(l, 0)),
-                }
-            })
-        },
     ));
 
     rule!(empty_record_literal<ParsedExpr<'a>> as expression; span;
@@ -847,12 +827,12 @@ make_parser! {
 
     rule!(non_empty_record_type_or_literal<ParsedExpr<'a>> as expression; span;
           children!(
-        [any_label((first_label, _)), non_empty_record_type(rest)] => {
+        [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
             map.insert(first_label, rc(first_expr));
             spanned(span, RecordType(map))
         },
-        [any_label((first_label, _)), non_empty_record_literal(rest)] => {
+        [label(first_label), non_empty_record_literal(rest)] => {
             let (first_expr, mut map) = rest;
             map.insert(first_label, rc(first_expr));
             spanned(span, RecordLit(map))
@@ -867,7 +847,7 @@ make_parser! {
     ));
 
     rule!(record_type_entry<(Label, ParsedSubExpr<'a>)>; children!(
-        [any_label((name, _)), expression(expr)] => (name, rc(expr))
+        [label(name), expression(expr)] => (name, rc(expr))
     ));
 
     rule!(non_empty_record_literal
@@ -878,7 +858,7 @@ make_parser! {
     ));
 
     rule!(record_literal_entry<(Label, ParsedSubExpr<'a>)>; children!(
-        [any_label((name, _)), expression(expr)] => (name, rc(expr))
+        [label(name), expression(expr)] => (name, rc(expr))
     ));
 
     rule!(union_type_or_literal<ParsedExpr<'a>> as expression; span; children!(
@@ -899,10 +879,10 @@ make_parser! {
           <(Option<(Label, ParsedSubExpr<'a>)>,
             BTreeMap<Label, Option<ParsedSubExpr<'a>>>)>;
             children!(
-        [any_label((l, _)), union_literal_variant_value((e, entries))] => {
+        [label(l), union_literal_variant_value((e, entries))] => {
             (Some((l, e)), entries)
         },
-        [any_label((l, _)), union_type_or_literal_variant_type((e, rest))] => {
+        [label(l), union_type_or_literal_variant_type((e, rest))] => {
             let (x, mut entries) = rest;
             entries.insert(l, e);
             (x, entries)
@@ -918,8 +898,8 @@ make_parser! {
     ));
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr<'a>>)>; children!(
-        [any_label((name, _)), expression(expr)] => (name, Some(rc(expr))),
-        [any_label((name, _))] => (name, None),
+        [label(name), expression(expr)] => (name, Some(rc(expr))),
+        [label(name)] => (name, None),
     ));
 
     // TODO: unary union variants
