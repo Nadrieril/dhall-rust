@@ -25,7 +25,11 @@ impl<'a> Typed<'a> {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized<'a> {
-        Normalized(self.0.normalize_whnf().normalize_to_expr(), self.1, self.2)
+        // TODO: stupid but needed for now
+        let thunk = Thunk::from_normalized_expr(self.0.normalize_to_expr());
+        // let thunk = self.0;
+        thunk.normalize_nf();
+        Normalized(thunk, self.1, self.2)
     }
 
     pub(crate) fn shift0(&self, delta: isize, x: &Label) -> Self {
@@ -1062,6 +1066,10 @@ mod thunk {
             ThunkInternal::Value(WHNF, v).into_thunk()
         }
 
+        pub(crate) fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
+            Thunk::new(NormalizationContext::new(), e.embed_absurd())
+        }
+
         // Deprecated
         pub(crate) fn normalize(&self) -> Thunk {
             self.normalize_nf();
@@ -1189,10 +1197,7 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
         ExprF::Var(v) => ctx.lookup(&v),
         ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
         ExprF::Note(_, e) => normalize_whnf(ctx, e.clone()),
-        // TODO: wasteful to retraverse everything
-        ExprF::Embed(e) => {
-            normalize_whnf(NormalizationContext::new(), e.0.embed_absurd())
-        }
+        ExprF::Embed(e) => e.to_value(),
         ExprF::Let(x, _, r, b) => {
             let t = Thunk::new(ctx.clone(), r.clone());
             normalize_whnf(ctx.insert(x, t), b.clone())

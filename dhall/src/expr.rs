@@ -45,11 +45,24 @@ pub(crate) struct Typed<'a>(
 
 #[derive(Debug, Clone)]
 pub(crate) struct Normalized<'a>(
-    pub(crate) SubExpr<X, X>,
+    pub(crate) crate::normalize::Thunk,
     pub(crate) Option<Type<'static>>,
     pub(crate) PhantomData<&'a ()>,
 );
-derive_other_traits!(Normalized);
+
+impl<'a> std::cmp::PartialEq for Normalized<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.normalize_to_expr() == other.0.normalize_to_expr()
+    }
+}
+
+impl<'a> std::cmp::Eq for Normalized<'a> {}
+
+impl<'a> std::fmt::Display for Normalized<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.0.normalize_to_expr().fmt(f)
+    }
+}
 
 /// A Dhall expression representing a simple type.
 ///
@@ -102,21 +115,20 @@ impl<'a> From<SubExpr<X, X>> for SimpleType<'a> {
 #[doc(hidden)]
 impl<'a> From<Normalized<'a>> for Typed<'a> {
     fn from(x: Normalized<'a>) -> Typed<'a> {
-        Typed(
-            crate::normalize::Thunk::new(
-                crate::normalize::NormalizationContext::new(),
-                x.0.embed_absurd(),
-            ),
-            x.1,
-            x.2,
-        )
+        Typed(x.0, x.1, x.2)
     }
 }
 
-#[doc(hidden)]
 impl<'a> Normalized<'a> {
-    pub(crate) fn as_expr(&self) -> &SubExpr<X, X> {
-        &self.0
+    // Deprecated
+    pub(crate) fn as_expr(&self) -> SubExpr<X, X> {
+        self.0.normalize_to_expr()
+    }
+    pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
+        self.0.normalize_to_expr()
+    }
+    pub(crate) fn to_value(&self) -> crate::normalize::Value {
+        self.0.normalize_nf().clone()
     }
     #[allow(dead_code)]
     pub(crate) fn unnote<'b>(self) -> Normalized<'b> {

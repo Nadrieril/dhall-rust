@@ -50,30 +50,14 @@ impl<'a> Normalized<'a> {
     }
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Normalized(
-            shift(delta, var, &self.0),
+            self.0.shift(delta, var),
             self.1.as_ref().map(|t| t.shift(delta, var)),
             self.2,
         )
     }
     pub(crate) fn into_type(self) -> Result<Type<'a>, TypeError> {
-        self.into_type_ctx(&TypecheckContext::new())
-    }
-    fn into_type_ctx(
-        self,
-        ctx: &TypecheckContext,
-    ) -> Result<Type<'a>, TypeError> {
-        Ok(match self.0.as_ref() {
-            ExprF::Const(c) => Type(TypeInternal::Const(*c)),
-            ExprF::Pi(_, _, _) | ExprF::RecordType(_) | ExprF::UnionType(_) => {
-                // TODO: wasteful
-                type_with(ctx, self.0.embed_absurd())?.to_type()
-            }
-            _ => Type(TypeInternal::Typed(Box::new(Typed(
-                Value::Expr(self.0).into_thunk(),
-                self.1,
-                self.2,
-            )))),
-        })
+        let typed: Typed = self.into();
+        Ok(typed.to_type())
     }
     fn get_type_move(self) -> Result<Type<'static>, TypeError> {
         self.1.ok_or_else(|| {
@@ -394,8 +378,8 @@ where
             let mut ctx = vec![];
             go(
                 &mut ctx,
-                eL0.borrow().as_normalized().unwrap().as_expr(),
-                eR0.borrow().as_normalized().unwrap().as_expr(),
+                &eL0.borrow().as_normalized().unwrap().to_expr(),
+                &eR0.borrow().as_normalized().unwrap().to_expr(),
             )
         }
         // _ => false,

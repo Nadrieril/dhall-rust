@@ -39,7 +39,9 @@ fn mktype<'a>(x: SubExpr<X, X>) -> SimpleType<'a> {
 impl<T: SimpleStaticType> StaticType for T {
     fn get_static_type() -> Type<'static> {
         crate::expr::Normalized(
-            T::get_simple_static_type().into(),
+            crate::normalize::Thunk::from_normalized_expr(
+                T::get_simple_static_type().into(),
+            ),
             Some(Type::const_type()),
             std::marker::PhantomData,
         )
