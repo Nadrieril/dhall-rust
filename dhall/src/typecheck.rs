@@ -66,7 +66,7 @@ impl<'a> Normalized<'a> {
             ExprF::Const(c) => Type(TypeInternal::Const(*c)),
             ExprF::Pi(_, _, _) | ExprF::RecordType(_) | ExprF::UnionType(_) => {
                 // TODO: wasteful
-                type_with(ctx, self.0.embed_absurd())?.normalize_to_type()
+                type_with(ctx, self.0.embed_absurd())?.to_type()
             }
             _ => Type(TypeInternal::Typed(Box::new(Typed(
                 Value::Expr(self.0).into_thunk(),
@@ -87,7 +87,7 @@ impl Normalized<'static> {
     }
 }
 impl<'a> Typed<'a> {
-    fn normalize_to_type(&self) -> Type<'a> {
+    fn to_type(&self) -> Type<'a> {
         match &*self.normalize_whnf() {
             Value::Const(c) => Type(TypeInternal::Const(*c)),
             _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
@@ -105,6 +105,9 @@ impl<'a> Type<'a> {
     }
     pub(crate) fn normalize_whnf(&self) -> Result<Value, TypeError> {
         Ok(self.0.normalize_whnf()?)
+    }
+    fn as_const(&self) -> Option<Const> {
+        self.0.as_const()
     }
     fn internal(&self) -> &TypeInternal<'a> {
         &self.0
@@ -191,6 +194,12 @@ impl<'a> TypeInternal<'a> {
                 ))
             }
         })
+    }
+    fn as_const(&self) -> Option<Const> {
+        match self {
+            TypeInternal::Const(c) => Some(*c),
+            _ => None,
+        }
     }
     fn whnf(&self) -> Option<std::cell::Ref<Value>> {
         match self {
@@ -491,8 +500,8 @@ macro_rules! ensure_equal {
 // Ensure the provided type has type `Type`
 macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {{
-        match $x.get_type()?.internal() {
-            TypeInternal::Const(dhall_core::Const::Type) => {}
+        match $x.get_type()?.as_const() {
+            Some(dhall_core::Const::Type) => {}
             _ => return Err($err),
         }
     }};
@@ -514,8 +523,8 @@ impl TypeIntermediate {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
 
-                let kA = match ta.get_type()?.internal() {
-                    TypeInternal::Const(k) => *k,
+                let kA = match ta.get_type()?.as_const() {
+                    Some(k) => k,
                     _ => {
                         return Err(mkerr(
                             ctx,
@@ -524,8 +533,8 @@ impl TypeIntermediate {
                     }
                 };
 
-                let kB = match tb.get_type()?.internal() {
-                    TypeInternal::Const(k) => *k,
+                let kB = match tb.get_type()?.as_const() {
+                    Some(k) => k,
                     _ => {
                         return Err(mkerr(
                             &ctx2,
@@ -570,9 +579,9 @@ impl TypeIntermediate {
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
-                    match (k, t.get_type()?.internal()) {
-                        (None, TypeInternal::Const(k2)) => k = Some(*k2),
-                        (Some(k1), TypeInternal::Const(k2)) if k1 == *k2 => {}
+                    match (k, t.get_type()?.as_const()) {
+                        (None, Some(k2)) => k = Some(k2),
+                        (Some(k1), Some(k2)) if k1 == k2 => {}
                         _ => {
                             return Err(mkerr(
                                 ctx,
@@ -602,10 +611,9 @@ impl TypeIntermediate {
                 let mut k = None;
                 for (x, t) in kts {
                     if let Some(t) = t {
-                        match (k, t.get_type()?.internal()) {
-                            (None, TypeInternal::Const(k2)) => k = Some(*k2),
-                            (Some(k1), TypeInternal::Const(k2))
-                                if k1 == *k2 => {}
+                        match (k, t.get_type()?.as_const()) {
+                            (None, Some(k2)) => k = Some(k2),
+                            (Some(k1), Some(k2)) if k1 == k2 => {}
                             _ => {
                                 return Err(mkerr(
                                     ctx,
@@ -677,7 +685,7 @@ fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Type<'static>, TypeError> {
-    Ok(type_with(ctx, e)?.normalize_to_type())
+    Ok(type_with(ctx, e)?.to_type())
 }
 
 fn builtin_to_type<'a>(b: Builtin) -> Result<Type<'a>, TypeError> {
@@ -713,7 +721,7 @@ fn type_with(
             Ok(RetType(
                 TypeIntermediate::Pi(ctx.clone(), x.clone(), tx, tb)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         Pi(x, ta, tb) => {
@@ -813,7 +821,7 @@ fn type_last_layer(
             Ok(RetType(tb.subst_shift(&V(x.clone(), 0), &a)))
         }
         Annot(x, t) => {
-            let t = t.normalize_to_type();
+            let t = t.to_type();
             ensure_equal!(
                 &t,
                 x.get_type()?,
@@ -847,11 +855,11 @@ fn type_last_layer(
             Ok(RetType(y.get_type_move()?))
         }
         EmptyListLit(t) => {
-            let t = t.normalize_to_type();
+            let t = t.to_type();
             Ok(RetType(
                 TypeIntermediate::ListType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         NEListLit(xs) => {
@@ -872,7 +880,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::ListType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         SomeLit(x) => {
@@ -880,13 +888,13 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::OptionalType(ctx.clone(), t)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
                 .into_iter()
-                .map(|(x, t)| Ok((x, t.normalize_to_type())))
+                .map(|(x, t)| Ok((x, t.to_type())))
                 .collect::<Result<_, _>>()?;
             Ok(RetTyped(
                 TypeIntermediate::RecordType(ctx.clone(), kts).typecheck()?,
@@ -900,7 +908,7 @@ fn type_last_layer(
                         x,
                         match t {
                             None => None,
-                            Some(t) => Some(t.normalize_to_type()),
+                            Some(t) => Some(t.to_type()),
                         },
                     ))
                 })
@@ -917,7 +925,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::RecordType(ctx.clone(), kts)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         UnionLit(x, v, kvs) => {
@@ -925,7 +933,7 @@ fn type_last_layer(
                 .into_iter()
                 .map(|(x, v)| {
                     let t = match v {
-                        Some(x) => Some(x.normalize_to_type()),
+                        Some(x) => Some(x.to_type()),
                         None => None,
                     };
                     Ok((x, t))
@@ -936,7 +944,7 @@ fn type_last_layer(
             Ok(RetType(
                 TypeIntermediate::UnionType(ctx.clone(), kts)
                     .typecheck()?
-                    .normalize_to_type(),
+                    .to_type(),
             ))
         }
         Field(r, x) => {
@@ -953,7 +961,7 @@ fn type_last_layer(
                 },
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
-                    let r = r.normalize_to_type();
+                    let r = r.to_type();
                     let r_internal = r.internal_whnf();
                     match r_internal.deref() {
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
@@ -970,7 +978,7 @@ fn type_last_layer(
                                         r,
                                     )
                                     .typecheck()?
-                                    .normalize_to_type(),
+                                    .to_type(),
                                 ))
                             },
                             Some(None) => {
@@ -996,7 +1004,7 @@ fn type_last_layer(
                 }
                 // _ => Err(mkerr(NotARecord(
                 //     x,
-                //     r.normalize_to_type()?.into_normalized()?,
+                //     r.to_type()?.into_normalized()?,
                 // ))),
             }
         }

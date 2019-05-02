@@ -33,7 +33,7 @@ pub trait SimpleStaticType {
 }
 
 fn mktype<'a>(x: SubExpr<X, X>) -> SimpleType<'a> {
-    SimpleType(x, std::marker::PhantomData)
+    x.into()
 }
 
 impl<T: SimpleStaticType> StaticType for T {

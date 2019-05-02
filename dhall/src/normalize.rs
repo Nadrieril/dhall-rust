@@ -383,8 +383,8 @@ impl Value {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.clone(),
-                t.normalize_nf().normalize_to_expr(),
-                e.normalize_nf().normalize_to_expr(),
+                t.normalize_to_expr(),
+                e.normalize_to_expr(),
             )),
             Value::AppliedBuiltin(b, args) => {
                 let mut e = rc(ExprF::Builtin(*b));
@@ -394,18 +394,18 @@ impl Value {
                 e
             }
             Value::OptionalSomeClosure(n) => {
-                let a = n.normalize_nf().normalize_to_expr();
+                let a = n.normalize_to_expr();
                 dhall::subexpr!(λ(x: a) -> Some x)
             }
             Value::ListConsClosure(n, None) => {
-                let a = n.normalize_nf().normalize_to_expr();
+                let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.shift0(1, &"x".into());
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
-                let v = v.normalize_nf().normalize_to_expr();
-                let a = n.normalize_nf().normalize_to_expr();
+                let v = v.normalize_to_expr();
+                let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.shift0(1, &"xs".into());
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
@@ -415,8 +415,8 @@ impl Value {
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
                 x.clone(),
-                t.normalize_nf().normalize_to_expr(),
-                e.normalize_nf().normalize_to_expr(),
+                t.normalize_to_expr(),
+                e.normalize_to_expr(),
             )),
             Value::Var(v) => rc(ExprF::Var(v.clone())),
             Value::Const(c) => rc(ExprF::Const(*c)),
@@ -425,41 +425,31 @@ impl Value {
             Value::IntegerLit(n) => rc(ExprF::IntegerLit(*n)),
             Value::EmptyOptionalLit(n) => rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::OptionalNone)),
-                n.normalize_nf().normalize_to_expr(),
+                n.normalize_to_expr(),
             )),
             Value::NEOptionalLit(n) => {
-                rc(ExprF::SomeLit(n.normalize_nf().normalize_to_expr()))
+                rc(ExprF::SomeLit(n.normalize_to_expr()))
             }
             Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.normalize_nf().normalize_to_expr()))
+                rc(ExprF::EmptyListLit(n.normalize_to_expr()))
             }
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
-                elts.into_iter()
-                    .map(|n| n.normalize_nf().normalize_to_expr())
-                    .collect(),
+                elts.into_iter().map(|n| n.normalize_to_expr()).collect(),
             )),
             Value::RecordLit(kvs) => rc(ExprF::RecordLit(
                 kvs.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.normalize_nf().normalize_to_expr())
-                    })
+                    .map(|(k, v)| (k.clone(), v.normalize_to_expr()))
                     .collect(),
             )),
             Value::RecordType(kts) => rc(ExprF::RecordType(
                 kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.normalize_nf().normalize_to_expr())
-                    })
+                    .map(|(k, v)| (k.clone(), v.normalize_to_expr()))
                     .collect(),
             )),
             Value::UnionType(kts) => rc(ExprF::UnionType(
                 kts.iter()
                     .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| v.normalize_nf().normalize_to_expr()),
-                        )
+                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
                     })
                     .collect(),
             )),
@@ -467,25 +457,17 @@ impl Value {
                 let kts = kts
                     .iter()
                     .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| v.normalize_nf().normalize_to_expr()),
-                        )
+                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
                     })
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
             }
             Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
                 l.clone(),
-                v.normalize_nf().normalize_to_expr(),
+                v.normalize_to_expr(),
                 kts.iter()
                     .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| v.normalize_nf().normalize_to_expr()),
-                        )
+                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
                     })
                     .collect(),
             )),
@@ -961,7 +943,10 @@ impl Value {
 }
 
 mod thunk {
-    use super::{normalize_whnf, InputSubExpr, NormalizationContext, Value};
+    use super::{
+        normalize_whnf, InputSubExpr, NormalizationContext, OutputSubExpr,
+        Value,
+    };
     use crate::expr::Typed;
     use dhall_core::{Label, V};
     use std::cell::{Ref, RefCell};
@@ -1108,6 +1093,10 @@ mod thunk {
             Ref::map(self.0.borrow(), ThunkInternal::as_nf)
         }
 
+        pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+            self.normalize_nf().normalize_to_expr()
+        }
+
         pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
             self.0.borrow().shift(delta, var).into_thunk()
         }
@@ -1148,6 +1137,7 @@ impl TypeThunk {
         TypeThunk::Type(t)
     }
 
+    // Deprecated
     fn normalize(&self) -> TypeThunk {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.normalize()),
@@ -1160,6 +1150,18 @@ impl TypeThunk {
             TypeThunk::Thunk(th) => th.normalize_mut(),
             TypeThunk::Type(_) => {}
         }
+    }
+
+    pub(crate) fn normalize_nf(&self) -> Value {
+        match self {
+            TypeThunk::Thunk(th) => th.normalize_nf().clone(),
+            // TODO: let's hope for the best with the unwrap
+            TypeThunk::Type(t) => t.normalize_whnf().unwrap().normalize(),
+        }
+    }
+
+    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+        self.normalize_nf().normalize_to_expr()
     }
 
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
@@ -1177,14 +1179,6 @@ impl TypeThunk {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),
-        }
-    }
-
-    pub(crate) fn normalize_nf(&self) -> Value {
-        match self {
-            TypeThunk::Thunk(th) => th.normalize_nf().clone(),
-            // TODO: let's hope for the best with the unwrap
-            TypeThunk::Type(t) => t.normalize_whnf().unwrap().normalize(),
         }
     }
 }
