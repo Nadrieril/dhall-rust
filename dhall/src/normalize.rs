@@ -1258,17 +1258,22 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
                 })
                 .collect(),
         ),
-        ExprF::TextLit(elts) => Value::TextLit(
-            elts.iter()
-                .map(|contents| {
-                    use InterpolatedTextContents::{Expr, Text};
-                    match contents {
-                        Expr(n) => Expr(Thunk::new(ctx.clone(), n.clone())),
-                        Text(s) => Text(s.clone()),
-                    }
+        ExprF::TextLit(elts) => {
+            use InterpolatedTextContents::{Expr, Text};
+            let elts: Vec<_> = elts
+                .iter()
+                .map(|contents| match contents {
+                    Expr(n) => Expr(Thunk::new(ctx.clone(), n.clone())),
+                    Text(s) => Text(s.clone()),
                 })
-                .collect(),
-        ),
+                .collect();
+            if elts.len() == 1 {
+                if let Expr(th) = &elts[0] {
+                    return th.normalize_whnf().clone();
+                }
+            }
+            Value::TextLit(elts)
+        }
         ExprF::BoolIf(b, e1, e2) => {
             let b = normalize_whnf(ctx.clone(), b.clone());
             match b {
@@ -1350,6 +1355,14 @@ fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
         }
         ExprF::BinOp(TextAppend, TextLit(x), y) if x.is_empty() => y,
         ExprF::BinOp(TextAppend, x, TextLit(y)) if y.is_empty() => x,
+        ExprF::BinOp(TextAppend, TextLit(mut x), y) => {
+            x.push(InterpolatedTextContents::Expr(Thunk::from_whnf(y)));
+            TextLit(x)
+        }
+        ExprF::BinOp(TextAppend, x, TextLit(mut y)) => {
+            y.insert(0, InterpolatedTextContents::Expr(Thunk::from_whnf(x)));
+            TextLit(y)
+        }
 
         ExprF::Field(UnionType(kts), l) => UnionConstructor(l, kts),
         ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
@@ -1409,7 +1422,6 @@ mod spec_tests {
     // norm!(success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
     // norm!(success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
     norm!(success_haskell_tutorial_projection_0, "haskell-tutorial/projection/0");
-
 
     norm!(success_prelude_Bool_and_0, "prelude/Bool/and/0");
     norm!(success_prelude_Bool_and_1, "prelude/Bool/and/1");
@@ -1538,10 +1550,8 @@ mod spec_tests {
     // norm!(success_prelude_Text_concatSep_1, "prelude/Text/concatSep/1");
     // norm!(success_prelude_Text_show_0, "prelude/Text/show/0");
     // norm!(success_prelude_Text_show_1, "prelude/Text/show/1");
-
-
-
     // norm!(success_remoteSystems, "remoteSystems");
+
     // norm!(success_simple_doubleShow, "simple/doubleShow");
     // norm!(success_simple_integerShow, "simple/integerShow");
     // norm!(success_simple_integerToDouble, "simple/integerToDouble");
@@ -1672,8 +1682,7 @@ mod spec_tests {
     norm!(success_unit_OperatorPlusOneAndOne, "unit/OperatorPlusOneAndOne");
     norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
     norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
-    norm!(success_unit_OperatorTextConcatenateNormalizeArguments, "unit/OperatorTextConcatenateNormalizeArguments");
-    norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
+    norm!(success_unit_OperatorTextConcatenateLhsNonEmpty, "unit/OperatorTextConcatenateLhsNonEmpty");
     norm!(success_unit_OperatorTextConcatenateTextText, "unit/OperatorTextConcatenateTextText");
     norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
     norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
