@@ -48,6 +48,6 @@ impl<'de: 'a, 'a> Deserialize<'de> for Normalized<'a> {
 
 impl<'de: 'a, 'a> Deserialize<'de> for Type<'a> {
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
-        Ok(Normalized::from_str(s, ty)?.into_type()?)
+        Ok(Normalized::from_str(s, ty)?.to_type())
     }
 }

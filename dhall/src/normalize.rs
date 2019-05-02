@@ -9,7 +9,7 @@ use dhall_core::{
 };
 use dhall_generator as dhall;
 
-use crate::expr::{Normalized, Type, Typed};
+use crate::expr::{Normalized, Type, Typed, TypedInternal};
 
 type InputSubExpr = SubExpr<X, Normalized<'static>>;
 type OutputSubExpr = SubExpr<X, X>;
@@ -25,11 +25,17 @@ impl<'a> Typed<'a> {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized<'a> {
-        // TODO: stupid but needed for now
-        let thunk = Thunk::from_normalized_expr(self.0.normalize_to_expr());
-        // let thunk = self.0;
-        thunk.normalize_nf();
-        Normalized(thunk, self.1, self.2)
+        let internal = match self.0 {
+            TypedInternal::Sort => TypedInternal::Sort,
+            TypedInternal::Value(thunk, t) => {
+                // TODO: stupid but needed for now
+                let thunk =
+                    Thunk::from_normalized_expr(thunk.normalize_to_expr());
+                thunk.normalize_nf();
+                TypedInternal::Value(thunk, t)
+            }
+        };
+        Normalized(internal, self.1)
     }
 
     pub(crate) fn shift0(&self, delta: isize, x: &Label) -> Self {
@@ -37,11 +43,7 @@ impl<'a> Typed<'a> {
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        Typed(
-            self.0.shift(delta, var),
-            self.1.as_ref().map(|x| x.shift(delta, var)),
-            self.2,
-        )
+        Typed(self.0.shift(delta, var), self.1)
     }
 
     pub(crate) fn subst_shift(
@@ -49,19 +51,15 @@ impl<'a> Typed<'a> {
         var: &V<Label>,
         val: &Typed<'static>,
     ) -> Self {
-        Typed(
-            self.0.subst_shift(var, val),
-            self.1.as_ref().map(|x| x.subst_shift(var, val)),
-            self.2,
-        )
+        Typed(self.0.subst_shift(var, val), self.1)
     }
 
-    pub(crate) fn normalize_whnf(&self) -> std::cell::Ref<Value> {
-        self.0.normalize_whnf()
+    pub(crate) fn to_value(&self) -> Value {
+        self.0.to_value()
     }
 
-    pub(crate) fn as_thunk(&self) -> Thunk {
-        self.0.clone()
+    pub(crate) fn to_thunk(&self) -> Thunk {
+        self.0.to_thunk()
     }
 }
 
@@ -278,7 +276,7 @@ impl EnvItem {
     ) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
-            EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.as_thunk()),
+            EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.to_thunk()),
             EnvItem::Skip(v) => EnvItem::Skip(v.shift(-1, var)),
         }
     }
@@ -695,7 +693,10 @@ impl Value {
 
         match self {
             Value::Lam(x, _, e) => {
-                let val = Typed(th, None, std::marker::PhantomData);
+                let val = Typed(
+                    TypedInternal::Value(th, None),
+                    std::marker::PhantomData,
+                );
                 e.subst_shift(&V(x, 0), &val).normalize_whnf().clone()
             }
             Value::AppliedBuiltin(b, mut args) => {
@@ -867,7 +868,7 @@ impl Value {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.shift0(1, x), &val.shift0(1, x)),
             ),
-            Value::Var(v) if v == var => val.normalize_whnf().clone(),
+            Value::Var(v) if v == var => val.to_value().clone(),
             Value::Var(v) => Value::Var(v.shift(-1, var)),
             Value::Const(c) => Value::Const(*c),
             Value::BoolLit(b) => Value::BoolLit(*b),
@@ -1163,8 +1164,7 @@ impl TypeThunk {
     pub(crate) fn normalize_nf(&self) -> Value {
         match self {
             TypeThunk::Thunk(th) => th.normalize_nf().clone(),
-            // TODO: let's hope for the best with the unwrap
-            TypeThunk::Type(t) => t.normalize_whnf().unwrap().normalize(),
+            TypeThunk::Type(t) => t.to_value().normalize(),
         }
     }
 

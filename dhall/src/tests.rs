@@ -134,15 +134,12 @@ pub fn run_test(
                     assert_eq_display!(expr, expected);
                 }
                 Typecheck => {
-                    expr.typecheck_with(&expected.into_type()?)?;
+                    expr.typecheck_with(&expected.to_type())?;
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;
-                    let ty = expr.get_type()?;
-                    assert_eq_display!(
-                        ty.as_normalized()?.as_expr(),
-                        expected.into_type()?.as_normalized()?.as_expr()
-                    );
+                    let ty = expr.get_type()?.into_owned();
+                    assert_eq_display!(ty.to_normalized(), expected);
                 }
                 Normalization => {
                     let expr = expr.skip_typecheck().normalize();
