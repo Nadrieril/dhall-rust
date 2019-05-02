@@ -479,9 +479,13 @@ make_parser! {
 
     rule!(unquoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(quoted_path_component<&'a str>; captured_str!(s) => s);
-    rule!(path_component<&'a str>; children!(
-        [unquoted_path_component(s)] => s,
-        [quoted_path_component(s)] => s,
+    rule!(path_component<String>; children!(
+        [unquoted_path_component(s)] => {
+            percent_encoding::percent_decode(s.as_bytes())
+                .decode_utf8_lossy()
+                .into_owned()
+        },
+        [quoted_path_component(s)] => s.to_string(),
     ));
     rule!(path<PathBuf>; children!(
         [path_component(components)..] => {

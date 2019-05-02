@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 itertools = "0.8.0"
+percent-encoding = "1.0.1"
 pest = "2.1"
 dhall_generated_parser = { path = "../dhall_generated_parser" }
 improved_slice_patterns = { version = "2.0.0", path = "../improved_slice_patterns" }
