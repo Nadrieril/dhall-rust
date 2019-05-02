@@ -967,8 +967,20 @@ fn type_last_layer(
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
         IntegerLit(_) => Ok(RetType(builtin_to_type(Integer)?)),
         DoubleLit(_) => Ok(RetType(builtin_to_type(Double)?)),
-        // TODO: check type of interpolations
-        TextLit(_) => Ok(RetType(builtin_to_type(Text)?)),
+        TextLit(interpolated) => {
+            let text_type = builtin_to_type(Text)?;
+            for contents in interpolated.iter() {
+                use InterpolatedTextContents::Expr;
+                if let Expr(x) = contents {
+                    ensure_equal!(
+                        x.get_type()?,
+                        &text_type,
+                        mkerr(InvalidTextInterpolation(x)),
+                    );
+                }
+            }
+            Ok(RetType(text_type))
+        }
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.internal_whnf() {
                 Some(Value::AppliedBuiltin(List, _)) => {}
@@ -1041,6 +1053,7 @@ pub(crate) enum TypeMessage<'a> {
     MissingUnionField(Label, Normalized<'a>),
     BinOpTypeMismatch(BinOp, Typed<'a>),
     NoDependentTypes(Normalized<'a>, Normalized<'a>),
+    InvalidTextInterpolation(Typed<'a>),
     Sort,
     Unimplemented,
 }
@@ -1359,7 +1372,7 @@ mod spec_tests {
     tc_failure!(tc_failure_unit_RightBiasedRecordMergeRhsNotRecord, "unit/RightBiasedRecordMergeRhsNotRecord");
     tc_failure!(tc_failure_unit_SomeNotType, "unit/SomeNotType");
     tc_failure!(tc_failure_unit_Sort, "unit/Sort");
-    // tc_failure!(tc_failure_unit_TextLiteralInterpolateNotText, "unit/TextLiteralInterpolateNotText");
+    tc_failure!(tc_failure_unit_TextLiteralInterpolateNotText, "unit/TextLiteralInterpolateNotText");
     tc_failure!(tc_failure_unit_TypeAnnotationWrong, "unit/TypeAnnotationWrong");
     tc_failure!(tc_failure_unit_UnionConstructorFieldNotPresent, "unit/UnionConstructorFieldNotPresent");
     tc_failure!(tc_failure_unit_UnionTypeMixedKinds, "unit/UnionTypeMixedKinds");
