@@ -1496,6 +1496,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_True, "unit/True");
     ti_success!(ti_success_unit_Type, "unit/Type");
     ti_success!(ti_success_unit_TypeAnnotation, "unit/TypeAnnotation");
+    ti_success!(ti_success_unit_TypeAnnotationSort, "unit/TypeAnnotationSort");
     ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
     ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
     ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");

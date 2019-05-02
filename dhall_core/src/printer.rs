@@ -351,7 +351,7 @@ impl Display for ImportHashed {
         use std::path::PathBuf;
         use FilePrefix::*;
         use ImportLocation::*;
-        let quoted = |s: &str| -> String {
+        let quoted_path_component = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
                 s.to_owned()
             } else {
@@ -361,7 +361,7 @@ impl Display for ImportHashed {
         let fmt_path = |f: &mut fmt::Formatter, p: &PathBuf| {
             let res: String = p
                 .iter()
-                .map(|c| quoted(c.to_string_lossy().as_ref()))
+                .map(|c| quoted_path_component(c.to_string_lossy().as_ref()))
                 .join("/");
             f.write_str(&res)
         };
@@ -387,8 +387,28 @@ impl Display for ImportHashed {
                     write!(f, " using ({})", h)?
                 }
             }
-            Env(e) => {
-                write!(f, "env:{}", quoted(e))?;
+            Env(s) => {
+                write!(f, "env:")?;
+                if s.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    write!(f, "{}", s)?;
+                } else {
+                    write!(f, "\"")?;
+                    for c in s.chars() {
+                        match c {
+                            '"' => f.write_str("\\\"")?,
+                            '\\' => f.write_str("\\\\")?,
+                            '\u{0007}' => f.write_str("\\a")?,
+                            '\u{0008}' => f.write_str("\\b")?,
+                            '\u{000C}' => f.write_str("\\f")?,
+                            '\n' => f.write_str("\\n")?,
+                            '\r' => f.write_str("\\r")?,
+                            '\t' => f.write_str("\\t")?,
+                            '\u{000B}' => f.write_str("\\v")?,
+                            _ => write!(f, "{}", c)?,
+                        }
+                    }
+                    write!(f, "\"")?;
+                }
             }
             Missing => {
                 write!(f, "missing")?;

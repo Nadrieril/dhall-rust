@@ -126,7 +126,7 @@ http
 env
 bash_environment_variable
 posix_environment_variable
-# posix_environment_variable_character
+posix_environment_variable_character
 import_type
 hash
 import_hashed

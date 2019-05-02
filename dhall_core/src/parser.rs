@@ -2,6 +2,7 @@ use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::Parser;
 pub use pest::Span;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -567,7 +568,27 @@ make_parser! {
         [posix_environment_variable(s)] => s,
     ));
     rule!(bash_environment_variable<String>; captured_str!(s) => s.to_owned());
-    rule!(posix_environment_variable<String>; captured_str!(s) => s.to_owned());
+    rule!(posix_environment_variable<String>; children!(
+        [posix_environment_variable_character(chars)..] => {
+            chars.collect()
+        },
+    ));
+    rule!(posix_environment_variable_character<Cow<'a, str>>;
+        captured_str!(s) => {
+            match s {
+                "\\\"" => Cow::Owned("\"".to_owned()),
+                "\\\\" => Cow::Owned("\\".to_owned()),
+                "\\a" =>  Cow::Owned("\u{0007}".to_owned()),
+                "\\b" =>  Cow::Owned("\u{0008}".to_owned()),
+                "\\f" =>  Cow::Owned("\u{000C}".to_owned()),
+                "\\n" =>  Cow::Owned("\n".to_owned()),
+                "\\r" =>  Cow::Owned("\r".to_owned()),
+                "\\t" =>  Cow::Owned("\t".to_owned()),
+                "\\v" =>  Cow::Owned("\u{000B}".to_owned()),
+                _ => Cow::Borrowed(s)
+            }
+        }
+    );
 
     token_rule!(missing<()>);
 
