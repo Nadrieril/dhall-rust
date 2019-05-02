@@ -7,7 +7,7 @@ use std::borrow::Cow;
 impl<'a, T: serde::Deserialize<'a>> Deserialize<'a> for T {
     fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self> {
         let expr = Normalized::from_str(s, ty)?;
-        T::deserialize(Deserializer(Cow::Owned(expr.0)))
+        T::deserialize(Deserializer(Cow::Owned(expr.to_expr())))
     }
 }
 

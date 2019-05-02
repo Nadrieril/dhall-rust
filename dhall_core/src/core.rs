@@ -62,6 +62,18 @@ pub enum Const {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct V<Label>(pub Label, pub usize);
 
+// This is only for the specific `Label` type, not generic
+impl From<Label> for V<Label> {
+    fn from(x: Label) -> V<Label> {
+        V(x, 0)
+    }
+}
+impl<'a> From<&'a Label> for V<Label> {
+    fn from(x: &'a Label) -> V<Label> {
+        V(x.clone(), 0)
+    }
+}
+
 // Definition order must match precedence order for
 // pretty-printing to work correctly
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -433,6 +445,36 @@ impl<N, E> SubExpr<N, E> {
     {
         rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
     }
+
+    /// `shift` is used by both normalization and type-checking to avoid variable
+    /// capture by shifting variable indices
+    /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
+    /// for details
+    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        match self.as_ref() {
+            ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
+            _ => self.map_subexprs_with_special_handling_of_binders(
+                |e| e.shift(delta, var),
+                |x: &Label, e| e.shift(delta, &var.shift(1, &x.into())),
+            ),
+        }
+    }
+
+    pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
+        match self.as_ref() {
+            ExprF::Var(v) if v == var => val.clone(),
+            ExprF::Var(v) => rc(ExprF::Var(v.shift(-1, var))),
+            _ => self.map_subexprs_with_special_handling_of_binders(
+                |e| e.subst_shift(var, val),
+                |x: &Label, e| {
+                    e.subst_shift(
+                        &var.shift(1, &x.into()),
+                        &val.shift(1, &x.into()),
+                    )
+                },
+            ),
+        }
+    }
 }
 
 impl<N: Clone> SubExpr<N, X> {
@@ -468,15 +510,15 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-/// Applies `shift` to a single var.
-/// The first var is the var to shift away from; the second is the variable to shift
-fn shift_var(delta: isize, var: &V<Label>, in_expr: &V<Label>) -> V<Label> {
-    let V(x, n) = var;
-    let V(y, m) = in_expr;
-    if x == y && n <= m {
-        V(y.clone(), add_ui(*m, delta))
-    } else {
-        V(y.clone(), *m)
+impl<Label: PartialEq + Clone> V<Label> {
+    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        let V(x, n) = var;
+        let V(y, m) = self;
+        if x == y && n <= m {
+            V(y.clone(), add_ui(*m, delta))
+        } else {
+            V(y.clone(), *m)
+        }
     }
 }
 
@@ -490,29 +532,10 @@ pub fn shift<N, E>(
     var: &V<Label>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
-    use crate::ExprF::*;
-    match in_expr.as_ref() {
-        Var(v) => rc(Var(shift_var(delta, var, v))),
-        _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| shift(delta, var, e),
-            |l: &Label, e| {
-                let vl = V(l.clone(), 0);
-                let newvar = shift_var(1, &vl, var);
-                shift(delta, &newvar, e)
-            },
-        ),
-    }
+    in_expr.shift(delta, var)
 }
 
-pub fn shift0<N, E>(
-    delta: isize,
-    label: &Label,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    shift(delta, &V(label.clone(), 0), in_expr)
-}
-
-fn shift0_multiple<N, E>(
+pub fn shift0_multiple<N, E>(
     deltas: &HashMap<Label, isize>,
     in_expr: &SubExpr<N, E>,
 ) -> SubExpr<N, E> {
@@ -532,49 +555,8 @@ fn shift0_multiple_inner<N, E>(
         }
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift0_multiple_inner(ctx, deltas, e),
-            |l: &Label, e| {
-                shift0_multiple_inner(&ctx.insert(l.clone(), ()), deltas, e)
-            },
-        ),
-    }
-}
-
-/// Substitute all occurrences of a variable with an expression, and
-/// removes the variable from the environment by shifting the indices
-/// of other variables appropriately.
-///
-/// ```text
-/// subst_shift(x, v, e) = ↑(-1, x, e[x := ↑(1, x, v)])
-/// ```
-///
-pub fn subst_shift<N, E>(
-    var: &V<Label>,
-    value: &SubExpr<N, E>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    subst_shift_inner(&HashMap::new(), var, value, in_expr)
-}
-
-fn subst_shift_inner<N, E>(
-    ctx: &HashMap<Label, isize>,
-    var: &V<Label>,
-    value: &SubExpr<N, E>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
-    use crate::ExprF::*;
-    let V(x, n) = var;
-    let dn = ctx.get(x).unwrap_or(&0);
-    let actual_var = V(x.clone(), add_ui(*n, *dn));
-    match in_expr.as_ref() {
-        Var(v) if v == &actual_var => shift0_multiple(ctx, value),
-        Var(v) => rc(Var(shift_var(-1, &actual_var, v))),
-        _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| subst_shift_inner(ctx, var, value, e),
-            |l: &Label, e| {
-                let mut ctx = ctx.clone();
-                let count = ctx.entry(l.clone()).or_insert(0);
-                *count += 1;
-                subst_shift_inner(&ctx, var, value, e)
+            |x: &Label, e| {
+                shift0_multiple_inner(&ctx.insert(x.clone(), ()), deltas, e)
             },
         ),
     }

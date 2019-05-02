@@ -33,17 +33,18 @@ pub trait SimpleStaticType {
 }
 
 fn mktype<'a>(x: SubExpr<X, X>) -> SimpleType<'a> {
-    SimpleType(x, std::marker::PhantomData)
+    x.into()
 }
 
 impl<T: SimpleStaticType> StaticType for T {
     fn get_static_type() -> Type<'static> {
-        crate::expr::Normalized(
-            T::get_simple_static_type().into(),
-            Some(Type::const_type()),
-            std::marker::PhantomData,
+        crate::expr::Normalized::from_thunk_and_type(
+            crate::normalize::Thunk::from_normalized_expr(
+                T::get_simple_static_type().into(),
+            ),
+            Type::const_type(),
         )
-        .into_type()
+        .to_type()
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::expr::*;
 use crate::traits::StaticType;
-use crate::typecheck::{type_of_const, TypeError, TypeMessage};
-use dhall_core::context::Context;
+#[allow(unused_imports)]
+use crate::typecheck::{TypeError, TypeMessage, TypecheckContext};
+#[allow(unused_imports)]
 use dhall_core::{Const, ExprF};
 use std::borrow::Cow;
 
@@ -17,40 +18,18 @@ impl<T: StaticType> DynamicType for T {
 
 impl<'a> DynamicType for Type<'a> {
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        match &self.0 {
-            TypeInternal::Expr(e) => e.get_type(),
-            TypeInternal::Const(c) => Ok(Cow::Owned(type_of_const(*c))),
-            TypeInternal::SuperType => Err(TypeError::new(
-                &Context::new(),
-                dhall_core::rc(ExprF::Const(Const::Sort)),
-                TypeMessage::Untyped,
-            )),
-        }
+        self.get_type()
     }
 }
 
 impl<'a> DynamicType for Normalized<'a> {
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        match &self.1 {
-            Some(t) => Ok(Cow::Borrowed(t)),
-            None => Err(TypeError::new(
-                &Context::new(),
-                self.0.embed_absurd(),
-                TypeMessage::Untyped,
-            )),
-        }
+        self.0.get_type()
     }
 }
 
 impl<'a> DynamicType for Typed<'a> {
     fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
-        match &self.1 {
-            Some(t) => Ok(Cow::Borrowed(t)),
-            None => Err(TypeError::new(
-                &Context::new(),
-                self.0.clone(),
-                TypeMessage::Untyped,
-            )),
-        }
+        self.0.get_type()
     }
 }

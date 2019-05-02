@@ -71,7 +71,7 @@ pub fn run_test_with_bigger_stack(
 ) -> std::result::Result<(), String> {
     // Many tests stack overflow in debug mode
     let base_path: String = base_path.to_string();
-    stacker::grow(4 * 1024 * 1024, move || {
+    stacker::grow(6 * 1024 * 1024, move || {
         run_test(&base_path, feature, status)
             .map_err(|e| e.to_string())
             .map(|_| ())
@@ -130,17 +130,16 @@ pub fn run_test(
             match feature {
                 Parser => unreachable!(),
                 Import => {
-                    // Not sure whether to normalize or not
-                    let expr = expr.skip_typecheck().skip_normalize();
+                    let expr = expr.skip_typecheck().normalize();
                     assert_eq_display!(expr, expected);
                 }
                 Typecheck => {
-                    expr.typecheck_with(&expected.into_type())?;
+                    expr.typecheck_with(&expected.to_type())?;
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;
-                    let ty = expr.get_type()?;
-                    assert_eq_display!(ty.as_normalized()?.as_ref(), &expected);
+                    let ty = expr.get_type()?.into_owned();
+                    assert_eq_display!(ty.to_normalized(), expected);
                 }
                 Normalization => {
                     let expr = expr.skip_typecheck().normalize();
