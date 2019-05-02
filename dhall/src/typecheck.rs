@@ -374,6 +374,7 @@ fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
         List | Optional => dhall::expr!(
             Type -> Type
         ),
+
         NaturalFold => dhall::expr!(
             Natural ->
             forall (natural: Type) ->
@@ -391,6 +392,14 @@ fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
         NaturalIsZero | NaturalEven | NaturalOdd => dhall::expr!(
             Natural -> Bool
         ),
+        NaturalToInteger => dhall::expr!(Natural -> Integer),
+        NaturalShow => dhall::expr!(Natural -> Text),
+
+        IntegerToDouble => dhall::expr!(Integer -> Double),
+        IntegerShow => dhall::expr!(Integer -> Text),
+        DoubleShow => dhall::expr!(Double -> Text),
+        TextShow => dhall::expr!(Text -> Text),
+
         ListBuild => dhall::expr!(
             forall (a: Type) ->
             (forall (list: Type) ->
@@ -419,6 +428,15 @@ fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
         ListReverse => dhall::expr!(
             forall (a: Type) -> List a -> List a
         ),
+
+        OptionalBuild => dhall::expr!(
+            forall (a: Type) ->
+            (forall (optional: Type) ->
+                forall (just: a -> optional) ->
+                forall (nothing: optional) ->
+                optional) ->
+            Optional a
+        ),
         OptionalFold => dhall::expr!(
             forall (a: Type) ->
             Optional a ->
@@ -427,10 +445,10 @@ fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
             forall (nothing: optional) ->
             optional
         ),
+        // TODO: alpha-equivalence in type-inference tests
         OptionalNone => dhall::expr!(
-            forall (a: Type) -> Optional a
+            forall (A: Type) -> Optional A
         ),
-        _ => panic!("Unimplemented typecheck case: {:?}", b),
     }
 }
 
@@ -1143,12 +1161,12 @@ mod spec_tests {
     tc_success!(tc_success_prelude_Bool_or_1, "prelude/Bool/or/1");
     tc_success!(tc_success_prelude_Bool_show_0, "prelude/Bool/show/0");
     tc_success!(tc_success_prelude_Bool_show_1, "prelude/Bool/show/1");
-    // tc_success!(tc_success_prelude_Double_show_0, "prelude/Double/show/0");
-    // tc_success!(tc_success_prelude_Double_show_1, "prelude/Double/show/1");
-    // tc_success!(tc_success_prelude_Integer_show_0, "prelude/Integer/show/0");
-    // tc_success!(tc_success_prelude_Integer_show_1, "prelude/Integer/show/1");
-    // tc_success!(tc_success_prelude_Integer_toDouble_0, "prelude/Integer/toDouble/0");
-    // tc_success!(tc_success_prelude_Integer_toDouble_1, "prelude/Integer/toDouble/1");
+    tc_success!(tc_success_prelude_Double_show_0, "prelude/Double/show/0");
+    tc_success!(tc_success_prelude_Double_show_1, "prelude/Double/show/1");
+    tc_success!(tc_success_prelude_Integer_show_0, "prelude/Integer/show/0");
+    tc_success!(tc_success_prelude_Integer_show_1, "prelude/Integer/show/1");
+    tc_success!(tc_success_prelude_Integer_toDouble_0, "prelude/Integer/toDouble/0");
+    tc_success!(tc_success_prelude_Integer_toDouble_1, "prelude/Integer/toDouble/1");
     tc_success!(tc_success_prelude_List_all_0, "prelude/List/all/0");
     tc_success!(tc_success_prelude_List_all_1, "prelude/List/all/1");
     tc_success!(tc_success_prelude_List_any_0, "prelude/List/any/0");
@@ -1214,25 +1232,25 @@ mod spec_tests {
     tc_success!(tc_success_prelude_Natural_odd_1, "prelude/Natural/odd/1");
     tc_success!(tc_success_prelude_Natural_product_0, "prelude/Natural/product/0");
     tc_success!(tc_success_prelude_Natural_product_1, "prelude/Natural/product/1");
-    // tc_success!(tc_success_prelude_Natural_show_0, "prelude/Natural/show/0");
-    // tc_success!(tc_success_prelude_Natural_show_1, "prelude/Natural/show/1");
+    tc_success!(tc_success_prelude_Natural_show_0, "prelude/Natural/show/0");
+    tc_success!(tc_success_prelude_Natural_show_1, "prelude/Natural/show/1");
     tc_success!(tc_success_prelude_Natural_sum_0, "prelude/Natural/sum/0");
     tc_success!(tc_success_prelude_Natural_sum_1, "prelude/Natural/sum/1");
-    // tc_success!(tc_success_prelude_Natural_toDouble_0, "prelude/Natural/toDouble/0");
-    // tc_success!(tc_success_prelude_Natural_toDouble_1, "prelude/Natural/toDouble/1");
-    // tc_success!(tc_success_prelude_Natural_toInteger_0, "prelude/Natural/toInteger/0");
-    // tc_success!(tc_success_prelude_Natural_toInteger_1, "prelude/Natural/toInteger/1");
+    tc_success!(tc_success_prelude_Natural_toDouble_0, "prelude/Natural/toDouble/0");
+    tc_success!(tc_success_prelude_Natural_toDouble_1, "prelude/Natural/toDouble/1");
+    tc_success!(tc_success_prelude_Natural_toInteger_0, "prelude/Natural/toInteger/0");
+    tc_success!(tc_success_prelude_Natural_toInteger_1, "prelude/Natural/toInteger/1");
     tc_success!(tc_success_prelude_Optional_all_0, "prelude/Optional/all/0");
     tc_success!(tc_success_prelude_Optional_all_1, "prelude/Optional/all/1");
     tc_success!(tc_success_prelude_Optional_any_0, "prelude/Optional/any/0");
     tc_success!(tc_success_prelude_Optional_any_1, "prelude/Optional/any/1");
-    // tc_success!(tc_success_prelude_Optional_build_0, "prelude/Optional/build/0");
-    // tc_success!(tc_success_prelude_Optional_build_1, "prelude/Optional/build/1");
+    tc_success!(tc_success_prelude_Optional_build_0, "prelude/Optional/build/0");
+    tc_success!(tc_success_prelude_Optional_build_1, "prelude/Optional/build/1");
     tc_success!(tc_success_prelude_Optional_concat_0, "prelude/Optional/concat/0");
     tc_success!(tc_success_prelude_Optional_concat_1, "prelude/Optional/concat/1");
     tc_success!(tc_success_prelude_Optional_concat_2, "prelude/Optional/concat/2");
-    // tc_success!(tc_success_prelude_Optional_filter_0, "prelude/Optional/filter/0");
-    // tc_success!(tc_success_prelude_Optional_filter_1, "prelude/Optional/filter/1");
+    tc_success!(tc_success_prelude_Optional_filter_0, "prelude/Optional/filter/0");
+    tc_success!(tc_success_prelude_Optional_filter_1, "prelude/Optional/filter/1");
     tc_success!(tc_success_prelude_Optional_fold_0, "prelude/Optional/fold/0");
     tc_success!(tc_success_prelude_Optional_fold_1, "prelude/Optional/fold/1");
     tc_success!(tc_success_prelude_Optional_head_0, "prelude/Optional/head/0");
@@ -1253,8 +1271,8 @@ mod spec_tests {
     tc_success!(tc_success_prelude_Optional_unzip_1, "prelude/Optional/unzip/1");
     tc_success!(tc_success_prelude_Text_concat_0, "prelude/Text/concat/0");
     tc_success!(tc_success_prelude_Text_concat_1, "prelude/Text/concat/1");
-    // tc_success!(tc_success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
-    // tc_success!(tc_success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
+    tc_success!(tc_success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
+    tc_success!(tc_success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
     // tc_success!(tc_success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
     // tc_success!(tc_success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
     // tc_success!(tc_success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");
@@ -1355,7 +1373,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_Bool, "unit/Bool");
     ti_success!(ti_success_unit_Double, "unit/Double");
     ti_success!(ti_success_unit_DoubleLiteral, "unit/DoubleLiteral");
-    // ti_success!(ti_success_unit_DoubleShow, "unit/DoubleShow");
+    ti_success!(ti_success_unit_DoubleShow, "unit/DoubleShow");
     ti_success!(ti_success_unit_False, "unit/False");
     ti_success!(ti_success_unit_Function, "unit/Function");
     ti_success!(ti_success_unit_FunctionApplication, "unit/FunctionApplication");
@@ -1371,8 +1389,8 @@ mod spec_tests {
     ti_success!(ti_success_unit_IfNormalizeArguments, "unit/IfNormalizeArguments");
     ti_success!(ti_success_unit_Integer, "unit/Integer");
     ti_success!(ti_success_unit_IntegerLiteral, "unit/IntegerLiteral");
-    // ti_success!(ti_success_unit_IntegerShow, "unit/IntegerShow");
-    // ti_success!(ti_success_unit_IntegerToDouble, "unit/IntegerToDouble");
+    ti_success!(ti_success_unit_IntegerShow, "unit/IntegerShow");
+    ti_success!(ti_success_unit_IntegerToDouble, "unit/IntegerToDouble");
     ti_success!(ti_success_unit_Kind, "unit/Kind");
     ti_success!(ti_success_unit_Let, "unit/Let");
     ti_success!(ti_success_unit_LetNestedTypeSynonym, "unit/LetNestedTypeSynonym");
@@ -1399,11 +1417,11 @@ mod spec_tests {
     ti_success!(ti_success_unit_NaturalIsZero, "unit/NaturalIsZero");
     ti_success!(ti_success_unit_NaturalLiteral, "unit/NaturalLiteral");
     ti_success!(ti_success_unit_NaturalOdd, "unit/NaturalOdd");
-    // ti_success!(ti_success_unit_NaturalShow, "unit/NaturalShow");
-    // ti_success!(ti_success_unit_NaturalToInteger, "unit/NaturalToInteger");
-    // ti_success!(ti_success_unit_None, "unit/None");
+    ti_success!(ti_success_unit_NaturalShow, "unit/NaturalShow");
+    ti_success!(ti_success_unit_NaturalToInteger, "unit/NaturalToInteger");
+    ti_success!(ti_success_unit_None, "unit/None");
     ti_success!(ti_success_unit_OldOptionalNone, "unit/OldOptionalNone");
-    // ti_success!(ti_success_unit_OldOptionalTrue, "unit/OldOptionalTrue");
+    ti_success!(ti_success_unit_OldOptionalTrue, "unit/OldOptionalTrue");
     ti_success!(ti_success_unit_OperatorAnd, "unit/OperatorAnd");
     ti_success!(ti_success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
     ti_success!(ti_success_unit_OperatorEqual, "unit/OperatorEqual");
@@ -1421,7 +1439,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_OperatorTimes, "unit/OperatorTimes");
     ti_success!(ti_success_unit_OperatorTimesNormalizeArguments, "unit/OperatorTimesNormalizeArguments");
     ti_success!(ti_success_unit_Optional, "unit/Optional");
-    // ti_success!(ti_success_unit_OptionalBuild, "unit/OptionalBuild");
+    ti_success!(ti_success_unit_OptionalBuild, "unit/OptionalBuild");
     ti_success!(ti_success_unit_OptionalFold, "unit/OptionalFold");
     ti_success!(ti_success_unit_RecordEmpty, "unit/RecordEmpty");
     ti_success!(ti_success_unit_RecordOneKind, "unit/RecordOneKind");
@@ -1461,7 +1479,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_TextLiteral, "unit/TextLiteral");
     ti_success!(ti_success_unit_TextLiteralNormalizeArguments, "unit/TextLiteralNormalizeArguments");
     ti_success!(ti_success_unit_TextLiteralWithInterpolation, "unit/TextLiteralWithInterpolation");
-    // ti_success!(ti_success_unit_TextShow, "unit/TextShow");
+    ti_success!(ti_success_unit_TextShow, "unit/TextShow");
     ti_success!(ti_success_unit_True, "unit/True");
     ti_success!(ti_success_unit_Type, "unit/Type");
     ti_success!(ti_success_unit_TypeAnnotation, "unit/TypeAnnotation");
