@@ -30,7 +30,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                 "Type" => Const(Const::Type),
                 "Kind" => Const(Const::Kind),
                 "Sort" => Const(Const::Sort),
-                s => Var(V(Label::from(s), 0)),
+                _ => Err(DecodeError::WrongFormatError("builtin".to_owned()))?,
             },
         },
         U64(n) => Var(V(Label::from("_"), *n as usize)),

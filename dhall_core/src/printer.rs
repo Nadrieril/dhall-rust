@@ -326,12 +326,14 @@ impl Display for NaiveDouble {
 
 impl Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        // TODO: distinguish between reserved and nonreserved locations for quoting builtins
         let s = String::from(self);
-        let is_keyword = |s| match s {
-            "let" | "in" | "if" | "then" | "else" => true,
-            _ => false,
+        let is_reserved = match s.as_str() {
+            "let" | "in" | "if" | "then" | "else" | "Type" | "Kind"
+            | "Sort" | "True" | "False" => true,
+            _ => crate::Builtin::parse(&s).is_some(),
         };
-        if s.chars().all(|c| c.is_ascii_alphanumeric()) && !is_keyword(&s) {
+        if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
             write!(f, "{}", s)
         } else {
             write!(f, "`{}`", s)

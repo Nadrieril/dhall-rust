@@ -16,9 +16,9 @@
 simple_label
 # quoted_label_char
 quoted_label
-label
+# label
 nonreserved_label
-# any_label
+any_label
 double_quote_chunk
 double_quote_escaped
 double_quote_char
