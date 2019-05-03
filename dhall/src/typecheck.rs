@@ -138,7 +138,7 @@ impl<'a> TypeInternal<'a> {
         self.to_normalized().to_expr()
     }
     fn to_value(&self) -> Value {
-        self.to_typed().to_value().clone()
+        self.to_typed().to_value()
     }
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
         Ok(match self {

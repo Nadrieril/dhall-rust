@@ -95,7 +95,7 @@ mod typed {
         // TODO: Avoid cloning if possible
         pub(crate) fn to_value(&self) -> Value {
             match self {
-                TypedInternal::Value(th, _) => th.normalize_whnf().clone(),
+                TypedInternal::Value(th, _) => th.to_value(),
                 TypedInternal::Sort => Value::Const(Const::Sort),
             }
         }
@@ -108,7 +108,7 @@ mod typed {
             match self {
                 TypedInternal::Value(th, _) => th.clone(),
                 TypedInternal::Sort => {
-                    Thunk::from_whnf(Value::Const(Const::Sort))
+                    Thunk::from_value(Value::Const(Const::Sort))
                 }
             }
         }
@@ -116,7 +116,7 @@ mod typed {
         pub(crate) fn to_type(&self) -> Type<'static> {
             match self {
                 TypedInternal::Sort => Type(TypeInternal::Const(Const::Sort)),
-                TypedInternal::Value(th, _) => match &*th.normalize_whnf() {
+                TypedInternal::Value(th, _) => match &*th.as_value() {
                     Value::Const(c) => Type(TypeInternal::Const(*c)),
                     _ => Type(TypeInternal::Typed(Box::new(Typed(
                         self.clone(),

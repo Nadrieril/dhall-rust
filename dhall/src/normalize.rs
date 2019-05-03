@@ -176,10 +176,10 @@ pub(crate) enum Value {
 
 impl Value {
     pub(crate) fn into_thunk(self) -> Thunk {
-        Thunk::from_whnf(self)
+        Thunk::from_value(self)
     }
 
-    /// Convert the value back to a (normalized) syntactic expression
+    /// Convert the value to a fully normalized syntactic expression
     pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
@@ -308,88 +308,10 @@ impl Value {
     }
 
     // Deprecated
-    pub(crate) fn normalize(&self) -> Value {
-        match self {
-            Value::Lam(x, t, e) => {
-                Value::Lam(x.clone(), t.normalize(), e.normalize())
-            }
-            Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
-                *b,
-                args.iter().map(|v| v.normalize()).collect(),
-            ),
-            Value::NaturalSuccClosure => Value::NaturalSuccClosure,
-            Value::OptionalSomeClosure(tth) => {
-                Value::OptionalSomeClosure(tth.normalize())
-            }
-            Value::ListConsClosure(t, v) => Value::ListConsClosure(
-                t.normalize(),
-                v.as_ref().map(|v| v.normalize()),
-            ),
-            Value::Pi(x, t, e) => {
-                Value::Pi(x.clone(), t.normalize(), e.normalize())
-            }
-            Value::Var(v) => Value::Var(v.clone()),
-            Value::Const(c) => Value::Const(*c),
-            Value::BoolLit(b) => Value::BoolLit(*b),
-            Value::NaturalLit(n) => Value::NaturalLit(*n),
-            Value::IntegerLit(n) => Value::IntegerLit(*n),
-            Value::EmptyOptionalLit(tth) => {
-                Value::EmptyOptionalLit(tth.normalize())
-            }
-            Value::NEOptionalLit(th) => Value::NEOptionalLit(th.normalize()),
-            Value::EmptyListLit(tth) => Value::EmptyListLit(tth.normalize()),
-            Value::NEListLit(elts) => {
-                Value::NEListLit(elts.iter().map(|v| v.normalize()).collect())
-            }
-            Value::RecordLit(kvs) => Value::RecordLit(
-                kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.normalize()))
-                    .collect(),
-            ),
-            Value::RecordType(kvs) => Value::RecordType(
-                kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.normalize()))
-                    .collect(),
-            ),
-            Value::UnionType(kts) => Value::UnionType(
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize()))
-                    })
-                    .collect(),
-            ),
-            Value::UnionConstructor(x, kts) => Value::UnionConstructor(
-                x.clone(),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize()))
-                    })
-                    .collect(),
-            ),
-            Value::UnionLit(x, v, kts) => Value::UnionLit(
-                x.clone(),
-                v.normalize(),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize()))
-                    })
-                    .collect(),
-            ),
-            Value::TextLit(elts) => Value::TextLit(
-                elts.iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(th) => Expr(th.normalize()),
-                            Text(s) => Text(s.clone()),
-                        }
-                    })
-                    .collect(),
-            ),
-            Value::PartialExpr(e) => {
-                Value::PartialExpr(e.map_ref_simple(|v| v.normalize()))
-            }
-        }
+    fn normalize(&self) -> Value {
+        let mut v = self.clone();
+        v.normalize_mut();
+        v
     }
 
     pub(crate) fn normalize_mut(&mut self) {
@@ -466,7 +388,9 @@ impl Value {
             }
             Value::PartialExpr(e) => {
                 // TODO: need map_mut_simple
-                *self = Value::PartialExpr(e.map_ref_simple(|v| v.normalize()))
+                e.map_ref_simple(|v| {
+                    v.normalize_nf();
+                });
             }
         }
     }
@@ -483,7 +407,7 @@ impl Value {
 
     /// Apply to a thunk
     pub(crate) fn app_thunk(self, th: Thunk) -> Value {
-        Thunk::from_whnf(self).app_thunk(th)
+        Thunk::from_value(self).app_thunk(th)
     }
 
     pub(crate) fn from_builtin(b: Builtin) -> Value {
@@ -821,18 +745,12 @@ mod thunk {
             ThunkInternal::Unnormalized(ctx, e).into_thunk()
         }
 
-        pub(crate) fn from_whnf(v: Value) -> Thunk {
+        pub(crate) fn from_value(v: Value) -> Thunk {
             ThunkInternal::Value(WHNF, v).into_thunk()
         }
 
         pub(crate) fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
             Thunk::new(NormalizationContext::new(), e.embed_absurd())
-        }
-
-        // Deprecated
-        pub(crate) fn normalize(&self) -> Thunk {
-            self.normalize_nf();
-            self.clone()
         }
 
         // Normalizes contents to normal form; faster than `normalize_nf` if
@@ -873,28 +791,24 @@ mod thunk {
 
         // WARNING: avoid normalizing any thunk while holding on to this ref
         // or you could run into BorrowMut panics
-        pub(crate) fn normalize_whnf(&self) -> Ref<Value> {
-            self.do_normalize_whnf();
-            Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
-        }
-
-        // WARNING: avoid normalizing any thunk while holding on to this ref
-        // or you could run into BorrowMut panics
         pub(crate) fn normalize_nf(&self) -> Ref<Value> {
             self.do_normalize_nf();
             Ref::map(self.0.borrow(), ThunkInternal::as_nf)
         }
 
-        pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
-            self.normalize_nf().normalize_to_expr()
-        }
-
+        // WARNING: avoid normalizing any thunk while holding on to this ref
+        // or you could run into BorrowMut panics
         pub(crate) fn as_value(&self) -> Ref<Value> {
-            self.normalize_whnf()
+            self.do_normalize_whnf();
+            Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
         }
 
         pub(crate) fn to_value(&self) -> Value {
-            self.normalize_whnf().clone()
+            self.as_value().clone()
+        }
+
+        pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+            self.normalize_nf().normalize_to_expr()
         }
 
         pub(crate) fn app_val(&self, val: Value) -> Value {
@@ -929,8 +843,8 @@ pub(crate) enum TypeThunk {
 }
 
 impl TypeThunk {
-    fn from_whnf(v: Value) -> TypeThunk {
-        TypeThunk::from_thunk(Thunk::from_whnf(v))
+    fn from_value(v: Value) -> TypeThunk {
+        TypeThunk::from_thunk(Thunk::from_value(v))
     }
 
     fn from_thunk(th: Thunk) -> TypeThunk {
@@ -939,14 +853,6 @@ impl TypeThunk {
 
     pub(crate) fn from_type(t: Type<'static>) -> TypeThunk {
         TypeThunk::Type(t)
-    }
-
-    // Deprecated
-    fn normalize(&self) -> TypeThunk {
-        match self {
-            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.normalize()),
-            TypeThunk::Type(t) => TypeThunk::Type(t.clone()),
-        }
     }
 
     fn normalize_mut(&mut self) {
@@ -1049,10 +955,10 @@ fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                 let mut kts = BTreeMap::new();
                 kts.insert(
                     "index".into(),
-                    TypeThunk::from_whnf(Value::from_builtin(Natural)),
+                    TypeThunk::from_value(Value::from_builtin(Natural)),
                 );
                 kts.insert("value".into(), t.clone());
-                Ok((r, EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))))
+                Ok((r, EmptyListLit(TypeThunk::from_value(RecordType(kts)))))
             }
             NEListLit(xs) => {
                 let xs = xs
@@ -1061,9 +967,9 @@ fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
                         let mut kvs = BTreeMap::new();
-                        kvs.insert("index".into(), Thunk::from_whnf(i));
+                        kvs.insert("index".into(), Thunk::from_value(i));
                         kvs.insert("value".into(), e.clone());
-                        Thunk::from_whnf(RecordLit(kvs))
+                        Thunk::from_value(RecordLit(kvs))
                     })
                     .collect();
                 Ok((r, NEListLit(xs)))
