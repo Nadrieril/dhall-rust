@@ -24,11 +24,8 @@ macro_rules! make_spec_test {
         #[allow(non_snake_case)]
         fn $name() {
             use crate::tests::*;
-            match run_test_with_bigger_stack(
-                $path,
-                Feature::$type,
-                Status::$status,
-            ) {
+            match run_test_stringy_error($path, Feature::$type, Status::$status)
+            {
                 Ok(_) => {}
                 Err(s) => panic!(s),
             }
@@ -64,18 +61,15 @@ fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
     Parsed::parse_binary_file(&PathBuf::from(file_path))
 }
 
-pub fn run_test_with_bigger_stack(
+pub fn run_test_stringy_error(
     base_path: &str,
     feature: Feature,
     status: Status,
 ) -> std::result::Result<(), String> {
-    // Many tests stack overflow in debug mode
     let base_path: String = base_path.to_string();
-    stacker::grow(6 * 1024 * 1024, move || {
-        run_test(&base_path, feature, status)
-            .map_err(|e| e.to_string())
-            .map(|_| ())
-    })
+    run_test(&base_path, feature, status)
+        .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 pub fn run_test(
