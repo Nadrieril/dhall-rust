@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use dhall_core::context::Context;
 use dhall_core::{
-    rc, Builtin, Const, ExprF, Integer, InterpolatedText,
+    rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
 use dhall_generator as dhall;
@@ -59,194 +59,6 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
-    use dhall_core::Builtin::*;
-    use Value::*;
-
-    // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.
-    let ret = match (b, args.as_slice()) {
-        (OptionalNone, [t, r..]) => {
-            Ok((r, EmptyOptionalLit(TypeThunk::from_thunk(t.clone()))))
-        }
-        (NaturalIsZero, [n, r..]) => match &*n.as_value() {
-            NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
-            _ => Err(()),
-        },
-        (NaturalEven, [n, r..]) => match &*n.as_value() {
-            NaturalLit(n) => Ok((r, BoolLit(*n % 2 == 0))),
-            _ => Err(()),
-        },
-        (NaturalOdd, [n, r..]) => match &*n.as_value() {
-            NaturalLit(n) => Ok((r, BoolLit(*n % 2 != 0))),
-            _ => Err(()),
-        },
-        (NaturalToInteger, [n, r..]) => match &*n.as_value() {
-            NaturalLit(n) => Ok((r, IntegerLit(*n as isize))),
-            _ => Err(()),
-        },
-        (NaturalShow, [n, r..]) => match &*n.as_value() {
-            NaturalLit(n) => Ok((
-                r,
-                TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
-            )),
-            _ => Err(()),
-        },
-        (ListLength, [_, l, r..]) => match &*l.as_value() {
-            EmptyListLit(_) => Ok((r, NaturalLit(0))),
-            NEListLit(xs) => Ok((r, NaturalLit(xs.len()))),
-            _ => Err(()),
-        },
-        (ListHead, [_, l, r..]) => match &*l.as_value() {
-            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
-            NEListLit(xs) => {
-                Ok((r, NEOptionalLit(xs.iter().next().unwrap().clone())))
-            }
-            _ => Err(()),
-        },
-        (ListLast, [_, l, r..]) => match &*l.as_value() {
-            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
-            NEListLit(xs) => {
-                Ok((r, NEOptionalLit(xs.iter().rev().next().unwrap().clone())))
-            }
-            _ => Err(()),
-        },
-        (ListReverse, [_, l, r..]) => match &*l.as_value() {
-            EmptyListLit(n) => Ok((r, EmptyListLit(n.clone()))),
-            NEListLit(xs) => {
-                Ok((r, NEListLit(xs.iter().rev().cloned().collect())))
-            }
-            _ => Err(()),
-        },
-        (ListIndexed, [_, l, r..]) => match &*l.as_value() {
-            EmptyListLit(t) => {
-                let mut kts = BTreeMap::new();
-                kts.insert(
-                    "index".into(),
-                    TypeThunk::from_whnf(Value::from_builtin(Natural)),
-                );
-                kts.insert("value".into(), t.clone());
-                Ok((r, EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))))
-            }
-            NEListLit(xs) => {
-                let xs = xs
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| {
-                        let i = NaturalLit(i);
-                        let mut kvs = BTreeMap::new();
-                        kvs.insert("index".into(), Thunk::from_whnf(i));
-                        kvs.insert("value".into(), e.clone());
-                        Thunk::from_whnf(RecordLit(kvs))
-                    })
-                    .collect();
-                Ok((r, NEListLit(xs)))
-            }
-            _ => Err(()),
-        },
-        (ListBuild, [t, f, r..]) => match &*f.as_value() {
-            // fold/build fusion
-            Value::AppliedBuiltin(ListFold, args) => {
-                if args.len() >= 2 {
-                    Ok((r, args[1].to_value()))
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => Ok((
-                r,
-                f.app_val(Value::from_builtin(List).app_thunk(t.clone()))
-                    .app_val(ListConsClosure(
-                        TypeThunk::from_thunk(t.clone()),
-                        None,
-                    ))
-                    .app_val(EmptyListLit(TypeThunk::from_thunk(t.clone()))),
-            )),
-        },
-        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_value() {
-            EmptyListLit(_) => Ok((r, nil.to_value())),
-            NEListLit(xs) => {
-                let mut v = nil.clone();
-                for x in xs.iter().rev() {
-                    v = cons
-                        .clone()
-                        .app_thunk(x.clone())
-                        .app_thunk(v)
-                        .into_thunk();
-                }
-                Ok((r, v.to_value()))
-            }
-            _ => Err(()),
-        },
-        (OptionalBuild, [t, f, r..]) => match &*f.as_value() {
-            // fold/build fusion
-            Value::AppliedBuiltin(OptionalFold, args) => {
-                if args.len() >= 2 {
-                    Ok((r, args[1].to_value()))
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => Ok((
-                r,
-                f.app_val(Value::from_builtin(Optional).app_thunk(t.clone()))
-                    .app_val(OptionalSomeClosure(TypeThunk::from_thunk(
-                        t.clone(),
-                    )))
-                    .app_val(EmptyOptionalLit(TypeThunk::from_thunk(
-                        t.clone(),
-                    ))),
-            )),
-        },
-        (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_value() {
-            EmptyOptionalLit(_) => Ok((r, nothing.to_value())),
-            NEOptionalLit(x) => Ok((r, just.app_thunk(x.clone()))),
-            _ => Err(()),
-        },
-        (NaturalBuild, [f, r..]) => match &*f.as_value() {
-            // fold/build fusion
-            Value::AppliedBuiltin(NaturalFold, args) => {
-                if args.len() >= 1 {
-                    Ok((r, args[0].to_value()))
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => Ok((
-                r,
-                f.app_val(Value::from_builtin(Natural))
-                    .app_val(NaturalSuccClosure)
-                    .app_val(NaturalLit(0)),
-            )),
-        },
-        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_value() {
-            NaturalLit(0) => Ok((r, zero.to_value())),
-            NaturalLit(n) => {
-                let fold = Value::from_builtin(NaturalFold)
-                    .app(NaturalLit(n - 1))
-                    .app_thunk(t.clone())
-                    .app_thunk(succ.clone())
-                    .app_thunk(zero.clone());
-                Ok((r, succ.app_val(fold)))
-            }
-            _ => Err(()),
-        },
-        _ => Err(()),
-    };
-    match ret {
-        Ok((unconsumed_args, mut v)) => {
-            let n_consumed_args = args.len() - unconsumed_args.len();
-            for x in args.into_iter().skip(n_consumed_args) {
-                v = v.app_thunk(x);
-            }
-            v
-        }
-        Err(()) => AppliedBuiltin(b, args),
-    }
-}
-
 #[derive(Debug, Clone)]
 enum EnvItem {
     Thunk(Thunk),
@@ -282,11 +94,6 @@ impl NormalizationContext {
     pub(crate) fn new() -> Self {
         NormalizationContext(Rc::new(Context::new()))
     }
-    fn insert(&self, x: &Label, e: Thunk) -> Self {
-        NormalizationContext(Rc::new(
-            self.0.insert(x.clone(), EnvItem::Thunk(e)),
-        ))
-    }
     fn skip(&self, x: &Label) -> Self {
         NormalizationContext(Rc::new(
             self.0
@@ -297,7 +104,7 @@ impl NormalizationContext {
     fn lookup(&self, var: &V<Label>) -> Value {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
-            Some(EnvItem::Thunk(t)) => t.normalize_whnf().clone(),
+            Some(EnvItem::Thunk(t)) => t.to_value(),
             Some(EnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
             None => Value::Var(var.clone()),
         }
@@ -364,8 +171,7 @@ pub(crate) enum Value {
     UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
     /// Invariant: This must not contain a value captured by one of the variants above.
-    PartialExpr(Box<ExprF<Value, Label, X, X>>),
-    Expr(OutputSubExpr),
+    PartialExpr(ExprF<Thunk, Label, X, X>),
 }
 
 impl Value {
@@ -498,7 +304,6 @@ impl Value {
             Value::PartialExpr(e) => {
                 rc(e.map_ref_simple(|v| v.normalize_to_expr()))
             }
-            Value::Expr(e) => e.clone(),
         }
     }
 
@@ -581,10 +386,9 @@ impl Value {
                     })
                     .collect(),
             ),
-            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
-                e.map_ref_simple(|v| v.normalize()),
-            )),
-            Value::Expr(e) => Value::Expr(e.clone()),
+            Value::PartialExpr(e) => {
+                Value::PartialExpr(e.map_ref_simple(|v| v.normalize()))
+            }
         }
     }
 
@@ -595,8 +399,7 @@ impl Value {
             | Value::Const(_)
             | Value::BoolLit(_)
             | Value::NaturalLit(_)
-            | Value::IntegerLit(_)
-            | Value::Expr(_) => {}
+            | Value::IntegerLit(_) => {}
 
             Value::EmptyOptionalLit(tth)
             | Value::OptionalSomeClosure(tth)
@@ -663,9 +466,7 @@ impl Value {
             }
             Value::PartialExpr(e) => {
                 // TODO: need map_mut_simple
-                *self = Value::PartialExpr(Box::new(
-                    e.map_ref_simple(|v| v.normalize()),
-                ))
+                *self = Value::PartialExpr(e.map_ref_simple(|v| v.normalize()))
             }
         }
     }
@@ -682,57 +483,7 @@ impl Value {
 
     /// Apply to a thunk
     pub(crate) fn app_thunk(self, th: Thunk) -> Value {
-        let fallback = |f: Value, a: Thunk| {
-            Value::PartialExpr(Box::new(ExprF::App(
-                f,
-                a.normalize_whnf().clone(),
-            )))
-        };
-
-        match self {
-            Value::Lam(x, _, e) => {
-                let val = Typed(
-                    TypedInternal::Value(th, None),
-                    std::marker::PhantomData,
-                );
-                e.subst_shift(&V(x, 0), &val).normalize_whnf().clone()
-            }
-            Value::AppliedBuiltin(b, mut args) => {
-                args.push(th.clone());
-                apply_builtin(b, args)
-            }
-            Value::OptionalSomeClosure(_) => Value::NEOptionalLit(th),
-            Value::ListConsClosure(t, None) => {
-                Value::ListConsClosure(t, Some(th))
-            }
-            Value::ListConsClosure(t, Some(x)) => {
-                let v = th.normalize_whnf();
-                match &*v {
-                    Value::EmptyListLit(_) => Value::NEListLit(vec![x]),
-                    Value::NEListLit(xs) => {
-                        let mut xs = xs.clone();
-                        xs.insert(0, x);
-                        Value::NEListLit(xs)
-                    }
-                    _ => {
-                        drop(v);
-                        fallback(Value::ListConsClosure(t, Some(x)), th)
-                    }
-                }
-            }
-            Value::NaturalSuccClosure => {
-                let v = th.normalize_whnf();
-                match &*v {
-                    Value::NaturalLit(n) => Value::NaturalLit(n + 1),
-                    _ => {
-                        drop(v);
-                        fallback(Value::NaturalSuccClosure, th)
-                    }
-                }
-            }
-            Value::UnionConstructor(l, kts) => Value::UnionLit(l, th, kts),
-            f => fallback(f, th),
-        }
+        Thunk::from_whnf(self).app_thunk(th)
     }
 
     pub(crate) fn from_builtin(b: Builtin) -> Value {
@@ -825,16 +576,15 @@ impl Value {
                     })
                     .collect(),
             ),
-            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
-                e.map_ref_with_special_handling_of_binders(
+            Value::PartialExpr(e) => {
+                Value::PartialExpr(e.map_ref_with_special_handling_of_binders(
                     |v| v.shift(delta, var),
                     |x, v| v.shift(delta, &var.shift(1, &x.into())),
                     X::clone,
                     X::clone,
                     Label::clone,
-                ),
-            )),
-            Value::Expr(e) => Value::Expr(e.shift(delta, var)),
+                ))
+            }
         }
     }
 
@@ -935,8 +685,8 @@ impl Value {
                     })
                     .collect(),
             ),
-            Value::PartialExpr(e) => Value::PartialExpr(Box::new(
-                e.map_ref_with_special_handling_of_binders(
+            Value::PartialExpr(e) => {
+                Value::PartialExpr(e.map_ref_with_special_handling_of_binders(
                     |v| v.subst_shift(var, val),
                     |x, v| {
                         v.subst_shift(
@@ -947,19 +697,16 @@ impl Value {
                     X::clone,
                     X::clone,
                     Label::clone,
-                ),
-            )),
-            Value::Expr(e) => Value::Expr(
-                e.subst_shift(var, &val.clone().normalize().as_expr()),
-            ),
+                ))
+            }
         }
     }
 }
 
 mod thunk {
     use super::{
-        normalize_whnf, InputSubExpr, NormalizationContext, OutputSubExpr,
-        Value,
+        apply_any, normalize_whnf, InputSubExpr, NormalizationContext,
+        OutputSubExpr, Value,
     };
     use crate::expr::Typed;
     use dhall_core::{Label, V};
@@ -1151,11 +898,11 @@ mod thunk {
         }
 
         pub(crate) fn app_val(&self, val: Value) -> Value {
-            self.to_value().app(val)
+            self.app_thunk(val.into_thunk())
         }
 
         pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
-            self.to_value().app_thunk(th)
+            apply_any(self.clone(), th)
         }
 
         pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
@@ -1182,10 +929,6 @@ pub(crate) enum TypeThunk {
 }
 
 impl TypeThunk {
-    fn new(ctx: NormalizationContext, e: InputSubExpr) -> TypeThunk {
-        TypeThunk::from_thunk(Thunk::new(ctx, e))
-    }
-
     fn from_whnf(v: Value) -> TypeThunk {
         TypeThunk::from_thunk(Thunk::from_whnf(v))
     }
@@ -1243,215 +986,509 @@ impl TypeThunk {
     }
 }
 
-/// Reduces the imput expression to Value. See doc on `Value` for details.
-fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
-    match expr.as_ref() {
-        ExprF::Var(v) => ctx.lookup(&v),
-        ExprF::Annot(x, _) => normalize_whnf(ctx, x.clone()),
-        ExprF::Note(_, e) => normalize_whnf(ctx, e.clone()),
-        ExprF::Embed(e) => e.to_value(),
-        ExprF::Let(x, _, r, b) => {
-            let t = Thunk::new(ctx.clone(), r.clone());
-            normalize_whnf(ctx.insert(x, t), b.clone())
+fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
+    use dhall_core::Builtin::*;
+    use Value::*;
+
+    // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.
+    let ret = match (b, args.as_slice()) {
+        (OptionalNone, [t, r..]) => {
+            Ok((r, EmptyOptionalLit(TypeThunk::from_thunk(t.clone()))))
         }
-        ExprF::Lam(x, t, e) => Value::Lam(
-            x.clone(),
-            Thunk::new(ctx.clone(), t.clone()),
-            Thunk::new(ctx.skip(x), e.clone()),
-        ),
-        ExprF::Builtin(b) => Value::from_builtin(*b),
-        ExprF::Const(c) => Value::Const(*c),
-        ExprF::BoolLit(b) => Value::BoolLit(*b),
-        ExprF::NaturalLit(n) => Value::NaturalLit(*n),
-        ExprF::OldOptionalLit(None, e) => {
-            Value::EmptyOptionalLit(TypeThunk::new(ctx, e.clone()))
-        }
-        ExprF::OldOptionalLit(Some(e), _) => {
-            Value::NEOptionalLit(Thunk::new(ctx, e.clone()))
-        }
-        ExprF::SomeLit(e) => Value::NEOptionalLit(Thunk::new(ctx, e.clone())),
-        ExprF::EmptyListLit(e) => {
-            Value::EmptyListLit(TypeThunk::new(ctx, e.clone()))
-        }
-        ExprF::NEListLit(elts) => Value::NEListLit(
-            elts.iter()
-                .map(|e| Thunk::new(ctx.clone(), e.clone()))
-                .collect(),
-        ),
-        ExprF::RecordLit(kvs) => Value::RecordLit(
-            kvs.iter()
-                .map(|(k, e)| (k.clone(), Thunk::new(ctx.clone(), e.clone())))
-                .collect(),
-        ),
-        ExprF::UnionType(kts) => Value::UnionType(
-            kts.iter()
-                .map(|(k, t)| {
-                    (
-                        k.clone(),
-                        t.as_ref()
-                            .map(|t| TypeThunk::new(ctx.clone(), t.clone())),
-                    )
-                })
-                .collect(),
-        ),
-        ExprF::UnionLit(l, x, kts) => Value::UnionLit(
-            l.clone(),
-            Thunk::new(ctx.clone(), x.clone()),
-            kts.iter()
-                .map(|(k, t)| {
-                    (
-                        k.clone(),
-                        t.as_ref()
-                            .map(|t| TypeThunk::new(ctx.clone(), t.clone())),
-                    )
-                })
-                .collect(),
-        ),
-        ExprF::TextLit(elts) => {
-            use InterpolatedTextContents::{Expr, Text};
-            let elts: Vec<_> = elts
-                .iter()
-                .map(|contents| match contents {
-                    Expr(n) => Expr(Thunk::new(ctx.clone(), n.clone())),
-                    Text(s) => Text(s.clone()),
-                })
-                .collect();
-            if elts.len() == 1 {
-                if let Expr(th) = &elts[0] {
-                    return th.normalize_whnf().clone();
+        (NaturalIsZero, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
+            _ => Err(()),
+        },
+        (NaturalEven, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n % 2 == 0))),
+            _ => Err(()),
+        },
+        (NaturalOdd, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n % 2 != 0))),
+            _ => Err(()),
+        },
+        (NaturalToInteger, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, IntegerLit(*n as isize))),
+            _ => Err(()),
+        },
+        (NaturalShow, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((
+                r,
+                TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
+            )),
+            _ => Err(()),
+        },
+        (ListLength, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(_) => Ok((r, NaturalLit(0))),
+            NEListLit(xs) => Ok((r, NaturalLit(xs.len()))),
+            _ => Err(()),
+        },
+        (ListHead, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEOptionalLit(xs.iter().next().unwrap().clone())))
+            }
+            _ => Err(()),
+        },
+        (ListLast, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEOptionalLit(xs.iter().rev().next().unwrap().clone())))
+            }
+            _ => Err(()),
+        },
+        (ListReverse, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyListLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEListLit(xs.iter().rev().cloned().collect())))
+            }
+            _ => Err(()),
+        },
+        (ListIndexed, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(t) => {
+                let mut kts = BTreeMap::new();
+                kts.insert(
+                    "index".into(),
+                    TypeThunk::from_whnf(Value::from_builtin(Natural)),
+                );
+                kts.insert("value".into(), t.clone());
+                Ok((r, EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))))
+            }
+            NEListLit(xs) => {
+                let xs = xs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        let i = NaturalLit(i);
+                        let mut kvs = BTreeMap::new();
+                        kvs.insert("index".into(), Thunk::from_whnf(i));
+                        kvs.insert("value".into(), e.clone());
+                        Thunk::from_whnf(RecordLit(kvs))
+                    })
+                    .collect();
+                Ok((r, NEListLit(xs)))
+            }
+            _ => Err(()),
+        },
+        (ListBuild, [t, f, r..]) => match &*f.as_value() {
+            // fold/build fusion
+            Value::AppliedBuiltin(ListFold, args) => {
+                if args.len() >= 2 {
+                    Ok((r, args[1].to_value()))
+                } else {
+                    // Do we really need to handle this case ?
+                    unimplemented!()
                 }
             }
-            Value::TextLit(elts)
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(List).app_thunk(t.clone()))
+                    .app_val(ListConsClosure(
+                        TypeThunk::from_thunk(t.clone()),
+                        None,
+                    ))
+                    .app_val(EmptyListLit(TypeThunk::from_thunk(t.clone()))),
+            )),
+        },
+        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_value() {
+            EmptyListLit(_) => Ok((r, nil.to_value())),
+            NEListLit(xs) => {
+                let mut v = nil.clone();
+                for x in xs.iter().rev() {
+                    v = cons
+                        .clone()
+                        .app_thunk(x.clone())
+                        .app_thunk(v)
+                        .into_thunk();
+                }
+                Ok((r, v.to_value()))
+            }
+            _ => Err(()),
+        },
+        (OptionalBuild, [t, f, r..]) => match &*f.as_value() {
+            // fold/build fusion
+            Value::AppliedBuiltin(OptionalFold, args) => {
+                if args.len() >= 2 {
+                    Ok((r, args[1].to_value()))
+                } else {
+                    // Do we really need to handle this case ?
+                    unimplemented!()
+                }
+            }
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(Optional).app_thunk(t.clone()))
+                    .app_val(OptionalSomeClosure(TypeThunk::from_thunk(
+                        t.clone(),
+                    )))
+                    .app_val(EmptyOptionalLit(TypeThunk::from_thunk(
+                        t.clone(),
+                    ))),
+            )),
+        },
+        (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_value() {
+            EmptyOptionalLit(_) => Ok((r, nothing.to_value())),
+            NEOptionalLit(x) => Ok((r, just.app_thunk(x.clone()))),
+            _ => Err(()),
+        },
+        (NaturalBuild, [f, r..]) => match &*f.as_value() {
+            // fold/build fusion
+            Value::AppliedBuiltin(NaturalFold, args) => {
+                if args.len() >= 1 {
+                    Ok((r, args[0].to_value()))
+                } else {
+                    // Do we really need to handle this case ?
+                    unimplemented!()
+                }
+            }
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(Natural))
+                    .app_val(NaturalSuccClosure)
+                    .app_val(NaturalLit(0)),
+            )),
+        },
+        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_value() {
+            NaturalLit(0) => Ok((r, zero.to_value())),
+            NaturalLit(n) => {
+                let fold = Value::from_builtin(NaturalFold)
+                    .app(NaturalLit(n - 1))
+                    .app_thunk(t.clone())
+                    .app_thunk(succ.clone())
+                    .app_thunk(zero.clone());
+                Ok((r, succ.app_val(fold)))
+            }
+            _ => Err(()),
+        },
+        _ => Err(()),
+    };
+    match ret {
+        Ok((unconsumed_args, mut v)) => {
+            let n_consumed_args = args.len() - unconsumed_args.len();
+            for x in args.into_iter().skip(n_consumed_args) {
+                v = v.app_thunk(x);
+            }
+            v
         }
-        ExprF::BoolIf(b, e1, e2) => {
-            let b = normalize_whnf(ctx.clone(), b.clone());
-            match b {
-                Value::BoolLit(true) => normalize_whnf(ctx, e1.clone()),
-                Value::BoolLit(false) => normalize_whnf(ctx, e2.clone()),
-                b => {
-                    let e1 = normalize_whnf(ctx.clone(), e1.clone());
-                    let e2 = normalize_whnf(ctx, e2.clone());
-                    match (e1, e2) {
-                        (Value::BoolLit(true), Value::BoolLit(false)) => b,
-                        (e1, e2) => {
-                            normalize_last_layer(ExprF::BoolIf(b, e1, e2))
+        Err(()) => AppliedBuiltin(b, args),
+    }
+}
+
+fn apply_any(f: Thunk, a: Thunk) -> Value {
+    let fallback = |f: Thunk, a: Thunk| Value::PartialExpr(ExprF::App(f, a));
+
+    let f_borrow = f.as_value();
+    match &*f_borrow {
+        Value::Lam(x, _, e) => {
+            let val = Typed::from_thunk_untyped(a);
+            e.subst_shift(&x.into(), &val).to_value()
+        }
+        Value::AppliedBuiltin(b, args) => {
+            use std::iter::once;
+            let args = args.iter().cloned().chain(once(a.clone())).collect();
+            apply_builtin(*b, args)
+        }
+        Value::OptionalSomeClosure(_) => Value::NEOptionalLit(a),
+        Value::ListConsClosure(t, None) => {
+            Value::ListConsClosure(t.clone(), Some(a))
+        }
+        Value::ListConsClosure(_, Some(x)) => {
+            let a_borrow = a.as_value();
+            match &*a_borrow {
+                Value::EmptyListLit(_) => Value::NEListLit(vec![x.clone()]),
+                Value::NEListLit(xs) => {
+                    use std::iter::once;
+                    let xs =
+                        once(x.clone()).chain(xs.iter().cloned()).collect();
+                    Value::NEListLit(xs)
+                }
+                _ => {
+                    drop(f_borrow);
+                    drop(a_borrow);
+                    fallback(f, a)
+                }
+            }
+        }
+        Value::NaturalSuccClosure => {
+            let a_borrow = a.as_value();
+            match &*a_borrow {
+                Value::NaturalLit(n) => Value::NaturalLit(n + 1),
+                _ => {
+                    drop(f_borrow);
+                    drop(a_borrow);
+                    fallback(f, a)
+                }
+            }
+        }
+        Value::UnionConstructor(l, kts) => {
+            Value::UnionLit(l.clone(), a, kts.clone())
+        }
+        _ => {
+            drop(f_borrow);
+            fallback(f, a)
+        }
+    }
+}
+
+/// Reduces the imput expression to a Value. Evaluates as little as possible.
+fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
+    match expr.as_ref() {
+        ExprF::Embed(e) => return e.to_value(),
+        ExprF::Var(v) => return ctx.lookup(&v),
+        _ => {}
+    }
+
+    // Thunk subexpressions
+    let expr: ExprF<Thunk, Label, X, X> =
+        expr.as_ref().map_ref_with_special_handling_of_binders(
+            |e| Thunk::new(ctx.clone(), e.clone()),
+            |x, e| Thunk::new(ctx.skip(x), e.clone()),
+            X::clone,
+            |_| unreachable!(),
+            Label::clone,
+        );
+
+    normalize_one_layer(expr)
+}
+
+fn normalize_one_layer(expr: ExprF<Thunk, Label, X, X>) -> Value {
+    use Value::{
+        BoolLit, EmptyListLit, EmptyOptionalLit, Lam, NEListLit, NEOptionalLit,
+        NaturalLit, Pi, RecordLit, RecordType, TextLit, UnionConstructor,
+        UnionLit, UnionType,
+    };
+
+    // Small helper enum to avoid repetition
+    enum Ret<'a> {
+        RetValue(Value),
+        RetThunk(Thunk),
+        RetThunkRef(&'a Thunk),
+        RetExpr(ExprF<Thunk, Label, X, X>),
+    }
+    use Ret::{RetExpr, RetThunk, RetThunkRef, RetValue};
+
+    let ret = match expr {
+        ExprF::Embed(_) => unreachable!(),
+        ExprF::Var(_) => unreachable!(),
+        ExprF::Annot(x, _) => RetThunk(x),
+        ExprF::Note(_, e) => RetThunk(e),
+        ExprF::Lam(x, t, e) => RetValue(Lam(x, t, e)),
+        ExprF::Pi(x, t, e) => {
+            RetValue(Pi(x, TypeThunk::from_thunk(t), TypeThunk::from_thunk(e)))
+        }
+        ExprF::Let(x, _, v, b) => {
+            let v = Typed::from_thunk_untyped(v);
+            RetThunk(b.subst_shift(&x.into(), &v))
+        }
+        ExprF::App(v, a) => RetValue(v.app_thunk(a)),
+        ExprF::Builtin(b) => RetValue(Value::from_builtin(b)),
+        ExprF::Const(c) => RetValue(Value::Const(c)),
+        ExprF::BoolLit(b) => RetValue(BoolLit(b)),
+        ExprF::NaturalLit(n) => RetValue(NaturalLit(n)),
+        ExprF::IntegerLit(_) | ExprF::DoubleLit(_) => RetExpr(expr),
+        ExprF::OldOptionalLit(None, t) => {
+            RetValue(EmptyOptionalLit(TypeThunk::from_thunk(t)))
+        }
+        ExprF::OldOptionalLit(Some(e), _) => RetValue(NEOptionalLit(e)),
+        ExprF::SomeLit(e) => RetValue(NEOptionalLit(e)),
+        ExprF::EmptyListLit(t) => {
+            RetValue(EmptyListLit(TypeThunk::from_thunk(t)))
+        }
+        ExprF::NEListLit(elts) => {
+            RetValue(NEListLit(elts.into_iter().collect()))
+        }
+        ExprF::RecordLit(kvs) => RetValue(RecordLit(kvs.into_iter().collect())),
+        ExprF::RecordType(kts) => RetValue(RecordType(
+            kts.into_iter()
+                .map(|(k, t)| (k, TypeThunk::from_thunk(t)))
+                .collect(),
+        )),
+        ExprF::UnionLit(l, x, kts) => RetValue(UnionLit(
+            l,
+            x,
+            kts.into_iter()
+                .map(|(k, t)| (k, t.map(|t| TypeThunk::from_thunk(t))))
+                .collect(),
+        )),
+        ExprF::UnionType(kts) => RetValue(UnionType(
+            kts.into_iter()
+                .map(|(k, t)| (k, t.map(|t| TypeThunk::from_thunk(t))))
+                .collect(),
+        )),
+        ExprF::TextLit(elts) => {
+            use InterpolatedTextContents::Expr;
+            let elts: Vec<_> = elts.into_iter().collect();
+            // Simplify bare interpolation
+            if let [Expr(th)] = elts.as_slice() {
+                RetThunk(th.clone())
+            } else {
+                RetValue(TextLit(elts))
+            }
+        }
+        ExprF::BoolIf(ref b, ref e1, ref e2) => {
+            let b_borrow = b.as_value();
+            match &*b_borrow {
+                BoolLit(true) => RetThunkRef(e1),
+                BoolLit(false) => RetThunkRef(e2),
+                _ => {
+                    let e1_borrow = e1.as_value();
+                    let e2_borrow = e2.as_value();
+                    match (&*e1_borrow, &*e2_borrow) {
+                        // Simplify `if b then True else False`
+                        (BoolLit(true), BoolLit(false)) => RetThunkRef(b),
+                        _ => {
+                            drop(b_borrow);
+                            drop(e1_borrow);
+                            drop(e2_borrow);
+                            RetExpr(expr)
                         }
                     }
                 }
             }
         }
-        expr => {
-            // Recursively normalize subexpressions
-            let expr: ExprF<Value, Label, X, X> = expr
-                .map_ref_with_special_handling_of_binders(
-                    |e| normalize_whnf(ctx.clone(), e.clone()),
-                    |x, e| normalize_whnf(ctx.skip(x), e.clone()),
-                    X::clone,
-                    |_| unreachable!(),
-                    Label::clone,
-                );
-
-            normalize_last_layer(expr)
-        }
-    }
-}
-
-/// When all sub-expressions have been (partially) normalized, eval the remaining toplevel layer.
-fn normalize_last_layer(expr: ExprF<Value, Label, X, X>) -> Value {
-    use dhall_core::BinOp::*;
-    use Value::*;
-
-    match expr {
-        ExprF::App(v, a) => v.app(a),
-
-        ExprF::BinOp(BoolAnd, BoolLit(true), y) => y,
-        ExprF::BinOp(BoolAnd, x, BoolLit(true)) => x,
-        ExprF::BinOp(BoolAnd, BoolLit(false), _) => BoolLit(false),
-        ExprF::BinOp(BoolAnd, _, BoolLit(false)) => BoolLit(false),
-        ExprF::BinOp(BoolOr, BoolLit(true), _) => BoolLit(true),
-        ExprF::BinOp(BoolOr, _, BoolLit(true)) => BoolLit(true),
-        ExprF::BinOp(BoolOr, BoolLit(false), y) => y,
-        ExprF::BinOp(BoolOr, x, BoolLit(false)) => x,
-        ExprF::BinOp(BoolEQ, BoolLit(true), y) => y,
-        ExprF::BinOp(BoolEQ, x, BoolLit(true)) => x,
-        ExprF::BinOp(BoolNE, BoolLit(false), y) => y,
-        ExprF::BinOp(BoolNE, x, BoolLit(false)) => x,
-        ExprF::BinOp(BoolEQ, BoolLit(x), BoolLit(y)) => BoolLit(x == y),
-        ExprF::BinOp(BoolNE, BoolLit(x), BoolLit(y)) => BoolLit(x != y),
-
-        ExprF::BinOp(NaturalPlus, NaturalLit(0), y) => y,
-        ExprF::BinOp(NaturalPlus, x, NaturalLit(0)) => x,
-        ExprF::BinOp(NaturalTimes, NaturalLit(0), _) => NaturalLit(0),
-        ExprF::BinOp(NaturalTimes, _, NaturalLit(0)) => NaturalLit(0),
-        ExprF::BinOp(NaturalTimes, NaturalLit(1), y) => y,
-        ExprF::BinOp(NaturalTimes, x, NaturalLit(1)) => x,
-        ExprF::BinOp(NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            NaturalLit(x + y)
-        }
-        ExprF::BinOp(NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            NaturalLit(x * y)
-        }
-
-        ExprF::BinOp(ListAppend, EmptyListLit(_), y) => y,
-        ExprF::BinOp(ListAppend, x, EmptyListLit(_)) => x,
-        ExprF::BinOp(ListAppend, NEListLit(mut xs), NEListLit(mut ys)) => {
-            xs.append(&mut ys);
-            NEListLit(xs)
-        }
-        ExprF::BinOp(TextAppend, TextLit(mut x), TextLit(mut y)) => {
-            x.append(&mut y);
-            TextLit(x)
-        }
-        ExprF::BinOp(TextAppend, TextLit(x), y) if x.is_empty() => y,
-        ExprF::BinOp(TextAppend, x, TextLit(y)) if y.is_empty() => x,
-        ExprF::BinOp(TextAppend, TextLit(mut x), y) => {
-            x.push(InterpolatedTextContents::Expr(Thunk::from_whnf(y)));
-            TextLit(x)
-        }
-        ExprF::BinOp(TextAppend, x, TextLit(mut y)) => {
-            y.insert(0, InterpolatedTextContents::Expr(Thunk::from_whnf(x)));
-            TextLit(y)
-        }
-
-        ExprF::Field(UnionType(kts), l) => UnionConstructor(l, kts),
-        ExprF::Field(RecordLit(mut kvs), l) => match kvs.remove(&l) {
-            Some(r) => r.normalize_whnf().clone(),
-            None => {
-                // Couldn't do anything useful, so just normalize subexpressions
-                Expr(rc(ExprF::Field(RecordLit(kvs).normalize_to_expr(), l)))
-            }
-        },
-        ExprF::Projection(_, ls) if ls.is_empty() => {
-            RecordLit(std::collections::BTreeMap::new())
-        }
-        ExprF::Projection(RecordLit(mut kvs), ls) => RecordLit(
-            ls.into_iter()
-                .filter_map(|l| kvs.remove(&l).map(|x| (l, x)))
-                .collect(),
-        ),
-        ExprF::Merge(RecordLit(mut handlers), e, t) => {
-            let e = match e {
-                UnionConstructor(l, kts) => match handlers.remove(&l) {
-                    Some(h) => return h.normalize_whnf().clone(),
-                    None => UnionConstructor(l, kts),
-                },
-                UnionLit(l, v, kts) => match handlers.remove(&l) {
-                    Some(h) => {
-                        let h = h.normalize_whnf().clone();
-                        return h.app_thunk(v);
-                    }
-                    None => UnionLit(l, v, kts),
-                },
-                e => e,
+        ExprF::BinOp(o, ref x, ref y) => {
+            use BinOp::{
+                BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus,
+                NaturalTimes, TextAppend,
             };
-            // Couldn't do anything useful, so just normalize subexpressions
-            Expr(rc(ExprF::Merge(
-                RecordLit(handlers).normalize_to_expr(),
-                e.normalize_to_expr(),
-                t.as_ref().map(Value::normalize_to_expr),
-            )))
+            let x_borrow = x.as_value();
+            let y_borrow = y.as_value();
+            match (o, &*x_borrow, &*y_borrow) {
+                (BoolAnd, BoolLit(true), _) => RetThunkRef(y),
+                (BoolAnd, _, BoolLit(true)) => RetThunkRef(x),
+                (BoolAnd, BoolLit(false), _) => RetValue(BoolLit(false)),
+                (BoolAnd, _, BoolLit(false)) => RetValue(BoolLit(false)),
+                (BoolOr, BoolLit(true), _) => RetValue(BoolLit(true)),
+                (BoolOr, _, BoolLit(true)) => RetValue(BoolLit(true)),
+                (BoolOr, BoolLit(false), _) => RetThunkRef(y),
+                (BoolOr, _, BoolLit(false)) => RetThunkRef(x),
+                (BoolEQ, BoolLit(true), _) => RetThunkRef(y),
+                (BoolEQ, _, BoolLit(true)) => RetThunkRef(x),
+                (BoolEQ, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x == y)),
+                (BoolNE, BoolLit(false), _) => RetThunkRef(y),
+                (BoolNE, _, BoolLit(false)) => RetThunkRef(x),
+                (BoolNE, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x != y)),
+
+                (NaturalPlus, NaturalLit(0), _) => RetThunkRef(y),
+                (NaturalPlus, _, NaturalLit(0)) => RetThunkRef(x),
+                (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
+                    RetValue(NaturalLit(x + y))
+                }
+                (NaturalTimes, NaturalLit(0), _) => RetValue(NaturalLit(0)),
+                (NaturalTimes, _, NaturalLit(0)) => RetValue(NaturalLit(0)),
+                (NaturalTimes, NaturalLit(1), _) => RetThunkRef(y),
+                (NaturalTimes, _, NaturalLit(1)) => RetThunkRef(x),
+                (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
+                    RetValue(NaturalLit(x * y))
+                }
+
+                (ListAppend, EmptyListLit(_), _) => RetThunkRef(y),
+                (ListAppend, _, EmptyListLit(_)) => RetThunkRef(x),
+                (ListAppend, NEListLit(xs), NEListLit(ys)) => RetValue(
+                    NEListLit(xs.iter().chain(ys.iter()).cloned().collect()),
+                ),
+
+                (TextAppend, TextLit(x), _) if x.is_empty() => RetThunkRef(y),
+                (TextAppend, _, TextLit(y)) if y.is_empty() => RetThunkRef(x),
+                (TextAppend, TextLit(x), TextLit(y)) => RetValue(TextLit(
+                    x.iter().chain(y.iter()).cloned().collect(),
+                )),
+                (TextAppend, TextLit(x), _) => {
+                    use std::iter::once;
+                    let y = InterpolatedTextContents::Expr(y.clone());
+                    RetValue(TextLit(
+                        x.iter().cloned().chain(once(y)).collect(),
+                    ))
+                }
+                (TextAppend, _, TextLit(y)) => {
+                    use std::iter::once;
+                    let x = InterpolatedTextContents::Expr(x.clone());
+                    RetValue(TextLit(
+                        once(x).chain(y.iter().cloned()).collect(),
+                    ))
+                }
+
+                _ => {
+                    drop(x_borrow);
+                    drop(y_borrow);
+                    RetExpr(expr)
+                }
+            }
         }
-        expr => PartialExpr(Box::new(expr)),
+
+        ExprF::Projection(_, ls) if ls.is_empty() => {
+            RetValue(RecordLit(std::collections::BTreeMap::new()))
+        }
+        ExprF::Projection(ref v, ref ls) => {
+            let v_borrow = v.as_value();
+            match &*v_borrow {
+                RecordLit(kvs) => RetValue(RecordLit(
+                    ls.iter()
+                        .filter_map(|l| {
+                            kvs.get(l).map(|x| (l.clone(), x.clone()))
+                        })
+                        .collect(),
+                )),
+                _ => {
+                    drop(v_borrow);
+                    RetExpr(expr)
+                }
+            }
+        }
+        ExprF::Field(ref v, ref l) => {
+            let v_borrow = v.as_value();
+            match &*v_borrow {
+                RecordLit(kvs) => match kvs.get(l) {
+                    Some(r) => RetThunk(r.clone()),
+                    None => {
+                        drop(v_borrow);
+                        RetExpr(expr)
+                    }
+                },
+                UnionType(kts) => {
+                    RetValue(UnionConstructor(l.clone(), kts.clone()))
+                }
+                _ => {
+                    drop(v_borrow);
+                    RetExpr(expr)
+                }
+            }
+        }
+
+        ExprF::Merge(ref handlers, ref variant, _) => {
+            let handlers_borrow = handlers.as_value();
+            let variant_borrow = variant.as_value();
+            match (&*handlers_borrow, &*variant_borrow) {
+                (RecordLit(kvs), UnionConstructor(l, _)) => match kvs.get(l) {
+                    Some(h) => RetThunk(h.clone()),
+                    None => {
+                        drop(handlers_borrow);
+                        drop(variant_borrow);
+                        RetExpr(expr)
+                    }
+                },
+                (RecordLit(kvs), UnionLit(l, v, _)) => match kvs.get(l) {
+                    Some(h) => RetValue(h.app_thunk(v.clone())),
+                    None => {
+                        drop(handlers_borrow);
+                        drop(variant_borrow);
+                        RetExpr(expr)
+                    }
+                },
+                _ => {
+                    drop(handlers_borrow);
+                    drop(variant_borrow);
+                    RetExpr(expr)
+                }
+            }
+        }
+    };
+
+    match ret {
+        RetValue(v) => v,
+        RetThunk(th) => th.to_value(),
+        RetThunkRef(th) => th.to_value(),
+        RetExpr(expr) => Value::PartialExpr(expr),
     }
 }
 
