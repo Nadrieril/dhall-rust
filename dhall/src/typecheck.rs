@@ -901,13 +901,9 @@ fn type_last_layer(
             ))
         }
         Field(r, x) => {
-            let tr = r.get_type()?;
-            let tr_internal = tr.internal_whnf();
-            match &tr_internal {
+            match &r.get_type()?.internal_whnf() {
                 Some(Value::RecordType(kts)) => match kts.get(&x) {
                     Some(tth) => {
-                        let tth = tth.clone();
-                        drop(tr_internal);
                         Ok(RetType(tth.to_type(ctx)?))
                     },
                     None => Err(mkerr(MissingRecordField(x, r.clone()))),
@@ -915,31 +911,26 @@ fn type_last_layer(
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
                     let r = r.to_type();
-                    let r_internal = r.internal_whnf();
-                    match &r_internal {
+                    match &r.internal_whnf() {
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                             Some(Some(t)) => {
-                                let t = t.clone();
-                                drop(r_internal);
                                 Ok(RetType(
                                     TypeIntermediate::Pi(
                                         ctx.clone(),
                                         x.clone(),
                                         t.to_type(ctx)?,
-                                        r,
+                                        r.clone(),
                                     )
                                     .typecheck()?
                                     .to_type(),
                                 ))
                             },
                             Some(None) => {
-                                drop(r_internal);
-                                Ok(RetType(r))
+                                Ok(RetType(r.clone()))
                             },
                             None => {
-                                drop(r_internal);
                                 Err(mkerr(MissingUnionField(
                                     x,
                                     r.to_normalized(),
@@ -947,7 +938,6 @@ fn type_last_layer(
                             },
                         },
                         _ => {
-                            drop(r_internal);
                             Err(mkerr(NotARecord(
                                 x,
                                 r.to_normalized()

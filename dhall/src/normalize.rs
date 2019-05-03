@@ -1002,9 +1002,11 @@ mod thunk {
         }
 
         fn normalize_nf(&mut self) {
-            self.normalize_whnf();
             match self {
-                ThunkInternal::Unnormalized(_, _) => unreachable!(),
+                ThunkInternal::Unnormalized(_, _) => {
+                    self.normalize_whnf();
+                    self.normalize_nf();
+                }
                 ThunkInternal::Value(m @ WHNF, v) => {
                     v.normalize_mut();
                     *m = NF;
@@ -1091,17 +1093,42 @@ mod thunk {
             }
         }
 
+        fn do_normalize_whnf(&self) {
+            let borrow = self.0.borrow();
+            match &*borrow {
+                ThunkInternal::Unnormalized(_, _) => {
+                    drop(borrow);
+                    self.0.borrow_mut().normalize_whnf();
+                }
+                // Already at least in WHNF
+                ThunkInternal::Value(_, _) => {}
+            }
+        }
+
+        fn do_normalize_nf(&self) {
+            let borrow = self.0.borrow();
+            match &*borrow {
+                ThunkInternal::Unnormalized(_, _)
+                | ThunkInternal::Value(WHNF, _) => {
+                    drop(borrow);
+                    self.0.borrow_mut().normalize_nf();
+                }
+                // Already in NF
+                ThunkInternal::Value(NF, _) => {}
+            }
+        }
+
         // WARNING: avoid normalizing any thunk while holding on to this ref
-        // or you will run into BorrowMut panics
+        // or you could run into BorrowMut panics
         pub(crate) fn normalize_whnf(&self) -> Ref<Value> {
-            self.0.borrow_mut().normalize_whnf();
+            self.do_normalize_whnf();
             Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
         }
 
         // WARNING: avoid normalizing any thunk while holding on to this ref
-        // or you will run into BorrowMut panics
+        // or you could run into BorrowMut panics
         pub(crate) fn normalize_nf(&self) -> Ref<Value> {
-            self.0.borrow_mut().normalize_nf();
+            self.do_normalize_nf();
             Ref::map(self.0.borrow(), ThunkInternal::as_nf)
         }
 
