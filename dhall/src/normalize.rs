@@ -59,190 +59,191 @@ impl<'a> Typed<'a> {
     }
 }
 
-fn apply_builtin(b: Builtin, args: Vec<Value>) -> Value {
+fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
     use dhall_core::Builtin::*;
     use Value::*;
 
-    let ret = match b {
-        OptionalNone => improved_slice_patterns::match_vec!(args;
-            [t] => EmptyOptionalLit(TypeThunk::from_whnf(t)),
-        ),
-        NaturalIsZero => improved_slice_patterns::match_vec!(args;
-            [NaturalLit(n)] => BoolLit(n == 0),
-        ),
-        NaturalEven => improved_slice_patterns::match_vec!(args;
-            [NaturalLit(n)] => BoolLit(n % 2 == 0),
-        ),
-        NaturalOdd => improved_slice_patterns::match_vec!(args;
-            [NaturalLit(n)] => BoolLit(n % 2 != 0),
-        ),
-        NaturalToInteger => improved_slice_patterns::match_vec!(args;
-            [NaturalLit(n)] => IntegerLit(n as isize),
-        ),
-        NaturalShow => improved_slice_patterns::match_vec!(args;
-            [NaturalLit(n)] => {
-                TextLit(vec![InterpolatedTextContents::Text(n.to_string())])
+    // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.
+    let ret = match (b, args.as_slice()) {
+        (OptionalNone, [t, r..]) => {
+            Ok((r, EmptyOptionalLit(TypeThunk::from_thunk(t.clone()))))
+        }
+        (NaturalIsZero, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
+            _ => Err(()),
+        },
+        (NaturalEven, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n % 2 == 0))),
+            _ => Err(()),
+        },
+        (NaturalOdd, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, BoolLit(*n % 2 != 0))),
+            _ => Err(()),
+        },
+        (NaturalToInteger, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((r, IntegerLit(*n as isize))),
+            _ => Err(()),
+        },
+        (NaturalShow, [n, r..]) => match &*n.as_value() {
+            NaturalLit(n) => Ok((
+                r,
+                TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
+            )),
+            _ => Err(()),
+        },
+        (ListLength, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(_) => Ok((r, NaturalLit(0))),
+            NEListLit(xs) => Ok((r, NaturalLit(xs.len()))),
+            _ => Err(()),
+        },
+        (ListHead, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEOptionalLit(xs.iter().next().unwrap().clone())))
             }
-        ),
-        ListLength => improved_slice_patterns::match_vec!(args;
-           [_, EmptyListLit(_)] => NaturalLit(0),
-           [_, NEListLit(xs)] => NaturalLit(xs.len()),
-        ),
-        ListHead => improved_slice_patterns::match_vec!(args;
-            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
-            [_, NEListLit(xs)] => {
-                NEOptionalLit(xs.into_iter().next().unwrap())
+            _ => Err(()),
+        },
+        (ListLast, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEOptionalLit(xs.iter().rev().next().unwrap().clone())))
             }
-        ),
-        ListLast => improved_slice_patterns::match_vec!(args;
-            [_, EmptyListLit(n)] => EmptyOptionalLit(n),
-            [_, NEListLit(xs)] => {
-                NEOptionalLit(xs.into_iter().rev().next().unwrap())
+            _ => Err(()),
+        },
+        (ListReverse, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(n) => Ok((r, EmptyListLit(n.clone()))),
+            NEListLit(xs) => {
+                Ok((r, NEListLit(xs.iter().rev().cloned().collect())))
             }
-        ),
-        ListReverse => improved_slice_patterns::match_vec!(args;
-            [_, EmptyListLit(n)] => EmptyListLit(n),
-            [_, NEListLit(xs)] => {
-                let mut xs = xs;
-                xs.reverse();
-                NEListLit(xs)
-            }
-        ),
-        ListIndexed => improved_slice_patterns::match_vec!(args;
-            [_, EmptyListLit(t)] => {
+            _ => Err(()),
+        },
+        (ListIndexed, [_, l, r..]) => match &*l.as_value() {
+            EmptyListLit(t) => {
                 let mut kts = BTreeMap::new();
                 kts.insert(
                     "index".into(),
-                    TypeThunk::from_whnf(
-                        Value::from_builtin(Natural)
-                    ),
+                    TypeThunk::from_whnf(Value::from_builtin(Natural)),
                 );
-                kts.insert("value".into(), t);
-                EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))
-            },
-            [_, NEListLit(xs)] => {
+                kts.insert("value".into(), t.clone());
+                Ok((r, EmptyListLit(TypeThunk::from_whnf(RecordType(kts)))))
+            }
+            NEListLit(xs) => {
                 let xs = xs
-                    .into_iter()
+                    .iter()
                     .enumerate()
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
                         let mut kvs = BTreeMap::new();
                         kvs.insert("index".into(), Thunk::from_whnf(i));
-                        kvs.insert("value".into(), e);
+                        kvs.insert("value".into(), e.clone());
                         Thunk::from_whnf(RecordLit(kvs))
                     })
                     .collect();
-                NEListLit(xs)
+                Ok((r, NEListLit(xs)))
             }
-        ),
-        ListBuild => improved_slice_patterns::match_vec!(args;
+            _ => Err(()),
+        },
+        (ListBuild, [t, f, r..]) => match &*f.as_value() {
             // fold/build fusion
-            [_, Value::AppliedBuiltin(ListFold, args)] => {
-                let mut args = args;
+            Value::AppliedBuiltin(ListFold, args) => {
                 if args.len() >= 2 {
-                    args.remove(1)
+                    Ok((r, args[1].to_value()))
                 } else {
                     // Do we really need to handle this case ?
                     unimplemented!()
                 }
-            },
-            [t, g] => g
-                .app(Value::from_builtin(List).app(t.clone()))
-                .app(ListConsClosure(TypeThunk::from_whnf(t.clone()), None))
-                .app(EmptyListLit(TypeThunk::from_whnf(t))),
-        ),
-        ListFold => improved_slice_patterns::match_vec!(args;
-            // fold/build fusion
-            [_, Value::AppliedBuiltin(ListBuild, args)] => {
-                let mut args = args;
-                if args.len() >= 2 {
-                    args.remove(1)
-                } else {
-                    unimplemented!()
-                }
-            },
-            [_, EmptyListLit(_), _, _, nil] => nil,
-            [_, NEListLit(xs), _, cons, nil] => {
-                let mut v = nil;
-                for x in xs.into_iter().rev() {
-                    v = cons.clone().app_thunk(x).app(v);
-                }
-                v
             }
-        ),
-        OptionalBuild => improved_slice_patterns::match_vec!(args;
-            // fold/build fusion
-            [_, Value::AppliedBuiltin(OptionalFold, args)] => {
-                let mut args = args;
-                if args.len() >= 2 {
-                    args.remove(1)
-                } else {
-                    unimplemented!()
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(List).app_thunk(t.clone()))
+                    .app_val(ListConsClosure(
+                        TypeThunk::from_thunk(t.clone()),
+                        None,
+                    ))
+                    .app_val(EmptyListLit(TypeThunk::from_thunk(t.clone()))),
+            )),
+        },
+        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_value() {
+            EmptyListLit(_) => Ok((r, nil.to_value())),
+            NEListLit(xs) => {
+                let mut v = nil.clone();
+                for x in xs.iter().rev() {
+                    v = cons
+                        .clone()
+                        .app_thunk(x.clone())
+                        .app_thunk(v)
+                        .into_thunk();
                 }
-            },
-            [t, g] => g
-                .app(Value::from_builtin(Optional).app(t.clone()))
-                .app(OptionalSomeClosure(TypeThunk::from_whnf(t.clone())))
-                .app(EmptyOptionalLit(TypeThunk::from_whnf(t))),
-        ),
-        OptionalFold => improved_slice_patterns::match_vec!(args;
-            // fold/build fusion
-            [_, Value::AppliedBuiltin(OptionalBuild, args)] => {
-                let mut args = args;
-                if args.len() >= 2 {
-                    args.remove(1)
-                } else {
-                    unimplemented!()
-                }
-            },
-            [_, EmptyOptionalLit(_), _, _, nothing] => {
-                nothing
-            },
-            [_, NEOptionalLit(x), _, just, _] => {
-                just.app_thunk(x)
+                Ok((r, v.to_value()))
             }
-        ),
-        NaturalBuild => improved_slice_patterns::match_vec!(args;
+            _ => Err(()),
+        },
+        (OptionalBuild, [t, f, r..]) => match &*f.as_value() {
             // fold/build fusion
-            [Value::AppliedBuiltin(NaturalFold, args)] => {
-                let mut args = args;
-                if args.len() >= 1 {
-                    args.remove(0)
+            Value::AppliedBuiltin(OptionalFold, args) => {
+                if args.len() >= 2 {
+                    Ok((r, args[1].to_value()))
                 } else {
+                    // Do we really need to handle this case ?
                     unimplemented!()
                 }
-            },
-            [g] => g
-                .app(Value::from_builtin(Natural))
-                .app(NaturalSuccClosure)
-                .app(NaturalLit(0)),
-        ),
-        NaturalFold => improved_slice_patterns::match_vec!(args;
+            }
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(Optional).app_thunk(t.clone()))
+                    .app_val(OptionalSomeClosure(TypeThunk::from_thunk(
+                        t.clone(),
+                    )))
+                    .app_val(EmptyOptionalLit(TypeThunk::from_thunk(
+                        t.clone(),
+                    ))),
+            )),
+        },
+        (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_value() {
+            EmptyOptionalLit(_) => Ok((r, nothing.to_value())),
+            NEOptionalLit(x) => Ok((r, just.app_thunk(x.clone()))),
+            _ => Err(()),
+        },
+        (NaturalBuild, [f, r..]) => match &*f.as_value() {
             // fold/build fusion
-            [Value::AppliedBuiltin(NaturalBuild, args)] => {
-                let mut args = args;
+            Value::AppliedBuiltin(NaturalFold, args) => {
                 if args.len() >= 1 {
-                    args.remove(0)
+                    Ok((r, args[0].to_value()))
                 } else {
+                    // Do we really need to handle this case ?
                     unimplemented!()
                 }
-            },
-            [NaturalLit(0), _, _, zero] => zero,
-            [NaturalLit(n), t, succ, zero] => {
+            }
+            _ => Ok((
+                r,
+                f.app_val(Value::from_builtin(Natural))
+                    .app_val(NaturalSuccClosure)
+                    .app_val(NaturalLit(0)),
+            )),
+        },
+        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_value() {
+            NaturalLit(0) => Ok((r, zero.to_value())),
+            NaturalLit(n) => {
                 let fold = Value::from_builtin(NaturalFold)
                     .app(NaturalLit(n - 1))
-                    .app(t)
-                    .app(succ.clone())
-                    .app(zero);
-                succ.app(fold)
-            },
-        ),
-        _ => Err(args),
+                    .app_thunk(t.clone())
+                    .app_thunk(succ.clone())
+                    .app_thunk(zero.clone());
+                Ok((r, succ.app_val(fold)))
+            }
+            _ => Err(()),
+        },
+        _ => Err(()),
     };
-
     match ret {
-        Ok(x) => x,
-        Err(args) => AppliedBuiltin(b, args),
+        Ok((unconsumed_args, mut v)) => {
+            let n_consumed_args = args.len() - unconsumed_args.len();
+            for x in args.into_iter().skip(n_consumed_args) {
+                v = v.app_thunk(x);
+            }
+            v
+        }
+        Err(()) => AppliedBuiltin(b, args),
     }
 }
 
@@ -337,7 +338,7 @@ impl NormalizationContext {
 pub(crate) enum Value {
     /// Closures
     Lam(Label, Thunk, Thunk),
-    AppliedBuiltin(Builtin, Vec<Value>),
+    AppliedBuiltin(Builtin, Vec<Thunk>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(TypeThunk),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
@@ -671,6 +672,11 @@ impl Value {
 
     /// Apply to a value
     pub(crate) fn app(self, val: Value) -> Value {
+        self.app_val(val)
+    }
+
+    /// Apply to a value
+    pub(crate) fn app_val(self, val: Value) -> Value {
         self.app_thunk(val.into_thunk())
     }
 
@@ -692,7 +698,7 @@ impl Value {
                 e.subst_shift(&V(x, 0), &val).normalize_whnf().clone()
             }
             Value::AppliedBuiltin(b, mut args) => {
-                args.push(th.normalize_whnf().clone());
+                args.push(th.clone());
                 apply_builtin(b, args)
             }
             Value::OptionalSomeClosure(_) => Value::NEOptionalLit(th),
@@ -1134,6 +1140,22 @@ mod thunk {
 
         pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
             self.normalize_nf().normalize_to_expr()
+        }
+
+        pub(crate) fn as_value(&self) -> Ref<Value> {
+            self.normalize_whnf()
+        }
+
+        pub(crate) fn to_value(&self) -> Value {
+            self.normalize_whnf().clone()
+        }
+
+        pub(crate) fn app_val(&self, val: Value) -> Value {
+            self.to_value().app(val)
+        }
+
+        pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
+            self.to_value().app_thunk(th)
         }
 
         pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
