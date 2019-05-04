@@ -44,7 +44,7 @@ pub(crate) struct Normalized(pub(crate) TypedInternal);
 
 impl std::cmp::PartialEq for Normalized {
     fn eq(&self, other: &Self) -> bool {
-        self.to_expr() == other.to_expr()
+        self.0 == other.0
     }
 }
 
@@ -153,6 +153,14 @@ mod typed {
             }
         }
     }
+
+    impl std::cmp::PartialEq for TypedInternal {
+        fn eq(&self, other: &Self) -> bool {
+            self.to_value() == other.to_value()
+        }
+    }
+
+    impl std::cmp::Eq for TypedInternal {}
 }
 
 /// A Dhall expression representing a simple type.

@@ -53,7 +53,7 @@ impl Typed {
 
 /// Stores a pair of variables: a normal one and if relevant one
 /// that corresponds to the alpha-normalized version of the first one.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub(crate) struct DoubleVar {
     normal: V<Label>,
     alpha: Option<V<()>>,
@@ -83,13 +83,16 @@ impl DoubleVar {
     }
 }
 
+/// Equality is up to alpha-equivalence.
 impl std::cmp::PartialEq for DoubleVar {
     fn eq(&self, other: &Self) -> bool {
-        self.normal == other.normal
+        match (&self.alpha, &other.alpha) {
+            (Some(x), Some(y)) => x == y,
+            (None, None) => self.normal == other.normal,
+            _ => false,
+        }
     }
 }
-
-impl std::cmp::Eq for DoubleVar {}
 
 impl From<Label> for DoubleVar {
     fn from(x: Label) -> DoubleVar {
@@ -102,6 +105,52 @@ impl From<Label> for DoubleVar {
 impl<'a> From<&'a Label> for DoubleVar {
     fn from(x: &'a Label) -> DoubleVar {
         x.clone().into()
+    }
+}
+impl From<AlphaLabel> for DoubleVar {
+    fn from(x: AlphaLabel) -> DoubleVar {
+        let l: Label = x.into();
+        l.into()
+    }
+}
+impl<'a> From<&'a AlphaLabel> for DoubleVar {
+    fn from(x: &'a AlphaLabel) -> DoubleVar {
+        x.clone().into()
+    }
+}
+
+// Exactly like a Label, but equality returns always true.
+// This is so that Value equality is exactly alpha-equivalence.
+#[derive(Debug, Clone, Eq)]
+pub(crate) struct AlphaLabel(Label);
+
+impl AlphaLabel {
+    fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
+        if alpha {
+            "_".into()
+        } else {
+            self.to_label()
+        }
+    }
+    fn to_label(&self) -> Label {
+        self.clone().into()
+    }
+}
+
+impl std::cmp::PartialEq for AlphaLabel {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl From<Label> for AlphaLabel {
+    fn from(x: Label) -> AlphaLabel {
+        AlphaLabel(x)
+    }
+}
+impl From<AlphaLabel> for Label {
+    fn from(x: AlphaLabel) -> Label {
+        x.0
     }
 }
 
@@ -181,10 +230,11 @@ impl NormalizationContext {
 }
 
 /// A semantic value.
-#[derive(Debug, Clone)]
+/// Equality is up to alpha-equivalence (renaming of bound variables).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Value {
     /// Closures
-    Lam(Label, Thunk, Thunk),
+    Lam(AlphaLabel, Thunk, Thunk),
     AppliedBuiltin(Builtin, Vec<Thunk>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(TypeThunk),
@@ -193,7 +243,7 @@ pub(crate) enum Value {
     ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
-    Pi(Label, TypeThunk, TypeThunk),
+    Pi(AlphaLabel, TypeThunk, TypeThunk),
 
     Var(DoubleVar),
     Const(Const),
@@ -231,7 +281,7 @@ impl Value {
     ) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
-                if alpha { "_".into() } else { x.clone() },
+                x.to_label_maybe_alpha(alpha),
                 t.normalize_to_expr_maybe_alpha(alpha),
                 e.normalize_to_expr_maybe_alpha(alpha),
             )),
@@ -267,7 +317,7 @@ impl Value {
                 dhall::subexpr!(λ(x : Natural) -> x + 1)
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
-                if alpha { "_".into() } else { x.clone() },
+                x.to_label_maybe_alpha(alpha),
                 t.normalize_to_expr_maybe_alpha(alpha),
                 e.normalize_to_expr_maybe_alpha(alpha),
             )),
@@ -908,6 +958,13 @@ mod thunk {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
     }
+
+    impl std::cmp::PartialEq for Thunk {
+        fn eq(&self, other: &Self) -> bool {
+            &*self.as_value() == &*other.as_value()
+        }
+    }
+    impl std::cmp::Eq for Thunk {}
 }
 
 pub(crate) use thunk::Thunk;
@@ -946,6 +1003,13 @@ impl TypeThunk {
         }
     }
 
+    pub(crate) fn to_value(&self) -> Value {
+        match self {
+            TypeThunk::Thunk(th) => th.to_value(),
+            TypeThunk::Type(t) => t.to_value(),
+        }
+    }
+
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
@@ -967,6 +1031,13 @@ impl TypeThunk {
         }
     }
 }
+
+impl std::cmp::PartialEq for TypeThunk {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_value() == other.to_value()
+    }
+}
+impl std::cmp::Eq for TypeThunk {}
 
 fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
     use dhall_syntax::Builtin::*;
@@ -1252,10 +1323,12 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => RetThunk(x),
-        ExprF::Lam(x, t, e) => RetValue(Lam(x, t, e)),
-        ExprF::Pi(x, t, e) => {
-            RetValue(Pi(x, TypeThunk::from_thunk(t), TypeThunk::from_thunk(e)))
-        }
+        ExprF::Lam(x, t, e) => RetValue(Lam(x.into(), t, e)),
+        ExprF::Pi(x, t, e) => RetValue(Pi(
+            x.into(),
+            TypeThunk::from_thunk(t),
+            TypeThunk::from_thunk(e),
+        )),
         ExprF::Let(x, _, v, b) => {
             let v = Typed::from_thunk_untyped(v);
             RetThunk(b.subst_shift(&x.into(), &v))

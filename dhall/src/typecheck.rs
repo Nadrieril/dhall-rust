@@ -243,8 +243,7 @@ where
     T: Borrow<Type>,
     U: Borrow<Type>,
 {
-    eL0.borrow().to_value().normalize_to_expr_maybe_alpha(true)
-        == eR0.borrow().to_value().normalize_to_expr_maybe_alpha(true)
+    eL0.borrow().to_value() == eR0.borrow().to_value()
 }
 
 fn const_to_typed(c: Const) -> Typed {
@@ -352,9 +351,8 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
             forall (nothing: optional) ->
             optional
         ),
-        // TODO: alpha-equivalence in type-inference tests
         OptionalNone => dhall::expr!(
-            forall (A: Type) -> Optional A
+            forall (a: Type) -> Optional a
         ),
     }
 }
@@ -436,7 +434,7 @@ impl TypeIntermediate {
 
                 Typed::from_thunk_and_type(
                     Value::Pi(
-                        x.clone(),
+                        x.clone().into(),
                         TypeThunk::from_type(ta.clone()),
                         TypeThunk::from_type(tb.clone()),
                     )
@@ -823,12 +821,11 @@ fn type_last_layer(
                     match &r.internal_whnf() {
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
-                            // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                             Some(Some(t)) => {
                                 Ok(RetType(
                                     TypeIntermediate::Pi(
                                         ctx.clone(),
-                                        x.clone(),
+                                        "_".into(),
                                         t.to_type(ctx)?,
                                         r.clone(),
                                     )
