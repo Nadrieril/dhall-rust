@@ -69,7 +69,7 @@ name = "dhall"
 version = "0.1.0"
 dependencies = [
  "bytecount 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "dhall_generator 0.1.0",
+ "dhall_proc_macros 0.1.0",
  "dhall_syntax 0.1.0",
  "improved_slice_patterns 2.0.0",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -91,7 +91,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dhall_generator"
+name = "dhall_proc_macros"
 version = "0.1.0"
 dependencies = [
  "dhall_syntax 0.1.0",

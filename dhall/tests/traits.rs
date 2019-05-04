@@ -1,7 +1,7 @@
 #![feature(proc_macro_hygiene)]
 use dhall::de::SimpleStaticType;
 use dhall_syntax::{SubExpr, X};
-use dhall_generator;
+use dhall_proc_macros;
 
 #[test]
 fn test_static_type() {
@@ -11,19 +11,19 @@ fn test_static_type() {
 
     assert_eq!(
         bool::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!(Bool))
+        mktype(dhall_proc_macros::subexpr!(Bool))
     );
     assert_eq!(
         String::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!(Text))
+        mktype(dhall_proc_macros::subexpr!(Text))
     );
     assert_eq!(
         <Option<bool>>::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!(Optional Bool))
+        mktype(dhall_proc_macros::subexpr!(Optional Bool))
     );
     assert_eq!(
         <(bool, Option<String>)>::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!({ _1: Bool, _2: Optional Text }))
+        mktype(dhall_proc_macros::subexpr!({ _1: Bool, _2: Optional Text }))
     );
 
     #[derive(dhall::de::SimpleStaticType)]
@@ -35,7 +35,7 @@ fn test_static_type() {
     assert_eq!(
         <A as dhall::de::SimpleStaticType>::get_simple_static_type(),
         mktype(
-            dhall_generator::subexpr!({ field1: Bool, field2: Optional Bool })
+            dhall_proc_macros::subexpr!({ field1: Bool, field2: Optional Bool })
         )
     );
 
@@ -63,7 +63,7 @@ fn test_static_type() {
     struct D();
     assert_eq!(
         <C<D>>::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!({ _1: {}, _2: Optional Text }))
+        mktype(dhall_proc_macros::subexpr!({ _1: {}, _2: Optional Text }))
     );
 
     #[derive(SimpleStaticType)]
@@ -74,6 +74,6 @@ fn test_static_type() {
     };
     assert_eq!(
         <E<bool>>::get_simple_static_type(),
-        mktype(dhall_generator::subexpr!(< A: Bool | B: Text >))
+        mktype(dhall_proc_macros::subexpr!(< A: Bool | B: Text >))
     );
 }

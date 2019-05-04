@@ -7,7 +7,7 @@ use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
-use dhall_generator as dhall;
+use dhall_proc_macros as dhall;
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
 

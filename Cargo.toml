@@ -6,7 +6,7 @@ members = [
     "dhall",
     "dhall_generated_parser",
     "dhall_syntax",
-    "dhall_generator",
+    "dhall_proc_macros",
     "improved_slice_patterns",
 ]
 

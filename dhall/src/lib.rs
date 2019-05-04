@@ -140,7 +140,7 @@ mod typecheck;
 pub mod de {
     pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
     #[doc(hidden)]
-    pub use dhall_generator::SimpleStaticType;
+    pub use dhall_proc_macros::SimpleStaticType;
 
     /// Deserialize an instance of type T from a string of Dhall text.
     ///

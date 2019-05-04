@@ -10,7 +10,7 @@ use crate::traits::DynamicType;
 use dhall_syntax;
 use dhall_syntax::context::Context;
 use dhall_syntax::*;
-use dhall_generator as dhall;
+use dhall_proc_macros as dhall;
 
 use self::TypeMessage::*;
 
