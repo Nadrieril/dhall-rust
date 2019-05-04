@@ -5,7 +5,7 @@ use std::rc::Rc;
 use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
-    rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
+    rc, BinOp, Builtin, Const, ExprF, Integer,
     InterpolatedTextContents, Label, Natural, Span, SubExpr, V, X,
 };
 
@@ -396,36 +396,17 @@ impl Value {
                     .collect(),
             )),
             Value::TextLit(elts) => {
-                fn normalize_textlit(
-                    elts: &Vec<InterpolatedTextContents<Thunk>>,
-                    alpha: bool,
-                ) -> InterpolatedText<OutputSubExpr> {
+                use InterpolatedTextContents::{Expr, Text};
+                rc(ExprF::TextLit(
                     elts.iter()
-                        .flat_map(|contents| {
-                            use InterpolatedTextContents::{Expr, Text};
-                            let new_interpolated = match contents {
-                                Expr(n) => match &*n.normalize_nf() {
-                                    Value::TextLit(elts2) => {
-                                        normalize_textlit(elts2, alpha)
-                                    }
-                                    e => InterpolatedText::from((
-                                        String::new(),
-                                        vec![(
-                                            e.normalize_to_expr_maybe_alpha(
-                                                alpha,
-                                            ),
-                                            String::new(),
-                                        )],
-                                    )),
-                                },
-                                Text(s) => InterpolatedText::from(s.clone()),
-                            };
-                            new_interpolated.into_iter()
+                        .map(|contents| match contents {
+                            Expr(e) => {
+                                Expr(e.normalize_to_expr_maybe_alpha(alpha))
+                            }
+                            Text(s) => Text(s.clone()),
                         })
-                        .collect()
-                }
-
-                rc(ExprF::TextLit(normalize_textlit(elts, alpha)))
+                        .collect(),
+                ))
             }
             Value::PartialExpr(e) => {
                 rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
@@ -658,6 +639,16 @@ impl Value {
                     Label::clone,
                 ))
             }
+            // Retry normalizing since substituting may allow progress
+            Value::TextLit(elts) => {
+                Value::TextLit(squash_textlit(elts.iter().map(|contents| {
+                    use InterpolatedTextContents::{Expr, Text};
+                    match contents {
+                        Expr(th) => Expr(th.subst_shift(var, val)),
+                        Text(s) => Text(s.clone()),
+                    }
+                })))
+            }
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
@@ -731,17 +722,6 @@ impl Value {
                 kts.iter()
                     .map(|(k, v)| {
                         (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
-                    })
-                    .collect(),
-            ),
-            Value::TextLit(elts) => Value::TextLit(
-                elts.iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(th) => Expr(th.subst_shift(var, val)),
-                            Text(s) => Text(s.clone()),
-                        }
                     })
                     .collect(),
             ),
@@ -1283,6 +1263,48 @@ fn apply_any(f: Thunk, a: Thunk) -> Value {
     }
 }
 
+fn squash_textlit(
+    elts: impl Iterator<Item = InterpolatedTextContents<Thunk>>,
+) -> Vec<InterpolatedTextContents<Thunk>> {
+    use std::mem::replace;
+    use InterpolatedTextContents::{Expr, Text};
+
+    fn inner(
+        elts: impl Iterator<Item = InterpolatedTextContents<Thunk>>,
+        crnt_str: &mut String,
+        ret: &mut Vec<InterpolatedTextContents<Thunk>>,
+    ) {
+        for contents in elts {
+            match contents {
+                Text(s) => crnt_str.push_str(&s),
+                Expr(e) => {
+                    let e_borrow = e.as_value();
+                    match &*e_borrow {
+                        Value::TextLit(elts2) => {
+                            inner(elts2.iter().cloned(), crnt_str, ret)
+                        }
+                        _ => {
+                            drop(e_borrow);
+                            if !crnt_str.is_empty() {
+                                ret.push(Text(replace(crnt_str, String::new())))
+                            }
+                            ret.push(Expr(e.clone()))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut crnt_str = String::new();
+    let mut ret = Vec::new();
+    inner(elts, &mut crnt_str, &mut ret);
+    if !crnt_str.is_empty() {
+        ret.push(Text(replace(&mut crnt_str, String::new())))
+    }
+    ret
+}
+
 /// Reduces the imput expression to a Value. Evaluates as little as possible.
 fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     match expr.as_ref() {
@@ -1371,7 +1393,7 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         )),
         ExprF::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
-            let elts: Vec<_> = elts.into_iter().collect();
+            let elts: Vec<_> = squash_textlit(elts.into_iter());
             // Simplify bare interpolation
             if let [Expr(th)] = elts.as_slice() {
                 RetThunk(th.clone())
