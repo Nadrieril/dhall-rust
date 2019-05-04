@@ -16,19 +16,19 @@ use self::TypeMessage::*;
 
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
-        type_of(self.0.unnote())
+        type_of(self.0)
     }
     pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        let expr: SubExpr<_, _> = self.0.unnote();
-        let ty: SubExpr<_, _> = ty.to_expr().embed_absurd();
-        type_of(rc(ExprF::Annot(expr, ty)))
+        let expr: SubExpr<_, _> = self.0;
+        let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
+        type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
     }
     /// Pretends this expression has been typechecked. Use with care.
     #[allow(dead_code)]
     pub fn skip_typecheck(self) -> Typed {
         Typed::from_thunk_untyped(Thunk::new(
             NormalizationContext::new(),
-            self.0.unnote(),
+            self.0,
         ))
     }
 }
@@ -97,7 +97,7 @@ impl TypeThunk {
             TypeThunk::Type(t) => Ok(t.clone()),
             TypeThunk::Thunk(th) => {
                 // TODO: rule out statically
-                mktype(ctx, th.normalize_to_expr().embed_absurd())
+                mktype(ctx, th.normalize_to_expr().embed_absurd().note_absurd())
             }
         }
     }
@@ -621,13 +621,16 @@ impl TypeIntermediate {
 /// and turn it into a type, typechecking it along the way.
 fn mktype(
     ctx: &TypecheckContext,
-    e: SubExpr<X, Normalized>,
+    e: SubExpr<Span, Normalized>,
 ) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
 fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
-    mktype(&TypecheckContext::new(), rc(ExprF::Builtin(b)))
+    mktype(
+        &TypecheckContext::new(),
+        SubExpr::from_expr_no_note(ExprF::Builtin(b)),
+    )
 }
 
 /// Intermediary return type
@@ -636,18 +639,17 @@ enum Ret {
     RetTyped(Typed),
     /// Use the contained Type as the type of the input expression
     RetType(Type),
-    /// Returns an expression that must be typechecked and
-    /// turned into a Type first.
-    RetExpr(Expr<X, Normalized>),
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed
 fn type_with(
     ctx: &TypecheckContext,
-    e: SubExpr<X, Normalized>,
+    e: SubExpr<Span, Normalized>,
 ) -> Result<Typed, TypeError> {
-    use dhall_syntax::ExprF::*;
+    use dhall_syntax::ExprF::{
+        Annot, App, Embed, Lam, Let, OldOptionalLit, Pi, SomeLit,
+    };
 
     use Ret::*;
     let ret = match e.as_ref() {
@@ -673,7 +675,7 @@ fn type_with(
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
-                rc(Annot(v.clone(), t.clone()))
+                t.rewrap(Annot(v.clone(), t.clone()))
             } else {
                 v.clone()
             };
@@ -684,14 +686,18 @@ fn type_with(
             Ok(RetType(e.get_type()?.into_owned()))
         }
         OldOptionalLit(None, t) => {
-            let t = t.clone();
-            let e = dhall::subexpr!(None t);
+            let none = SubExpr::from_expr_no_note(ExprF::Builtin(
+                Builtin::OptionalNone,
+            ));
+            let e = e.rewrap(App(none, t.clone()));
             return type_with(ctx, e);
         }
         OldOptionalLit(Some(x), t) => {
-            let t = t.clone();
-            let x = x.clone();
-            let e = dhall::subexpr!(Some x : Optional t);
+            let optional =
+                SubExpr::from_expr_no_note(ExprF::Builtin(Builtin::Optional));
+            let x = x.rewrap(SomeLit(x.clone()));
+            let t = t.rewrap(App(optional, t.clone()));
+            let e = e.rewrap(Annot(x, t));
             return type_with(ctx, e);
         }
         Embed(p) => Ok(RetTyped(p.clone().into())),
@@ -703,10 +709,6 @@ fn type_with(
         ),
     }?;
     Ok(match ret {
-        RetExpr(ret) => Typed::from_thunk_and_type(
-            Thunk::new(ctx.to_normalization_ctx(), e),
-            mktype(ctx, rc(ret))?,
-        ),
         RetType(typ) => Typed::from_thunk_and_type(
             Thunk::new(ctx.to_normalization_ctx(), e),
             typ,
@@ -935,7 +937,9 @@ fn type_last_layer(
             }
         }
         Const(c) => Ok(RetTyped(const_to_typed(c))),
-        Builtin(b) => Ok(RetExpr(type_of_builtin(b))),
+        Builtin(b) => {
+            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).note_absurd())?))
+        }
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
         IntegerLit(_) => Ok(RetType(builtin_to_type(Integer)?)),
@@ -994,7 +998,7 @@ fn type_last_layer(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError> {
+fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
     let ctx = TypecheckContext::new();
     let e = type_with(&ctx, e)?;
     // Ensure `e` has a type (i.e. `e` is not `Sort`)

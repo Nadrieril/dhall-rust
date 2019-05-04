@@ -204,15 +204,14 @@ impl Normalized {
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         Normalized(TypedInternal::from_thunk_and_type(th, t))
     }
-    // Deprecated
-    pub(crate) fn as_expr(&self) -> SubExpr<X, X> {
-        self.0.to_expr()
-    }
     pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
         self.0.to_expr()
     }
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
+    }
+    pub(crate) fn to_thunk(&self) -> Thunk {
+        self.0.to_thunk()
     }
     #[allow(dead_code)]
     pub(crate) fn unnote(self) -> Normalized {

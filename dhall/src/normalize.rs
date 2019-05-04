@@ -6,12 +6,12 @@ use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
-    InterpolatedTextContents, Label, Natural, SubExpr, V, X,
+    InterpolatedTextContents, Label, Natural, Span, SubExpr, V, X,
 };
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
 
-type InputSubExpr = SubExpr<X, Normalized>;
+type InputSubExpr = SubExpr<Span, Normalized>;
 type OutputSubExpr = SubExpr<X, X>;
 
 impl Typed {
@@ -110,10 +110,7 @@ impl NormalizationContext {
             for v in vs.iter() {
                 let new_item = match v {
                     Type(var, _) => EnvItem::Skip(var.clone()),
-                    Value(e) => EnvItem::Thunk(Thunk::new(
-                        NormalizationContext::new(),
-                        e.as_expr().embed_absurd(),
-                    )),
+                    Value(e) => EnvItem::Thunk(e.to_thunk()),
                 };
                 ctx = ctx.insert(k.clone(), new_item);
             }
@@ -736,7 +733,10 @@ mod thunk {
         }
 
         pub(crate) fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
-            Thunk::new(NormalizationContext::new(), e.embed_absurd())
+            Thunk::new(
+                NormalizationContext::new(),
+                e.embed_absurd().note_absurd(),
+            )
         }
 
         // Normalizes contents to normal form; faster than `normalize_nf` if
