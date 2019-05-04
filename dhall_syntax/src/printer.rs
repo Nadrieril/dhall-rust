@@ -3,9 +3,7 @@ use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
-impl<SE: Display + Clone, L: Display + Clone, E: Display> Display
-    for ExprF<SE, L, E>
-{
+impl<SE: Display + Clone, E: Display> Display for ExprF<SE, Label, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
         match self {
@@ -15,10 +13,9 @@ impl<SE: Display + Clone, L: Display + Clone, E: Display> Display
             BoolIf(a, b, c) => {
                 write!(f, "if {} then {} else {}", a, b, c)?;
             }
-            // TODO: arrow type
-            // Pi(a, b, c) if &String::from(a) == "_" => {
-            //     write!(f, "{} → {}", b, c)?;
-            // }
+            Pi(a, b, c) if &String::from(a) == "_" => {
+                write!(f, "{} → {}", b, c)?;
+            }
             Pi(a, b, c) => {
                 write!(f, "∀({} : {}) → {}", a, b, c)?;
             }
@@ -127,25 +124,21 @@ enum PrintPhase {
 // Wraps an Expr with a phase, so that phase selsction can be done
 // separate from the actual printing
 #[derive(Clone)]
-struct PhasedExpr<'a, L, S, A>(&'a SubExpr<L, S, A>, PrintPhase);
+struct PhasedExpr<'a, S, A>(&'a SubExpr<S, A>, PrintPhase);
 
-impl<'a, L: Display + Clone, S: Clone, A: Display + Clone> Display
-    for PhasedExpr<'a, L, S, A>
-{
+impl<'a, S: Clone, A: Display + Clone> Display for PhasedExpr<'a, S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.as_ref().fmt_phase(f, self.1)
     }
 }
 
-impl<'a, L: Display + Clone, S: Clone, A: Display + Clone>
-    PhasedExpr<'a, L, S, A>
-{
-    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, L, S, A> {
+impl<'a, S: Clone, A: Display + Clone> PhasedExpr<'a, S, A> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, S, A> {
         PhasedExpr(self.0, phase)
     }
 }
 
-impl<L: Display + Clone, S: Clone, A: Display + Clone> Expr<L, S, A> {
+impl<S: Clone, A: Display + Clone> Expr<S, A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
@@ -179,12 +172,11 @@ impl<L: Display + Clone, S: Clone, A: Display + Clone> Expr<L, S, A> {
         // Annotate subexpressions with the appropriate phase, defaulting to Base
         let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
             Pi(a, b, c) => {
-                // TODO: arrow type
-                // if &String::from(&a) == "_" {
-                //     Pi(a, b.phase(Operator), c)
-                // } else {
-                Pi(a, b, c)
-                // }
+                if &String::from(&a) == "_" {
+                    Pi(a, b.phase(Operator), c)
+                } else {
+                    Pi(a, b, c)
+                }
             }
             Merge(a, b, c) => Merge(
                 a.phase(Import),
@@ -220,9 +212,7 @@ impl<L: Display + Clone, S: Clone, A: Display + Clone> Expr<L, S, A> {
     }
 }
 
-impl<L: Display + Clone, S: Clone, A: Display + Clone> Display
-    for SubExpr<L, S, A>
-{
+impl<S: Clone, A: Display + Clone> Display for SubExpr<S, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
@@ -484,9 +474,9 @@ impl Display for Scheme {
     }
 }
 
-impl<Label: Display> Display for Var<Label> {
+impl<Label: Display> Display for V<Label> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let Var(x, n) = self;
+        let V(x, n) = self;
         x.fmt(f)?;
         if *n != 0 {
             write!(f, "@{}", n)?;

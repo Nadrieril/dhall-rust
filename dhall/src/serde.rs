@@ -11,7 +11,7 @@ impl<'a, T: serde::Deserialize<'a>> Deserialize<'a> for T {
     }
 }
 
-struct Deserializer<'a>(Cow<'a, SubExpr<Label, X, X>>);
+struct Deserializer<'a>(Cow<'a, SubExpr<X, X>>);
 
 impl serde::de::Error for Error {
     fn custom<T>(msg: T) -> Self

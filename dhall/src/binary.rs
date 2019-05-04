@@ -2,7 +2,7 @@ use dhall_syntax::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
 
-type ParsedExpr = SubExpr<Label, X, Import>;
+type ParsedExpr = SubExpr<X, Import>;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -18,32 +18,28 @@ pub fn decode(data: &[u8]) -> Result<ParsedExpr, DecodeError> {
 }
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
-    use cbor::Value::{Array, Bool, Null, Object, String, F64, I64, U64};
+    use cbor::Value::*;
     use dhall_syntax::{BinOp, Builtin, Const};
-    use ExprF::{
-        Annot, App, BoolIf, BoolLit, DoubleLit, Embed, EmptyListLit, Field,
-        IntegerLit, Lam, Let, Merge, NEListLit, NaturalLit, OldOptionalLit, Pi,
-        RecordLit, RecordType, SomeLit, TextLit, UnionLit, UnionType,
-    };
+    use ExprF::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
             Some(b) => ExprF::Builtin(b),
             None => match s.as_str() {
                 "True" => BoolLit(true),
                 "False" => BoolLit(false),
-                "Type" => ExprF::Const(Const::Type),
-                "Kind" => ExprF::Const(Const::Kind),
-                "Sort" => ExprF::Const(Const::Sort),
+                "Type" => Const(Const::Type),
+                "Kind" => Const(Const::Kind),
+                "Sort" => Const(Const::Sort),
                 _ => Err(DecodeError::WrongFormatError("builtin".to_owned()))?,
             },
         },
-        U64(n) => ExprF::Var(Var(Label::from("_"), *n as usize)),
+        U64(n) => Var(V(Label::from("_"), *n as usize)),
         F64(x) => DoubleLit((*x).into()),
         Bool(b) => BoolLit(*b),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
                 let l = Label::from(l.as_str());
-                ExprF::Var(Var(l, *n as usize))
+                Var(V(l, *n as usize))
             }
             [U64(0), f, args..] => {
                 let mut f = cbor_value_to_dhall(&f)?;
@@ -96,7 +92,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                         Err(DecodeError::WrongFormatError("binop".to_owned()))?
                     }
                 };
-                ExprF::BinOp(op, x, y)
+                BinOp(op, x, y)
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;

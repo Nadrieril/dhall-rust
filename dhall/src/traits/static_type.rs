@@ -32,7 +32,7 @@ pub trait SimpleStaticType {
     fn get_simple_static_type() -> SimpleType;
 }
 
-fn mktype(x: SubExpr<Label, X, X>) -> SimpleType {
+fn mktype(x: SubExpr<X, X>) -> SimpleType {
     x.into()
 }
 
@@ -106,22 +106,22 @@ impl SimpleStaticType for String {
 
 impl<A: SimpleStaticType, B: SimpleStaticType> SimpleStaticType for (A, B) {
     fn get_simple_static_type() -> SimpleType {
-        let ta: SubExpr<_, _, _> = A::get_simple_static_type().into();
-        let tb: SubExpr<_, _, _> = B::get_simple_static_type().into();
+        let ta: SubExpr<_, _> = A::get_simple_static_type().into();
+        let tb: SubExpr<_, _> = B::get_simple_static_type().into();
         mktype(dhall::subexpr!({ _1: ta, _2: tb }))
     }
 }
 
 impl<T: SimpleStaticType> SimpleStaticType for Option<T> {
     fn get_simple_static_type() -> SimpleType {
-        let t: SubExpr<_, _, _> = T::get_simple_static_type().into();
+        let t: SubExpr<_, _> = T::get_simple_static_type().into();
         mktype(dhall::subexpr!(Optional t))
     }
 }
 
 impl<T: SimpleStaticType> SimpleStaticType for Vec<T> {
     fn get_simple_static_type() -> SimpleType {
-        let t: SubExpr<_, _, _> = T::get_simple_static_type().into();
+        let t: SubExpr<_, _> = T::get_simple_static_type().into();
         mktype(dhall::subexpr!(List t))
     }
 }
@@ -142,8 +142,8 @@ impl<T: SimpleStaticType, E: SimpleStaticType> SimpleStaticType
     for std::result::Result<T, E>
 {
     fn get_simple_static_type() -> SimpleType {
-        let tt: SubExpr<_, _, _> = T::get_simple_static_type().into();
-        let te: SubExpr<_, _, _> = E::get_simple_static_type().into();
+        let tt: SubExpr<_, _> = T::get_simple_static_type().into();
+        let te: SubExpr<_, _> = E::get_simple_static_type().into();
         mktype(dhall::subexpr!(< Ok: tt | Err: te>))
     }
 }
