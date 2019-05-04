@@ -14,13 +14,16 @@ use dhall_syntax::*;
 
 use self::TypeMessage::*;
 
+type InputSubExpr = SubExpr<Label, Span, Normalized>;
+type OutputSubExpr = SubExpr<Label, X, X>;
+
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
         type_of(self.0)
     }
     pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        let expr: SubExpr<_, _> = self.0;
-        let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
+        let expr = self.0;
+        let ty = ty.to_expr().embed_absurd().note_absurd();
         type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
     }
     /// Pretends this expression has been typechecked. Use with care.
@@ -43,7 +46,7 @@ impl Typed {
 }
 
 impl Normalized {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         Normalized(self.0.shift(delta, var))
     }
     pub(crate) fn to_type(self) -> Type {
@@ -55,7 +58,7 @@ impl Type {
     pub(crate) fn to_normalized(&self) -> Normalized {
         self.0.to_normalized()
     }
-    pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
+    pub(crate) fn to_expr(&self) -> OutputSubExpr {
         self.0.to_expr()
     }
     pub(crate) fn to_value(&self) -> Value {
@@ -73,10 +76,10 @@ impl Type {
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         Type(self.0.shift(delta, var))
     }
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         Type(self.0.subst_shift(var, val))
     }
 
@@ -124,7 +127,7 @@ impl TypeInternal {
     fn to_normalized(&self) -> Normalized {
         self.to_typed().normalize()
     }
-    fn to_expr(&self) -> SubExpr<X, X> {
+    fn to_expr(&self) -> OutputSubExpr {
         self.to_normalized().to_expr()
     }
     fn to_value(&self) -> Value {
@@ -148,14 +151,14 @@ impl TypeInternal {
             _ => None,
         }
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.shift(delta, var))),
             Const(c) => Const(*c),
         }
     }
-    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
@@ -173,12 +176,12 @@ impl PartialEq for TypeInternal {
 
 #[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
-    Type(V<Label>, Type),
+    Type(Var<Label>, Type),
     Value(Normalized),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         use EnvItem::*;
         match self {
             Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
@@ -205,8 +208,8 @@ impl TypecheckContext {
     pub(crate) fn insert_value(&self, x: &Label, t: Normalized) -> Self {
         TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
-        let V(x, n) = var;
+    pub(crate) fn lookup(&self, var: &Var<Label>) -> Option<Cow<'_, Type>> {
+        let Var(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
             Some(EnvItem::Value(t)) => Some(t.get_type()?),
@@ -238,8 +241,12 @@ fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     }
 }
 
-fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
-    let (V(xL, mut nL), V(xR, mut nR)) = (vl, vr);
+fn match_vars(
+    vl: &Var<Label>,
+    vr: &Var<Label>,
+    ctx: &[(&Label, &Label)],
+) -> bool {
+    let (Var(xL, mut nL), Var(xR, mut nR)) = (vl, vr);
     for &(xL2, xR2) in ctx {
         match (nL, nR) {
             (0, 0) if xL == xL2 && xR == xR2 => return true,
@@ -265,8 +272,8 @@ where
     use dhall_syntax::ExprF::*;
     fn go<'a, S, T>(
         ctx: &mut Vec<(&'a Label, &'a Label)>,
-        el: &'a SubExpr<S, X>,
-        er: &'a SubExpr<T, X>,
+        el: &'a SubExpr<Label, S, X>,
+        er: &'a SubExpr<Label, T, X>,
     ) -> bool
     where
         S: ::std::fmt::Debug,
@@ -350,9 +357,9 @@ fn type_of_const(c: Const) -> Result<Type, TypeError> {
     }
 }
 
-fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
+fn type_of_builtin(b: Builtin) -> InputSubExpr {
     use dhall_syntax::Builtin::*;
-    match b {
+    rc(match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
         List | Optional => dhall::expr!(
             Type -> Type
@@ -432,7 +439,8 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
         OptionalNone => dhall::expr!(
             forall (A: Type) -> Optional A
         ),
-    }
+    })
+    .note_absurd()
 }
 
 macro_rules! ensure_equal {
@@ -619,10 +627,7 @@ impl TypeIntermediate {
 
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
-fn mktype(
-    ctx: &TypecheckContext,
-    e: SubExpr<Span, Normalized>,
-) -> Result<Type, TypeError> {
+fn mktype(ctx: &TypecheckContext, e: InputSubExpr) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
@@ -645,7 +650,7 @@ enum Ret {
 /// succeeded, or an error if type-checking failed
 fn type_with(
     ctx: &TypecheckContext,
-    e: SubExpr<Span, Normalized>,
+    e: InputSubExpr,
 ) -> Result<Typed, TypeError> {
     use dhall_syntax::ExprF::{
         Annot, App, Embed, Lam, Let, OldOptionalLit, Pi, SomeLit,
@@ -756,7 +761,7 @@ fn type_last_layer(
                 mkerr(TypeMismatch(f.clone(), tx.clone().to_normalized(), a))
             });
 
-            Ok(RetType(tb.subst_shift(&V(x.clone(), 0), &a)))
+            Ok(RetType(tb.subst_shift(&x.into(), &a)))
         }
         Annot(x, t) => {
             let t = t.to_type();
@@ -937,9 +942,7 @@ fn type_last_layer(
             }
         }
         Const(c) => Ok(RetTyped(const_to_typed(c))),
-        Builtin(b) => {
-            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).note_absurd())?))
-        }
+        Builtin(b) => Ok(RetType(mktype(ctx, type_of_builtin(b))?)),
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
         IntegerLit(_) => Ok(RetType(builtin_to_type(Integer)?)),
@@ -998,7 +1001,7 @@ fn type_last_layer(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
+fn type_of(e: InputSubExpr) -> Result<Typed, TypeError> {
     let ctx = TypecheckContext::new();
     let e = type_with(&ctx, e)?;
     // Ensure `e` has a type (i.e. `e` is not `Sort`)
@@ -1009,7 +1012,7 @@ fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    UnboundVariable(V<Label>),
+    UnboundVariable(Var<Label>),
     InvalidInputType(Normalized),
     InvalidOutputType(Normalized),
     NotAFunction(Typed),

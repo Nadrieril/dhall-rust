@@ -1,11 +1,11 @@
 #![feature(proc_macro_hygiene)]
 use dhall::de::SimpleStaticType;
 use dhall_proc_macros;
-use dhall_syntax::{SubExpr, X};
+use dhall_syntax::{Label, SubExpr, X};
 
 #[test]
 fn test_static_type() {
-    fn mktype(x: SubExpr<X, X>) -> dhall::expr::SimpleType {
+    fn mktype(x: SubExpr<Label, X, X>) -> dhall::expr::SimpleType {
         x.into()
     }
 

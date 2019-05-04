@@ -6,13 +6,13 @@ use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
-    InterpolatedTextContents, Label, Natural, Span, SubExpr, V, X,
+    InterpolatedTextContents, Label, Natural, Span, SubExpr, Var, X,
 };
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
 
-type InputSubExpr = SubExpr<Span, Normalized>;
-type OutputSubExpr = SubExpr<X, X>;
+type InputSubExpr = SubExpr<Label, Span, Normalized>;
+type OutputSubExpr = SubExpr<Label, X, X>;
 
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
@@ -38,11 +38,11 @@ impl Typed {
         Normalized(internal)
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         Typed(self.0.shift(delta, var))
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 
@@ -58,11 +58,11 @@ impl Typed {
 #[derive(Debug, Clone)]
 enum EnvItem {
     Thunk(Thunk),
-    Skip(V<Label>),
+    Skip(Var<Label>),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         use EnvItem::*;
         match self {
             Thunk(e) => Thunk(e.shift(delta, var)),
@@ -70,7 +70,7 @@ impl EnvItem {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
             EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.to_thunk()),
@@ -93,8 +93,8 @@ impl NormalizationContext {
                 .insert(x.clone(), EnvItem::Skip(x.into())),
         ))
     }
-    fn lookup(&self, var: &V<Label>) -> Value {
-        let V(x, n) = var;
+    fn lookup(&self, var: &Var<Label>) -> Value {
+        let Var(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Thunk(t)) => t.to_value(),
             Some(EnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
@@ -118,11 +118,11 @@ impl NormalizationContext {
         NormalizationContext(Rc::new(ctx))
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
-    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         NormalizationContext(Rc::new(
             self.0.map(|_, e| e.subst_shift(var, val)),
         ))
@@ -144,7 +144,7 @@ pub(crate) enum Value {
     NaturalSuccClosure,
     Pi(Label, TypeThunk, TypeThunk),
 
-    Var(V<Label>),
+    Var(Var<Label>),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
@@ -403,7 +403,7 @@ impl Value {
         Value::AppliedBuiltin(b, vec![])
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -500,7 +500,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -616,7 +616,7 @@ mod thunk {
         OutputSubExpr, Value,
     };
     use crate::expr::Typed;
-    use dhall_syntax::{Label, V};
+    use dhall_syntax::{Label, Var};
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 
@@ -693,7 +693,7 @@ mod thunk {
             }
         }
 
-        fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -707,7 +707,7 @@ mod thunk {
             }
         }
 
-        fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -805,11 +805,15 @@ mod thunk {
             apply_any(self.clone(), th)
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
             self.0.borrow().shift(delta, var).into_thunk()
         }
 
-        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(
+            &self,
+            var: &Var<Label>,
+            val: &Typed,
+        ) -> Self {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
     }
@@ -855,14 +859,14 @@ impl TypeThunk {
         self.normalize_nf().normalize_to_expr()
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
             TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &Var<Label>, val: &Typed) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),

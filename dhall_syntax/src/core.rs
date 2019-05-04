@@ -60,19 +60,7 @@ pub enum Const {
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct V<Label>(pub Label, pub usize);
-
-// This is only for the specific `Label` type, not generic
-impl From<Label> for V<Label> {
-    fn from(x: Label) -> V<Label> {
-        V(x, 0)
-    }
-}
-impl<'a> From<&'a Label> for V<Label> {
-    fn from(x: &'a Label) -> V<Label> {
-        V(x.clone(), 0)
-    }
-}
+pub struct Var<Label>(pub Label, pub usize);
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -137,44 +125,52 @@ pub enum Builtin {
     TextShow,
 }
 
-pub type ParsedExpr = SubExpr<X, Import>;
-pub type ResolvedExpr = SubExpr<X, X>;
+pub type ParsedExpr = SubExpr<Label, X, Import>;
+pub type ResolvedExpr = SubExpr<Label, X, X>;
 pub type DhallExpr = ResolvedExpr;
 
 // Each node carries an annotation. In practice it's either X (no annotation) or a Span.
 #[derive(Debug)]
-pub struct SubExpr<Note, Embed>(Rc<(Expr<Note, Embed>, Option<Note>)>);
+pub struct SubExpr<VarLabel, Note, Embed>(
+    Rc<(Expr<VarLabel, Note, Embed>, Option<Note>)>,
+);
 
-impl<Note, Embed: PartialEq> std::cmp::PartialEq for SubExpr<Note, Embed> {
+impl<VarLabel: PartialEq, Note, Embed: PartialEq> std::cmp::PartialEq
+    for SubExpr<VarLabel, Note, Embed>
+{
     fn eq(&self, other: &Self) -> bool {
         self.0.as_ref().0 == other.0.as_ref().0
     }
 }
 
-impl<Note, Embed: Eq> std::cmp::Eq for SubExpr<Note, Embed> {}
+impl<VarLabel: Eq, Note, Embed: Eq> std::cmp::Eq
+    for SubExpr<VarLabel, Note, Embed>
+{
+}
 
-pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Label, Embed>;
+pub type Expr<VarLabel, Note, Embed> =
+    ExprF<SubExpr<VarLabel, Note, Embed>, VarLabel, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExprF<SubExpr, Label, Embed> {
+pub enum ExprF<SubExpr, VarLabel, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
-    Var(V<Label>),
+    Var(Var<VarLabel>),
     ///  `λ(x : A) -> b`
-    Lam(Label, SubExpr, SubExpr),
+    Lam(VarLabel, SubExpr, SubExpr),
     ///  `A -> B`
     ///  `∀(x : A) -> B`
-    Pi(Label, SubExpr, SubExpr),
+    Pi(VarLabel, SubExpr, SubExpr),
     ///  `f a`
     App(SubExpr, SubExpr),
     ///  `let x     = r in e`
     ///  `let x : t = r in e`
-    Let(Label, Option<SubExpr>, SubExpr, SubExpr),
+    Let(VarLabel, Option<SubExpr>, SubExpr, SubExpr),
     ///  `x : t`
     Annot(SubExpr, SubExpr),
     /// Built-in values
@@ -235,11 +231,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         visit_under_binder: impl FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
         visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
         visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
-    ) -> Result<ExprF<SE2, L2, E2>, Err>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> Result<ExprF<SE2, L2, E2>, Err> {
         self.visit(visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
@@ -253,11 +245,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
         visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
-    ) -> Result<ExprF<SE2, L2, E2>, Err>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> Result<ExprF<SE2, L2, E2>, Err> {
         self.visit(visitor::TraverseRefVisitor {
             visit_subexpr,
             visit_embed,
@@ -271,11 +259,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         mut map_under_binder: impl FnMut(&'a L, &'a SE) -> SE2,
         map_embed: impl FnOnce(&'a E) -> E2,
         mut map_label: impl FnMut(&'a L) -> L2,
-    ) -> ExprF<SE2, L2, E2>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> ExprF<SE2, L2, E2> {
         trivial_result(self.traverse_ref_with_special_handling_of_binders(
             |x| Ok(map_subexpr(x)),
             |l, x| Ok(map_under_binder(l, x)),
@@ -289,11 +273,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         map_embed: impl FnOnce(&'a E) -> E2,
         mut map_label: impl FnMut(&'a L) -> L2,
-    ) -> ExprF<SE2, L2, E2>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> ExprF<SE2, L2, E2> {
         trivial_result(self.traverse_ref(
             |x| Ok(map_subexpr(x)),
             |x| Ok(map_embed(x)),
@@ -306,7 +286,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprF<SE2, L, E>, Err>
     where
-        L: Ord + Clone,
+        L: Clone,
         E: Clone,
     {
         self.traverse_ref(
@@ -321,26 +301,31 @@ impl<SE, L, E> ExprF<SE, L, E> {
         map_subexpr: impl Fn(&'a SE) -> SE2,
     ) -> ExprF<SE2, L, E>
     where
-        L: Ord + Clone,
+        L: Clone,
         E: Clone,
     {
         self.map_ref(map_subexpr, E::clone, L::clone)
     }
 }
 
-impl<N, E> Expr<N, E> {
+impl<L, N, E> Expr<L, N, E> {
     fn traverse_embed<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<Expr<N, E2>, Err>
+    ) -> Result<Expr<L, N, E2>, Err>
     where
+        L: Clone,
         N: Clone,
     {
         self.visit(&mut visitor::TraverseEmbedVisitor(visit_embed))
     }
 
-    fn map_embed<E2>(&self, mut map_embed: impl FnMut(&E) -> E2) -> Expr<N, E2>
+    fn map_embed<E2>(
+        &self,
+        mut map_embed: impl FnMut(&E) -> E2,
+    ) -> Expr<L, N, E2>
     where
+        L: Clone,
         N: Clone,
     {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
@@ -348,52 +333,52 @@ impl<N, E> Expr<N, E> {
 
     pub fn squash_embed<E2>(
         &self,
-        f: impl FnMut(&E) -> SubExpr<N, E2>,
-    ) -> SubExpr<N, E2>
+        f: impl FnMut(&E) -> SubExpr<L, N, E2>,
+    ) -> SubExpr<L, N, E2>
     where
+        L: Clone,
         N: Clone,
     {
         trivial_result(self.visit(&mut visitor::SquashEmbedVisitor(f)))
     }
 }
 
-impl<E: Clone> Expr<X, E> {
-    pub fn note_absurd<N>(&self) -> Expr<N, E> {
+impl<L: Clone, E: Clone> Expr<L, X, E> {
+    pub fn note_absurd<N>(&self) -> Expr<L, N, E> {
         self.visit(&mut visitor::NoteAbsurdVisitor)
     }
 }
 
-impl<N: Clone> Expr<N, X> {
-    pub fn embed_absurd<E>(&self) -> Expr<N, E> {
+impl<L: Clone, N: Clone> Expr<L, N, X> {
+    pub fn embed_absurd<E>(&self) -> Expr<L, N, E> {
         self.visit(&mut visitor::EmbedAbsurdVisitor)
     }
 }
 
-impl<N, E> SubExpr<N, E> {
-    pub fn as_ref(&self) -> &Expr<N, E> {
+impl<V, N, E> SubExpr<V, N, E> {
+    pub fn as_ref(&self) -> &Expr<V, N, E> {
         &self.0.as_ref().0
     }
 
-    pub fn new(x: Expr<N, E>, n: N) -> Self {
+    pub fn new(x: Expr<V, N, E>, n: N) -> Self {
         SubExpr(Rc::new((x, Some(n))))
     }
 
-    pub fn from_expr_no_note(x: Expr<N, E>) -> Self {
+    pub fn from_expr_no_note(x: Expr<V, N, E>) -> Self {
         SubExpr(Rc::new((x, None)))
     }
 
-    pub fn unnote(&self) -> SubExpr<X, E>
+    pub fn unnote(&self) -> SubExpr<V, X, E>
     where
+        V: Clone,
         E: Clone,
     {
         SubExpr::from_expr_no_note(
             self.as_ref().visit(&mut visitor::UnNoteVisitor),
         )
     }
-}
 
-impl<N: Clone, E> SubExpr<N, E> {
-    pub fn rewrap<E2>(&self, x: Expr<N, E2>) -> SubExpr<N, E2>
+    pub fn rewrap<E2>(&self, x: Expr<V, N, E2>) -> SubExpr<V, N, E2>
     where
         N: Clone,
     {
@@ -403,8 +388,9 @@ impl<N: Clone, E> SubExpr<N, E> {
     pub fn traverse_embed<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<SubExpr<N, E2>, Err>
+    ) -> Result<SubExpr<V, N, E2>, Err>
     where
+        V: Clone,
         N: Clone,
     {
         Ok(self.rewrap(self.as_ref().traverse_embed(visit_embed)?))
@@ -413,8 +399,9 @@ impl<N: Clone, E> SubExpr<N, E> {
     pub fn map_embed<E2>(
         &self,
         map_embed: impl FnMut(&E) -> E2,
-    ) -> SubExpr<N, E2>
+    ) -> SubExpr<V, N, E2>
     where
+        V: Clone,
         N: Clone,
     {
         self.rewrap(self.as_ref().map_embed(map_embed))
@@ -423,8 +410,12 @@ impl<N: Clone, E> SubExpr<N, E> {
     pub fn map_subexprs_with_special_handling_of_binders<'a>(
         &'a self,
         map_expr: impl FnMut(&'a Self) -> Self,
-        map_under_binder: impl FnMut(&'a Label, &'a Self) -> Self,
-    ) -> Self {
+        map_under_binder: impl FnMut(&'a V, &'a Self) -> Self,
+    ) -> Self
+    where
+        V: Clone,
+        N: Clone,
+    {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // This calls ExprF::map_ref
@@ -432,7 +423,7 @@ impl<N: Clone, E> SubExpr<N, E> {
                 map_expr,
                 map_under_binder,
                 |_| unreachable!(),
-                Label::clone,
+                V::clone,
             )),
         }
     }
@@ -441,26 +432,34 @@ impl<N: Clone, E> SubExpr<N, E> {
     /// capture by shifting variable indices
     /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
     /// for details
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub fn shift(&self, delta: isize, var: &Var<V>) -> Self
+    where
+        V: Clone + PartialEq,
+        N: Clone,
+    {
         match self.as_ref() {
             ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(delta, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.shift(delta, var),
-                |x: &Label, e| e.shift(delta, &var.shift(1, &x.into())),
+                |x: &V, e| e.shift(delta, &var.shift(1, &Var::new(x.clone()))),
             ),
         }
     }
 
-    pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
+    pub fn subst_shift(&self, var: &Var<V>, val: &Self) -> Self
+    where
+        V: Clone + PartialEq,
+        N: Clone,
+    {
         match self.as_ref() {
             ExprF::Var(v) if v == var => val.clone(),
             ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(-1, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.subst_shift(var, val),
-                |x: &Label, e| {
+                |x: &V, e| {
                     e.subst_shift(
-                        &var.shift(1, &x.into()),
-                        &val.shift(1, &x.into()),
+                        &var.shift(1, &Var::new(x.clone())),
+                        &val.shift(1, &Var::new(x.clone())),
                     )
                 },
             ),
@@ -468,26 +467,26 @@ impl<N: Clone, E> SubExpr<N, E> {
     }
 }
 
-impl<N: Clone> SubExpr<N, X> {
-    pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
+impl<L: Clone, N: Clone> SubExpr<L, N, X> {
+    pub fn embed_absurd<T>(&self) -> SubExpr<L, N, T> {
         self.rewrap(self.as_ref().embed_absurd())
     }
 }
 
-impl<E: Clone> SubExpr<X, E> {
-    pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
+impl<L: Clone, E: Clone> SubExpr<L, X, E> {
+    pub fn note_absurd<N>(&self) -> SubExpr<L, N, E> {
         SubExpr::from_expr_no_note(self.as_ref().note_absurd())
     }
 }
 
-impl<N, E> Clone for SubExpr<N, E> {
+impl<L, N, E> Clone for SubExpr<L, N, E> {
     fn clone(&self) -> Self {
         SubExpr(Rc::clone(&self.0))
     }
 }
 
 // Should probably rename this
-pub fn rc<E>(x: Expr<X, E>) -> SubExpr<X, E> {
+pub fn rc<L, E>(x: Expr<L, X, E>) -> SubExpr<L, X, E> {
     SubExpr::from_expr_no_note(x)
 }
 
@@ -501,15 +500,32 @@ fn add_ui(u: usize, i: isize) -> usize {
     }
 }
 
-impl<Label: PartialEq + Clone> V<Label> {
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        let V(x, n) = var;
-        let V(y, m) = self;
+impl<L> Var<L> {
+    fn new(x: L) -> Self {
+        Var(x, 0)
+    }
+}
+impl<L: PartialEq + Clone> Var<L> {
+    pub fn shift(&self, delta: isize, var: &Var<L>) -> Self {
+        let Var(x, n) = var;
+        let Var(y, m) = self;
         if x == y && n <= m {
-            V(y.clone(), add_ui(*m, delta))
+            Var(y.clone(), add_ui(*m, delta))
         } else {
-            V(y.clone(), *m)
+            Var(y.clone(), *m)
         }
+    }
+}
+
+// This is only for the specific `Label` type, not generic
+impl From<Label> for Var<Label> {
+    fn from(x: Label) -> Var<Label> {
+        Var(x, 0)
+    }
+}
+impl<'a> From<&'a Label> for Var<Label> {
+    fn from(x: &'a Label) -> Var<Label> {
+        Var(x.clone(), 0)
     }
 }
 
@@ -520,9 +536,9 @@ impl<Label: PartialEq + Clone> V<Label> {
 ///
 pub fn shift<N, E>(
     delta: isize,
-    var: &V<Label>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
+    var: &Var<Label>,
+    in_expr: &SubExpr<Label, N, E>,
+) -> SubExpr<Label, N, E>
 where
     N: Clone,
 {
@@ -531,8 +547,8 @@ where
 
 pub fn shift0_multiple<N, E>(
     deltas: &HashMap<Label, isize>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
+    in_expr: &SubExpr<Label, N, E>,
+) -> SubExpr<Label, N, E>
 where
     N: Clone,
 {
@@ -542,16 +558,15 @@ where
 fn shift0_multiple_inner<N, E>(
     ctx: &Context<Label, ()>,
     deltas: &HashMap<Label, isize>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
+    in_expr: &SubExpr<Label, N, E>,
+) -> SubExpr<Label, N, E>
 where
     N: Clone,
 {
-    use crate::ExprF::*;
     match in_expr.as_ref() {
-        Var(V(y, m)) if ctx.lookup(y, *m).is_none() => {
+        ExprF::Var(Var(y, m)) if ctx.lookup(y, *m).is_none() => {
             let delta = deltas.get(y).unwrap_or(&0);
-            in_expr.rewrap(Var(V(y.clone(), add_ui(*m, *delta))))
+            in_expr.rewrap(ExprF::Var(Var(y.clone(), add_ui(*m, *delta))))
         }
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift0_multiple_inner(ctx, deltas, e),

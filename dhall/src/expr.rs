@@ -23,15 +23,17 @@ macro_rules! derive_other_traits {
     };
 }
 
+type OutputSubExpr = SubExpr<Label, X, X>;
+
 #[derive(Debug, Clone)]
 pub(crate) struct Parsed(
-    pub(crate) SubExpr<Span, Import>,
+    pub(crate) SubExpr<Label, Span, Import>,
     pub(crate) ImportRoot,
 );
 derive_other_traits!(Parsed);
 
 #[derive(Debug, Clone)]
-pub(crate) struct Resolved(pub(crate) SubExpr<Span, Normalized>);
+pub(crate) struct Resolved(pub(crate) SubExpr<Label, Span, Normalized>);
 derive_other_traits!(Resolved);
 
 pub(crate) use self::typed::TypedInternal;
@@ -57,12 +59,12 @@ impl std::fmt::Display for Normalized {
 }
 
 mod typed {
-    use super::{Type, Typed};
+    use super::{OutputSubExpr, Type, Typed};
     use crate::normalize::{Thunk, Value};
     use crate::typecheck::{
         TypeError, TypeInternal, TypeMessage, TypecheckContext,
     };
-    use dhall_syntax::{Const, Label, SubExpr, V, X};
+    use dhall_syntax::{Const, Label, Var};
     use std::borrow::Cow;
 
     #[derive(Debug, Clone)]
@@ -90,7 +92,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
+        pub(crate) fn to_expr(&self) -> OutputSubExpr {
             self.to_value().normalize_to_expr()
         }
 
@@ -129,7 +131,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &Var<Label>) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.shift(delta, var),
@@ -139,7 +141,11 @@ mod typed {
             }
         }
 
-        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(
+            &self,
+            var: &Var<Label>,
+            val: &Typed,
+        ) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.subst_shift(var, val),
@@ -158,7 +164,7 @@ mod typed {
 ///
 /// For a more general notion of "type", see [Type].
 #[derive(Debug, Clone)]
-pub struct SimpleType(pub(crate) SubExpr<X, X>);
+pub struct SimpleType(pub(crate) OutputSubExpr);
 derive_other_traits!(SimpleType);
 
 pub(crate) use crate::typecheck::TypeInternal;
@@ -178,16 +184,16 @@ impl std::fmt::Display for Type {
 
 // Exposed for the macros
 #[doc(hidden)]
-impl From<SimpleType> for SubExpr<X, X> {
-    fn from(x: SimpleType) -> SubExpr<X, X> {
+impl From<SimpleType> for OutputSubExpr {
+    fn from(x: SimpleType) -> OutputSubExpr {
         x.0
     }
 }
 
 // Exposed for the macros
 #[doc(hidden)]
-impl From<SubExpr<X, X>> for SimpleType {
-    fn from(x: SubExpr<X, X>) -> SimpleType {
+impl From<OutputSubExpr> for SimpleType {
+    fn from(x: OutputSubExpr) -> SimpleType {
         SimpleType(x)
     }
 }
@@ -204,7 +210,7 @@ impl Normalized {
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         Normalized(TypedInternal::from_thunk_and_type(th, t))
     }
-    pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
+    pub(crate) fn to_expr(&self) -> OutputSubExpr {
         self.0.to_expr()
     }
     pub(crate) fn to_value(&self) -> Value {
