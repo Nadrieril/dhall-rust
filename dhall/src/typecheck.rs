@@ -14,21 +14,18 @@ use dhall_syntax::*;
 
 use self::TypeMessage::*;
 
-impl<'a> Resolved<'a> {
-    pub fn typecheck(self) -> Result<Typed<'static>, TypeError> {
+impl Resolved {
+    pub fn typecheck(self) -> Result<Typed, TypeError> {
         type_of(self.0.unnote())
     }
-    pub fn typecheck_with(
-        self,
-        ty: &Type,
-    ) -> Result<Typed<'static>, TypeError> {
+    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
         let expr: SubExpr<_, _> = self.0.unnote();
         let ty: SubExpr<_, _> = ty.to_expr().embed_absurd();
         type_of(rc(ExprF::Annot(expr, ty)))
     }
     /// Pretends this expression has been typechecked. Use with care.
     #[allow(dead_code)]
-    pub fn skip_typecheck(self) -> Typed<'a> {
+    pub fn skip_typecheck(self) -> Typed {
         Typed::from_thunk_untyped(Thunk::new(
             NormalizationContext::new(),
             self.0.unnote(),
@@ -36,8 +33,8 @@ impl<'a> Resolved<'a> {
     }
 }
 
-impl<'a> Typed<'a> {
-    fn to_type(&self) -> Type<'a> {
+impl Typed {
+    fn to_type(&self) -> Type {
         match &self.to_value() {
             Value::Const(c) => Type(TypeInternal::Const(*c)),
             _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
@@ -45,17 +42,17 @@ impl<'a> Typed<'a> {
     }
 }
 
-impl<'a> Normalized<'a> {
+impl Normalized {
     fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        Normalized(self.0.shift(delta, var), self.1)
+        Normalized(self.0.shift(delta, var))
     }
-    pub(crate) fn to_type(self) -> Type<'a> {
+    pub(crate) fn to_type(self) -> Type {
         self.0.to_type()
     }
 }
 
-impl<'a> Type<'a> {
-    pub(crate) fn to_normalized(&self) -> Normalized<'a> {
+impl Type {
+    pub(crate) fn to_normalized(&self) -> Normalized {
         self.0.to_normalized()
     }
     pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
@@ -64,13 +61,13 @@ impl<'a> Type<'a> {
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
     fn as_const(&self) -> Option<Const> {
         self.0.as_const()
     }
-    fn internal(&self) -> &TypeInternal<'a> {
+    fn internal(&self) -> &TypeInternal {
         &self.0
     }
     fn internal_whnf(&self) -> Option<Value> {
@@ -79,11 +76,7 @@ impl<'a> Type<'a> {
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         Type(self.0.shift(delta, var))
     }
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &Typed<'static>,
-    ) -> Self {
+    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         Type(self.0.subst_shift(var, val))
     }
 
@@ -99,10 +92,7 @@ impl<'a> Type<'a> {
 }
 
 impl TypeThunk {
-    fn to_type(
-        &self,
-        ctx: &TypecheckContext,
-    ) -> Result<Type<'static>, TypeError> {
+    fn to_type(&self, ctx: &TypecheckContext) -> Result<Type, TypeError> {
         match self {
             TypeThunk::Type(t) => Ok(t.clone()),
             TypeThunk::Thunk(th) => {
@@ -118,20 +108,20 @@ impl TypeThunk {
 /// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
 /// but only construct `TypeInternal`s.
 #[derive(Debug, Clone)]
-pub(crate) enum TypeInternal<'a> {
+pub(crate) enum TypeInternal {
     Const(Const),
     /// This must not contain a Const value.
-    Typed(Box<Typed<'a>>),
+    Typed(Box<Typed>),
 }
 
-impl<'a> TypeInternal<'a> {
-    fn to_typed(&self) -> Typed<'a> {
+impl TypeInternal {
+    fn to_typed(&self) -> Typed {
         match self {
             TypeInternal::Typed(e) => e.as_ref().clone(),
             TypeInternal::Const(c) => const_to_typed(*c),
         }
     }
-    fn to_normalized(&self) -> Normalized<'a> {
+    fn to_normalized(&self) -> Normalized {
         self.to_typed().normalize()
     }
     fn to_expr(&self) -> SubExpr<X, X> {
@@ -140,7 +130,7 @@ impl<'a> TypeInternal<'a> {
     fn to_value(&self) -> Value {
         self.to_typed().to_value()
     }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type<'static>>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         Ok(match self {
             TypeInternal::Typed(e) => e.get_type()?,
             TypeInternal::Const(c) => Cow::Owned(type_of_const(*c)?),
@@ -165,7 +155,7 @@ impl<'a> TypeInternal<'a> {
             Const(c) => Const(*c),
         }
     }
-    fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
+    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
@@ -174,8 +164,8 @@ impl<'a> TypeInternal<'a> {
     }
 }
 
-impl<'a> Eq for TypeInternal<'a> {}
-impl<'a> PartialEq for TypeInternal<'a> {
+impl Eq for TypeInternal {}
+impl PartialEq for TypeInternal {
     fn eq(&self, other: &Self) -> bool {
         self.to_normalized() == other.to_normalized()
     }
@@ -183,8 +173,8 @@ impl<'a> PartialEq for TypeInternal<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
-    Type(V<Label>, Type<'static>),
-    Value(Normalized<'static>),
+    Type(V<Label>, Type),
+    Value(Normalized),
 }
 
 impl EnvItem {
@@ -204,7 +194,7 @@ impl TypecheckContext {
     pub(crate) fn new() -> Self {
         TypecheckContext(Context::new())
     }
-    pub(crate) fn insert_type(&self, x: &Label, t: Type<'static>) -> Self {
+    pub(crate) fn insert_type(&self, x: &Label, t: Type) -> Self {
         TypecheckContext(
             self.0.map(|_, e| e.shift(1, &x.into())).insert(
                 x.clone(),
@@ -212,17 +202,10 @@ impl TypecheckContext {
             ),
         )
     }
-    pub(crate) fn insert_value(
-        &self,
-        x: &Label,
-        t: Normalized<'static>,
-    ) -> Self {
+    pub(crate) fn insert_value(&self, x: &Label, t: Normalized) -> Self {
         TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
     }
-    pub(crate) fn lookup(
-        &self,
-        var: &V<Label>,
-    ) -> Option<Cow<'_, Type<'static>>> {
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
         let V(x, n) = var;
         match self.0.lookup(x, *n) {
             Some(EnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
@@ -276,8 +259,8 @@ fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
 // Equality up to alpha-equivalence (renaming of bound variables)
 fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
 where
-    T: Borrow<Type<'static>>,
-    U: Borrow<Type<'static>>,
+    T: Borrow<Type>,
+    U: Borrow<Type>,
 {
     use dhall_syntax::ExprF::*;
     fn go<'a, S, T>(
@@ -340,7 +323,7 @@ where
     }
 }
 
-fn const_to_typed<'a>(c: Const) -> Typed<'a> {
+fn const_to_typed(c: Const) -> Typed {
     match c {
         Const::Sort => Typed::const_sort(),
         _ => Typed::from_thunk_and_type(
@@ -350,11 +333,11 @@ fn const_to_typed<'a>(c: Const) -> Typed<'a> {
     }
 }
 
-fn const_to_type<'a>(c: Const) -> Type<'a> {
+fn const_to_type(c: Const) -> Type {
     Type(TypeInternal::Const(c))
 }
 
-fn type_of_const<'a>(c: Const) -> Result<Type<'a>, TypeError> {
+fn type_of_const(c: Const) -> Result<Type, TypeError> {
     match c {
         Const::Type => Ok(Type::const_kind()),
         Const::Kind => Ok(Type::const_sort()),
@@ -472,15 +455,15 @@ macro_rules! ensure_simple_type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeIntermediate {
-    Pi(TypecheckContext, Label, Type<'static>, Type<'static>),
-    RecordType(TypecheckContext, BTreeMap<Label, Type<'static>>),
-    UnionType(TypecheckContext, BTreeMap<Label, Option<Type<'static>>>),
-    ListType(TypecheckContext, Type<'static>),
-    OptionalType(TypecheckContext, Type<'static>),
+    Pi(TypecheckContext, Label, Type, Type),
+    RecordType(TypecheckContext, BTreeMap<Label, Type>),
+    UnionType(TypecheckContext, BTreeMap<Label, Option<Type>>),
+    ListType(TypecheckContext, Type),
+    OptionalType(TypecheckContext, Type),
 }
 
 impl TypeIntermediate {
-    fn typecheck(self) -> Result<Typed<'static>, TypeError> {
+    fn typecheck(self) -> Result<Typed, TypeError> {
         let mkerr = |ctx, msg| TypeError::new(ctx, msg);
         Ok(match &self {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
@@ -638,32 +621,32 @@ impl TypeIntermediate {
 /// and turn it into a type, typechecking it along the way.
 fn mktype(
     ctx: &TypecheckContext,
-    e: SubExpr<X, Normalized<'static>>,
-) -> Result<Type<'static>, TypeError> {
+    e: SubExpr<X, Normalized>,
+) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
-fn builtin_to_type<'a>(b: Builtin) -> Result<Type<'a>, TypeError> {
+fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
     mktype(&TypecheckContext::new(), rc(ExprF::Builtin(b)))
 }
 
 /// Intermediary return type
 enum Ret {
     /// Returns the contained value as is
-    RetTyped(Typed<'static>),
+    RetTyped(Typed),
     /// Use the contained Type as the type of the input expression
-    RetType(Type<'static>),
+    RetType(Type),
     /// Returns an expression that must be typechecked and
     /// turned into a Type first.
-    RetExpr(Expr<X, Normalized<'static>>),
+    RetExpr(Expr<X, Normalized>),
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed
 fn type_with(
     ctx: &TypecheckContext,
-    e: SubExpr<X, Normalized<'static>>,
-) -> Result<Typed<'static>, TypeError> {
+    e: SubExpr<X, Normalized>,
+) -> Result<Typed, TypeError> {
     use dhall_syntax::ExprF::*;
 
     use Ret::*;
@@ -736,12 +719,12 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<Typed<'static>, Label, X, Normalized<'static>>,
+    e: ExprF<Typed, Label, X, Normalized>,
 ) -> Result<Ret, TypeError> {
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
     use dhall_syntax::ExprF::*;
-    let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, msg);
+    let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
 
     use Ret::*;
     match e {
@@ -1011,9 +994,7 @@ fn type_last_layer(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-fn type_of(
-    e: SubExpr<X, Normalized<'static>>,
-) -> Result<Typed<'static>, TypeError> {
+fn type_of(e: SubExpr<X, Normalized>) -> Result<Typed, TypeError> {
     let ctx = TypecheckContext::new();
     let e = type_with(&ctx, e)?;
     // Ensure `e` has a type (i.e. `e` is not `Sort`)
@@ -1023,27 +1004,27 @@ fn type_of(
 
 /// The specific type error
 #[derive(Debug)]
-pub(crate) enum TypeMessage<'a> {
+pub(crate) enum TypeMessage {
     UnboundVariable(V<Label>),
-    InvalidInputType(Normalized<'a>),
-    InvalidOutputType(Normalized<'a>),
-    NotAFunction(Typed<'a>),
-    TypeMismatch(Typed<'a>, Normalized<'a>, Typed<'a>),
-    AnnotMismatch(Typed<'a>, Normalized<'a>),
+    InvalidInputType(Normalized),
+    InvalidOutputType(Normalized),
+    NotAFunction(Typed),
+    TypeMismatch(Typed, Normalized, Typed),
+    AnnotMismatch(Typed, Normalized),
     Untyped,
-    InvalidListElement(usize, Normalized<'a>, Typed<'a>),
-    InvalidListType(Normalized<'a>),
-    InvalidOptionalType(Normalized<'a>),
-    InvalidPredicate(Typed<'a>),
-    IfBranchMismatch(Typed<'a>, Typed<'a>),
-    IfBranchMustBeTerm(bool, Typed<'a>),
-    InvalidFieldType(Label, Type<'a>),
-    NotARecord(Label, Normalized<'a>),
-    MissingRecordField(Label, Typed<'a>),
-    MissingUnionField(Label, Normalized<'a>),
-    BinOpTypeMismatch(BinOp, Typed<'a>),
-    NoDependentTypes(Normalized<'a>, Normalized<'a>),
-    InvalidTextInterpolation(Typed<'a>),
+    InvalidListElement(usize, Normalized, Typed),
+    InvalidListType(Normalized),
+    InvalidOptionalType(Normalized),
+    InvalidPredicate(Typed),
+    IfBranchMismatch(Typed, Typed),
+    IfBranchMustBeTerm(bool, Typed),
+    InvalidFieldType(Label, Type),
+    NotARecord(Label, Normalized),
+    MissingRecordField(Label, Typed),
+    MissingUnionField(Label, Normalized),
+    BinOpTypeMismatch(BinOp, Typed),
+    NoDependentTypes(Normalized, Normalized),
+    InvalidTextInterpolation(Typed),
     Sort,
     Unimplemented,
 }
@@ -1051,14 +1032,14 @@ pub(crate) enum TypeMessage<'a> {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
-    type_message: TypeMessage<'static>,
+    type_message: TypeMessage,
     context: TypecheckContext,
 }
 
 impl TypeError {
     pub(crate) fn new(
         context: &TypecheckContext,
-        type_message: TypeMessage<'static>,
+        type_message: TypeMessage,
     ) -> Self {
         TypeError {
             context: context.clone(),
@@ -1073,7 +1054,7 @@ impl From<TypeError> for std::option::NoneError {
     }
 }
 
-impl ::std::error::Error for TypeMessage<'static> {
+impl ::std::error::Error for TypeMessage {
     fn description(&self) -> &str {
         match *self {
             // UnboundVariable => "Unbound variable",
@@ -1086,7 +1067,7 @@ impl ::std::error::Error for TypeMessage<'static> {
     }
 }
 
-impl fmt::Display for TypeMessage<'static> {
+impl fmt::Display for TypeMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             // UnboundVariable(_) => {

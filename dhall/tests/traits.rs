@@ -5,7 +5,7 @@ use dhall_syntax::{SubExpr, X};
 
 #[test]
 fn test_static_type() {
-    fn mktype(x: SubExpr<X, X>) -> dhall::expr::SimpleType<'static> {
+    fn mktype(x: SubExpr<X, X>) -> dhall::expr::SimpleType {
         x.into()
     }
 

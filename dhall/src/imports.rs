@@ -20,7 +20,7 @@ pub enum ImportRoot {
     LocalDir(PathBuf),
 }
 
-type ImportCache = HashMap<Import, Normalized<'static>>;
+type ImportCache = HashMap<Import, Normalized>;
 
 type ImportStack = Vec<Import>;
 
@@ -29,7 +29,7 @@ fn resolve_import(
     root: &ImportRoot,
     import_cache: &mut ImportCache,
     import_stack: &ImportStack,
-) -> Result<Normalized<'static>, ImportError> {
+) -> Result<Normalized, ImportError> {
     use self::ImportRoot::*;
     use dhall_syntax::FilePrefix::*;
     use dhall_syntax::ImportLocation::*;
@@ -56,7 +56,7 @@ fn load_import(
     f: &Path,
     import_cache: &mut ImportCache,
     import_stack: &ImportStack,
-) -> Result<Normalized<'static>, Error> {
+) -> Result<Normalized, Error> {
     Ok(
         do_resolve_expr(Parsed::parse_file(f)?, import_cache, import_stack)?
             .typecheck()?
@@ -64,57 +64,51 @@ fn load_import(
     )
 }
 
-fn do_resolve_expr<'a>(
-    Parsed(expr, root): Parsed<'a>,
+fn do_resolve_expr(
+    Parsed(expr, root): Parsed,
     import_cache: &mut ImportCache,
     import_stack: &ImportStack,
-) -> Result<Resolved<'a>, ImportError> {
-    let resolve =
-        |import: &Import| -> Result<Normalized<'static>, ImportError> {
-            if import_stack.contains(import) {
-                return Err(ImportError::ImportCycle(
-                    import_stack.clone(),
-                    import.clone(),
-                ));
-            }
-            match import_cache.get(import) {
-                Some(expr) => Ok(expr.clone()),
-                None => {
-                    // Copy the import stack and push the current import
-                    let mut import_stack = import_stack.clone();
-                    import_stack.push(import.clone());
+) -> Result<Resolved, ImportError> {
+    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
+        if import_stack.contains(import) {
+            return Err(ImportError::ImportCycle(
+                import_stack.clone(),
+                import.clone(),
+            ));
+        }
+        match import_cache.get(import) {
+            Some(expr) => Ok(expr.clone()),
+            None => {
+                // Copy the import stack and push the current import
+                let mut import_stack = import_stack.clone();
+                import_stack.push(import.clone());
 
-                    // Resolve the import recursively
-                    let expr = resolve_import(
-                        import,
-                        &root,
-                        import_cache,
-                        &import_stack,
-                    )?;
+                // Resolve the import recursively
+                let expr =
+                    resolve_import(import, &root, import_cache, &import_stack)?;
 
-                    // Add the import to the cache
-                    import_cache.insert(import.clone(), expr.clone());
-                    Ok(expr)
-                }
+                // Add the import to the cache
+                import_cache.insert(import.clone(), expr.clone());
+                Ok(expr)
             }
-        };
+        }
+    };
     let expr = expr.traverse_embed(resolve)?;
     Ok(Resolved(expr))
 }
 
 fn skip_resolve_expr(
-    Parsed(expr, _root): Parsed<'_>,
-) -> Result<Resolved<'_>, ImportError> {
-    let resolve =
-        |import: &Import| -> Result<Normalized<'static>, ImportError> {
-            Err(ImportError::UnexpectedImport(import.clone()))
-        };
+    Parsed(expr, _root): Parsed,
+) -> Result<Resolved, ImportError> {
+    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
+        Err(ImportError::UnexpectedImport(import.clone()))
+    };
     let expr = expr.traverse_embed(resolve)?;
     Ok(Resolved(expr))
 }
 
-impl<'a> Parsed<'a> {
-    pub fn parse_file(f: &Path) -> Result<Parsed<'a>, Error> {
+impl Parsed {
+    pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         let mut buffer = String::new();
         File::open(f)?.read_to_string(&mut buffer)?;
         let expr = parse_expr(&*buffer)?;
@@ -122,14 +116,14 @@ impl<'a> Parsed<'a> {
         Ok(Parsed(expr.unnote().note_absurd(), root))
     }
 
-    pub fn parse_str(s: &'a str) -> Result<Parsed<'a>, Error> {
+    pub fn parse_str(s: &str) -> Result<Parsed, Error> {
         let expr = parse_expr(s)?;
         let root = ImportRoot::LocalDir(std::env::current_dir()?);
         Ok(Parsed(expr, root))
     }
 
     #[allow(dead_code)]
-    pub fn parse_binary_file(f: &Path) -> Result<Parsed<'a>, Error> {
+    pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         let mut buffer = Vec::new();
         File::open(f)?.read_to_end(&mut buffer)?;
         let expr = crate::binary::decode(&buffer)?;
@@ -137,12 +131,12 @@ impl<'a> Parsed<'a> {
         Ok(Parsed(expr.note_absurd(), root))
     }
 
-    pub fn resolve(self) -> Result<Resolved<'a>, ImportError> {
+    pub fn resolve(self) -> Result<Resolved, ImportError> {
         crate::imports::do_resolve_expr(self, &mut HashMap::new(), &Vec::new())
     }
 
     #[allow(dead_code)]
-    pub fn skip_resolve(self) -> Result<Resolved<'a>, ImportError> {
+    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
         crate::imports::skip_resolve_expr(self)
     }
 }

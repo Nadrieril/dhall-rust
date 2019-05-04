@@ -1,19 +1,18 @@
 use crate::imports::ImportRoot;
 use crate::normalize::{Thunk, Value};
 use dhall_syntax::*;
-use std::marker::PhantomData;
 
 macro_rules! derive_other_traits {
     ($ty:ident) => {
-        impl<'a> std::cmp::PartialEq for $ty<'a> {
+        impl std::cmp::PartialEq for $ty {
             fn eq(&self, other: &Self) -> bool {
                 self.0 == other.0
             }
         }
 
-        impl<'a> std::cmp::Eq for $ty<'a> {}
+        impl std::cmp::Eq for $ty {}
 
-        impl<'a> std::fmt::Display for $ty<'a> {
+        impl std::fmt::Display for $ty {
             fn fmt(
                 &self,
                 f: &mut std::fmt::Formatter,
@@ -25,41 +24,33 @@ macro_rules! derive_other_traits {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Parsed<'a>(
-    pub(crate) SubExpr<Span<'a>, Import>,
+pub(crate) struct Parsed(
+    pub(crate) SubExpr<Span, Import>,
     pub(crate) ImportRoot,
 );
 derive_other_traits!(Parsed);
 
 #[derive(Debug, Clone)]
-pub(crate) struct Resolved<'a>(
-    pub(crate) SubExpr<Span<'a>, Normalized<'static>>,
-);
+pub(crate) struct Resolved(pub(crate) SubExpr<Span, Normalized>);
 derive_other_traits!(Resolved);
 
 pub(crate) use self::typed::TypedInternal;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Typed<'a>(
-    pub(crate) TypedInternal,
-    pub(crate) PhantomData<&'a ()>,
-);
+pub(crate) struct Typed(pub(crate) TypedInternal);
 
 #[derive(Debug, Clone)]
-pub(crate) struct Normalized<'a>(
-    pub(crate) TypedInternal,
-    pub(crate) PhantomData<&'a ()>,
-);
+pub(crate) struct Normalized(pub(crate) TypedInternal);
 
-impl<'a> std::cmp::PartialEq for Normalized<'a> {
+impl std::cmp::PartialEq for Normalized {
     fn eq(&self, other: &Self) -> bool {
         self.to_expr() == other.to_expr()
     }
 }
 
-impl<'a> std::cmp::Eq for Normalized<'a> {}
+impl std::cmp::Eq for Normalized {}
 
-impl<'a> std::fmt::Display for Normalized<'a> {
+impl std::fmt::Display for Normalized {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
@@ -73,18 +64,17 @@ mod typed {
     };
     use dhall_syntax::{Const, Label, SubExpr, V, X};
     use std::borrow::Cow;
-    use std::marker::PhantomData;
 
     #[derive(Debug, Clone)]
     pub(crate) enum TypedInternal {
         // The `Sort` higher-kinded type doesn't have a type
         Sort,
         // Any other value, along with its type
-        Value(Thunk, Option<Type<'static>>),
+        Value(Thunk, Option<Type>),
     }
 
     impl TypedInternal {
-        pub(crate) fn from_thunk_and_type(th: Thunk, t: Type<'static>) -> Self {
+        pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
             TypedInternal::Value(th, Some(t))
         }
 
@@ -113,22 +103,19 @@ mod typed {
             }
         }
 
-        pub(crate) fn to_type(&self) -> Type<'static> {
+        pub(crate) fn to_type(&self) -> Type {
             match self {
                 TypedInternal::Sort => Type(TypeInternal::Const(Const::Sort)),
                 TypedInternal::Value(th, _) => match &*th.as_value() {
                     Value::Const(c) => Type(TypeInternal::Const(*c)),
-                    _ => Type(TypeInternal::Typed(Box::new(Typed(
-                        self.clone(),
-                        PhantomData,
-                    )))),
+                    _ => {
+                        Type(TypeInternal::Typed(Box::new(Typed(self.clone()))))
+                    }
                 },
             }
         }
 
-        pub(crate) fn get_type(
-            &self,
-        ) -> Result<Cow<'_, Type<'static>>, TypeError> {
+        pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
             match self {
                 TypedInternal::Value(_, Some(t)) => Ok(Cow::Borrowed(t)),
                 TypedInternal::Value(_, None) => Err(TypeError::new(
@@ -152,11 +139,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn subst_shift(
-            &self,
-            var: &V<Label>,
-            val: &Typed<'static>,
-        ) -> Self {
+        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.subst_shift(var, val),
@@ -175,10 +158,7 @@ mod typed {
 ///
 /// For a more general notion of "type", see [Type].
 #[derive(Debug, Clone)]
-pub struct SimpleType<'a>(
-    pub(crate) SubExpr<X, X>,
-    pub(crate) PhantomData<&'a ()>,
-);
+pub struct SimpleType(pub(crate) SubExpr<X, X>);
 derive_other_traits!(SimpleType);
 
 pub(crate) use crate::typecheck::TypeInternal;
@@ -188,9 +168,9 @@ pub(crate) use crate::typecheck::TypeInternal;
 /// This includes [SimpleType]s but also higher-kinded expressions like
 /// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type<'a>(pub(crate) TypeInternal<'a>);
+pub struct Type(pub(crate) TypeInternal);
 
-impl<'a> std::fmt::Display for Type<'a> {
+impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_normalized().fmt(f)
     }
@@ -198,31 +178,31 @@ impl<'a> std::fmt::Display for Type<'a> {
 
 // Exposed for the macros
 #[doc(hidden)]
-impl<'a> From<SimpleType<'a>> for SubExpr<X, X> {
-    fn from(x: SimpleType<'a>) -> SubExpr<X, X> {
+impl From<SimpleType> for SubExpr<X, X> {
+    fn from(x: SimpleType) -> SubExpr<X, X> {
         x.0
     }
 }
 
 // Exposed for the macros
 #[doc(hidden)]
-impl<'a> From<SubExpr<X, X>> for SimpleType<'a> {
-    fn from(x: SubExpr<X, X>) -> SimpleType<'a> {
-        SimpleType(x, PhantomData)
+impl From<SubExpr<X, X>> for SimpleType {
+    fn from(x: SubExpr<X, X>) -> SimpleType {
+        SimpleType(x)
     }
 }
 
 // Exposed for the macros
 #[doc(hidden)]
-impl<'a> From<Normalized<'a>> for Typed<'a> {
-    fn from(x: Normalized<'a>) -> Typed<'a> {
-        Typed(x.0, x.1)
+impl From<Normalized> for Typed {
+    fn from(x: Normalized) -> Typed {
+        Typed(x.0)
     }
 }
 
-impl<'a> Normalized<'a> {
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type<'static>) -> Self {
-        Normalized(TypedInternal::from_thunk_and_type(th, t), PhantomData)
+impl Normalized {
+    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+        Normalized(TypedInternal::from_thunk_and_type(th, t))
     }
     // Deprecated
     pub(crate) fn as_expr(&self) -> SubExpr<X, X> {
@@ -235,19 +215,19 @@ impl<'a> Normalized<'a> {
         self.0.to_value()
     }
     #[allow(dead_code)]
-    pub(crate) fn unnote<'b>(self) -> Normalized<'b> {
-        Normalized(self.0, PhantomData)
+    pub(crate) fn unnote(self) -> Normalized {
+        Normalized(self.0)
     }
 }
 
-impl<'a> Typed<'a> {
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type<'static>) -> Self {
-        Typed(TypedInternal::from_thunk_and_type(th, t), PhantomData)
+impl Typed {
+    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+        Typed(TypedInternal::from_thunk_and_type(th, t))
     }
     pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed(TypedInternal::from_thunk_untyped(th), PhantomData)
+        Typed(TypedInternal::from_thunk_untyped(th))
     }
     pub(crate) fn const_sort() -> Self {
-        Typed(TypedInternal::Sort, PhantomData)
+        Typed(TypedInternal::Sort)
     }
 }

@@ -11,10 +11,10 @@ use dhall_syntax::{
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
 
-type InputSubExpr = SubExpr<X, Normalized<'static>>;
+type InputSubExpr = SubExpr<X, Normalized>;
 type OutputSubExpr = SubExpr<X, X>;
 
-impl<'a> Typed<'a> {
+impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
     ///
     /// `normalize` does not type-check the expression.  You may want to type-check
@@ -24,7 +24,7 @@ impl<'a> Typed<'a> {
     /// However, `normalize` will not fail if the expression is ill-typed and will
     /// leave ill-typed sub-expressions unevaluated.
     ///
-    pub fn normalize(self) -> Normalized<'a> {
+    pub fn normalize(self) -> Normalized {
         let internal = match self.0 {
             TypedInternal::Sort => TypedInternal::Sort,
             TypedInternal::Value(thunk, t) => {
@@ -35,19 +35,15 @@ impl<'a> Typed<'a> {
                 TypedInternal::Value(thunk, t)
             }
         };
-        Normalized(internal, self.1)
+        Normalized(internal)
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        Typed(self.0.shift(delta, var), self.1)
+        Typed(self.0.shift(delta, var))
     }
 
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &Typed<'static>,
-    ) -> Self {
-        Typed(self.0.subst_shift(var, val), self.1)
+    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        Typed(self.0.subst_shift(var, val))
     }
 
     pub(crate) fn to_value(&self) -> Value {
@@ -74,11 +70,7 @@ impl EnvItem {
         }
     }
 
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &Typed<'static>,
-    ) -> Self {
+    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
             EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.to_thunk()),
@@ -133,7 +125,7 @@ impl NormalizationContext {
         NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
-    fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
+    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         NormalizationContext(Rc::new(
             self.0.map(|_, e| e.subst_shift(var, val)),
         ))
@@ -512,11 +504,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &Typed<'static>,
-    ) -> Self {
+    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -724,7 +712,7 @@ mod thunk {
             }
         }
 
-        fn subst_shift(&self, var: &V<Label>, val: &Typed<'static>) -> Self {
+        fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -823,11 +811,7 @@ mod thunk {
             self.0.borrow().shift(delta, var).into_thunk()
         }
 
-        pub(crate) fn subst_shift(
-            &self,
-            var: &V<Label>,
-            val: &Typed<'static>,
-        ) -> Self {
+        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
     }
@@ -839,7 +823,7 @@ pub(crate) use thunk::Thunk;
 #[derive(Debug, Clone)]
 pub(crate) enum TypeThunk {
     Thunk(Thunk),
-    Type(Type<'static>),
+    Type(Type),
 }
 
 impl TypeThunk {
@@ -851,7 +835,7 @@ impl TypeThunk {
         TypeThunk::Thunk(th)
     }
 
-    pub(crate) fn from_type(t: Type<'static>) -> TypeThunk {
+    pub(crate) fn from_type(t: Type) -> TypeThunk {
         TypeThunk::Type(t)
     }
 
@@ -880,11 +864,7 @@ impl TypeThunk {
         }
     }
 
-    pub(crate) fn subst_shift(
-        &self,
-        var: &V<Label>,
-        val: &Typed<'static>,
-    ) -> Self {
+    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),

@@ -12,7 +12,7 @@ pub trait Deserialize<'de>: Sized {
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self>;
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Parsed<'a> {
+impl<'de> Deserialize<'de> for Parsed {
     /// Simply parses the provided string. Ignores the
     /// provided type.
     fn from_str(s: &'de str, _: Option<&Type>) -> Result<Self> {
@@ -20,7 +20,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Parsed<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Resolved<'a> {
+impl<'de> Deserialize<'de> for Resolved {
     /// Parses and resolves the provided string. Ignores the
     /// provided type.
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
@@ -28,7 +28,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Resolved<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Typed<'a> {
+impl<'de> Deserialize<'de> for Typed {
     /// Parses, resolves and typechecks the provided string.
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
         let resolved = Resolved::from_str(s, ty)?;
@@ -39,14 +39,14 @@ impl<'de: 'a, 'a> Deserialize<'de> for Typed<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Normalized<'a> {
+impl<'de> Deserialize<'de> for Normalized {
     /// Parses, resolves, typechecks and normalizes the provided string.
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
         Ok(Typed::from_str(s, ty)?.normalize())
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for Type<'a> {
+impl<'de> Deserialize<'de> for Type {
     fn from_str(s: &'de str, ty: Option<&Type>) -> Result<Self> {
         Ok(Normalized::from_str(s, ty)?.to_type())
     }
