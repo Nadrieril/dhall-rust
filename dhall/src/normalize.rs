@@ -5,8 +5,8 @@ use std::rc::Rc;
 use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
-    rc, BinOp, Builtin, Const, ExprF, Integer,
-    InterpolatedTextContents, Label, Natural, Span, SubExpr, V, X,
+    rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
+    Natural, Span, SubExpr, V, X,
 };
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
@@ -1467,21 +1467,21 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
                 (TextAppend, TextLit(x), _) if x.is_empty() => RetThunkRef(y),
                 (TextAppend, _, TextLit(y)) if y.is_empty() => RetThunkRef(x),
                 (TextAppend, TextLit(x), TextLit(y)) => RetValue(TextLit(
-                    x.iter().chain(y.iter()).cloned().collect(),
+                    squash_textlit(x.iter().chain(y.iter()).cloned()),
                 )),
                 (TextAppend, TextLit(x), _) => {
                     use std::iter::once;
                     let y = InterpolatedTextContents::Expr(y.clone());
-                    RetValue(TextLit(
-                        x.iter().cloned().chain(once(y)).collect(),
-                    ))
+                    RetValue(TextLit(squash_textlit(
+                        x.iter().cloned().chain(once(y)),
+                    )))
                 }
                 (TextAppend, _, TextLit(y)) => {
                     use std::iter::once;
                     let x = InterpolatedTextContents::Expr(x.clone());
-                    RetValue(TextLit(
-                        once(x).chain(y.iter().cloned()).collect(),
-                    ))
+                    RetValue(TextLit(squash_textlit(
+                        once(x).chain(y.iter().cloned()),
+                    )))
                 }
 
                 _ => {
