@@ -69,9 +69,6 @@ impl Type {
     fn as_const(&self) -> Option<Const> {
         self.0.as_const()
     }
-    fn internal(&self) -> &TypeInternal {
-        &self.0
-    }
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
@@ -240,89 +237,14 @@ fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     }
 }
 
-fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
-    let mut vl = vl.clone();
-    let mut vr = vr.clone();
-    for &(xL2, xR2) in ctx {
-        let vl2 = xL2.into();
-        let vr2 = xR2.into();
-        if vl == vl2 && vr == vr2 {
-            // Both were bound variables and correspond to the same binder
-            return true;
-        } else {
-            vl = vl.shift(-1, &vl2);
-            vr = vr.shift(-1, &vr2);
-        }
-    }
-    // Both were free variables
-    vl == vr
-}
-
 // Equality up to alpha-equivalence (renaming of bound variables)
 fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
 where
     T: Borrow<Type>,
     U: Borrow<Type>,
 {
-    use dhall_syntax::ExprF::*;
-    fn go<'a, S, T>(
-        ctx: &mut Vec<(&'a Label, &'a Label)>,
-        el: &'a SubExpr<S, X>,
-        er: &'a SubExpr<T, X>,
-    ) -> bool
-    where
-        S: ::std::fmt::Debug,
-        T: ::std::fmt::Debug,
-    {
-        match (el.as_ref(), er.as_ref()) {
-            (Const(a), Const(b)) => a == b,
-            (Builtin(a), Builtin(b)) => a == b,
-            (Var(vL), Var(vR)) => match_vars(vL, vR, ctx),
-            (Pi(xL, tL, bL), Pi(xR, tR, bR)) => {
-                go(ctx, tL, tR) && {
-                    ctx.push((xL, xR));
-                    let eq2 = go(ctx, bL, bR);
-                    ctx.pop();
-                    eq2
-                }
-            }
-            (App(fL, aL), App(fR, aR)) => go(ctx, fL, fR) && go(ctx, aL, aR),
-            (RecordType(ktsL0), RecordType(ktsR0)) => {
-                ktsL0.len() == ktsR0.len()
-                    && ktsL0
-                        .iter()
-                        .zip(ktsR0.iter())
-                        .all(|((kL, tL), (kR, tR))| kL == kR && go(ctx, tL, tR))
-            }
-            (UnionType(ktsL0), UnionType(ktsR0)) => {
-                ktsL0.len() == ktsR0.len()
-                    && ktsL0.iter().zip(ktsR0.iter()).all(
-                        |((kL, tL), (kR, tR))| {
-                            kL == kR
-                                && match (tL, tR) {
-                                    (None, None) => true,
-                                    (Some(tL), Some(tR)) => go(ctx, tL, tR),
-                                    _ => false,
-                                }
-                        },
-                    )
-            }
-            (_, _) => false,
-        }
-    }
-    match (eL0.borrow().internal(), eR0.borrow().internal()) {
-        // (TypeInternal::Const(cl), TypeInternal::Const(cr)) => cl == cr,
-        // (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
-        _ => {
-            let mut ctx = vec![];
-            go(
-                &mut ctx,
-                &eL0.borrow().to_expr(),
-                &eR0.borrow().to_expr(),
-            )
-        }
-        // _ => false,
-    }
+    eL0.borrow().to_value().normalize_to_expr_maybe_alpha(true)
+        == eR0.borrow().to_value().normalize_to_expr_maybe_alpha(true)
 }
 
 fn const_to_typed(c: Const) -> Typed {
