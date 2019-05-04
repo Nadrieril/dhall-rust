@@ -1,7 +1,7 @@
 #![feature(proc_macro_hygiene)]
 use dhall::de::SimpleStaticType;
-use dhall_syntax::{SubExpr, X};
 use dhall_proc_macros;
+use dhall_syntax::{SubExpr, X};
 
 #[test]
 fn test_static_type() {

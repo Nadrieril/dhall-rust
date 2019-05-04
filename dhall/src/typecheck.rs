@@ -7,10 +7,10 @@ use std::fmt;
 use crate::expr::*;
 use crate::normalize::{NormalizationContext, Thunk, TypeThunk, Value};
 use crate::traits::DynamicType;
+use dhall_proc_macros as dhall;
 use dhall_syntax;
 use dhall_syntax::context::Context;
 use dhall_syntax::*;
-use dhall_proc_macros as dhall;
 
 use self::TypeMessage::*;
 

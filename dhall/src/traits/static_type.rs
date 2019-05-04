@@ -1,6 +1,6 @@
 use crate::expr::*;
-use dhall_syntax::*;
 use dhall_proc_macros as dhall;
+use dhall_syntax::*;
 
 /// A value that has a statically-known Dhall type.
 ///

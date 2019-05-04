@@ -2,12 +2,12 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
-use dhall_proc_macros as dhall;
 
 use crate::expr::{Normalized, Type, Typed, TypedInternal};
 
