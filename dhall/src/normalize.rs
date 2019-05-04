@@ -1305,9 +1305,9 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
 
 fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
     use Value::{
-        BoolLit, EmptyListLit, EmptyOptionalLit, Lam, NEListLit, NEOptionalLit,
-        NaturalLit, Pi, RecordLit, RecordType, TextLit, UnionConstructor,
-        UnionLit, UnionType,
+        BoolLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam, NEListLit,
+        NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType, TextLit,
+        UnionConstructor, UnionLit, UnionType,
     };
 
     // Small helper enum to avoid repetition
@@ -1338,7 +1338,8 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::Const(c) => RetValue(Value::Const(c)),
         ExprF::BoolLit(b) => RetValue(BoolLit(b)),
         ExprF::NaturalLit(n) => RetValue(NaturalLit(n)),
-        ExprF::IntegerLit(_) | ExprF::DoubleLit(_) => RetExpr(expr),
+        ExprF::IntegerLit(n) => RetValue(IntegerLit(n)),
+        ExprF::DoubleLit(_) => RetExpr(expr),
         ExprF::OldOptionalLit(None, t) => {
             RetValue(EmptyOptionalLit(TypeThunk::from_thunk(t)))
         }
