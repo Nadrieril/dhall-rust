@@ -44,7 +44,7 @@ pub(crate) struct Normalized(pub(crate) TypedInternal);
 
 impl std::cmp::PartialEq for Normalized {
     fn eq(&self, other: &Self) -> bool {
-        self.to_expr() == other.to_expr()
+        self.0 == other.0
     }
 }
 
@@ -58,11 +58,11 @@ impl std::fmt::Display for Normalized {
 
 mod typed {
     use super::{Type, Typed};
-    use crate::normalize::{Thunk, Value};
+    use crate::normalize::{DoubleVar, Thunk, Value};
     use crate::typecheck::{
         TypeError, TypeInternal, TypeMessage, TypecheckContext,
     };
-    use dhall_syntax::{Const, Label, SubExpr, V, X};
+    use dhall_syntax::{Const, SubExpr, X};
     use std::borrow::Cow;
 
     #[derive(Debug, Clone)]
@@ -92,6 +92,10 @@ mod typed {
 
         pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
             self.to_value().normalize_to_expr()
+        }
+
+        pub(crate) fn to_expr_alpha(&self) -> SubExpr<X, X> {
+            self.to_value().normalize_to_expr_maybe_alpha(true)
         }
 
         pub(crate) fn to_thunk(&self) -> Thunk {
@@ -129,7 +133,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.shift(delta, var),
@@ -139,7 +143,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.subst_shift(var, val),
@@ -149,6 +153,14 @@ mod typed {
             }
         }
     }
+
+    impl std::cmp::PartialEq for TypedInternal {
+        fn eq(&self, other: &Self) -> bool {
+            self.to_value() == other.to_value()
+        }
+    }
+
+    impl std::cmp::Eq for TypedInternal {}
 }
 
 /// A Dhall expression representing a simple type.
@@ -207,15 +219,15 @@ impl Normalized {
     pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
         self.0.to_expr()
     }
+    #[allow(dead_code)]
+    pub(crate) fn to_expr_alpha(&self) -> SubExpr<X, X> {
+        self.0.to_expr_alpha()
+    }
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
     pub(crate) fn to_thunk(&self) -> Thunk {
         self.0.to_thunk()
-    }
-    #[allow(dead_code)]
-    pub(crate) fn unnote(self) -> Normalized {
-        Normalized(self.0)
     }
 }
 

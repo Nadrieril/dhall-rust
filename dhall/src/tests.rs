@@ -43,6 +43,7 @@ pub enum Feature {
     Parser,
     Import,
     Normalization,
+    AlphaNormalization,
     Typecheck,
     TypeInference,
 }
@@ -83,6 +84,7 @@ pub fn run_test(
         Parser => "parser/",
         Import => "import/",
         Normalization => "normalization/",
+        AlphaNormalization => "alpha-normalization/",
         Typecheck => "typecheck/",
         TypeInference => "type-inference/",
     };
@@ -139,6 +141,11 @@ pub fn run_test(
                     let expr = expr.skip_typecheck().normalize();
                     assert_eq_display!(expr, expected);
                 }
+                AlphaNormalization => {
+                    let expr =
+                        expr.skip_typecheck().normalize().to_expr_alpha();
+                    assert_eq_display!(expr, expected.to_expr());
+                }
             }
         }
         Failure => {
@@ -154,7 +161,7 @@ pub fn run_test(
                 Import => {
                     parse_file_str(&file_path)?.resolve().unwrap_err();
                 }
-                Normalization => unreachable!(),
+                Normalization | AlphaNormalization => unreachable!(),
                 Typecheck | TypeInference => {
                     parse_file_str(&file_path)?
                         .skip_resolve()?

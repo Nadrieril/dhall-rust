@@ -25,24 +25,20 @@ impl Typed {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized {
-        let internal = match self.0 {
-            TypedInternal::Sort => TypedInternal::Sort,
-            TypedInternal::Value(thunk, t) => {
-                // TODO: stupid but needed for now
-                let thunk =
-                    Thunk::from_normalized_expr(thunk.normalize_to_expr());
+        match &self.0 {
+            TypedInternal::Sort => {}
+            TypedInternal::Value(thunk, _) => {
                 thunk.normalize_nf();
-                TypedInternal::Value(thunk, t)
             }
-        };
-        Normalized(internal)
+        }
+        Normalized(self.0)
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         Typed(self.0.shift(delta, var))
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 
@@ -55,14 +51,117 @@ impl Typed {
     }
 }
 
+/// Stores a pair of variables: a normal one and if relevant one
+/// that corresponds to the alpha-normalized version of the first one.
+#[derive(Debug, Clone, Eq)]
+pub(crate) struct DoubleVar {
+    normal: V<Label>,
+    alpha: Option<V<()>>,
+}
+
+impl DoubleVar {
+    pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
+        match (alpha, &self.alpha) {
+            (true, Some(x)) => V("_".into(), x.1),
+            _ => self.normal.clone(),
+        }
+    }
+    pub(crate) fn from_var(normal: V<Label>) -> Self {
+        DoubleVar {
+            normal,
+            alpha: None,
+        }
+    }
+    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+        DoubleVar {
+            normal: self.normal.shift(delta, &var.normal),
+            alpha: match (&self.alpha, &var.alpha) {
+                (Some(x), Some(v)) => Some(x.shift(delta, v)),
+                _ => None,
+            },
+        }
+    }
+}
+
+/// Equality is up to alpha-equivalence.
+impl std::cmp::PartialEq for DoubleVar {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.alpha, &other.alpha) {
+            (Some(x), Some(y)) => x == y,
+            (None, None) => self.normal == other.normal,
+            _ => false,
+        }
+    }
+}
+
+impl From<Label> for DoubleVar {
+    fn from(x: Label) -> DoubleVar {
+        DoubleVar {
+            normal: V(x, 0),
+            alpha: Some(V((), 0)),
+        }
+    }
+}
+impl<'a> From<&'a Label> for DoubleVar {
+    fn from(x: &'a Label) -> DoubleVar {
+        x.clone().into()
+    }
+}
+impl From<AlphaLabel> for DoubleVar {
+    fn from(x: AlphaLabel) -> DoubleVar {
+        let l: Label = x.into();
+        l.into()
+    }
+}
+impl<'a> From<&'a AlphaLabel> for DoubleVar {
+    fn from(x: &'a AlphaLabel) -> DoubleVar {
+        x.clone().into()
+    }
+}
+
+// Exactly like a Label, but equality returns always true.
+// This is so that Value equality is exactly alpha-equivalence.
+#[derive(Debug, Clone, Eq)]
+pub(crate) struct AlphaLabel(Label);
+
+impl AlphaLabel {
+    fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
+        if alpha {
+            "_".into()
+        } else {
+            self.to_label()
+        }
+    }
+    fn to_label(&self) -> Label {
+        self.clone().into()
+    }
+}
+
+impl std::cmp::PartialEq for AlphaLabel {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl From<Label> for AlphaLabel {
+    fn from(x: Label) -> AlphaLabel {
+        AlphaLabel(x)
+    }
+}
+impl From<AlphaLabel> for Label {
+    fn from(x: AlphaLabel) -> Label {
+        x.0
+    }
+}
+
 #[derive(Debug, Clone)]
 enum EnvItem {
     Thunk(Thunk),
-    Skip(V<Label>),
+    Skip(DoubleVar),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         use EnvItem::*;
         match self {
             Thunk(e) => Thunk(e.shift(delta, var)),
@@ -70,7 +169,7 @@ impl EnvItem {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
             EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.to_thunk()),
@@ -98,7 +197,8 @@ impl NormalizationContext {
         match self.0.lookup(x, *n) {
             Some(EnvItem::Thunk(t)) => t.to_value(),
             Some(EnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
-            None => Value::Var(var.clone()),
+            // Free variable
+            None => Value::Var(DoubleVar::from_var(var.clone())),
         }
     }
     pub(crate) fn from_typecheck_ctx(
@@ -118,11 +218,11 @@ impl NormalizationContext {
         NormalizationContext(Rc::new(ctx))
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
-    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         NormalizationContext(Rc::new(
             self.0.map(|_, e| e.subst_shift(var, val)),
         ))
@@ -130,10 +230,11 @@ impl NormalizationContext {
 }
 
 /// A semantic value.
-#[derive(Debug, Clone)]
+/// Equality is up to alpha-equivalence (renaming of bound variables).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Value {
     /// Closures
-    Lam(Label, Thunk, Thunk),
+    Lam(AlphaLabel, Thunk, Thunk),
     AppliedBuiltin(Builtin, Vec<Thunk>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(TypeThunk),
@@ -142,9 +243,9 @@ pub(crate) enum Value {
     ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
-    Pi(Label, TypeThunk, TypeThunk),
+    Pi(AlphaLabel, TypeThunk, TypeThunk),
 
-    Var(V<Label>),
+    Var(DoubleVar),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
@@ -170,76 +271,99 @@ impl Value {
 
     /// Convert the value to a fully normalized syntactic expression
     pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+        self.normalize_to_expr_maybe_alpha(false)
+    }
+    /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
+    /// if alpha is `true`
+    pub(crate) fn normalize_to_expr_maybe_alpha(
+        &self,
+        alpha: bool,
+    ) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
-                x.clone(),
-                t.normalize_to_expr(),
-                e.normalize_to_expr(),
+                x.to_label_maybe_alpha(alpha),
+                t.normalize_to_expr_maybe_alpha(alpha),
+                e.normalize_to_expr_maybe_alpha(alpha),
             )),
             Value::AppliedBuiltin(b, args) => {
                 let mut e = rc(ExprF::Builtin(*b));
                 for v in args {
-                    e = rc(ExprF::App(e, v.normalize_to_expr()));
+                    e = rc(ExprF::App(
+                        e,
+                        v.normalize_to_expr_maybe_alpha(alpha),
+                    ));
                 }
                 e
             }
             Value::OptionalSomeClosure(n) => {
-                let a = n.normalize_to_expr();
+                let a = n.normalize_to_expr_maybe_alpha(alpha);
                 dhall::subexpr!(λ(x: a) -> Some x)
             }
-            Value::ListConsClosure(n, None) => {
-                let a = n.normalize_to_expr();
+            Value::ListConsClosure(a, None) => {
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.shift(1, &Label::from("x").into());
+                let a1 = a1.normalize_to_expr_maybe_alpha(alpha);
+                let a = a.normalize_to_expr_maybe_alpha(alpha);
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
-                let v = v.normalize_to_expr();
-                let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.shift(1, &Label::from("xs").into());
+                let v = v.normalize_to_expr_maybe_alpha(alpha);
+                let a = n.normalize_to_expr_maybe_alpha(alpha);
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
             }
             Value::NaturalSuccClosure => {
                 dhall::subexpr!(λ(x : Natural) -> x + 1)
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
-                x.clone(),
-                t.normalize_to_expr(),
-                e.normalize_to_expr(),
+                x.to_label_maybe_alpha(alpha),
+                t.normalize_to_expr_maybe_alpha(alpha),
+                e.normalize_to_expr_maybe_alpha(alpha),
             )),
-            Value::Var(v) => rc(ExprF::Var(v.clone())),
+            Value::Var(v) => rc(ExprF::Var(v.to_var(alpha))),
             Value::Const(c) => rc(ExprF::Const(*c)),
             Value::BoolLit(b) => rc(ExprF::BoolLit(*b)),
             Value::NaturalLit(n) => rc(ExprF::NaturalLit(*n)),
             Value::IntegerLit(n) => rc(ExprF::IntegerLit(*n)),
             Value::EmptyOptionalLit(n) => rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::OptionalNone)),
-                n.normalize_to_expr(),
+                n.normalize_to_expr_maybe_alpha(alpha),
             )),
             Value::NEOptionalLit(n) => {
-                rc(ExprF::SomeLit(n.normalize_to_expr()))
+                rc(ExprF::SomeLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
             Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.normalize_to_expr()))
+                rc(ExprF::EmptyListLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
-                elts.into_iter().map(|n| n.normalize_to_expr()).collect(),
+                elts.into_iter()
+                    .map(|n| n.normalize_to_expr_maybe_alpha(alpha))
+                    .collect(),
             )),
             Value::RecordLit(kvs) => rc(ExprF::RecordLit(
                 kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.normalize_to_expr()))
+                    .map(|(k, v)| {
+                        (k.clone(), v.normalize_to_expr_maybe_alpha(alpha))
+                    })
                     .collect(),
             )),
             Value::RecordType(kts) => rc(ExprF::RecordType(
                 kts.iter()
-                    .map(|(k, v)| (k.clone(), v.normalize_to_expr()))
+                    .map(|(k, v)| {
+                        (k.clone(), v.normalize_to_expr_maybe_alpha(alpha))
+                    })
                     .collect(),
             )),
             Value::UnionType(kts) => rc(ExprF::UnionType(
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
+                        (
+                            k.clone(),
+                            v.as_ref().map(|v| {
+                                v.normalize_to_expr_maybe_alpha(alpha)
+                            }),
+                        )
                     })
                     .collect(),
             )),
@@ -247,23 +371,34 @@ impl Value {
                 let kts = kts
                     .iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
+                        (
+                            k.clone(),
+                            v.as_ref().map(|v| {
+                                v.normalize_to_expr_maybe_alpha(alpha)
+                            }),
+                        )
                     })
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
             }
             Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
                 l.clone(),
-                v.normalize_to_expr(),
+                v.normalize_to_expr_maybe_alpha(alpha),
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.normalize_to_expr()))
+                        (
+                            k.clone(),
+                            v.as_ref().map(|v| {
+                                v.normalize_to_expr_maybe_alpha(alpha)
+                            }),
+                        )
                     })
                     .collect(),
             )),
             Value::TextLit(elts) => {
                 fn normalize_textlit(
                     elts: &Vec<InterpolatedTextContents<Thunk>>,
+                    alpha: bool,
                 ) -> InterpolatedText<OutputSubExpr> {
                     elts.iter()
                         .flat_map(|contents| {
@@ -271,12 +406,14 @@ impl Value {
                             let new_interpolated = match contents {
                                 Expr(n) => match &*n.normalize_nf() {
                                     Value::TextLit(elts2) => {
-                                        normalize_textlit(elts2)
+                                        normalize_textlit(elts2, alpha)
                                     }
                                     e => InterpolatedText::from((
                                         String::new(),
                                         vec![(
-                                            e.normalize_to_expr(),
+                                            e.normalize_to_expr_maybe_alpha(
+                                                alpha,
+                                            ),
                                             String::new(),
                                         )],
                                     )),
@@ -288,10 +425,10 @@ impl Value {
                         .collect()
                 }
 
-                rc(ExprF::TextLit(normalize_textlit(elts)))
+                rc(ExprF::TextLit(normalize_textlit(elts, alpha)))
             }
             Value::PartialExpr(e) => {
-                rc(e.map_ref_simple(|v| v.normalize_to_expr()))
+                rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
             }
         }
     }
@@ -403,7 +540,7 @@ impl Value {
         Value::AppliedBuiltin(b, vec![])
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -500,8 +637,27 @@ impl Value {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         match self {
+            // Retry normalizing since substituting may allow progress
+            Value::AppliedBuiltin(b, args) => apply_builtin(
+                *b,
+                args.iter().map(|v| v.subst_shift(var, val)).collect(),
+            ),
+            // Retry normalizing since substituting may allow progress
+            Value::PartialExpr(e) => {
+                normalize_one_layer(e.map_ref_with_special_handling_of_binders(
+                    |v| v.subst_shift(var, val),
+                    |x, v| {
+                        v.subst_shift(
+                            &var.shift(1, &x.into()),
+                            &val.shift(1, &x.into()),
+                        )
+                    },
+                    X::clone,
+                    Label::clone,
+                ))
+            }
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
@@ -509,10 +665,6 @@ impl Value {
                     &var.shift(1, &x.into()),
                     &val.shift(1, &x.into()),
                 ),
-            ),
-            Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
-                *b,
-                args.iter().map(|v| v.subst_shift(var, val)).collect(),
             ),
             Value::NaturalSuccClosure => Value::NaturalSuccClosure,
             Value::OptionalSomeClosure(tth) => {
@@ -593,30 +745,16 @@ impl Value {
                     })
                     .collect(),
             ),
-            Value::PartialExpr(e) => {
-                Value::PartialExpr(e.map_ref_with_special_handling_of_binders(
-                    |v| v.subst_shift(var, val),
-                    |x, v| {
-                        v.subst_shift(
-                            &var.shift(1, &x.into()),
-                            &val.shift(1, &x.into()),
-                        )
-                    },
-                    X::clone,
-                    Label::clone,
-                ))
-            }
         }
     }
 }
 
 mod thunk {
     use super::{
-        apply_any, normalize_whnf, InputSubExpr, NormalizationContext,
-        OutputSubExpr, Value,
+        apply_any, normalize_whnf, DoubleVar, InputSubExpr,
+        NormalizationContext, OutputSubExpr, Value,
     };
     use crate::expr::Typed;
-    use dhall_syntax::{Label, V};
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 
@@ -693,7 +831,7 @@ mod thunk {
             }
         }
 
-        fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -707,7 +845,7 @@ mod thunk {
             }
         }
 
-        fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -794,7 +932,14 @@ mod thunk {
         }
 
         pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
-            self.normalize_nf().normalize_to_expr()
+            self.normalize_to_expr_maybe_alpha(false)
+        }
+
+        pub(crate) fn normalize_to_expr_maybe_alpha(
+            &self,
+            alpha: bool,
+        ) -> OutputSubExpr {
+            self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
         }
 
         pub(crate) fn app_val(&self, val: Value) -> Value {
@@ -805,14 +950,21 @@ mod thunk {
             apply_any(self.clone(), th)
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
             self.0.borrow().shift(delta, var).into_thunk()
         }
 
-        pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
     }
+
+    impl std::cmp::PartialEq for Thunk {
+        fn eq(&self, other: &Self) -> bool {
+            &*self.as_value() == &*other.as_value()
+        }
+    }
+    impl std::cmp::Eq for Thunk {}
 }
 
 pub(crate) use thunk::Thunk;
@@ -851,24 +1003,41 @@ impl TypeThunk {
         }
     }
 
-    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
-        self.normalize_nf().normalize_to_expr()
+    pub(crate) fn to_value(&self) -> Value {
+        match self {
+            TypeThunk::Thunk(th) => th.to_value(),
+            TypeThunk::Type(t) => t.to_value(),
+        }
     }
 
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn normalize_to_expr_maybe_alpha(
+        &self,
+        alpha: bool,
+    ) -> OutputSubExpr {
+        self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
+    }
+
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
             TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),
         }
     }
 }
+
+impl std::cmp::PartialEq for TypeThunk {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_value() == other.to_value()
+    }
+}
+impl std::cmp::Eq for TypeThunk {}
 
 fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
     use dhall_syntax::Builtin::*;
@@ -1118,7 +1287,7 @@ fn apply_any(f: Thunk, a: Thunk) -> Value {
 fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     match expr.as_ref() {
         ExprF::Embed(e) => return e.to_value(),
-        ExprF::Var(v) => return ctx.lookup(&v),
+        ExprF::Var(v) => return ctx.lookup(v),
         _ => {}
     }
 
@@ -1154,10 +1323,12 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => RetThunk(x),
-        ExprF::Lam(x, t, e) => RetValue(Lam(x, t, e)),
-        ExprF::Pi(x, t, e) => {
-            RetValue(Pi(x, TypeThunk::from_thunk(t), TypeThunk::from_thunk(e)))
-        }
+        ExprF::Lam(x, t, e) => RetValue(Lam(x.into(), t, e)),
+        ExprF::Pi(x, t, e) => RetValue(Pi(
+            x.into(),
+            TypeThunk::from_thunk(t),
+            TypeThunk::from_thunk(e),
+        )),
         ExprF::Let(x, _, v, b) => {
             let v = Typed::from_thunk_untyped(v);
             RetThunk(b.subst_shift(&x.into(), &v))
@@ -1381,6 +1552,12 @@ mod spec_tests {
     macro_rules! norm {
         ($name:ident, $path:expr) => {
             make_spec_test!(Normalization, Success, $name, $path);
+        };
+    }
+
+    macro_rules! alpha_norm {
+        ($name:ident, $path:expr) => {
+            make_spec_test!(AlphaNormalization, Success, $name, $path);
         };
     }
 
@@ -1710,4 +1887,11 @@ mod spec_tests {
     norm!(success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
     norm!(success_unit_UnionTypeNormalizeArguments, "unit/UnionTypeNormalizeArguments");
     norm!(success_unit_Variable, "unit/Variable");
+
+    alpha_norm!(alpha_success_unit_FunctionBindingUnderscore, "unit/FunctionBindingUnderscore");
+    alpha_norm!(alpha_success_unit_FunctionBindingX, "unit/FunctionBindingX");
+    alpha_norm!(alpha_success_unit_FunctionNestedBindingX, "unit/FunctionNestedBindingX");
+    alpha_norm!(alpha_success_unit_FunctionTypeBindingUnderscore, "unit/FunctionTypeBindingUnderscore");
+    alpha_norm!(alpha_success_unit_FunctionTypeBindingX, "unit/FunctionTypeBindingX");
+    alpha_norm!(alpha_success_unit_FunctionTypeNestedBindingX, "unit/FunctionTypeNestedBindingX");
 }

@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::expr::*;
-use crate::normalize::{NormalizationContext, Thunk, TypeThunk, Value};
+use crate::normalize::{
+    DoubleVar, NormalizationContext, Thunk, TypeThunk, Value,
+};
 use crate::traits::DynamicType;
 use dhall_proc_macros as dhall;
 use dhall_syntax;
@@ -43,7 +45,7 @@ impl Typed {
 }
 
 impl Normalized {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         Normalized(self.0.shift(delta, var))
     }
     pub(crate) fn to_type(self) -> Type {
@@ -67,16 +69,13 @@ impl Type {
     fn as_const(&self) -> Option<Const> {
         self.0.as_const()
     }
-    fn internal(&self) -> &TypeInternal {
-        &self.0
-    }
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         Type(self.0.shift(delta, var))
     }
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         Type(self.0.subst_shift(var, val))
     }
 
@@ -148,14 +147,14 @@ impl TypeInternal {
             _ => None,
         }
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.shift(delta, var))),
             Const(c) => Const(*c),
         }
     }
-    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
@@ -173,12 +172,12 @@ impl PartialEq for TypeInternal {
 
 #[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
-    Type(V<Label>, Type),
+    Type(DoubleVar, Type),
     Value(Normalized),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         use EnvItem::*;
         match self {
             Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
@@ -238,89 +237,13 @@ fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     }
 }
 
-fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
-    let (V(xL, mut nL), V(xR, mut nR)) = (vl, vr);
-    for &(xL2, xR2) in ctx {
-        match (nL, nR) {
-            (0, 0) if xL == xL2 && xR == xR2 => return true,
-            (_, _) => {
-                if xL == xL2 {
-                    nL -= 1;
-                }
-                if xR == xR2 {
-                    nR -= 1;
-                }
-            }
-        }
-    }
-    xL == xR && nL == nR
-}
-
 // Equality up to alpha-equivalence (renaming of bound variables)
 fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
 where
     T: Borrow<Type>,
     U: Borrow<Type>,
 {
-    use dhall_syntax::ExprF::*;
-    fn go<'a, S, T>(
-        ctx: &mut Vec<(&'a Label, &'a Label)>,
-        el: &'a SubExpr<S, X>,
-        er: &'a SubExpr<T, X>,
-    ) -> bool
-    where
-        S: ::std::fmt::Debug,
-        T: ::std::fmt::Debug,
-    {
-        match (el.as_ref(), er.as_ref()) {
-            (Const(a), Const(b)) => a == b,
-            (Builtin(a), Builtin(b)) => a == b,
-            (Var(vL), Var(vR)) => match_vars(vL, vR, ctx),
-            (Pi(xL, tL, bL), Pi(xR, tR, bR)) => {
-                go(ctx, tL, tR) && {
-                    ctx.push((xL, xR));
-                    let eq2 = go(ctx, bL, bR);
-                    ctx.pop();
-                    eq2
-                }
-            }
-            (App(fL, aL), App(fR, aR)) => go(ctx, fL, fR) && go(ctx, aL, aR),
-            (RecordType(ktsL0), RecordType(ktsR0)) => {
-                ktsL0.len() == ktsR0.len()
-                    && ktsL0
-                        .iter()
-                        .zip(ktsR0.iter())
-                        .all(|((kL, tL), (kR, tR))| kL == kR && go(ctx, tL, tR))
-            }
-            (UnionType(ktsL0), UnionType(ktsR0)) => {
-                ktsL0.len() == ktsR0.len()
-                    && ktsL0.iter().zip(ktsR0.iter()).all(
-                        |((kL, tL), (kR, tR))| {
-                            kL == kR
-                                && match (tL, tR) {
-                                    (None, None) => true,
-                                    (Some(tL), Some(tR)) => go(ctx, tL, tR),
-                                    _ => false,
-                                }
-                        },
-                    )
-            }
-            (_, _) => false,
-        }
-    }
-    match (eL0.borrow().internal(), eR0.borrow().internal()) {
-        // (TypeInternal::Const(cl), TypeInternal::Const(cr)) => cl == cr,
-        // (TypeInternal::Expr(l), TypeInternal::Expr(r)) => {
-        _ => {
-            let mut ctx = vec![];
-            go(
-                &mut ctx,
-                &eL0.borrow().to_expr(),
-                &eR0.borrow().to_expr(),
-            )
-        }
-        // _ => false,
-    }
+    eL0.borrow().to_value() == eR0.borrow().to_value()
 }
 
 fn const_to_typed(c: Const) -> Typed {
@@ -428,9 +351,8 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
             forall (nothing: optional) ->
             optional
         ),
-        // TODO: alpha-equivalence in type-inference tests
         OptionalNone => dhall::expr!(
-            forall (A: Type) -> Optional A
+            forall (a: Type) -> Optional a
         ),
     }
 }
@@ -512,7 +434,7 @@ impl TypeIntermediate {
 
                 Typed::from_thunk_and_type(
                     Value::Pi(
-                        x.clone(),
+                        x.clone().into(),
                         TypeThunk::from_type(ta.clone()),
                         TypeThunk::from_type(tb.clone()),
                     )
@@ -756,7 +678,7 @@ fn type_last_layer(
                 mkerr(TypeMismatch(f.clone(), tx.clone().to_normalized(), a))
             });
 
-            Ok(RetType(tb.subst_shift(&V(x.clone(), 0), &a)))
+            Ok(RetType(tb.subst_shift(&x.into(), &a)))
         }
         Annot(x, t) => {
             let t = t.to_type();
@@ -899,12 +821,11 @@ fn type_last_layer(
                     match &r.internal_whnf() {
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
-                            // TODO: use "_" instead of x (i.e. compare types using equivalence in tests)
                             Some(Some(t)) => {
                                 Ok(RetType(
                                     TypeIntermediate::Pi(
                                         ctx.clone(),
-                                        x.clone(),
+                                        "_".into(),
                                         t.to_type(ctx)?,
                                         r.clone(),
                                     )

@@ -1,9 +1,7 @@
 #![allow(non_snake_case)]
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::context::Context;
 use crate::visitor;
 use crate::*;
 
@@ -436,36 +434,6 @@ impl<N: Clone, E> SubExpr<N, E> {
             )),
         }
     }
-
-    /// `shift` is used by both normalization and type-checking to avoid variable
-    /// capture by shifting variable indices
-    /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
-    /// for details
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
-        match self.as_ref() {
-            ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(delta, var))),
-            _ => self.map_subexprs_with_special_handling_of_binders(
-                |e| e.shift(delta, var),
-                |x: &Label, e| e.shift(delta, &var.shift(1, &x.into())),
-            ),
-        }
-    }
-
-    pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
-        match self.as_ref() {
-            ExprF::Var(v) if v == var => val.clone(),
-            ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(-1, var))),
-            _ => self.map_subexprs_with_special_handling_of_binders(
-                |e| e.subst_shift(var, val),
-                |x: &Label, e| {
-                    e.subst_shift(
-                        &var.shift(1, &x.into()),
-                        &val.shift(1, &x.into()),
-                    )
-                },
-            ),
-        }
-    }
 }
 
 impl<N: Clone> SubExpr<N, X> {
@@ -510,54 +478,5 @@ impl<Label: PartialEq + Clone> V<Label> {
         } else {
             V(y.clone(), *m)
         }
-    }
-}
-
-/// `shift` is used by both normalization and type-checking to avoid variable
-/// capture by shifting variable indices
-/// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
-/// for details
-///
-pub fn shift<N, E>(
-    delta: isize,
-    var: &V<Label>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
-where
-    N: Clone,
-{
-    in_expr.shift(delta, var)
-}
-
-pub fn shift0_multiple<N, E>(
-    deltas: &HashMap<Label, isize>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
-where
-    N: Clone,
-{
-    shift0_multiple_inner(&Context::new(), deltas, in_expr)
-}
-
-fn shift0_multiple_inner<N, E>(
-    ctx: &Context<Label, ()>,
-    deltas: &HashMap<Label, isize>,
-    in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E>
-where
-    N: Clone,
-{
-    use crate::ExprF::*;
-    match in_expr.as_ref() {
-        Var(V(y, m)) if ctx.lookup(y, *m).is_none() => {
-            let delta = deltas.get(y).unwrap_or(&0);
-            in_expr.rewrap(Var(V(y.clone(), add_ui(*m, *delta))))
-        }
-        _ => in_expr.map_subexprs_with_special_handling_of_binders(
-            |e| shift0_multiple_inner(ctx, deltas, e),
-            |x: &Label, e| {
-                shift0_multiple_inner(&ctx.insert(x.clone(), ()), deltas, e)
-            },
-        ),
     }
 }
