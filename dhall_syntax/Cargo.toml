@@ -1,5 +1,5 @@
 [package]
-name = "dhall_core"
+name = "dhall_syntax"
 version = "0.1.0"
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"

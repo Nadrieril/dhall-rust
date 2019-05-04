@@ -1,6 +1,6 @@
 #![feature(proc_macro_hygiene)]
 use dhall::de::SimpleStaticType;
-use dhall_core::{SubExpr, X};
+use dhall_syntax::{SubExpr, X};
 use dhall_generator;
 
 #[test]

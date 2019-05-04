@@ -1,5 +1,5 @@
 use crate::expr::*;
-use dhall_core::*;
+use dhall_syntax::*;
 use dhall_generator as dhall;
 
 /// A value that has a statically-known Dhall type.

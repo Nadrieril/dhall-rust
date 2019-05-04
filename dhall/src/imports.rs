@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::expr::*;
-use dhall_core::*;
+use dhall_syntax::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -31,8 +31,8 @@ fn resolve_import(
     import_stack: &ImportStack,
 ) -> Result<Normalized<'static>, ImportError> {
     use self::ImportRoot::*;
-    use dhall_core::FilePrefix::*;
-    use dhall_core::ImportLocation::*;
+    use dhall_syntax::FilePrefix::*;
+    use dhall_syntax::ImportLocation::*;
     let cwd = match root {
         LocalDir(cwd) => cwd,
     };

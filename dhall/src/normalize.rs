@@ -2,8 +2,8 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use dhall_core::context::Context;
-use dhall_core::{
+use dhall_syntax::context::Context;
+use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedText,
     InterpolatedTextContents, Label, Natural, SubExpr, V, X,
 };
@@ -633,7 +633,7 @@ mod thunk {
         OutputSubExpr, Value,
     };
     use crate::expr::Typed;
-    use dhall_core::{Label, V};
+    use dhall_syntax::{Label, V};
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 
@@ -893,7 +893,7 @@ impl TypeThunk {
 }
 
 fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
-    use dhall_core::Builtin::*;
+    use dhall_syntax::Builtin::*;
     use Value::*;
 
     // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.

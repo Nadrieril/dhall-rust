@@ -1,5 +1,5 @@
 extern crate proc_macro;
-// use dhall_core::*;
+// use dhall_syntax::*;
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
@@ -51,15 +51,15 @@ fn derive_for_struct(
     let fields = fields
         .into_iter()
         .map(|(name, ty)| {
-            let name = dhall_core::Label::from(name);
+            let name = dhall_syntax::Label::from(name);
             constraints.push(ty.clone());
             let ty = get_simple_static_type(ty);
             (name, quote!(#ty.into()))
         })
         .collect();
     let record =
-        crate::quote::quote_exprf(dhall_core::ExprF::RecordType(fields));
-    Ok(quote! { dhall_core::rc(#record) })
+        crate::quote::quote_exprf(dhall_syntax::ExprF::RecordType(fields));
+    Ok(quote! { dhall_syntax::rc(#record) })
 }
 
 fn derive_for_enum(
@@ -70,7 +70,7 @@ fn derive_for_enum(
         .variants
         .iter()
         .map(|v| {
-            let name = dhall_core::Label::from(v.ident.to_string());
+            let name = dhall_syntax::Label::from(v.ident.to_string());
             match &v.fields {
                 syn::Fields::Unit => Ok((name, None)),
                 syn::Fields::Unnamed(fields) if fields.unnamed.is_empty() => {
@@ -95,8 +95,8 @@ fn derive_for_enum(
         .collect::<Result<_, Error>>()?;
 
     let union =
-        crate::quote::quote_exprf(dhall_core::ExprF::UnionType(variants));
-    Ok(quote! { dhall_core::rc(#union) })
+        crate::quote::quote_exprf(dhall_syntax::ExprF::UnionType(variants));
+    Ok(quote! { dhall_syntax::rc(#union) })
 }
 
 pub fn derive_simple_static_type_inner(

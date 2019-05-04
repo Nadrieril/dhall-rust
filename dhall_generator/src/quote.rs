@@ -1,6 +1,6 @@
 extern crate proc_macro;
-use dhall_core::context::Context;
-use dhall_core::*;
+use dhall_syntax::context::Context;
+use dhall_syntax::*;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::BTreeMap;
@@ -31,62 +31,62 @@ pub fn quote_exprf<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
-    use dhall_core::ExprF::*;
+    use dhall_syntax::ExprF::*;
     match expr {
         Var(_) => unreachable!(),
         Pi(x, t, b) => {
             let x = quote_label(&x);
-            quote! { dhall_core::ExprF::Pi(#x, #t, #b) }
+            quote! { dhall_syntax::ExprF::Pi(#x, #t, #b) }
         }
         Lam(x, t, b) => {
             let x = quote_label(&x);
-            quote! { dhall_core::ExprF::Lam(#x, #t, #b) }
+            quote! { dhall_syntax::ExprF::Lam(#x, #t, #b) }
         }
         App(f, a) => {
-            quote! { dhall_core::ExprF::App(#f, #a) }
+            quote! { dhall_syntax::ExprF::App(#f, #a) }
         }
         Annot(x, t) => {
-            quote! { dhall_core::ExprF::Annot(#x, #t) }
+            quote! { dhall_syntax::ExprF::Annot(#x, #t) }
         }
         Const(c) => {
             let c = quote_const(c);
-            quote! { dhall_core::ExprF::Const(#c) }
+            quote! { dhall_syntax::ExprF::Const(#c) }
         }
         Builtin(b) => {
             let b = quote_builtin(b);
-            quote! { dhall_core::ExprF::Builtin(#b) }
+            quote! { dhall_syntax::ExprF::Builtin(#b) }
         }
         BinOp(o, a, b) => {
             let o = quote_binop(o);
-            quote! { dhall_core::ExprF::BinOp(#o, #a, #b) }
+            quote! { dhall_syntax::ExprF::BinOp(#o, #a, #b) }
         }
         NaturalLit(n) => {
-            quote! { dhall_core::ExprF::NaturalLit(#n) }
+            quote! { dhall_syntax::ExprF::NaturalLit(#n) }
         }
         BoolLit(b) => {
-            quote! { dhall_core::ExprF::BoolLit(#b) }
+            quote! { dhall_syntax::ExprF::BoolLit(#b) }
         }
         SomeLit(x) => {
-            quote! { dhall_core::ExprF::SomeLit(#x) }
+            quote! { dhall_syntax::ExprF::SomeLit(#x) }
         }
         EmptyListLit(t) => {
-            quote! { dhall_core::ExprF::EmptyListLit(#t) }
+            quote! { dhall_syntax::ExprF::EmptyListLit(#t) }
         }
         NEListLit(es) => {
             let es = quote_vec(es);
-            quote! { dhall_core::ExprF::NEListLit(#es) }
+            quote! { dhall_syntax::ExprF::NEListLit(#es) }
         }
         RecordType(m) => {
             let m = quote_map(m);
-            quote! { dhall_core::ExprF::RecordType(#m) }
+            quote! { dhall_syntax::ExprF::RecordType(#m) }
         }
         RecordLit(m) => {
             let m = quote_map(m);
-            quote! { dhall_core::ExprF::RecordLit(#m) }
+            quote! { dhall_syntax::ExprF::RecordLit(#m) }
         }
         UnionType(m) => {
             let m = quote_opt_map(m);
-            quote! { dhall_core::ExprF::UnionType(#m) }
+            quote! { dhall_syntax::ExprF::UnionType(#m) }
         }
         e => unimplemented!("{:?}", e),
     }
@@ -98,7 +98,7 @@ fn quote_subexpr(
     expr: &SubExpr<X, X>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
-    use dhall_core::ExprF::*;
+    use dhall_syntax::ExprF::*;
     match expr.as_ref().map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
@@ -111,8 +111,8 @@ fn quote_subexpr(
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.into();
-                    let var = quote! { dhall_core::V(#s.into(), #n) };
-                    rc(quote! { dhall_core::ExprF::Var(#var) })
+                    let var = quote! { dhall_syntax::V(#s.into(), #n) };
+                    rc(quote! { dhall_syntax::ExprF::Var(#var) })
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
@@ -120,7 +120,7 @@ fn quote_subexpr(
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: dhall_core::SubExpr<_, _> = #v.clone();
+                        let x: dhall_syntax::SubExpr<_, _> = #v.clone();
                         x
                     } }
                 }
@@ -133,7 +133,7 @@ fn quote_subexpr(
 // Returns an expression of type Expr<_, _>. Expects interpolated variables
 // to be of type SubExpr<_, _>.
 fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
-    use dhall_core::ExprF::*;
+    use dhall_syntax::ExprF::*;
     match expr.map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
@@ -146,8 +146,8 @@ fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
                 // Non-free variable; interpolates as itself
                 Some(()) => {
                     let s: String = s.into();
-                    let var = quote! { dhall_core::V(#s.into(), #n) };
-                    quote! { dhall_core::ExprF::Var(#var) }
+                    let var = quote! { dhall_syntax::V(#s.into(), #n) };
+                    quote! { dhall_syntax::ExprF::Var(#var) }
                 }
                 // Free variable; interpolates as a rust variable
                 None => {
@@ -155,7 +155,7 @@ fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
                     // TODO: insert appropriate shifts ?
                     let v: TokenStream = s.parse().unwrap();
                     quote! { {
-                        let x: dhall_core::SubExpr<_, _> = #v.clone();
+                        let x: dhall_syntax::SubExpr<_, _> = #v.clone();
                         x.unroll()
                     } }
                 }
@@ -166,24 +166,24 @@ fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
 }
 
 fn quote_builtin(b: Builtin) -> TokenStream {
-    format!("dhall_core::Builtin::{:?}", b).parse().unwrap()
+    format!("dhall_syntax::Builtin::{:?}", b).parse().unwrap()
 }
 
 fn quote_const(c: Const) -> TokenStream {
-    format!("dhall_core::Const::{:?}", c).parse().unwrap()
+    format!("dhall_syntax::Const::{:?}", c).parse().unwrap()
 }
 
 fn quote_binop(b: BinOp) -> TokenStream {
-    format!("dhall_core::BinOp::{:?}", b).parse().unwrap()
+    format!("dhall_syntax::BinOp::{:?}", b).parse().unwrap()
 }
 
 fn quote_label(l: &Label) -> TokenStream {
     let l = String::from(l);
-    quote! { dhall_core::Label::from(#l) }
+    quote! { dhall_syntax::Label::from(#l) }
 }
 
 fn rc(x: TokenStream) -> TokenStream {
-    quote! { dhall_core::rc(#x) }
+    quote! { dhall_syntax::rc(#x) }
 }
 
 fn quote_opt<TS>(x: Option<TS>) -> TokenStream

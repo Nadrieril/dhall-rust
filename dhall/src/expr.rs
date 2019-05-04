@@ -1,6 +1,6 @@
 use crate::imports::ImportRoot;
 use crate::normalize::{Thunk, Value};
-use dhall_core::*;
+use dhall_syntax::*;
 use std::marker::PhantomData;
 
 macro_rules! derive_other_traits {
@@ -71,7 +71,7 @@ mod typed {
     use crate::typecheck::{
         TypeError, TypeInternal, TypeMessage, TypecheckContext,
     };
-    use dhall_core::{Const, Label, SubExpr, V, X};
+    use dhall_syntax::{Const, Label, SubExpr, V, X};
     use std::borrow::Cow;
     use std::marker::PhantomData;
 

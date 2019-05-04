@@ -7,9 +7,9 @@ use std::fmt;
 use crate::expr::*;
 use crate::normalize::{NormalizationContext, Thunk, TypeThunk, Value};
 use crate::traits::DynamicType;
-use dhall_core;
-use dhall_core::context::Context;
-use dhall_core::*;
+use dhall_syntax;
+use dhall_syntax::context::Context;
+use dhall_syntax::*;
 use dhall_generator as dhall;
 
 use self::TypeMessage::*;
@@ -113,7 +113,7 @@ impl TypeThunk {
     }
 }
 
-/// A semantic type. This is partially redundant with `dhall_core::Expr`, on purpose. `TypeInternal` should
+/// A semantic type. This is partially redundant with `dhall_syntax::Expr`, on purpose. `TypeInternal` should
 /// be limited to syntactic expressions: either written by the user or meant to be printed.
 /// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
 /// but only construct `TypeInternal`s.
@@ -245,7 +245,7 @@ impl PartialEq for TypecheckContext {
 impl Eq for TypecheckContext {}
 
 fn function_check(a: Const, b: Const) -> Result<Const, ()> {
-    use dhall_core::Const::*;
+    use dhall_syntax::Const::*;
     match (a, b) {
         (_, Type) => Ok(Type),
         (Kind, Kind) => Ok(Kind),
@@ -279,7 +279,7 @@ where
     T: Borrow<Type<'static>>,
     U: Borrow<Type<'static>>,
 {
-    use dhall_core::ExprF::*;
+    use dhall_syntax::ExprF::*;
     fn go<'a, S, T>(
         ctx: &mut Vec<(&'a Label, &'a Label)>,
         el: &'a SubExpr<S, X>,
@@ -368,7 +368,7 @@ fn type_of_const<'a>(c: Const) -> Result<Type<'a>, TypeError> {
 }
 
 fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
-    use dhall_core::Builtin::*;
+    use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
         List | Optional => dhall::expr!(
@@ -464,7 +464,7 @@ macro_rules! ensure_equal {
 macro_rules! ensure_simple_type {
     ($x:expr, $err:expr $(,)*) => {{
         match $x.get_type()?.as_const() {
-            Some(dhall_core::Const::Type) => {}
+            Some(dhall_syntax::Const::Type) => {}
             _ => return Err($err),
         }
     }};
@@ -553,7 +553,7 @@ impl TypeIntermediate {
                     }
                 }
                 // An empty record type has type Type
-                let k = k.unwrap_or(dhall_core::Const::Type);
+                let k = k.unwrap_or(dhall_syntax::Const::Type);
 
                 Typed::from_thunk_and_type(
                     Value::RecordType(
@@ -587,7 +587,7 @@ impl TypeIntermediate {
 
                 // An empty union type has type Type;
                 // an union type with only unary variants also has type Type
-                let k = k.unwrap_or(dhall_core::Const::Type);
+                let k = k.unwrap_or(dhall_syntax::Const::Type);
 
                 Typed::from_thunk_and_type(
                     Value::UnionType(
@@ -664,7 +664,7 @@ fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<X, Normalized<'static>>,
 ) -> Result<Typed<'static>, TypeError> {
-    use dhall_core::ExprF::*;
+    use dhall_syntax::ExprF::*;
 
     use Ret::*;
     let ret = match e.as_ref() {
@@ -738,9 +738,9 @@ fn type_last_layer(
     ctx: &TypecheckContext,
     e: ExprF<Typed<'static>, Label, X, Normalized<'static>>,
 ) -> Result<Ret, TypeError> {
-    use dhall_core::BinOp::*;
-    use dhall_core::Builtin::*;
-    use dhall_core::ExprF::*;
+    use dhall_syntax::BinOp::*;
+    use dhall_syntax::Builtin::*;
+    use dhall_syntax::ExprF::*;
     let mkerr = |msg: TypeMessage<'static>| TypeError::new(ctx, msg);
 
     use Ret::*;

@@ -6,7 +6,7 @@
 //! [dhall-rust]: https://github.com/Nadrieril/dhall-rust
 
 // This crate only contains the grammar-generated parser. The rest of the
-// parser is in dhall_core. This separation is because compiling the
+// parser is in dhall_syntax. This separation is because compiling the
 // grammar-generated parser is extremely slow.
 // See the https://pest.rs documentation for details on what this crate contains.
 // The pest file is auto-generated and is located at ./dhall.pest.

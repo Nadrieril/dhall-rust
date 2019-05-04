@@ -4,7 +4,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[non_exhaustive]
 pub enum Error {
     IO(std::io::Error),
-    Parse(dhall_core::ParseError),
+    Parse(dhall_syntax::ParseError),
     Decode(crate::binary::DecodeError),
     Resolve(crate::imports::ImportError),
     Typecheck(crate::typecheck::TypeError),
@@ -30,8 +30,8 @@ impl From<std::io::Error> for Error {
         Error::IO(err)
     }
 }
-impl From<dhall_core::ParseError> for Error {
-    fn from(err: dhall_core::ParseError) -> Error {
+impl From<dhall_syntax::ParseError> for Error {
+    fn from(err: dhall_syntax::ParseError) -> Error {
         Error::Parse(err)
     }
 }

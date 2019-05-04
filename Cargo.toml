@@ -5,7 +5,7 @@ members = [
     "abnf_to_pest",
     "dhall",
     "dhall_generated_parser",
-    "dhall_core",
+    "dhall_syntax",
     "dhall_generator",
     "improved_slice_patterns",
 ]
@@ -13,7 +13,7 @@ members = [
 # # Parser is super slow when not optimized
 # [profile.dev.overrides.dhall_parser]
 # opt-level = 3
-# [profile.dev.overrides.dhall_core]
+# [profile.dev.overrides.dhall_syntax]
 # opt-level = 3
 # [profile.dev.overrides.dhall]
 # opt-level = 3

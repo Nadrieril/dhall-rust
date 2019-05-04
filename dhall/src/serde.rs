@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::expr::{Normalized, Type};
 use crate::traits::Deserialize;
-use dhall_core::*;
+use dhall_syntax::*;
 use std::borrow::Cow;
 
 impl<'a, T: serde::Deserialize<'a>> Deserialize<'a> for T {

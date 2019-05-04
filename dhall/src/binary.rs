@@ -1,4 +1,4 @@
-use dhall_core::*;
+use dhall_syntax::*;
 use itertools::*;
 use serde_cbor::value::value as cbor;
 
@@ -19,7 +19,7 @@ pub fn decode(data: &[u8]) -> Result<ParsedExpr, DecodeError> {
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
     use cbor::Value::*;
-    use dhall_core::{BinOp, Builtin, Const};
+    use dhall_syntax::{BinOp, Builtin, Const};
     use ExprF::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
