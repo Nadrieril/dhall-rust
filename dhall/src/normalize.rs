@@ -25,17 +25,13 @@ impl Typed {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized {
-        let internal = match self.0 {
-            TypedInternal::Sort => TypedInternal::Sort,
-            TypedInternal::Value(thunk, t) => {
-                // TODO: stupid but needed for now
-                let thunk =
-                    Thunk::from_normalized_expr(thunk.normalize_to_expr());
+        match &self.0 {
+            TypedInternal::Sort => {}
+            TypedInternal::Value(thunk, _) => {
                 thunk.normalize_nf();
-                TypedInternal::Value(thunk, t)
             }
-        };
-        Normalized(internal)
+        }
+        Normalized(self.0)
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
@@ -503,6 +499,25 @@ impl Value {
 
     pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
         match self {
+            // Retry normalizing since substituting may allow progress
+            Value::AppliedBuiltin(b, args) => apply_builtin(
+                *b,
+                args.iter().map(|v| v.subst_shift(var, val)).collect(),
+            ),
+            // Retry normalizing since substituting may allow progress
+            Value::PartialExpr(e) => {
+                normalize_one_layer(e.map_ref_with_special_handling_of_binders(
+                    |v| v.subst_shift(var, val),
+                    |x, v| {
+                        v.subst_shift(
+                            &var.shift(1, &x.into()),
+                            &val.shift(1, &x.into()),
+                        )
+                    },
+                    X::clone,
+                    Label::clone,
+                ))
+            }
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
@@ -510,10 +525,6 @@ impl Value {
                     &var.shift(1, &x.into()),
                     &val.shift(1, &x.into()),
                 ),
-            ),
-            Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
-                *b,
-                args.iter().map(|v| v.subst_shift(var, val)).collect(),
             ),
             Value::NaturalSuccClosure => Value::NaturalSuccClosure,
             Value::OptionalSomeClosure(tth) => {
@@ -594,19 +605,6 @@ impl Value {
                     })
                     .collect(),
             ),
-            Value::PartialExpr(e) => {
-                Value::PartialExpr(e.map_ref_with_special_handling_of_binders(
-                    |v| v.subst_shift(var, val),
-                    |x, v| {
-                        v.subst_shift(
-                            &var.shift(1, &x.into()),
-                            &val.shift(1, &x.into()),
-                        )
-                    },
-                    X::clone,
-                    Label::clone,
-                ))
-            }
         }
     }
 }
