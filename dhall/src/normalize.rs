@@ -1412,6 +1412,7 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
                     match (&*e1_borrow, &*e2_borrow) {
                         // Simplify `if b then True else False`
                         (BoolLit(true), BoolLit(false)) => RetThunkRef(b),
+                        _ if e1 == e2 => RetThunkRef(e1),
                         _ => {
                             drop(b_borrow);
                             drop(e1_borrow);
@@ -1434,16 +1435,20 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
                 (BoolAnd, _, BoolLit(true)) => RetThunkRef(x),
                 (BoolAnd, BoolLit(false), _) => RetValue(BoolLit(false)),
                 (BoolAnd, _, BoolLit(false)) => RetValue(BoolLit(false)),
+                (BoolAnd, _, _) if x == y => RetThunkRef(x),
                 (BoolOr, BoolLit(true), _) => RetValue(BoolLit(true)),
                 (BoolOr, _, BoolLit(true)) => RetValue(BoolLit(true)),
                 (BoolOr, BoolLit(false), _) => RetThunkRef(y),
                 (BoolOr, _, BoolLit(false)) => RetThunkRef(x),
+                (BoolOr, _, _) if x == y => RetThunkRef(x),
                 (BoolEQ, BoolLit(true), _) => RetThunkRef(y),
                 (BoolEQ, _, BoolLit(true)) => RetThunkRef(x),
                 (BoolEQ, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x == y)),
+                (BoolEQ, _, _) if x == y => RetValue(BoolLit(true)),
                 (BoolNE, BoolLit(false), _) => RetThunkRef(y),
                 (BoolNE, _, BoolLit(false)) => RetThunkRef(x),
                 (BoolNE, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x != y)),
+                (BoolNE, _, _) if x == y => RetValue(BoolLit(false)),
 
                 (NaturalPlus, NaturalLit(0), _) => RetThunkRef(y),
                 (NaturalPlus, _, NaturalLit(0)) => RetThunkRef(x),
@@ -1735,11 +1740,11 @@ mod spec_tests {
     norm!(success_simple_optionalBuildFold, "simple/optionalBuildFold");
     norm!(success_simple_optionalFold, "simple/optionalFold");
     // norm!(success_simple_sortOperator, "simple/sortOperator");
-    // norm!(success_simplifications_and, "simplifications/and");
-    // norm!(success_simplifications_eq, "simplifications/eq");
-    // norm!(success_simplifications_ifThenElse, "simplifications/ifThenElse");
-    // norm!(success_simplifications_ne, "simplifications/ne");
-    // norm!(success_simplifications_or, "simplifications/or");
+    norm!(success_simplifications_and, "simplifications/and");
+    norm!(success_simplifications_eq, "simplifications/eq");
+    norm!(success_simplifications_ifThenElse, "simplifications/ifThenElse");
+    norm!(success_simplifications_ne, "simplifications/ne");
+    norm!(success_simplifications_or, "simplifications/or");
 
     norm!(success_unit_Bool, "unit/Bool");
     norm!(success_unit_Double, "unit/Double");
@@ -1753,7 +1758,7 @@ mod spec_tests {
     norm!(success_unit_FunctionApplicationSubstitute, "unit/FunctionApplicationSubstitute");
     norm!(success_unit_FunctionNormalizeArguments, "unit/FunctionNormalizeArguments");
     norm!(success_unit_FunctionTypeNormalizeArguments, "unit/FunctionTypeNormalizeArguments");
-    // norm!(success_unit_IfAlternativesIdentical, "unit/IfAlternativesIdentical");
+    norm!(success_unit_IfAlternativesIdentical, "unit/IfAlternativesIdentical");
     norm!(success_unit_IfFalse, "unit/IfFalse");
     norm!(success_unit_IfNormalizePredicateAndBranches, "unit/IfNormalizePredicateAndBranches");
     norm!(success_unit_IfTrivial, "unit/IfTrivial");
@@ -1822,13 +1827,13 @@ mod spec_tests {
     norm!(success_unit_NaturalToIntegerOne, "unit/NaturalToIntegerOne");
     norm!(success_unit_None, "unit/None");
     norm!(success_unit_NoneNatural, "unit/NoneNatural");
-    // norm!(success_unit_OperatorAndEquivalentArguments, "unit/OperatorAndEquivalentArguments");
+    norm!(success_unit_OperatorAndEquivalentArguments, "unit/OperatorAndEquivalentArguments");
     norm!(success_unit_OperatorAndLhsFalse, "unit/OperatorAndLhsFalse");
     norm!(success_unit_OperatorAndLhsTrue, "unit/OperatorAndLhsTrue");
     norm!(success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
     norm!(success_unit_OperatorAndRhsFalse, "unit/OperatorAndRhsFalse");
     norm!(success_unit_OperatorAndRhsTrue, "unit/OperatorAndRhsTrue");
-    // norm!(success_unit_OperatorEqualEquivalentArguments, "unit/OperatorEqualEquivalentArguments");
+    norm!(success_unit_OperatorEqualEquivalentArguments, "unit/OperatorEqualEquivalentArguments");
     norm!(success_unit_OperatorEqualLhsTrue, "unit/OperatorEqualLhsTrue");
     norm!(success_unit_OperatorEqualNormalizeArguments, "unit/OperatorEqualNormalizeArguments");
     norm!(success_unit_OperatorEqualRhsTrue, "unit/OperatorEqualRhsTrue");
@@ -1836,11 +1841,11 @@ mod spec_tests {
     norm!(success_unit_OperatorListConcatenateListList, "unit/OperatorListConcatenateListList");
     norm!(success_unit_OperatorListConcatenateNormalizeArguments, "unit/OperatorListConcatenateNormalizeArguments");
     norm!(success_unit_OperatorListConcatenateRhsEmpty, "unit/OperatorListConcatenateRhsEmpty");
-    // norm!(success_unit_OperatorNotEqualEquivalentArguments, "unit/OperatorNotEqualEquivalentArguments");
+    norm!(success_unit_OperatorNotEqualEquivalentArguments, "unit/OperatorNotEqualEquivalentArguments");
     norm!(success_unit_OperatorNotEqualLhsFalse, "unit/OperatorNotEqualLhsFalse");
     norm!(success_unit_OperatorNotEqualNormalizeArguments, "unit/OperatorNotEqualNormalizeArguments");
     norm!(success_unit_OperatorNotEqualRhsFalse, "unit/OperatorNotEqualRhsFalse");
-    // norm!(success_unit_OperatorOrEquivalentArguments, "unit/OperatorOrEquivalentArguments");
+    norm!(success_unit_OperatorOrEquivalentArguments, "unit/OperatorOrEquivalentArguments");
     norm!(success_unit_OperatorOrLhsFalse, "unit/OperatorOrLhsFalse");
     norm!(success_unit_OperatorOrLhsTrue, "unit/OperatorOrLhsTrue");
     norm!(success_unit_OperatorOrNormalizeArguments, "unit/OperatorOrNormalizeArguments");
