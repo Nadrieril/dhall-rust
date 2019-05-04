@@ -187,17 +187,18 @@ impl Value {
                 let a = n.normalize_to_expr();
                 dhall::subexpr!(λ(x: a) -> Some x)
             }
-            Value::ListConsClosure(n, None) => {
-                let a = n.normalize_to_expr();
+            Value::ListConsClosure(a, None) => {
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.shift(1, &Label::from("x").into());
+                let a1 = a1.normalize_to_expr();
+                let a = a.normalize_to_expr();
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
-                let v = v.normalize_to_expr();
-                let a = n.normalize_to_expr();
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.shift(1, &Label::from("xs").into());
+                let v = v.normalize_to_expr();
+                let a = n.normalize_to_expr();
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
             }
             Value::NaturalSuccClosure => {
