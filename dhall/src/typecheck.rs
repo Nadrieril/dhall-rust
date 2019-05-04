@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::expr::*;
-use crate::normalize::{NormalizationContext, Thunk, TypeThunk, Value};
+use crate::normalize::{
+    DoubleVar, NormalizationContext, Thunk, TypeThunk, Value,
+};
 use crate::traits::DynamicType;
 use dhall_proc_macros as dhall;
 use dhall_syntax;
@@ -43,7 +45,7 @@ impl Typed {
 }
 
 impl Normalized {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         Normalized(self.0.shift(delta, var))
     }
     pub(crate) fn to_type(self) -> Type {
@@ -73,10 +75,10 @@ impl Type {
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         Type(self.0.shift(delta, var))
     }
-    pub(crate) fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         Type(self.0.subst_shift(var, val))
     }
 
@@ -148,14 +150,14 @@ impl TypeInternal {
             _ => None,
         }
     }
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.shift(delta, var))),
             Const(c) => Const(*c),
         }
     }
-    fn subst_shift(&self, var: &V<Label>, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
@@ -173,12 +175,12 @@ impl PartialEq for TypeInternal {
 
 #[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
-    Type(V<Label>, Type),
+    Type(DoubleVar, Type),
     Value(Normalized),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
         use EnvItem::*;
         match self {
             Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
@@ -756,7 +758,7 @@ fn type_last_layer(
                 mkerr(TypeMismatch(f.clone(), tx.clone().to_normalized(), a))
             });
 
-            Ok(RetType(tb.subst_shift(&V(x.clone(), 0), &a)))
+            Ok(RetType(tb.subst_shift(&x.into(), &a)))
         }
         Annot(x, t) => {
             let t = t.to_type();
