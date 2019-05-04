@@ -141,12 +141,13 @@ pub type ParsedExpr = SubExpr<X, Import>;
 pub type ResolvedExpr = SubExpr<X, X>;
 pub type DhallExpr = ResolvedExpr;
 
+// Each node carries an annotation. In practice it's either X (no annotation) or a Span.
 #[derive(Debug)]
-pub struct SubExpr<Note, Embed>(Rc<Expr<Note, Embed>>, Option<Note>);
+pub struct SubExpr<Note, Embed>(Rc<(Expr<Note, Embed>, Option<Note>)>);
 
 impl<Note, Embed: PartialEq> std::cmp::PartialEq for SubExpr<Note, Embed> {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.0.as_ref().0 == other.0.as_ref().0
     }
 }
 
@@ -345,14 +346,6 @@ impl<N, E> Expr<N, E> {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
 
-    pub fn roll(&self) -> SubExpr<N, E>
-    where
-        N: Clone,
-        E: Clone,
-    {
-        rc(ExprF::clone(self))
-    }
-
     pub fn squash_embed<E2>(
         &self,
         f: impl FnMut(&E) -> SubExpr<N, E2>,
@@ -378,7 +371,33 @@ impl<N: Clone> Expr<N, X> {
 
 impl<N, E> SubExpr<N, E> {
     pub fn as_ref(&self) -> &Expr<N, E> {
-        self.0.as_ref()
+        &self.0.as_ref().0
+    }
+
+    pub fn new(x: Expr<N, E>, n: N) -> Self {
+        SubExpr(Rc::new((x, Some(n))))
+    }
+
+    pub fn from_expr_no_note(x: Expr<N, E>) -> Self {
+        SubExpr(Rc::new((x, None)))
+    }
+
+    pub fn unnote(&self) -> SubExpr<X, E>
+    where
+        E: Clone,
+    {
+        SubExpr::from_expr_no_note(
+            self.as_ref().visit(&mut visitor::UnNoteVisitor),
+        )
+    }
+}
+
+impl<N: Clone, E> SubExpr<N, E> {
+    pub fn rewrap<E2>(&self, x: Expr<N, E2>) -> SubExpr<N, E2>
+    where
+        N: Clone,
+    {
+        SubExpr(Rc::new((x, (self.0).1.clone())))
     }
 
     pub fn traverse_embed<E2, Err>(
@@ -388,7 +407,7 @@ impl<N, E> SubExpr<N, E> {
     where
         N: Clone,
     {
-        Ok(rc(self.as_ref().traverse_embed(visit_embed)?))
+        Ok(self.rewrap(self.as_ref().traverse_embed(visit_embed)?))
     }
 
     pub fn map_embed<E2>(
@@ -398,7 +417,7 @@ impl<N, E> SubExpr<N, E> {
     where
         N: Clone,
     {
-        rc(self.as_ref().map_embed(map_embed))
+        self.rewrap(self.as_ref().map_embed(map_embed))
     }
 
     pub fn map_subexprs_with_special_handling_of_binders<'a>(
@@ -409,7 +428,7 @@ impl<N, E> SubExpr<N, E> {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // This calls ExprF::map_ref
-            e => rc(e.map_ref_with_special_handling_of_binders(
+            e => self.rewrap(e.map_ref_with_special_handling_of_binders(
                 map_expr,
                 map_under_binder,
                 |_| unreachable!(),
@@ -418,28 +437,13 @@ impl<N, E> SubExpr<N, E> {
         }
     }
 
-    pub fn unroll(&self) -> Expr<N, E>
-    where
-        N: Clone,
-        E: Clone,
-    {
-        ExprF::clone(self.as_ref())
-    }
-
-    pub fn unnote(&self) -> SubExpr<X, E>
-    where
-        E: Clone,
-    {
-        rc(self.as_ref().visit(&mut visitor::UnNoteVisitor))
-    }
-
     /// `shift` is used by both normalization and type-checking to avoid variable
     /// capture by shifting variable indices
     /// See https://github.com/dhall-lang/dhall-lang/blob/master/standard/semantics.md#shift
     /// for details
     pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
         match self.as_ref() {
-            ExprF::Var(v) => rc(ExprF::Var(v.shift(delta, var))),
+            ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(delta, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.shift(delta, var),
                 |x: &Label, e| e.shift(delta, &var.shift(1, &x.into())),
@@ -450,7 +454,7 @@ impl<N, E> SubExpr<N, E> {
     pub fn subst_shift(&self, var: &V<Label>, val: &Self) -> Self {
         match self.as_ref() {
             ExprF::Var(v) if v == var => val.clone(),
-            ExprF::Var(v) => rc(ExprF::Var(v.shift(-1, var))),
+            ExprF::Var(v) => self.rewrap(ExprF::Var(v.shift(-1, var))),
             _ => self.map_subexprs_with_special_handling_of_binders(
                 |e| e.subst_shift(var, val),
                 |x: &Label, e| {
@@ -466,25 +470,25 @@ impl<N, E> SubExpr<N, E> {
 
 impl<N: Clone> SubExpr<N, X> {
     pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
-        rc(self.as_ref().embed_absurd())
+        self.rewrap(self.as_ref().embed_absurd())
     }
 }
 
 impl<E: Clone> SubExpr<X, E> {
     pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
-        rc(self.as_ref().note_absurd())
+        SubExpr::from_expr_no_note(self.as_ref().note_absurd())
     }
 }
 
 impl<N, E> Clone for SubExpr<N, E> {
     fn clone(&self) -> Self {
-        SubExpr(Rc::clone(&self.0), None)
+        SubExpr(Rc::clone(&self.0))
     }
 }
 
 // Should probably rename this
-pub fn rc<N, E>(x: Expr<N, E>) -> SubExpr<N, E> {
-    SubExpr(Rc::new(x), None)
+pub fn rc<E>(x: Expr<X, E>) -> SubExpr<X, E> {
+    SubExpr::from_expr_no_note(x)
 }
 
 /// Add an isize to an usize
@@ -518,14 +522,20 @@ pub fn shift<N, E>(
     delta: isize,
     var: &V<Label>,
     in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
+) -> SubExpr<N, E>
+where
+    N: Clone,
+{
     in_expr.shift(delta, var)
 }
 
 pub fn shift0_multiple<N, E>(
     deltas: &HashMap<Label, isize>,
     in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
+) -> SubExpr<N, E>
+where
+    N: Clone,
+{
     shift0_multiple_inner(&Context::new(), deltas, in_expr)
 }
 
@@ -533,12 +543,15 @@ fn shift0_multiple_inner<N, E>(
     ctx: &Context<Label, ()>,
     deltas: &HashMap<Label, isize>,
     in_expr: &SubExpr<N, E>,
-) -> SubExpr<N, E> {
+) -> SubExpr<N, E>
+where
+    N: Clone,
+{
     use crate::ExprF::*;
     match in_expr.as_ref() {
         Var(V(y, m)) if ctx.lookup(y, *m).is_none() => {
             let delta = deltas.get(y).unwrap_or(&0);
-            rc(Var(V(y.clone(), add_ui(*m, *delta))))
+            in_expr.rewrap(Var(V(y.clone(), add_ui(*m, *delta))))
         }
         _ => in_expr.map_subexprs_with_special_handling_of_binders(
             |e| shift0_multiple_inner(ctx, deltas, e),

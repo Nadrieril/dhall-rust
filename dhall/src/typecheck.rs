@@ -350,7 +350,7 @@ fn type_of_const(c: Const) -> Result<Type, TypeError> {
     }
 }
 
-fn type_of_builtin<N, E>(b: Builtin) -> Expr<N, E> {
+fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
     use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),

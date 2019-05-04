@@ -411,7 +411,7 @@ where
         &mut self,
         subexpr: &'a SubExpr<N, E>,
     ) -> Result<SubExpr<N, E2>, Self::Error> {
-        Ok(rc(subexpr.as_ref().visit(&mut **self)?))
+        Ok(subexpr.rewrap(subexpr.as_ref().visit(&mut **self)?))
     }
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
         (self.0)(embed)
@@ -469,7 +469,8 @@ where
     fn visit_resulting_exprf(
         result: ExprF<Self::SE2, Self::L2, Self::E2>,
     ) -> Result<SubExpr<N, E2>, Self::Error> {
-        Ok(rc(result))
+        // TODO: don't lose note
+        Ok(SubExpr::from_expr_no_note(result))
     }
 }
 
@@ -482,7 +483,7 @@ where
     E: Clone + 'a,
 {
     fn visit_subexpr(&mut self, subexpr: &'a SubExpr<N, E>) -> SubExpr<X, E> {
-        rc(subexpr.as_ref().visit(&mut **self))
+        SubExpr::from_expr_no_note(subexpr.as_ref().visit(&mut **self))
     }
     fn visit_embed(self, embed: &'a E) -> E {
         E::clone(embed)
@@ -501,7 +502,7 @@ where
     E: Clone + 'a,
 {
     fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X, E>) -> SubExpr<N, E> {
-        rc(subexpr.as_ref().visit(&mut **self))
+        SubExpr::from_expr_no_note(subexpr.as_ref().visit(&mut **self))
     }
     fn visit_embed(self, embed: &'a E) -> E {
         E::clone(embed)
@@ -520,7 +521,7 @@ where
     N: Clone + 'a,
 {
     fn visit_subexpr(&mut self, subexpr: &'a SubExpr<N, X>) -> SubExpr<N, E> {
-        rc(subexpr.as_ref().visit(&mut **self))
+        subexpr.rewrap(subexpr.as_ref().visit(&mut **self))
     }
     fn visit_embed(self, embed: &'a X) -> E {
         match *embed {}

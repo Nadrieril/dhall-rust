@@ -11,7 +11,7 @@ pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::expr!()") };
     let expr = expr.map_embed(no_import);
-    let output = quote_expr(&expr.unroll(), &Context::new());
+    let output = quote_expr(expr.as_ref(), &Context::new());
     output.into()
 }
 

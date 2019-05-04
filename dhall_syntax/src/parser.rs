@@ -25,8 +25,8 @@ pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
-fn rc(x: ParsedExpr) -> ParsedSubExpr {
-    crate::rc(x)
+fn unspanned(x: ParsedExpr) -> ParsedSubExpr {
+    SubExpr::from_expr_no_note(x)
 }
 
 #[derive(Debug, Clone)]
@@ -52,10 +52,8 @@ impl Span {
     }
 }
 
-fn spanned(_span: Span, x: ParsedExpr) -> ParsedExpr {
-    x
-    // This breaks equality testing; I need to fix that first
-    // Note(span, rc(x))
+fn spanned(span: Span, x: ParsedExpr) -> ParsedSubExpr {
+    SubExpr::new(x, span)
 }
 
 #[derive(Debug)]
@@ -343,7 +341,7 @@ make_parser! {
 
     rule!(double_quote_chunk<ParsedTextContents>; children!(
         [interpolation(e)] => {
-            InterpolatedTextContents::Expr(rc(e))
+            InterpolatedTextContents::Expr(e)
         },
         [double_quote_escaped(s)] => {
             InterpolatedTextContents::Text(s)
@@ -408,13 +406,13 @@ make_parser! {
     rule!(escaped_interpolation<&'a str>;
         captured_str!(_) => "${"
     );
-    rule!(interpolation<ParsedExpr>; children!(
+    rule!(interpolation<ParsedSubExpr>; children!(
         [expression(e)] => e
     ));
 
     rule!(single_quote_continue<Vec<Vec<ParsedTextContents>>>; children!(
         [interpolation(c), single_quote_continue(lines)] => {
-            let c = InterpolatedTextContents::Expr(rc(c));
+            let c = InterpolatedTextContents::Expr(c);
             let mut lines = lines;
             lines.last_mut().unwrap().push(c);
             lines
@@ -447,7 +445,7 @@ make_parser! {
         },
     ));
 
-    rule!(builtin<ParsedExpr>; span;
+    rule!(builtin<ParsedSubExpr>; span;
         captured_str!(s) => {
             spanned(span, match crate::Builtin::parse(s) {
                 Some(b) => Builtin(b),
@@ -504,7 +502,7 @@ make_parser! {
         }
     );
 
-    rule!(identifier<ParsedExpr> as expression; span; children!(
+    rule!(identifier<ParsedSubExpr> as expression; span; children!(
         [variable(v)] => {
             spanned(span, Var(v))
         },
@@ -644,7 +642,7 @@ make_parser! {
 
     token_rule!(Text<()>);
 
-    rule!(import<ParsedExpr> as expression; span; children!(
+    rule!(import<ParsedSubExpr> as expression; span; children!(
         [import_hashed(location_hashed)] => {
             spanned(span, Embed(Import {
                 mode: ImportMode::Code,
@@ -666,29 +664,29 @@ make_parser! {
     token_rule!(if_<()>);
     token_rule!(in_<()>);
 
-    rule!(expression<ParsedExpr> as expression; span; children!(
+    rule!(expression<ParsedSubExpr> as expression; span; children!(
         [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
-            spanned(span, Lam(l, rc(typ), rc(body)))
+            spanned(span, Lam(l, typ, body))
         },
         [if_(()), expression(cond), expression(left), expression(right)] => {
-            spanned(span, BoolIf(rc(cond), rc(left), rc(right)))
+            spanned(span, BoolIf(cond, left, right))
         },
         [let_binding(bindings).., in_(()), expression(final_expr)] => {
             bindings.rev().fold(
                 final_expr,
-                |acc, x| Let(x.0, x.1, x.2, rc(acc))
+                |acc, x| unspanned(Let(x.0, x.1, x.2, acc))
             )
         },
         [forall(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
-            spanned(span, Pi(l, rc(typ), rc(body)))
+            spanned(span, Pi(l, typ, body))
         },
         [expression(typ), arrow(()), expression(body)] => {
-            spanned(span, Pi("_".into(), rc(typ), rc(body)))
+            spanned(span, Pi("_".into(), typ, body))
         },
         [merge(()), expression(x), expression(y), expression(z)] => {
-            spanned(span, Merge(rc(x), rc(y), Some(rc(z))))
+            spanned(span, Merge(x, y, Some(z)))
         },
         [expression(e)] => e,
     ));
@@ -696,148 +694,148 @@ make_parser! {
     rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>;
             children!(
         [label(name), expression(annot), expression(expr)] =>
-            (name, Some(rc(annot)), rc(expr)),
+            (name, Some(annot), expr),
         [label(name), expression(expr)] =>
-            (name, None, rc(expr)),
+            (name, None, expr),
     ));
 
     token_rule!(List<()>);
     token_rule!(Optional<()>);
 
-    rule!(empty_collection<ParsedExpr> as expression; span; children!(
+    rule!(empty_collection<ParsedSubExpr> as expression; span; children!(
         [List(_), expression(t)] => {
-            spanned(span, EmptyListLit(rc(t)))
+            spanned(span, EmptyListLit(t))
         },
         [Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(None, rc(t)))
+            spanned(span, OldOptionalLit(None, t))
         },
     ));
 
-    rule!(non_empty_optional<ParsedExpr> as expression; span; children!(
+    rule!(non_empty_optional<ParsedSubExpr> as expression; span; children!(
         [expression(x), Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(Some(rc(x)), rc(t)))
+            spanned(span, OldOptionalLit(Some(x), t))
         }
     ));
 
-    rule!(import_alt_expression<ParsedExpr> as expression; children!(
+    rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::ImportAlt;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(or_expression<ParsedExpr> as expression; children!(
+    rule!(or_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::BoolOr;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(plus_expression<ParsedExpr> as expression; children!(
+    rule!(plus_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::NaturalPlus;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(text_append_expression<ParsedExpr> as expression; children!(
+    rule!(text_append_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::TextAppend;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(list_append_expression<ParsedExpr> as expression; children!(
+    rule!(list_append_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::ListAppend;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(and_expression<ParsedExpr> as expression; children!(
+    rule!(and_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::BoolAnd;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(combine_expression<ParsedExpr> as expression; children!(
+    rule!(combine_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::Combine;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(prefer_expression<ParsedExpr> as expression; children!(
+    rule!(prefer_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::Prefer;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(combine_types_expression<ParsedExpr> as expression; children!(
+    rule!(combine_types_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::CombineTypes;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(times_expression<ParsedExpr> as expression; children!(
+    rule!(times_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::NaturalTimes;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(equal_expression<ParsedExpr> as expression; children!(
+    rule!(equal_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::BoolEQ;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
-    rule!(not_equal_expression<ParsedExpr> as expression; children!(
+    rule!(not_equal_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::BoolNE;
-            rest.fold(first, |acc, e| BinOp(o, rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
 
-    rule!(annotated_expression<ParsedExpr> as expression; span; children!(
+    rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
         [expression(e)] => e,
         [expression(e), expression(annot)] => {
-            spanned(span, Annot(rc(e), rc(annot)))
+            spanned(span, Annot(e, annot))
         },
     ));
 
     token_rule!(Some_<()>);
 
-    rule!(application_expression<ParsedExpr> as expression; children!(
+    rule!(application_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            rest.fold(first, |acc, e| App(rc(acc), rc(e)))
+            rest.fold(first, |acc, e| unspanned(App(acc, e)))
         },
     ));
 
-    rule!(first_application_expression<ParsedExpr> as expression; span;
+    rule!(first_application_expression<ParsedSubExpr> as expression; span;
             children!(
         [expression(e)] => e,
         [Some_(()), expression(e)] => {
-            spanned(span, SomeLit(rc(e)))
+            spanned(span, SomeLit(e))
         },
         [merge(()), expression(x), expression(y)] => {
-            spanned(span, Merge(rc(x), rc(y), None))
+            spanned(span, Merge(x, y, None))
         },
     ));
 
-    rule!(selector_expression<ParsedExpr> as expression; children!(
+    rule!(selector_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), selector(rest)..] => {
-            rest.fold(first, |acc, e| match e {
-                Either::Left(l) => Field(rc(acc), l),
-                Either::Right(ls) => Projection(rc(acc), ls),
-            })
+            rest.fold(first, |acc, e| unspanned(match e {
+                Either::Left(l) => Field(acc, l),
+                Either::Right(ls) => Projection(acc, ls),
+            }))
         }
     ));
 
@@ -850,7 +848,7 @@ make_parser! {
         [label(ls)..] => ls.collect(),
     ));
 
-    rule!(primitive_expression<ParsedExpr> as expression; span; children!(
+    rule!(primitive_expression<ParsedSubExpr> as expression; span; children!(
         [double_literal(n)] => spanned(span, DoubleLit(n)),
         [natural_literal(n)] => spanned(span, NaturalLit(n)),
         [integer_literal(n)] => spanned(span, IntegerLit(n)),
@@ -859,51 +857,51 @@ make_parser! {
         [expression(e)] => e,
     ));
 
-    rule!(empty_record_literal<ParsedExpr> as expression; span;
+    rule!(empty_record_literal<ParsedSubExpr> as expression; span;
         captured_str!(_) => spanned(span, RecordLit(BTreeMap::new()))
     );
 
-    rule!(empty_record_type<ParsedExpr> as expression; span;
+    rule!(empty_record_type<ParsedSubExpr> as expression; span;
         captured_str!(_) => spanned(span, RecordType(BTreeMap::new()))
     );
 
-    rule!(non_empty_record_type_or_literal<ParsedExpr> as expression; span;
+    rule!(non_empty_record_type_or_literal<ParsedSubExpr> as expression; span;
           children!(
         [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
-            map.insert(first_label, rc(first_expr));
+            map.insert(first_label, first_expr);
             spanned(span, RecordType(map))
         },
         [label(first_label), non_empty_record_literal(rest)] => {
             let (first_expr, mut map) = rest;
-            map.insert(first_label, rc(first_expr));
+            map.insert(first_label, first_expr);
             spanned(span, RecordLit(map))
         },
     ));
 
     rule!(non_empty_record_type
-          <(ParsedExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedSubExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
         [expression(expr), record_type_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
     rule!(record_type_entry<(Label, ParsedSubExpr)>; children!(
-        [label(name), expression(expr)] => (name, rc(expr))
+        [label(name), expression(expr)] => (name, expr)
     ));
 
     rule!(non_empty_record_literal
-          <(ParsedExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedSubExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
         [expression(expr), record_literal_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
     rule!(record_literal_entry<(Label, ParsedSubExpr)>; children!(
-        [label(name), expression(expr)] => (name, rc(expr))
+        [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type_or_literal<ParsedExpr> as expression; span; children!(
+    rule!(union_type_or_literal<ParsedSubExpr> as expression; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(BTreeMap::new()))
         },
@@ -935,12 +933,12 @@ make_parser! {
           <(ParsedSubExpr, BTreeMap<Label, Option<ParsedSubExpr>>)>;
             children!(
         [expression(e), union_type_entry(entries)..] => {
-            (rc(e), entries.collect())
+            (e, entries.collect())
         },
     ));
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
-        [label(name), expression(expr)] => (name, Some(rc(expr))),
+        [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
     ));
 
@@ -951,10 +949,10 @@ make_parser! {
              BTreeMap<Label, Option<ParsedSubExpr>>))>;
                 children!(
         [expression(e), non_empty_union_type_or_literal(rest)] => {
-            (Some(rc(e)), rest)
+            (Some(e), rest)
         },
         [expression(e)] => {
-            (Some(rc(e)), (None, BTreeMap::new()))
+            (Some(e), (None, BTreeMap::new()))
         },
         [non_empty_union_type_or_literal(rest)] => {
             (None, rest)
@@ -964,15 +962,15 @@ make_parser! {
         },
     ));
 
-    rule!(non_empty_list_literal<ParsedExpr> as expression; span;
+    rule!(non_empty_list_literal<ParsedSubExpr> as expression; span;
           children!(
         [expression(items)..] => spanned(
             span,
-            NEListLit(items.map(rc).collect())
+            NEListLit(items.collect())
         )
     ));
 
-    rule!(final_expression<ParsedExpr> as expression; children!(
+    rule!(final_expression<ParsedSubExpr> as expression; children!(
         [expression(e), EOI(_eoi)] => e
     ));
 }
@@ -983,10 +981,10 @@ pub fn parse_expr<'a>(s: &'a str) -> ParseResult<ParsedSubExpr> {
     let expr = do_parse(rc_input, pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);
     match expr {
-        ParsedValue::expression(e) => Ok(rc(e)),
+        ParsedValue::expression(e) => Ok(e),
         _ => unreachable!(),
     }
-    // Ok(rc(BoolLit(false)))
+    // Ok(BoolLit(false))
 }
 
 #[test]
