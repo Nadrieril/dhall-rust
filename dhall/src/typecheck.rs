@@ -239,21 +239,21 @@ fn function_check(a: Const, b: Const) -> Result<Const, ()> {
 }
 
 fn match_vars(vl: &V<Label>, vr: &V<Label>, ctx: &[(&Label, &Label)]) -> bool {
-    let (V(xL, mut nL), V(xR, mut nR)) = (vl, vr);
+    let mut vl = vl.clone();
+    let mut vr = vr.clone();
     for &(xL2, xR2) in ctx {
-        match (nL, nR) {
-            (0, 0) if xL == xL2 && xR == xR2 => return true,
-            (_, _) => {
-                if xL == xL2 {
-                    nL -= 1;
-                }
-                if xR == xR2 {
-                    nR -= 1;
-                }
-            }
+        let vl2 = xL2.into();
+        let vr2 = xR2.into();
+        if vl == vl2 && vr == vr2 {
+            // Both were bound variables and correspond to the same binder
+            return true;
+        } else {
+            vl = vl.shift(-1, &vl2);
+            vr = vr.shift(-1, &vr2);
         }
     }
-    xL == xR && nL == nR
+    // Both were free variables
+    vl == vr
 }
 
 // Equality up to alpha-equivalence (renaming of bound variables)
