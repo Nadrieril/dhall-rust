@@ -29,7 +29,7 @@ fn rc(x: ParsedExpr) -> ParsedSubExpr {
     crate::rc(x)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Span {
     input: Rc<str>,
     /// # Safety

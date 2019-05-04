@@ -163,7 +163,7 @@ pub(crate) enum Value {
     UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
     /// Invariant: This must not contain a value captured by one of the variants above.
-    PartialExpr(ExprF<Thunk, Label, X, X>),
+    PartialExpr(ExprF<Thunk, Label, X>),
 }
 
 impl Value {
@@ -497,7 +497,6 @@ impl Value {
                     |v| v.shift(delta, var),
                     |x, v| v.shift(delta, &var.shift(1, &x.into())),
                     X::clone,
-                    X::clone,
                     Label::clone,
                 ))
             }
@@ -606,7 +605,6 @@ impl Value {
                             &val.shift(1, &x.into()),
                         )
                     },
-                    X::clone,
                     X::clone,
                     Label::clone,
                 ))
@@ -1125,11 +1123,10 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     }
 
     // Thunk subexpressions
-    let expr: ExprF<Thunk, Label, X, X> =
+    let expr: ExprF<Thunk, Label, X> =
         expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| Thunk::new(ctx.clone(), e.clone()),
             |x, e| Thunk::new(ctx.skip(x), e.clone()),
-            X::clone,
             |_| unreachable!(),
             Label::clone,
         );
@@ -1137,7 +1134,7 @@ fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     normalize_one_layer(expr)
 }
 
-fn normalize_one_layer(expr: ExprF<Thunk, Label, X, X>) -> Value {
+fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
     use Value::{
         BoolLit, EmptyListLit, EmptyOptionalLit, Lam, NEListLit, NEOptionalLit,
         NaturalLit, Pi, RecordLit, RecordType, TextLit, UnionConstructor,
@@ -1149,7 +1146,7 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X, X>) -> Value {
         RetValue(Value),
         RetThunk(Thunk),
         RetThunkRef(&'a Thunk),
-        RetExpr(ExprF<Thunk, Label, X, X>),
+        RetExpr(ExprF<Thunk, Label, X>),
     }
     use Ret::{RetExpr, RetThunk, RetThunkRef, RetValue};
 
@@ -1157,7 +1154,6 @@ fn normalize_one_layer(expr: ExprF<Thunk, Label, X, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => RetThunk(x),
-        ExprF::Note(_, e) => RetThunk(e),
         ExprF::Lam(x, t, e) => RetValue(Lam(x, t, e)),
         ExprF::Pi(x, t, e) => {
             RetValue(Pi(x, TypeThunk::from_thunk(t), TypeThunk::from_thunk(e)))

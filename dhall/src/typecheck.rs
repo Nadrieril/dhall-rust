@@ -719,7 +719,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<Typed, Label, X, Normalized>,
+    e: ExprF<Typed, Label, Normalized>,
 ) -> Result<Ret, TypeError> {
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;

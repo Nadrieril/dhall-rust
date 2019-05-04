@@ -27,7 +27,7 @@ pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 // Returns an expression of type ExprF<T, _, _>, where T is the
 // type of the subexpressions after interpolation.
-pub fn quote_exprf<TS>(expr: ExprF<TS, Label, X, X>) -> TokenStream
+pub fn quote_exprf<TS>(expr: ExprF<TS, Label, X>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
@@ -103,7 +103,6 @@ fn quote_subexpr(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
         |_| unreachable!(),
-        |_| unreachable!(),
         Label::clone,
     ) {
         Var(V(ref s, n)) => {
@@ -137,7 +136,6 @@ fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
     match expr.map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),
         |l, e| quote_subexpr(e, &ctx.insert(l.clone(), ())),
-        |_| unreachable!(),
         |_| unreachable!(),
         Label::clone,
     ) {

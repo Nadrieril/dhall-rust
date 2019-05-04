@@ -3,7 +3,7 @@ use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
-impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
+impl<SE: Display + Clone, E: Display> Display for ExprF<SE, Label, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
         match self {
@@ -102,7 +102,6 @@ impl<SE: Display + Clone, N, E: Display> Display for ExprF<SE, Label, N, E> {
                 f.write_str(" >")?
             }
             Embed(a) => a.fmt(f)?,
-            Note(_, b) => b.fmt(f)?,
         }
         Ok(())
     }
@@ -143,7 +142,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
-        mut phase: PrintPhase,
+        phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
         use PrintPhase::*;
@@ -169,10 +168,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             Field(_, _) | Projection(_, _) if phase > Import => true,
             _ => false,
         };
-
-        if needs_paren {
-            phase = Base;
-        }
 
         // Annotate subexpressions with the appropriate phase, defaulting to Base
         let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
@@ -200,7 +195,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
-            Note(n, b) => Note(n, b.phase(phase)),
             e => e,
         };
 
