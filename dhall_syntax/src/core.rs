@@ -60,7 +60,7 @@ pub enum Const {
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Var<VarLabel>(pub VarLabel, pub usize);
+pub struct Var<Label>(pub Label, pub usize);
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -526,19 +526,6 @@ impl From<Label> for Var<Label> {
 impl<'a> From<&'a Label> for Var<Label> {
     fn from(x: &'a Label) -> Var<Label> {
         Var(x.clone(), 0)
-    }
-}
-
-/// Trait for things that capture a label used for variables.
-/// Allows normalization to be generic in whether to alpha-normalize or not.
-pub trait VarLabel: std::fmt::Display + Clone {
-    /// Is `self` the default variable (i.e. "_") ?
-    fn is_underscore_var(&self) -> bool;
-}
-
-impl VarLabel for Label {
-    fn is_underscore_var(&self) -> bool {
-        &String::from(self) == "_"
     }
 }
 

@@ -3,11 +3,8 @@ use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
-impl<SE, L, E> Display for ExprF<SE, L, E>
-where
-    SE: Display + Clone,
-    L: VarLabel,
-    E: Display,
+impl<SE: Display + Clone, L: Display + Clone, E: Display> Display
+    for ExprF<SE, L, E>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
@@ -18,9 +15,10 @@ where
             BoolIf(a, b, c) => {
                 write!(f, "if {} then {} else {}", a, b, c)?;
             }
-            Pi(a, b, c) if a.is_underscore_var() => {
-                write!(f, "{} → {}", b, c)?;
-            }
+            // TODO: arrow type
+            // Pi(a, b, c) if &String::from(a) == "_" => {
+            //     write!(f, "{} → {}", b, c)?;
+            // }
             Pi(a, b, c) => {
                 write!(f, "∀({} : {}) → {}", a, b, c)?;
             }
@@ -131,34 +129,23 @@ enum PrintPhase {
 #[derive(Clone)]
 struct PhasedExpr<'a, L, S, A>(&'a SubExpr<L, S, A>, PrintPhase);
 
-impl<'a, L, S, A> Display for PhasedExpr<'a, L, S, A>
-where
-    L: VarLabel,
-    S: Clone,
-    A: Display + Clone,
+impl<'a, L: Display + Clone, S: Clone, A: Display + Clone> Display
+    for PhasedExpr<'a, L, S, A>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.as_ref().fmt_phase(f, self.1)
     }
 }
 
-impl<'a, L, S, A> PhasedExpr<'a, L, S, A>
-where
-    L: VarLabel,
-    S: Clone,
-    A: Display + Clone,
+impl<'a, L: Display + Clone, S: Clone, A: Display + Clone>
+    PhasedExpr<'a, L, S, A>
 {
     fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, L, S, A> {
         PhasedExpr(self.0, phase)
     }
 }
 
-impl<L, S, A> Expr<L, S, A>
-where
-    L: VarLabel,
-    S: Clone,
-    A: Display + Clone,
-{
+impl<L: Display + Clone, S: Clone, A: Display + Clone> Expr<L, S, A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
@@ -192,11 +179,12 @@ where
         // Annotate subexpressions with the appropriate phase, defaulting to Base
         let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
             Pi(a, b, c) => {
-                if a.is_underscore_var() {
-                    Pi(a, b.phase(Operator), c)
-                } else {
+                // TODO: arrow type
+                // if &String::from(&a) == "_" {
+                //     Pi(a, b.phase(Operator), c)
+                // } else {
                 Pi(a, b, c)
-                }
+                // }
             }
             Merge(a, b, c) => Merge(
                 a.phase(Import),
@@ -232,11 +220,8 @@ where
     }
 }
 
-impl<L, S, A> Display for SubExpr<L, S, A>
-where
-    L: VarLabel,
-    S: Clone,
-    A: Display + Clone,
+impl<L: Display + Clone, S: Clone, A: Display + Clone> Display
+    for SubExpr<L, S, A>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
