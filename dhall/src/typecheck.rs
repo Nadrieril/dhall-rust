@@ -35,15 +35,6 @@ impl Resolved {
     }
 }
 
-impl Typed {
-    fn to_type(&self) -> Type {
-        match &self.to_value() {
-            Value::Const(c) => Type(TypeInternal::Const(*c)),
-            _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
-        }
-    }
-}
-
 impl Normalized {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Normalized(self.0.shift(delta, var))

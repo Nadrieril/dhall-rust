@@ -9,7 +9,7 @@ use dhall_syntax::{
     Natural, Span, SubExpr, V, X,
 };
 
-use crate::expr::{Normalized, Type, Typed, TypedInternal};
+use crate::expr::{Normalized, Type, Typed};
 
 type InputSubExpr = SubExpr<Span, Normalized>;
 type OutputSubExpr = SubExpr<X, X>;
@@ -25,29 +25,13 @@ impl Typed {
     /// leave ill-typed sub-expressions unevaluated.
     ///
     pub fn normalize(self) -> Normalized {
-        match &self.0 {
-            TypedInternal::Sort => {}
-            TypedInternal::Value(thunk, _) => {
+        match &self {
+            Typed::Sort => {}
+            Typed::Value(thunk, _) => {
                 thunk.normalize_nf();
             }
         }
-        Normalized(self.0)
-    }
-
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Typed(self.0.shift(delta, var))
-    }
-
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Typed(self.0.subst_shift(var, val))
-    }
-
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
-    }
-
-    pub(crate) fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
+        Normalized(self)
     }
 }
 

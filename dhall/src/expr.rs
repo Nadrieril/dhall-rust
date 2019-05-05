@@ -34,13 +34,10 @@ derive_other_traits!(Parsed);
 pub(crate) struct Resolved(pub(crate) SubExpr<Span, Normalized>);
 derive_other_traits!(Resolved);
 
-pub(crate) use self::typed::TypedInternal;
+pub(crate) use self::typed::Typed;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Typed(pub(crate) TypedInternal);
-
-#[derive(Debug, Clone)]
-pub(crate) struct Normalized(pub(crate) TypedInternal);
+pub(crate) struct Normalized(pub(crate) Typed);
 
 impl std::cmp::PartialEq for Normalized {
     fn eq(&self, other: &Self) -> bool {
@@ -57,7 +54,7 @@ impl std::fmt::Display for Normalized {
 }
 
 mod typed {
-    use super::{Type, Typed};
+    use super::Type;
     use crate::normalize::{AlphaVar, Thunk, Value};
     use crate::typecheck::{
         TypeError, TypeInternal, TypeMessage, TypecheckContext,
@@ -66,27 +63,27 @@ mod typed {
     use std::borrow::Cow;
 
     #[derive(Debug, Clone)]
-    pub(crate) enum TypedInternal {
+    pub(crate) enum Typed {
         // The `Sort` higher-kinded type doesn't have a type
         Sort,
         // Any other value, along with its type
         Value(Thunk, Option<Type>),
     }
 
-    impl TypedInternal {
+    impl Typed {
         pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-            TypedInternal::Value(th, Some(t))
+            Typed::Value(th, Some(t))
         }
 
         pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-            TypedInternal::Value(th, None)
+            Typed::Value(th, None)
         }
 
         // TODO: Avoid cloning if possible
         pub(crate) fn to_value(&self) -> Value {
             match self {
-                TypedInternal::Value(th, _) => th.to_value(),
-                TypedInternal::Sort => Value::Const(Const::Sort),
+                Typed::Value(th, _) => th.to_value(),
+                Typed::Sort => Value::Const(Const::Sort),
             }
         }
 
@@ -100,33 +97,29 @@ mod typed {
 
         pub(crate) fn to_thunk(&self) -> Thunk {
             match self {
-                TypedInternal::Value(th, _) => th.clone(),
-                TypedInternal::Sort => {
-                    Thunk::from_value(Value::Const(Const::Sort))
-                }
+                Typed::Value(th, _) => th.clone(),
+                Typed::Sort => Thunk::from_value(Value::Const(Const::Sort)),
             }
         }
 
         pub(crate) fn to_type(&self) -> Type {
             match self {
-                TypedInternal::Sort => Type(TypeInternal::Const(Const::Sort)),
-                TypedInternal::Value(th, _) => match &*th.as_value() {
+                Typed::Sort => Type(TypeInternal::Const(Const::Sort)),
+                Typed::Value(th, _) => match &*th.as_value() {
                     Value::Const(c) => Type(TypeInternal::Const(*c)),
-                    _ => {
-                        Type(TypeInternal::Typed(Box::new(Typed(self.clone()))))
-                    }
+                    _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
                 },
             }
         }
 
         pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
             match self {
-                TypedInternal::Value(_, Some(t)) => Ok(Cow::Borrowed(t)),
-                TypedInternal::Value(_, None) => Err(TypeError::new(
+                Typed::Value(_, Some(t)) => Ok(Cow::Borrowed(t)),
+                Typed::Value(_, None) => Err(TypeError::new(
                     &TypecheckContext::new(),
                     TypeMessage::Untyped,
                 )),
-                TypedInternal::Sort => Err(TypeError::new(
+                Typed::Sort => Err(TypeError::new(
                     &TypecheckContext::new(),
                     TypeMessage::Sort,
                 )),
@@ -135,32 +128,35 @@ mod typed {
 
         pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
             match self {
-                TypedInternal::Value(th, t) => TypedInternal::Value(
+                Typed::Value(th, t) => Typed::Value(
                     th.shift(delta, var),
                     t.as_ref().map(|x| x.shift(delta, var)),
                 ),
-                TypedInternal::Sort => TypedInternal::Sort,
+                Typed::Sort => Typed::Sort,
             }
         }
 
         pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
             match self {
-                TypedInternal::Value(th, t) => TypedInternal::Value(
+                Typed::Value(th, t) => Typed::Value(
                     th.subst_shift(var, val),
                     t.as_ref().map(|x| x.subst_shift(var, val)),
                 ),
-                TypedInternal::Sort => TypedInternal::Sort,
+                Typed::Sort => Typed::Sort,
             }
+        }
+        pub(crate) fn const_sort() -> Self {
+            Typed::Sort
         }
     }
 
-    impl std::cmp::PartialEq for TypedInternal {
+    impl std::cmp::PartialEq for Typed {
         fn eq(&self, other: &Self) -> bool {
             self.to_value() == other.to_value()
         }
     }
 
-    impl std::cmp::Eq for TypedInternal {}
+    impl std::cmp::Eq for Typed {}
 }
 
 /// A Dhall expression representing a simple type.
@@ -208,13 +204,13 @@ impl From<SubExpr<X, X>> for SimpleType {
 #[doc(hidden)]
 impl From<Normalized> for Typed {
     fn from(x: Normalized) -> Typed {
-        Typed(x.0)
+        x.0
     }
 }
 
 impl Normalized {
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Normalized(TypedInternal::from_thunk_and_type(th, t))
+        Normalized(Typed::from_thunk_and_type(th, t))
     }
     pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
         self.0.to_expr()
@@ -228,17 +224,5 @@ impl Normalized {
     }
     pub(crate) fn to_thunk(&self) -> Thunk {
         self.0.to_thunk()
-    }
-}
-
-impl Typed {
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed(TypedInternal::from_thunk_and_type(th, t))
-    }
-    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed(TypedInternal::from_thunk_untyped(th))
-    }
-    pub(crate) fn const_sort() -> Self {
-        Typed(TypedInternal::Sort)
     }
 }

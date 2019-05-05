@@ -30,6 +30,6 @@ impl DynamicType for Normalized {
 
 impl DynamicType for Typed {
     fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
+        self.get_type()
     }
 }
