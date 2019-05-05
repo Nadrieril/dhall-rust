@@ -34,11 +34,11 @@ impl Typed {
         Normalized(self.0)
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Typed(self.0.shift(delta, var))
     }
 
-    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 
@@ -54,12 +54,12 @@ impl Typed {
 /// Stores a pair of variables: a normal one and if relevant one
 /// that corresponds to the alpha-normalized version of the first one.
 #[derive(Debug, Clone, Eq)]
-pub(crate) struct DoubleVar {
+pub(crate) struct AlphaVar {
     normal: V<Label>,
     alpha: Option<V<()>>,
 }
 
-impl DoubleVar {
+impl AlphaVar {
     pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
         match (alpha, &self.alpha) {
             (true, Some(x)) => V("_".into(), x.1),
@@ -67,13 +67,13 @@ impl DoubleVar {
         }
     }
     pub(crate) fn from_var(normal: V<Label>) -> Self {
-        DoubleVar {
+        AlphaVar {
             normal,
             alpha: None,
         }
     }
-    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
-        DoubleVar {
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        AlphaVar {
             normal: self.normal.shift(delta, &var.normal),
             alpha: match (&self.alpha, &var.alpha) {
                 (Some(x), Some(v)) => Some(x.shift(delta, v)),
@@ -84,7 +84,7 @@ impl DoubleVar {
 }
 
 /// Equality is up to alpha-equivalence.
-impl std::cmp::PartialEq for DoubleVar {
+impl std::cmp::PartialEq for AlphaVar {
     fn eq(&self, other: &Self) -> bool {
         match (&self.alpha, &other.alpha) {
             (Some(x), Some(y)) => x == y,
@@ -94,27 +94,27 @@ impl std::cmp::PartialEq for DoubleVar {
     }
 }
 
-impl From<Label> for DoubleVar {
-    fn from(x: Label) -> DoubleVar {
-        DoubleVar {
+impl From<Label> for AlphaVar {
+    fn from(x: Label) -> AlphaVar {
+        AlphaVar {
             normal: V(x, 0),
             alpha: Some(V((), 0)),
         }
     }
 }
-impl<'a> From<&'a Label> for DoubleVar {
-    fn from(x: &'a Label) -> DoubleVar {
+impl<'a> From<&'a Label> for AlphaVar {
+    fn from(x: &'a Label) -> AlphaVar {
         x.clone().into()
     }
 }
-impl From<AlphaLabel> for DoubleVar {
-    fn from(x: AlphaLabel) -> DoubleVar {
+impl From<AlphaLabel> for AlphaVar {
+    fn from(x: AlphaLabel) -> AlphaVar {
         let l: Label = x.into();
         l.into()
     }
 }
-impl<'a> From<&'a AlphaLabel> for DoubleVar {
-    fn from(x: &'a AlphaLabel) -> DoubleVar {
+impl<'a> From<&'a AlphaLabel> for AlphaVar {
+    fn from(x: &'a AlphaLabel) -> AlphaVar {
         x.clone().into()
     }
 }
@@ -157,11 +157,11 @@ impl From<AlphaLabel> for Label {
 #[derive(Debug, Clone)]
 enum EnvItem {
     Thunk(Thunk),
-    Skip(DoubleVar),
+    Skip(AlphaVar),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         use EnvItem::*;
         match self {
             Thunk(e) => Thunk(e.shift(delta, var)),
@@ -169,7 +169,7 @@ impl EnvItem {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             EnvItem::Thunk(e) => EnvItem::Thunk(e.subst_shift(var, val)),
             EnvItem::Skip(v) if v == var => EnvItem::Thunk(val.to_thunk()),
@@ -198,7 +198,7 @@ impl NormalizationContext {
             Some(EnvItem::Thunk(t)) => t.to_value(),
             Some(EnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
             // Free variable
-            None => Value::Var(DoubleVar::from_var(var.clone())),
+            None => Value::Var(AlphaVar::from_var(var.clone())),
         }
     }
     pub(crate) fn from_typecheck_ctx(
@@ -218,11 +218,11 @@ impl NormalizationContext {
         NormalizationContext(Rc::new(ctx))
     }
 
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 
-    fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         NormalizationContext(Rc::new(
             self.0.map(|_, e| e.subst_shift(var, val)),
         ))
@@ -245,7 +245,7 @@ pub(crate) enum Value {
     NaturalSuccClosure,
     Pi(AlphaLabel, TypeThunk, TypeThunk),
 
-    Var(DoubleVar),
+    Var(AlphaVar),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
@@ -521,7 +521,7 @@ impl Value {
         Value::AppliedBuiltin(b, vec![])
     }
 
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -618,7 +618,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             // Retry normalizing since substituting may allow progress
             Value::AppliedBuiltin(b, args) => apply_builtin(
@@ -731,7 +731,7 @@ impl Value {
 
 mod thunk {
     use super::{
-        apply_any, normalize_whnf, DoubleVar, InputSubExpr,
+        apply_any, normalize_whnf, AlphaVar, InputSubExpr,
         NormalizationContext, OutputSubExpr, Value,
     };
     use crate::expr::Typed;
@@ -811,7 +811,7 @@ mod thunk {
             }
         }
 
-        fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+        fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -825,7 +825,7 @@ mod thunk {
             }
         }
 
-        fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+        fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
             match self {
                 ThunkInternal::Unnormalized(ctx, e) => {
                     ThunkInternal::Unnormalized(
@@ -930,11 +930,11 @@ mod thunk {
             apply_any(self.clone(), th)
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
             self.0.borrow().shift(delta, var).into_thunk()
         }
 
-        pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
             self.0.borrow().subst_shift(var, val).into_thunk()
         }
     }
@@ -997,14 +997,14 @@ impl TypeThunk {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
             TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
         }
     }
 
-    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),

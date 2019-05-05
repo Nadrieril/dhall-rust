@@ -6,7 +6,7 @@ use std::fmt;
 
 use crate::expr::*;
 use crate::normalize::{
-    DoubleVar, NormalizationContext, Thunk, TypeThunk, Value,
+    AlphaVar, NormalizationContext, Thunk, TypeThunk, Value,
 };
 use crate::traits::DynamicType;
 use dhall_proc_macros as dhall;
@@ -45,7 +45,7 @@ impl Typed {
 }
 
 impl Normalized {
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Normalized(self.0.shift(delta, var))
     }
     pub(crate) fn to_type(self) -> Type {
@@ -72,10 +72,10 @@ impl Type {
     fn internal_whnf(&self) -> Option<Value> {
         self.0.whnf()
     }
-    pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Type(self.0.shift(delta, var))
     }
-    pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         Type(self.0.subst_shift(var, val))
     }
 
@@ -147,14 +147,14 @@ impl TypeInternal {
             _ => None,
         }
     }
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.shift(delta, var))),
             Const(c) => Const(*c),
         }
     }
-    fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         use TypeInternal::*;
         match self {
             Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
@@ -172,12 +172,12 @@ impl PartialEq for TypeInternal {
 
 #[derive(Debug, Clone)]
 pub(crate) enum EnvItem {
-    Type(DoubleVar, Type),
+    Type(AlphaVar, Type),
     Value(Normalized),
 }
 
 impl EnvItem {
-    fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         use EnvItem::*;
         match self {
             Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),

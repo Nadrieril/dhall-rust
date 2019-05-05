@@ -58,7 +58,7 @@ impl std::fmt::Display for Normalized {
 
 mod typed {
     use super::{Type, Typed};
-    use crate::normalize::{DoubleVar, Thunk, Value};
+    use crate::normalize::{AlphaVar, Thunk, Value};
     use crate::typecheck::{
         TypeError, TypeInternal, TypeMessage, TypecheckContext,
     };
@@ -133,7 +133,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn shift(&self, delta: isize, var: &DoubleVar) -> Self {
+        pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.shift(delta, var),
@@ -143,7 +143,7 @@ mod typed {
             }
         }
 
-        pub(crate) fn subst_shift(&self, var: &DoubleVar, val: &Typed) -> Self {
+        pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
             match self {
                 TypedInternal::Value(th, t) => TypedInternal::Value(
                     th.subst_shift(var, val),
