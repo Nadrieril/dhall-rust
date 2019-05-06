@@ -6,34 +6,13 @@ use dhall_proc_macros as dhall;
 use dhall_syntax::context::Context;
 use dhall_syntax::{
     rc, BinOp, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
-    Natural, Span, SubExpr, V, X,
+    Natural, V, X,
 };
 
-use crate::expr::{Normalized, Type, Typed};
+use crate::phase::{NormalizedSubExpr, ResolvedSubExpr, Type, Typed};
 
-type InputSubExpr = SubExpr<Span, Normalized>;
-type OutputSubExpr = SubExpr<X, X>;
-
-impl Typed {
-    /// Reduce an expression to its normal form, performing beta reduction
-    ///
-    /// `normalize` does not type-check the expression.  You may want to type-check
-    /// expressions before normalizing them since normalization can convert an
-    /// ill-typed expression into a well-typed expression.
-    ///
-    /// However, `normalize` will not fail if the expression is ill-typed and will
-    /// leave ill-typed sub-expressions unevaluated.
-    ///
-    pub fn normalize(self) -> Normalized {
-        match &self {
-            Typed::Sort => {}
-            Typed::Value(thunk, _) => {
-                thunk.normalize_nf();
-            }
-        }
-        Normalized(self)
-    }
-}
+type InputSubExpr = ResolvedSubExpr;
+type OutputSubExpr = NormalizedSubExpr;
 
 /// Stores a pair of variables: a normal one and if relevant one
 /// that corresponds to the alpha-normalized version of the first one.
@@ -186,9 +165,9 @@ impl NormalizationContext {
         }
     }
     pub(crate) fn from_typecheck_ctx(
-        tc_ctx: &crate::typecheck::TypecheckContext,
+        tc_ctx: &crate::phase::typecheck::TypecheckContext,
     ) -> Self {
-        use crate::typecheck::EnvItem::*;
+        use crate::phase::typecheck::EnvItem::*;
         let mut ctx = Context::new();
         for (k, vs) in tc_ctx.0.iter_keys() {
             for v in vs.iter() {
@@ -718,7 +697,7 @@ mod thunk {
         apply_any, normalize_whnf, AlphaVar, InputSubExpr,
         NormalizationContext, OutputSubExpr, Value,
     };
-    use crate::expr::Typed;
+    use crate::phase::Typed;
     use std::cell::{Ref, RefCell};
     use std::rc::Rc;
 

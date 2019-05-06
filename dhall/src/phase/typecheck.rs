@@ -4,10 +4,10 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::expr::*;
-use crate::normalize::{
+use crate::phase::normalize::{
     AlphaVar, NormalizationContext, Thunk, TypeThunk, Value,
 };
+use crate::phase::*;
 use crate::traits::DynamicType;
 use dhall_proc_macros as dhall;
 use dhall_syntax;
@@ -15,71 +15,6 @@ use dhall_syntax::context::Context;
 use dhall_syntax::*;
 
 use self::TypeMessage::*;
-
-impl Resolved {
-    pub fn typecheck(self) -> Result<Typed, TypeError> {
-        type_of(self.0)
-    }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        let expr: SubExpr<_, _> = self.0;
-        let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
-        type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
-    }
-    /// Pretends this expression has been typechecked. Use with care.
-    #[allow(dead_code)]
-    pub fn skip_typecheck(self) -> Typed {
-        Typed::from_thunk_untyped(Thunk::new(
-            NormalizationContext::new(),
-            self.0,
-        ))
-    }
-}
-
-impl Normalized {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Normalized(self.0.shift(delta, var))
-    }
-    pub(crate) fn to_type(self) -> Type {
-        self.0.to_type()
-    }
-}
-
-impl Type {
-    pub(crate) fn to_normalized(&self) -> Normalized {
-        self.0.to_normalized()
-    }
-    pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
-        self.0.to_expr()
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
-    }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
-    }
-    fn as_const(&self) -> Option<Const> {
-        self.0.as_const()
-    }
-    fn internal_whnf(&self) -> Option<Value> {
-        self.0.whnf()
-    }
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Type(self.0.shift(delta, var))
-    }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(self.0.subst_shift(var, val))
-    }
-
-    fn const_sort() -> Self {
-        Type(TypeInternal::Const(Const::Sort))
-    }
-    fn const_kind() -> Self {
-        Type(TypeInternal::Const(Const::Kind))
-    }
-    pub(crate) fn const_type() -> Self {
-        Type(TypeInternal::Const(Const::Type))
-    }
-}
 
 impl TypeThunk {
     fn to_type(&self, ctx: &TypecheckContext) -> Result<Type, TypeError> {
@@ -90,74 +25,6 @@ impl TypeThunk {
                 mktype(ctx, th.normalize_to_expr().embed_absurd().note_absurd())
             }
         }
-    }
-}
-
-/// A semantic type. This is partially redundant with `dhall_syntax::Expr`, on purpose. `TypeInternal` should
-/// be limited to syntactic expressions: either written by the user or meant to be printed.
-/// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
-/// but only construct `TypeInternal`s.
-#[derive(Debug, Clone)]
-pub(crate) enum TypeInternal {
-    Const(Const),
-    /// This must not contain a Const value.
-    Typed(Box<Typed>),
-}
-
-impl TypeInternal {
-    fn to_typed(&self) -> Typed {
-        match self {
-            TypeInternal::Typed(e) => e.as_ref().clone(),
-            TypeInternal::Const(c) => const_to_typed(*c),
-        }
-    }
-    fn to_normalized(&self) -> Normalized {
-        self.to_typed().normalize()
-    }
-    fn to_expr(&self) -> SubExpr<X, X> {
-        self.to_normalized().to_expr()
-    }
-    fn to_value(&self) -> Value {
-        self.to_typed().to_value()
-    }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        Ok(match self {
-            TypeInternal::Typed(e) => e.get_type()?,
-            TypeInternal::Const(c) => Cow::Owned(type_of_const(*c)?),
-        })
-    }
-    fn as_const(&self) -> Option<Const> {
-        match self {
-            TypeInternal::Const(c) => Some(*c),
-            _ => None,
-        }
-    }
-    fn whnf(&self) -> Option<Value> {
-        match self {
-            TypeInternal::Typed(e) => Some(e.to_value()),
-            _ => None,
-        }
-    }
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.shift(delta, var))),
-            Const(c) => Const(*c),
-        }
-    }
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
-            Const(c) => Const(*c),
-        }
-    }
-}
-
-impl Eq for TypeInternal {}
-impl PartialEq for TypeInternal {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_normalized() == other.to_normalized()
     }
 }
 
@@ -237,7 +104,7 @@ where
     eL0.borrow().to_value() == eR0.borrow().to_value()
 }
 
-fn const_to_typed(c: Const) -> Typed {
+pub(crate) fn const_to_typed(c: Const) -> Typed {
     match c {
         Const::Sort => Typed::const_sort(),
         _ => Typed::from_thunk_and_type(
@@ -251,7 +118,7 @@ fn const_to_type(c: Const) -> Type {
     Type(TypeInternal::Const(c))
 }
 
-fn type_of_const(c: Const) -> Result<Type, TypeError> {
+pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
     match c {
         Const::Type => Ok(Type::const_kind()),
         Const::Kind => Ok(Type::const_sort()),
@@ -916,6 +783,22 @@ fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
     // Ensure `e` has a type (i.e. `e` is not `Sort`)
     e.get_type()?;
     Ok(e)
+}
+
+pub(crate) fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
+    type_of(e.0)
+}
+
+pub(crate) fn typecheck_with(
+    e: Resolved,
+    ty: &Type,
+) -> Result<Typed, TypeError> {
+    let expr: SubExpr<_, _> = e.0;
+    let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
+    type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
+}
+pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
+    Typed::from_thunk_untyped(Thunk::new(NormalizationContext::new(), e.0))
 }
 
 /// The specific type error

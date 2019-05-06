@@ -1,9 +1,6 @@
-use crate::expr::*;
+use crate::phase::typecheck::TypeError;
+use crate::phase::*;
 use crate::traits::StaticType;
-#[allow(unused_imports)]
-use crate::typecheck::{TypeError, TypeMessage, TypecheckContext};
-#[allow(unused_imports)]
-use dhall_syntax::{Const, ExprF};
 use std::borrow::Cow;
 
 pub trait DynamicType {

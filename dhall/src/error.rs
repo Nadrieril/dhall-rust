@@ -1,13 +1,21 @@
+use std::io::Error as IOError;
+
+use dhall_syntax::ParseError;
+
+use crate::phase::binary::DecodeError;
+use crate::phase::resolve::ImportError;
+use crate::phase::typecheck::TypeError;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    IO(std::io::Error),
-    Parse(dhall_syntax::ParseError),
-    Decode(crate::binary::DecodeError),
-    Resolve(crate::imports::ImportError),
-    Typecheck(crate::typecheck::TypeError),
+    IO(IOError),
+    Parse(ParseError),
+    Decode(DecodeError),
+    Resolve(ImportError),
+    Typecheck(TypeError),
     Deserialize(String),
 }
 
@@ -25,28 +33,28 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Error {
+impl From<IOError> for Error {
+    fn from(err: IOError) -> Error {
         Error::IO(err)
     }
 }
-impl From<dhall_syntax::ParseError> for Error {
-    fn from(err: dhall_syntax::ParseError) -> Error {
+impl From<ParseError> for Error {
+    fn from(err: ParseError) -> Error {
         Error::Parse(err)
     }
 }
-impl From<crate::binary::DecodeError> for Error {
-    fn from(err: crate::binary::DecodeError) -> Error {
+impl From<DecodeError> for Error {
+    fn from(err: DecodeError) -> Error {
         Error::Decode(err)
     }
 }
-impl From<crate::imports::ImportError> for Error {
-    fn from(err: crate::imports::ImportError) -> Error {
+impl From<ImportError> for Error {
+    fn from(err: ImportError) -> Error {
         Error::Resolve(err)
     }
 }
-impl From<crate::typecheck::TypeError> for Error {
-    fn from(err: crate::typecheck::TypeError) -> Error {
+impl From<TypeError> for Error {
+    fn from(err: TypeError) -> Error {
         Error::Typecheck(err)
     }
 }

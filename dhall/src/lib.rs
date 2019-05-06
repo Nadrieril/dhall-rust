@@ -123,18 +123,11 @@
 #[macro_use]
 mod tests;
 
-#[cfg(test)]
-mod parser;
-
-mod binary;
 /// When manipulating Dhall expressions goes wrong.
 pub mod error;
-pub mod expr;
-mod imports;
-mod normalize;
+mod phase;
 mod serde;
 mod traits;
-mod typecheck;
 
 /// Deserialization of Dhall expressions into Rust
 pub mod de {
@@ -153,7 +146,7 @@ pub mod de {
     /// expression has that type.
     pub fn from_str<'a, T: Deserialize<'a>>(
         s: &'a str,
-        ty: Option<&crate::expr::Type>,
+        ty: Option<&crate::phase::Type>,
     ) -> crate::error::Result<T> {
         T::from_str(s, ty)
     }
