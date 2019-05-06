@@ -123,7 +123,6 @@
 #[macro_use]
 mod tests;
 
-/// When manipulating Dhall expressions goes wrong.
 pub mod error;
 mod phase;
 mod serde;

@@ -1,5 +1,5 @@
-use crate::phase::typecheck::TypeError;
-use crate::phase::*;
+use crate::error::TypeError;
+use crate::phase::{Normalized, Type, Typed};
 use crate::traits::StaticType;
 use std::borrow::Cow;
 

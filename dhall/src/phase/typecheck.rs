@@ -2,19 +2,20 @@
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt;
 
+use dhall_proc_macros as dhall;
+use dhall_syntax::context::Context;
+use dhall_syntax::{
+    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, Span,
+    SubExpr, V, X,
+};
+
+use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{
     AlphaVar, NormalizationContext, Thunk, TypeThunk, Value,
 };
-use crate::phase::*;
+use crate::phase::{Normalized, Resolved, Type, TypeInternal, Typed};
 use crate::traits::DynamicType;
-use dhall_proc_macros as dhall;
-use dhall_syntax;
-use dhall_syntax::context::Context;
-use dhall_syntax::*;
-
-use self::TypeMessage::*;
 
 impl TypeThunk {
     fn to_type(&self, ctx: &TypecheckContext) -> Result<Type, TypeError> {
@@ -244,6 +245,7 @@ pub(crate) enum TypeIntermediate {
 
 impl TypeIntermediate {
     fn typecheck(self) -> Result<Typed, TypeError> {
+        use crate::error::TypeMessage::*;
         let mkerr = |ctx, msg| TypeError::new(ctx, msg);
         Ok(match &self {
             TypeIntermediate::Pi(ctx, x, ta, tb) => {
@@ -503,6 +505,7 @@ fn type_last_layer(
     ctx: &TypecheckContext,
     e: ExprF<Typed, Label, Normalized>,
 ) -> Result<Ret, TypeError> {
+    use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
     use dhall_syntax::ExprF::*;
@@ -799,101 +802,6 @@ pub(crate) fn typecheck_with(
 }
 pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
     Typed::from_thunk_untyped(Thunk::new(NormalizationContext::new(), e.0))
-}
-
-/// The specific type error
-#[derive(Debug)]
-pub(crate) enum TypeMessage {
-    UnboundVariable(V<Label>),
-    InvalidInputType(Normalized),
-    InvalidOutputType(Normalized),
-    NotAFunction(Typed),
-    TypeMismatch(Typed, Normalized, Typed),
-    AnnotMismatch(Typed, Normalized),
-    Untyped,
-    InvalidListElement(usize, Normalized, Typed),
-    InvalidListType(Normalized),
-    InvalidOptionalType(Normalized),
-    InvalidPredicate(Typed),
-    IfBranchMismatch(Typed, Typed),
-    IfBranchMustBeTerm(bool, Typed),
-    InvalidFieldType(Label, Type),
-    NotARecord(Label, Normalized),
-    MissingRecordField(Label, Typed),
-    MissingUnionField(Label, Normalized),
-    BinOpTypeMismatch(BinOp, Typed),
-    NoDependentTypes(Normalized, Normalized),
-    InvalidTextInterpolation(Typed),
-    Sort,
-    Unimplemented,
-}
-
-/// A structured type error that includes context
-#[derive(Debug)]
-pub struct TypeError {
-    type_message: TypeMessage,
-    context: TypecheckContext,
-}
-
-impl TypeError {
-    pub(crate) fn new(
-        context: &TypecheckContext,
-        type_message: TypeMessage,
-    ) -> Self {
-        TypeError {
-            context: context.clone(),
-            type_message,
-        }
-    }
-}
-
-impl From<TypeError> for std::option::NoneError {
-    fn from(_: TypeError) -> std::option::NoneError {
-        std::option::NoneError
-    }
-}
-
-impl ::std::error::Error for TypeMessage {
-    fn description(&self) -> &str {
-        match *self {
-            // UnboundVariable => "Unbound variable",
-            InvalidInputType(_) => "Invalid function input",
-            InvalidOutputType(_) => "Invalid function output",
-            NotAFunction(_) => "Not a function",
-            TypeMismatch(_, _, _) => "Wrong type of function argument",
-            _ => "Unhandled error",
-        }
-    }
-}
-
-impl fmt::Display for TypeMessage {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            // UnboundVariable(_) => {
-            //     f.write_str(include_str!("errors/UnboundVariable.txt"))
-            // }
-            // TypeMismatch(e0, e1, e2) => {
-            //     let template = include_str!("errors/TypeMismatch.txt");
-            //     let s = template
-            //         .replace("$txt0", &format!("{}", e0.as_expr()))
-            //         .replace("$txt1", &format!("{}", e1.as_expr()))
-            //         .replace("$txt2", &format!("{}", e2.as_expr()))
-            //         .replace(
-            //             "$txt3",
-            //             &format!(
-            //                 "{}",
-            //                 e2.get_type()
-            //                     .unwrap()
-            //                     .as_normalized()
-            //                     .unwrap()
-            //                     .as_expr()
-            //             ),
-            //         );
-            //     f.write_str(&s)
-            // }
-            _ => f.write_str("Unhandled error message"),
-        }
-    }
 }
 
 #[cfg(test)]

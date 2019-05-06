@@ -4,13 +4,11 @@ use std::path::Path;
 
 use dhall_syntax::{Const, Import, Span, SubExpr, X};
 
-use crate::error::Error;
+use crate::error::{Error, ImportError, TypeError, TypeMessage};
 
 use normalize::{AlphaVar, Thunk, Value};
-use resolve::{ImportError, ImportRoot};
-use typecheck::{
-    const_to_typed, type_of_const, TypeError, TypeMessage, TypecheckContext,
-};
+use resolve::ImportRoot;
+use typecheck::{const_to_typed, type_of_const, TypecheckContext};
 
 pub(crate) mod binary;
 pub(crate) mod normalize;

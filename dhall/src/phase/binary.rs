@@ -1,14 +1,15 @@
-use dhall_syntax::*;
-use itertools::*;
+use itertools::Itertools;
 use serde_cbor::value::value as cbor;
 
-type ParsedExpr = SubExpr<X, Import>;
+use dhall_syntax::{
+    rc, ExprF, FilePrefix, Hash, Import, ImportHashed, ImportLocation,
+    ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, SubExpr,
+    URL, V, X,
+};
 
-#[derive(Debug)]
-pub enum DecodeError {
-    CBORError(serde_cbor::error::Error),
-    WrongFormatError(String),
-}
+use crate::error::DecodeError;
+
+type ParsedExpr = SubExpr<X, Import>;
 
 pub fn decode(data: &[u8]) -> Result<ParsedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {

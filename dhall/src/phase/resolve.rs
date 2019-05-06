@@ -3,15 +3,8 @@ use std::path::{Path, PathBuf};
 
 use dhall_syntax::Import;
 
-use crate::error::Error;
+use crate::error::{Error, ImportError};
 use crate::phase::{Normalized, Parsed, Resolved};
-
-#[derive(Debug)]
-pub enum ImportError {
-    Recursive(Import, Box<Error>),
-    UnexpectedImport(Import),
-    ImportCycle(ImportStack, Import),
-}
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +14,7 @@ pub enum ImportRoot {
 
 type ImportCache = HashMap<Import, Normalized>;
 
-type ImportStack = Vec<Import>;
+pub(crate) type ImportStack = Vec<Import>;
 
 fn resolve_import(
     import: &Import,
