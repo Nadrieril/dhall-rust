@@ -39,7 +39,7 @@ fn mktype(x: SubExpr<X, X>) -> SimpleType {
 impl<T: SimpleStaticType> StaticType for T {
     fn get_static_type() -> Type {
         crate::phase::Normalized::from_thunk_and_type(
-            crate::phase::normalize::Thunk::from_normalized_expr(
+            crate::core::thunk::Thunk::from_normalized_expr(
                 T::get_simple_static_type().into(),
             ),
             Type::const_type(),

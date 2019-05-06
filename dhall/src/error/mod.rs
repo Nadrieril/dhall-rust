@@ -2,8 +2,8 @@ use std::io::Error as IOError;
 
 use dhall_syntax::{BinOp, Import, Label, ParseError, V};
 
+use crate::core::context::TypecheckContext;
 use crate::phase::resolve::ImportStack;
-use crate::phase::typecheck::TypecheckContext;
 use crate::phase::{Normalized, Type, Typed};
 
 pub type Result<T> = std::result::Result<T, Error>;

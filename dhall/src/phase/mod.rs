@@ -4,11 +4,13 @@ use std::path::Path;
 
 use dhall_syntax::{Const, Import, Span, SubExpr, X};
 
+use crate::core::context::TypecheckContext;
+use crate::core::thunk::Thunk;
+use crate::core::value::{AlphaVar, Value};
 use crate::error::{Error, ImportError, TypeError, TypeMessage};
 
-use normalize::{AlphaVar, Thunk, Value};
 use resolve::ImportRoot;
-use typecheck::{const_to_typed, type_of_const, TypecheckContext};
+use typecheck::{const_to_typed, type_of_const};
 
 pub(crate) mod binary;
 pub(crate) mod normalize;
@@ -305,6 +307,10 @@ impl Normalized {
     pub(crate) fn to_type(self) -> Type {
         self.0.to_type()
     }
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+        self.0.get_type()
+    }
+
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Normalized(self.0.shift(delta, var))
     }

@@ -123,8 +123,10 @@
 #[macro_use]
 mod tests;
 
-mod api;
+pub(crate) mod api;
+pub(crate) mod core;
 pub mod error;
-mod phase;
-pub use api::de;
+pub(crate) mod phase;
 pub(crate) use api::traits;
+
+pub use api::de;

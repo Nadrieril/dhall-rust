@@ -1,220 +1,18 @@
 #![allow(non_snake_case)]
 use std::borrow::Borrow;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use dhall_proc_macros as dhall;
-use dhall_syntax::context::Context;
 use dhall_syntax::{
     rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, Span,
-    SubExpr, V, X,
+    SubExpr, X,
 };
 
+use crate::core::context::{NormalizationContext, TypecheckContext};
+use crate::core::thunk::{Thunk, TypeThunk};
+use crate::core::value::Value;
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{
-    AlphaVar, NormalizationContext, Thunk, TypeThunk, Value,
-};
 use crate::phase::{Normalized, Resolved, Type, TypeInternal, Typed};
-use crate::traits::DynamicType;
-
-impl TypeThunk {
-    fn to_type(&self, ctx: &TypecheckContext) -> Result<Type, TypeError> {
-        match self {
-            TypeThunk::Type(t) => Ok(t.clone()),
-            TypeThunk::Thunk(th) => {
-                // TODO: rule out statically
-                mktype(ctx, th.normalize_to_expr().embed_absurd().note_absurd())
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum EnvItem {
-    Type(AlphaVar, Type),
-    Value(Normalized),
-}
-
-impl EnvItem {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use EnvItem::*;
-        match self {
-            Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
-            Value(e) => Value(e.shift(delta, var)),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(pub(crate) Context<Label, EnvItem>);
-
-impl TypecheckContext {
-    pub(crate) fn new() -> Self {
-        TypecheckContext(Context::new())
-    }
-    pub(crate) fn insert_type(&self, x: &Label, t: Type) -> Self {
-        TypecheckContext(
-            self.0.map(|_, e| e.shift(1, &x.into())).insert(
-                x.clone(),
-                EnvItem::Type(x.into(), t.shift(1, &x.into())),
-            ),
-        )
-    }
-    pub(crate) fn insert_value(&self, x: &Label, t: Normalized) -> Self {
-        TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
-    }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
-        let V(x, n) = var;
-        match self.0.lookup(x, *n) {
-            Some(EnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
-            Some(EnvItem::Value(t)) => Some(t.get_type()?),
-            None => None,
-        }
-    }
-    fn to_normalization_ctx(&self) -> NormalizationContext {
-        NormalizationContext::from_typecheck_ctx(self)
-    }
-}
-
-impl PartialEq for TypecheckContext {
-    fn eq(&self, _: &Self) -> bool {
-        // don't count contexts when comparing stuff
-        // this is dirty but needed for now
-        true
-    }
-}
-impl Eq for TypecheckContext {}
-
-fn function_check(a: Const, b: Const) -> Result<Const, ()> {
-    use dhall_syntax::Const::*;
-    match (a, b) {
-        (_, Type) => Ok(Type),
-        (Kind, Kind) => Ok(Kind),
-        (Sort, Sort) => Ok(Sort),
-        (Sort, Kind) => Ok(Sort),
-        _ => Err(()),
-    }
-}
-
-// Equality up to alpha-equivalence (renaming of bound variables)
-fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
-where
-    T: Borrow<Type>,
-    U: Borrow<Type>,
-{
-    eL0.borrow().to_value() == eR0.borrow().to_value()
-}
-
-pub(crate) fn const_to_typed(c: Const) -> Typed {
-    match c {
-        Const::Sort => Typed::const_sort(),
-        _ => Typed::from_thunk_and_type(
-            Value::Const(c).into_thunk(),
-            type_of_const(c).unwrap(),
-        ),
-    }
-}
-
-fn const_to_type(c: Const) -> Type {
-    Type(TypeInternal::Const(c))
-}
-
-pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
-    match c {
-        Const::Type => Ok(Type::const_kind()),
-        Const::Kind => Ok(Type::const_sort()),
-        Const::Sort => {
-            return Err(TypeError::new(
-                &TypecheckContext::new(),
-                TypeMessage::Sort,
-            ))
-        }
-    }
-}
-
-fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
-    use dhall_syntax::Builtin::*;
-    match b {
-        Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
-        List | Optional => dhall::expr!(
-            Type -> Type
-        ),
-
-        NaturalFold => dhall::expr!(
-            Natural ->
-            forall (natural: Type) ->
-            forall (succ: natural -> natural) ->
-            forall (zero: natural) ->
-            natural
-        ),
-        NaturalBuild => dhall::expr!(
-            (forall (natural: Type) ->
-                forall (succ: natural -> natural) ->
-                forall (zero: natural) ->
-                natural) ->
-            Natural
-        ),
-        NaturalIsZero | NaturalEven | NaturalOdd => dhall::expr!(
-            Natural -> Bool
-        ),
-        NaturalToInteger => dhall::expr!(Natural -> Integer),
-        NaturalShow => dhall::expr!(Natural -> Text),
-
-        IntegerToDouble => dhall::expr!(Integer -> Double),
-        IntegerShow => dhall::expr!(Integer -> Text),
-        DoubleShow => dhall::expr!(Double -> Text),
-        TextShow => dhall::expr!(Text -> Text),
-
-        ListBuild => dhall::expr!(
-            forall (a: Type) ->
-            (forall (list: Type) ->
-                forall (cons: a -> list -> list) ->
-                forall (nil: list) ->
-                list) ->
-            List a
-        ),
-        ListFold => dhall::expr!(
-            forall (a: Type) ->
-            List a ->
-            forall (list: Type) ->
-            forall (cons: a -> list -> list) ->
-            forall (nil: list) ->
-            list
-        ),
-        ListLength => dhall::expr!(forall (a: Type) -> List a -> Natural),
-        ListHead | ListLast => {
-            dhall::expr!(forall (a: Type) -> List a -> Optional a)
-        }
-        ListIndexed => dhall::expr!(
-            forall (a: Type) ->
-            List a ->
-            List { index: Natural, value: a }
-        ),
-        ListReverse => dhall::expr!(
-            forall (a: Type) -> List a -> List a
-        ),
-
-        OptionalBuild => dhall::expr!(
-            forall (a: Type) ->
-            (forall (optional: Type) ->
-                forall (just: a -> optional) ->
-                forall (nothing: optional) ->
-                optional) ->
-            Optional a
-        ),
-        OptionalFold => dhall::expr!(
-            forall (a: Type) ->
-            Optional a ->
-            forall (optional: Type) ->
-            forall (just: a -> optional) ->
-            forall (nothing: optional) ->
-            optional
-        ),
-        OptionalNone => dhall::expr!(
-            forall (a: Type) -> Optional a
-        ),
-    }
-}
 
 macro_rules! ensure_equal {
     ($x:expr, $y:expr, $err:expr $(,)*) => {
@@ -399,16 +197,147 @@ impl TypeIntermediate {
     }
 }
 
+fn function_check(a: Const, b: Const) -> Result<Const, ()> {
+    use dhall_syntax::Const::*;
+    match (a, b) {
+        (_, Type) => Ok(Type),
+        (Kind, Kind) => Ok(Kind),
+        (Sort, Sort) => Ok(Sort),
+        (Sort, Kind) => Ok(Sort),
+        _ => Err(()),
+    }
+}
+
+// Equality up to alpha-equivalence (renaming of bound variables)
+fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
+where
+    T: Borrow<Type>,
+    U: Borrow<Type>,
+{
+    eL0.borrow().to_value() == eR0.borrow().to_value()
+}
+
+pub(crate) fn const_to_typed(c: Const) -> Typed {
+    match c {
+        Const::Sort => Typed::const_sort(),
+        _ => Typed::from_thunk_and_type(
+            Value::Const(c).into_thunk(),
+            type_of_const(c).unwrap(),
+        ),
+    }
+}
+
+fn const_to_type(c: Const) -> Type {
+    Type(TypeInternal::Const(c))
+}
+
+pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
+    match c {
+        Const::Type => Ok(Type::const_kind()),
+        Const::Kind => Ok(Type::const_sort()),
+        Const::Sort => {
+            return Err(TypeError::new(
+                &TypecheckContext::new(),
+                TypeMessage::Sort,
+            ))
+        }
+    }
+}
+
+fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
+    use dhall_syntax::Builtin::*;
+    match b {
+        Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
+        List | Optional => dhall::expr!(
+            Type -> Type
+        ),
+
+        NaturalFold => dhall::expr!(
+            Natural ->
+            forall (natural: Type) ->
+            forall (succ: natural -> natural) ->
+            forall (zero: natural) ->
+            natural
+        ),
+        NaturalBuild => dhall::expr!(
+            (forall (natural: Type) ->
+                forall (succ: natural -> natural) ->
+                forall (zero: natural) ->
+                natural) ->
+            Natural
+        ),
+        NaturalIsZero | NaturalEven | NaturalOdd => dhall::expr!(
+            Natural -> Bool
+        ),
+        NaturalToInteger => dhall::expr!(Natural -> Integer),
+        NaturalShow => dhall::expr!(Natural -> Text),
+
+        IntegerToDouble => dhall::expr!(Integer -> Double),
+        IntegerShow => dhall::expr!(Integer -> Text),
+        DoubleShow => dhall::expr!(Double -> Text),
+        TextShow => dhall::expr!(Text -> Text),
+
+        ListBuild => dhall::expr!(
+            forall (a: Type) ->
+            (forall (list: Type) ->
+                forall (cons: a -> list -> list) ->
+                forall (nil: list) ->
+                list) ->
+            List a
+        ),
+        ListFold => dhall::expr!(
+            forall (a: Type) ->
+            List a ->
+            forall (list: Type) ->
+            forall (cons: a -> list -> list) ->
+            forall (nil: list) ->
+            list
+        ),
+        ListLength => dhall::expr!(forall (a: Type) -> List a -> Natural),
+        ListHead | ListLast => {
+            dhall::expr!(forall (a: Type) -> List a -> Optional a)
+        }
+        ListIndexed => dhall::expr!(
+            forall (a: Type) ->
+            List a ->
+            List { index: Natural, value: a }
+        ),
+        ListReverse => dhall::expr!(
+            forall (a: Type) -> List a -> List a
+        ),
+
+        OptionalBuild => dhall::expr!(
+            forall (a: Type) ->
+            (forall (optional: Type) ->
+                forall (just: a -> optional) ->
+                forall (nothing: optional) ->
+                optional) ->
+            Optional a
+        ),
+        OptionalFold => dhall::expr!(
+            forall (a: Type) ->
+            Optional a ->
+            forall (optional: Type) ->
+            forall (just: a -> optional) ->
+            forall (nothing: optional) ->
+            optional
+        ),
+        OptionalNone => dhall::expr!(
+            forall (a: Type) -> Optional a
+        ),
+    }
+}
+
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
-fn mktype(
+pub(crate) fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<Span, Normalized>,
 ) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
-fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
+pub(crate) fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
     mktype(
         &TypecheckContext::new(),
         SubExpr::from_expr_no_note(ExprF::Builtin(b)),
