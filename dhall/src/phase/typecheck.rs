@@ -378,8 +378,8 @@ fn type_with(
                 v.clone()
             };
 
-            let v = type_with(ctx, v)?.normalize();
-            let e = type_with(&ctx.insert_value(x, v.clone()), e.clone())?;
+            let v = type_with(ctx, v)?;
+            let e = type_with(&ctx.insert_value(x, v.clone())?, e.clone())?;
 
             Ok(RetType(e.get_type()?.into_owned()))
         }

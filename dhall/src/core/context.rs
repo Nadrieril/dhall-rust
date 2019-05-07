@@ -1,65 +1,87 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use dhall_syntax::context::Context;
+use dhall_syntax::context::Context as SimpleContext;
 use dhall_syntax::{Label, V};
 
 use crate::core::thunk::Thunk;
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::phase::{Normalized, Type, Typed};
+use crate::error::TypeError;
+use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone)]
-enum NzEnvItem {
-    Thunk(Thunk),
-    Skip(AlphaVar),
+pub(crate) enum CtxItem<T> {
+    Kept(AlphaVar, T),
+    Replaced(Thunk, T),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizationContext(Rc<Context<Label, NzEnvItem>>);
+pub(crate) struct Context<T>(Rc<SimpleContext<Label, CtxItem<T>>>);
 
 #[derive(Debug, Clone)]
-pub(crate) enum TyEnvItem {
-    Type(AlphaVar, Type),
-    Value(Normalized),
+pub(crate) struct NormalizationContext(Context<()>);
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypecheckContext(Context<Type>);
+
+impl<T> CtxItem<T> {
+    fn forget(&self) -> CtxItem<()> {
+        match self {
+            CtxItem::Kept(var, _) => CtxItem::Kept(var.clone(), ()),
+            CtxItem::Replaced(e, _) => CtxItem::Replaced(e.clone(), ()),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(pub(crate) Context<Label, TyEnvItem>);
+impl<T> Context<T> {
+    pub(crate) fn new() -> Self {
+        Context(Rc::new(SimpleContext::new()))
+    }
+    pub(crate) fn forget(&self) -> Context<()> {
+        let mut ctx = SimpleContext::new();
+        for (k, vs) in self.0.iter_keys() {
+            for v in vs.iter() {
+                ctx = ctx.insert(k.clone(), v.forget());
+            }
+        }
+        Context(Rc::new(ctx))
+    }
+    pub(crate) fn insert_kept(&self, x: &Label, t: T) -> Self
+    where
+        T: Shift + Clone,
+    {
+        Context(Rc::new(self.0.map(|_, e| e.shift(1, &x.into())).insert(
+            x.clone(),
+            CtxItem::Kept(x.into(), t.shift(1, &x.into())),
+        )))
+    }
+    pub(crate) fn insert_replaced(&self, x: &Label, e: Thunk, t: T) -> Self
+    where
+        T: Clone,
+    {
+        Context(Rc::new(self.0.insert(x.clone(), CtxItem::Replaced(e, t))))
+    }
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<&CtxItem<T>> {
+        let V(x, n) = var;
+        self.0.lookup(x, *n)
+    }
+}
 
 impl NormalizationContext {
     pub(crate) fn new() -> Self {
-        NormalizationContext(Rc::new(Context::new()))
+        NormalizationContext(Context::new())
     }
     pub(crate) fn skip(&self, x: &Label) -> Self {
-        NormalizationContext(Rc::new(
-            self.0
-                .map(|_, e| e.shift(1, &x.into()))
-                .insert(x.clone(), NzEnvItem::Skip(x.into())),
-        ))
+        NormalizationContext(self.0.insert_kept(x, ()))
     }
     pub(crate) fn lookup(&self, var: &V<Label>) -> Value {
-        let V(x, n) = var;
-        match self.0.lookup(x, *n) {
-            Some(NzEnvItem::Thunk(t)) => t.to_value(),
-            Some(NzEnvItem::Skip(newvar)) => Value::Var(newvar.clone()),
+        match self.0.lookup(var) {
+            Some(CtxItem::Replaced(t, ())) => t.to_value(),
+            Some(CtxItem::Kept(newvar, ())) => Value::Var(newvar.clone()),
             // Free variable
             None => Value::Var(AlphaVar::from_var(var.clone())),
         }
-    }
-    pub(crate) fn from_typecheck_ctx(tc_ctx: &TypecheckContext) -> Self {
-        use TyEnvItem::*;
-        let mut ctx = Context::new();
-        for (k, vs) in tc_ctx.0.iter_keys() {
-            for v in vs.iter() {
-                let new_item = match v {
-                    Type(var, _) => NzEnvItem::Skip(var.clone()),
-                    Value(e) => NzEnvItem::Thunk(e.to_thunk()),
-                };
-                ctx = ctx.insert(k.clone(), new_item);
-            }
-        }
-        NormalizationContext(Rc::new(ctx))
     }
 }
 
@@ -68,68 +90,82 @@ impl TypecheckContext {
         TypecheckContext(Context::new())
     }
     pub(crate) fn insert_type(&self, x: &Label, t: Type) -> Self {
-        TypecheckContext(self.0.map(|_, e| e.shift(1, &x.into())).insert(
-            x.clone(),
-            TyEnvItem::Type(x.into(), t.shift(1, &x.into())),
-        ))
+        TypecheckContext(self.0.insert_kept(x, t))
     }
-    pub(crate) fn insert_value(&self, x: &Label, t: Normalized) -> Self {
-        TypecheckContext(self.0.insert(x.clone(), TyEnvItem::Value(t)))
+    pub(crate) fn insert_value(
+        &self,
+        x: &Label,
+        e: Typed,
+    ) -> Result<Self, TypeError> {
+        Ok(TypecheckContext(self.0.insert_replaced(
+            x,
+            e.to_thunk(),
+            e.get_type()?.into_owned(),
+        )))
     }
     pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
-        let V(x, n) = var;
-        match self.0.lookup(x, *n) {
-            Some(TyEnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
-            Some(TyEnvItem::Value(t)) => Some(t.get_type()?),
+        match self.0.lookup(var) {
+            Some(CtxItem::Kept(_, t)) => Some(Cow::Borrowed(&t)),
+            Some(CtxItem::Replaced(_, t)) => Some(Cow::Borrowed(&t)),
             None => None,
         }
     }
     pub(crate) fn to_normalization_ctx(&self) -> NormalizationContext {
-        NormalizationContext::from_typecheck_ctx(self)
+        NormalizationContext(self.0.forget())
     }
 }
 
-impl Shift for NzEnvItem {
+impl<T: Shift> Shift for CtxItem<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use NzEnvItem::*;
         match self {
-            Thunk(e) => Thunk(e.shift(delta, var)),
-            Skip(v) => Skip(v.shift(delta, var)),
+            CtxItem::Kept(v, t) => {
+                CtxItem::Kept(v.shift(delta, var), t.shift(delta, var))
+            }
+            CtxItem::Replaced(e, t) => {
+                CtxItem::Replaced(e.shift(delta, var), t.shift(delta, var))
+            }
         }
+    }
+}
+
+impl<T: Shift> Shift for Context<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        Context(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
     }
 }
 
 impl Shift for NormalizationContext {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        NormalizationContext(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
+        NormalizationContext(self.0.shift(delta, var))
     }
 }
 
-impl Shift for TyEnvItem {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use TyEnvItem::*;
-        match self {
-            Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
-            Value(e) => Value(e.shift(delta, var)),
-        }
-    }
-}
-
-impl Subst<Typed> for NzEnvItem {
+impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            NzEnvItem::Thunk(e) => NzEnvItem::Thunk(e.subst_shift(var, val)),
-            NzEnvItem::Skip(v) if v == var => NzEnvItem::Thunk(val.to_thunk()),
-            NzEnvItem::Skip(v) => NzEnvItem::Skip(v.shift(-1, var)),
+            CtxItem::Replaced(e, t) => CtxItem::Replaced(
+                e.subst_shift(var, val),
+                t.subst_shift(var, val),
+            ),
+            CtxItem::Kept(v, t) if v == var => {
+                CtxItem::Replaced(val.to_thunk(), t.subst_shift(var, val))
+            }
+            CtxItem::Kept(v, t) => {
+                CtxItem::Kept(v.shift(-1, var), t.subst_shift(var, val))
+            }
         }
+    }
+}
+
+impl<T: Subst<Typed>> Subst<Typed> for Context<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+        Context(Rc::new(self.0.map(|_, e| e.subst_shift(var, val))))
     }
 }
 
 impl Subst<Typed> for NormalizationContext {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        NormalizationContext(Rc::new(
-            self.0.map(|_, e| e.subst_shift(var, val)),
-        ))
+        NormalizationContext(self.0.subst_shift(var, val))
     }
 }
 

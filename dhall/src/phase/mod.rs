@@ -223,9 +223,6 @@ impl Normalized {
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
-    }
     pub(crate) fn to_type(self) -> Type {
         self.0.to_type()
     }

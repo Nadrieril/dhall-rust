@@ -78,12 +78,6 @@ impl TypeError {
     }
 }
 
-impl From<TypeError> for std::option::NoneError {
-    fn from(_: TypeError) -> std::option::NoneError {
-        std::option::NoneError
-    }
-}
-
 impl std::error::Error for TypeMessage {
     fn description(&self) -> &str {
         use TypeMessage::*;

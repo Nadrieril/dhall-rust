@@ -62,6 +62,18 @@ impl Shift for AlphaVar {
     }
 }
 
+impl Shift for () {
+    fn shift(&self, _delta: isize, _var: &AlphaVar) -> Self {
+        ()
+    }
+}
+
+impl<T> Subst<T> for () {
+    fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {
+        ()
+    }
+}
+
 impl std::cmp::PartialEq for AlphaVar {
     fn eq(&self, other: &Self) -> bool {
         match (&self.alpha, &other.alpha) {
