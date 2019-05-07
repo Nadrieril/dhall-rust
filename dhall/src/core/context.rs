@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::rc::Rc;
 
 use dhall_syntax::context::Context as SimpleContext;
@@ -25,27 +24,9 @@ pub(crate) struct NormalizationContext(Context<()>);
 #[derive(Debug, Clone)]
 pub(crate) struct TypecheckContext(Context<Type>);
 
-impl<T> CtxItem<T> {
-    fn forget(&self) -> CtxItem<()> {
-        match self {
-            CtxItem::Kept(var, _) => CtxItem::Kept(var.clone(), ()),
-            CtxItem::Replaced(e, _) => CtxItem::Replaced(e.clone(), ()),
-        }
-    }
-}
-
 impl<T> Context<T> {
     pub(crate) fn new() -> Self {
         Context(Rc::new(SimpleContext::new()))
-    }
-    pub(crate) fn forget(&self) -> Context<()> {
-        let mut ctx = SimpleContext::new();
-        for (k, vs) in self.0.iter_keys() {
-            for v in vs.iter() {
-                ctx = ctx.insert(k.clone(), v.forget());
-            }
-        }
-        Context(Rc::new(ctx))
     }
     pub(crate) fn insert_kept(&self, x: &Label, t: T) -> Self
     where
@@ -103,15 +84,17 @@ impl TypecheckContext {
             e.get_type()?.into_owned(),
         )))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Typed> {
         match self.0.lookup(var) {
-            Some(CtxItem::Kept(_, t)) => Some(Cow::Borrowed(&t)),
-            Some(CtxItem::Replaced(_, t)) => Some(Cow::Borrowed(&t)),
+            Some(CtxItem::Kept(newvar, t)) => Some(Typed::from_thunk_and_type(
+                Thunk::from_value(Value::Var(newvar.clone())),
+                t.clone(),
+            )),
+            Some(CtxItem::Replaced(th, t)) => {
+                Some(Typed::from_thunk_and_type(th.clone(), t.clone()))
+            }
             None => None,
         }
-    }
-    pub(crate) fn to_normalization_ctx(&self) -> NormalizationContext {
-        NormalizationContext(self.0.forget())
     }
 }
 

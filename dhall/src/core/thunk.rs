@@ -1,13 +1,15 @@
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
+use dhall_syntax::{ExprF, Label, X};
+
 use crate::core::context::NormalizationContext;
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
 use crate::phase::normalize::{
-    apply_any, normalize_whnf, InputSubExpr, OutputSubExpr,
+    apply_any, normalize_one_layer, normalize_whnf, InputSubExpr, OutputSubExpr,
 };
 use crate::phase::typecheck::mktype;
 use crate::phase::{Type, Typed};
@@ -25,6 +27,10 @@ use Marker::{NF, WHNF};
 enum ThunkInternal {
     /// Non-normalized value alongside a normalization context
     Unnormalized(NormalizationContext, InputSubExpr),
+    /// Partially normalized value whose subexpressions have been thunked (this is returned from
+    /// typechecking). Note that this is different from `Value::PartialExpr` because there is no
+    /// requirement of WHNF here.
+    PartialExpr(ExprF<Thunk, Label, X>),
     /// Partially normalized value.
     /// Invariant: if the marker is `NF`, the value must be fully normalized
     Value(Marker, Value),
@@ -57,6 +63,10 @@ impl ThunkInternal {
                     normalize_whnf(ctx.clone(), e.clone()),
                 )
             }
+            ThunkInternal::PartialExpr(e) => {
+                *self =
+                    ThunkInternal::Value(WHNF, normalize_one_layer(e.clone()))
+            }
             // Already at least in WHNF
             ThunkInternal::Value(_, _) => {}
         }
@@ -64,7 +74,8 @@ impl ThunkInternal {
 
     fn normalize_nf(&mut self) {
         match self {
-            ThunkInternal::Unnormalized(_, _) => {
+            ThunkInternal::Unnormalized(_, _)
+            | ThunkInternal::PartialExpr(_) => {
                 self.normalize_whnf();
                 self.normalize_nf();
             }
@@ -80,7 +91,8 @@ impl ThunkInternal {
     // Always use normalize_whnf before
     fn as_whnf(&self) -> &Value {
         match self {
-            ThunkInternal::Unnormalized(_, _) => unreachable!(),
+            ThunkInternal::Unnormalized(_, _)
+            | ThunkInternal::PartialExpr(_) => unreachable!(),
             ThunkInternal::Value(_, v) => v,
         }
     }
@@ -88,8 +100,9 @@ impl ThunkInternal {
     // Always use normalize_nf before
     fn as_nf(&self) -> &Value {
         match self {
-            ThunkInternal::Unnormalized(_, _) => unreachable!(),
-            ThunkInternal::Value(WHNF, _) => unreachable!(),
+            ThunkInternal::Unnormalized(_, _)
+            | ThunkInternal::PartialExpr(_)
+            | ThunkInternal::Value(WHNF, _) => unreachable!(),
             ThunkInternal::Value(NF, v) => v,
         }
     }
@@ -108,6 +121,10 @@ impl Thunk {
         Thunk::new(NormalizationContext::new(), e.absurd())
     }
 
+    pub(crate) fn from_partial_expr(e: ExprF<Thunk, Label, X>) -> Thunk {
+        ThunkInternal::PartialExpr(e).into_thunk()
+    }
+
     // Normalizes contents to normal form; faster than `normalize_nf` if
     // no one else shares this thunk
     pub(crate) fn normalize_mut(&mut self) {
@@ -122,7 +139,8 @@ impl Thunk {
     fn do_normalize_whnf(&self) {
         let borrow = self.0.borrow();
         match &*borrow {
-            ThunkInternal::Unnormalized(_, _) => {
+            ThunkInternal::Unnormalized(_, _)
+            | ThunkInternal::PartialExpr(_) => {
                 drop(borrow);
                 self.0.borrow_mut().normalize_whnf();
             }
@@ -135,6 +153,7 @@ impl Thunk {
         let borrow = self.0.borrow();
         match &*borrow {
             ThunkInternal::Unnormalized(_, _)
+            | ThunkInternal::PartialExpr(_)
             | ThunkInternal::Value(WHNF, _) => {
                 drop(borrow);
                 self.0.borrow_mut().normalize_nf();
@@ -249,6 +268,14 @@ impl Shift for ThunkInternal {
             ThunkInternal::Unnormalized(ctx, e) => {
                 ThunkInternal::Unnormalized(ctx.shift(delta, var), e.clone())
             }
+            ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
+                e.map_ref_with_special_handling_of_binders(
+                    |v| v.shift(delta, var),
+                    |x, v| v.shift(delta, &var.shift(1, &x.into())),
+                    X::clone,
+                    Label::clone,
+                ),
+            ),
             ThunkInternal::Value(m, v) => {
                 ThunkInternal::Value(*m, v.shift(delta, var))
             }
@@ -277,6 +304,19 @@ impl Subst<Typed> for ThunkInternal {
             ThunkInternal::Unnormalized(ctx, e) => ThunkInternal::Unnormalized(
                 ctx.subst_shift(var, val),
                 e.clone(),
+            ),
+            ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
+                e.map_ref_with_special_handling_of_binders(
+                    |v| v.subst_shift(var, val),
+                    |x, v| {
+                        v.subst_shift(
+                            &var.shift(1, &x.into()),
+                            &val.shift(1, &x.into()),
+                        )
+                    },
+                    X::clone,
+                    Label::clone,
+                ),
             ),
             ThunkInternal::Value(_, v) => {
                 // The resulting value may not stay in normal form after substitution

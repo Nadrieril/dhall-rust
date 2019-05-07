@@ -227,7 +227,7 @@ impl<SE, L, E> ExprF<SE, L, E> {
         v.visit(self)
     }
 
-    fn traverse_ref_with_special_handling_of_binders<'a, SE2, L2, E2, Err>(
+    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, L2, E2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_under_binder: impl FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,

@@ -341,23 +341,34 @@ enum Ret {
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
-/// succeeded, or an error if type-checking failed
+/// succeeded, or an error if type-checking failed.
+/// Some normalization is done while typechecking, so the returned expression might be partially
+/// normalized as well.
 fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<Span, Normalized>,
 ) -> Result<Typed, TypeError> {
     use dhall_syntax::ExprF::{
-        Annot, App, Embed, Lam, Let, OldOptionalLit, Pi, SomeLit,
+        Annot, App, Embed, Lam, Let, OldOptionalLit, Pi, SomeLit, Var,
     };
 
     use Ret::*;
-    let ret = match e.as_ref() {
+    Ok(match e.as_ref() {
         Lam(x, t, b) => {
             let tx = mktype(ctx, t.clone())?;
             let ctx2 = ctx.insert_type(x, tx.clone());
             let b = type_with(&ctx2, b.clone())?;
+            let v = Value::Lam(
+                x.clone().into(),
+                TypeThunk::from_type(tx.clone()),
+                b.to_thunk(),
+            );
             let tb = b.get_type()?.into_owned();
-            Ok(RetTypeIntermediate(TypeIntermediate::Pi(x.clone(), tx, tb)))
+            let ti = TypeIntermediate::Pi(x.clone(), tx, tb);
+            Typed::from_thunk_and_type(
+                Thunk::from_value(v),
+                ti.typecheck(ctx)?.to_type(),
+            )
         }
         Pi(x, ta, tb) => {
             let ta = mktype(ctx, ta.clone())?;
@@ -390,24 +401,44 @@ fn type_with(
             let e = e.rewrap(Annot(x, t));
             return type_with(ctx, e);
         }
-        Embed(p) => Ok(RetTyped(p.clone().into())),
-        _ => type_last_layer(
-            ctx,
+        Embed(p) => p.clone().into(),
+        Var(var) => match ctx.lookup(&var) {
+            Some(typed) => typed,
+            None => {
+                return Err(TypeError::new(
+                    ctx,
+                    TypeMessage::UnboundVariable(var.clone()),
+                ))
+            }
+        },
+        _ => {
             // Typecheck recursively all subexpressions
-            e.as_ref()
-                .traverse_ref_simple(|e| Ok(type_with(ctx, e.clone())?))?,
-        ),
-    }?;
-    Ok(match ret {
-        RetType(typ) => Typed::from_thunk_and_type(
-            Thunk::new(ctx.to_normalization_ctx(), e),
-            typ,
-        ),
-        RetTypeIntermediate(ti) => Typed::from_thunk_and_type(
-            Thunk::new(ctx.to_normalization_ctx(), e),
-            ti.typecheck(ctx)?.to_type(),
-        ),
-        RetTyped(tt) => tt,
+            let expr =
+                e.as_ref().traverse_ref_with_special_handling_of_binders(
+                    |e| type_with(ctx, e.clone()),
+                    |_, _| unreachable!(),
+                    |_| unreachable!(),
+                    |l| Ok(Label::clone(l)),
+                )?;
+            let ret = type_last_layer(ctx, &expr)?;
+            let ret = match ret {
+                RetTypeIntermediate(ti) => {
+                    RetType(ti.typecheck(ctx)?.to_type())
+                }
+                ret => ret,
+            };
+            match ret {
+                RetTypeIntermediate(_) => unreachable!(),
+                RetType(typ) => {
+                    let expr = expr.map_ref_simple(|typed| typed.to_thunk());
+                    Typed::from_thunk_and_type(
+                        Thunk::from_partial_expr(expr),
+                        typ,
+                    )
+                }
+                RetTyped(tt) => tt,
+            }
+        }
     })
 }
 
@@ -415,7 +446,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<Typed, Label, Normalized>,
+    e: &ExprF<Typed, Label, X>,
 ) -> Result<Ret, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
@@ -429,10 +460,7 @@ fn type_last_layer(
         Pi(_, _, _) => unreachable!(),
         Let(_, _, _, _) => unreachable!(),
         Embed(_) => unreachable!(),
-        Var(var) => match ctx.lookup(&var) {
-            Some(e) => Ok(RetType(e.into_owned())),
-            None => Err(mkerr(UnboundVariable(var.clone()))),
-        },
+        Var(_) => unreachable!(),
         App(f, a) => {
             let tf = f.get_type()?;
             let tf_internal = tf.internal_whnf();
@@ -448,7 +476,11 @@ fn type_last_layer(
                 _ => return Err(mkerr(NotAFunction(f.clone()))),
             };
             ensure_equal!(a.get_type()?, tx, {
-                mkerr(TypeMismatch(f.clone(), tx.clone().to_normalized(), a))
+                mkerr(TypeMismatch(
+                    f.clone(),
+                    tx.clone().to_normalized(),
+                    a.clone(),
+                ))
             });
 
             Ok(RetType(tb.subst_shift(&x.into(), &a)))
@@ -458,7 +490,7 @@ fn type_last_layer(
             ensure_equal!(
                 &t,
                 x.get_type()?,
-                mkerr(AnnotMismatch(x, t.to_normalized()))
+                mkerr(AnnotMismatch(x.clone(), t.to_normalized()))
             );
             Ok(RetType(x.get_type()?.into_owned()))
         }
@@ -466,23 +498,23 @@ fn type_last_layer(
             ensure_equal!(
                 x.get_type()?,
                 &builtin_to_type(Bool)?,
-                mkerr(InvalidPredicate(x)),
+                mkerr(InvalidPredicate(x.clone())),
             );
 
             ensure_simple_type!(
                 y.get_type()?,
-                mkerr(IfBranchMustBeTerm(true, y)),
+                mkerr(IfBranchMustBeTerm(true, y.clone())),
             );
 
             ensure_simple_type!(
                 z.get_type()?,
-                mkerr(IfBranchMustBeTerm(false, z)),
+                mkerr(IfBranchMustBeTerm(false, z.clone())),
             );
 
             ensure_equal!(
                 y.get_type()?,
                 z.get_type()?,
-                mkerr(IfBranchMismatch(y, z))
+                mkerr(IfBranchMismatch(y.clone(), z.clone()))
             );
 
             Ok(RetType(y.get_type()?.into_owned()))
@@ -492,7 +524,7 @@ fn type_last_layer(
             Ok(RetTypeIntermediate(TypeIntermediate::ListType(t)))
         }
         NEListLit(xs) => {
-            let mut iter = xs.into_iter().enumerate();
+            let mut iter = xs.iter().enumerate();
             let (_, x) = iter.next().unwrap();
             for (i, y) in iter {
                 ensure_equal!(
@@ -501,7 +533,7 @@ fn type_last_layer(
                     mkerr(InvalidListElement(
                         i,
                         x.get_type()?.to_normalized(),
-                        y
+                        y.clone()
                     ))
                 );
             }
@@ -514,17 +546,17 @@ fn type_last_layer(
         }
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
-                .into_iter()
-                .map(|(x, t)| Ok((x, t.to_type())))
+                .iter()
+                .map(|(x, t)| Ok((x.clone(), t.to_type())))
                 .collect::<Result<_, _>>()?;
             Ok(RetTyped(TypeIntermediate::RecordType(kts).typecheck(ctx)?))
         }
         UnionType(kts) => {
             let kts: BTreeMap<_, _> = kts
-                .into_iter()
+                .iter()
                 .map(|(x, t)| {
                     Ok((
-                        x,
+                        x.clone(),
                         match t {
                             None => None,
                             Some(t) => Some(t.to_type()),
@@ -536,24 +568,24 @@ fn type_last_layer(
         }
         RecordLit(kvs) => {
             let kts = kvs
-                .into_iter()
-                .map(|(x, v)| Ok((x, v.get_type()?.into_owned())))
+                .iter()
+                .map(|(x, v)| Ok((x.clone(), v.get_type()?.into_owned())))
                 .collect::<Result<_, _>>()?;
             Ok(RetTypeIntermediate(TypeIntermediate::RecordType(kts)))
         }
         UnionLit(x, v, kvs) => {
             let mut kts: std::collections::BTreeMap<_, _> = kvs
-                .into_iter()
+                .iter()
                 .map(|(x, v)| {
                     let t = match v {
                         Some(x) => Some(x.to_type()),
                         None => None,
                     };
-                    Ok((x, t))
+                    Ok((x.clone(), t))
                 })
                 .collect::<Result<_, _>>()?;
             let t = v.get_type()?.into_owned();
-            kts.insert(x, Some(t));
+            kts.insert(x.clone(), Some(t));
             Ok(RetTypeIntermediate(TypeIntermediate::UnionType(kts)))
         }
         Field(r, x) => {
@@ -562,7 +594,8 @@ fn type_last_layer(
                     Some(tth) => {
                         Ok(RetType(tth.to_type(ctx)?))
                     },
-                    None => Err(mkerr(MissingRecordField(x, r.clone()))),
+                    None => Err(mkerr(MissingRecordField(x.clone(),
+                                        r.clone()))),
                 },
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
@@ -584,14 +617,14 @@ fn type_last_layer(
                             },
                             None => {
                                 Err(mkerr(MissingUnionField(
-                                    x,
+                                    x.clone(),
                                     r.to_normalized(),
                                 )))
                             },
                         },
                         _ => {
                             Err(mkerr(NotARecord(
-                                x,
+                                x.clone(),
                                 r.to_normalized()
                             )))
                         },
@@ -603,9 +636,9 @@ fn type_last_layer(
                 // ))),
             }
         }
-        Const(c) => Ok(RetTyped(Typed::from_const(c))),
+        Const(c) => Ok(RetTyped(Typed::from_const(*c))),
         Builtin(b) => {
-            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).absurd())?))
+            Ok(RetType(mktype(ctx, rc(type_of_builtin(*b)).absurd())?))
         }
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
@@ -628,13 +661,13 @@ fn type_last_layer(
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.internal_whnf() {
                 Some(Value::AppliedBuiltin(List, _)) => {}
-                _ => return Err(mkerr(BinOpTypeMismatch(o, l.clone()))),
+                _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone()))),
             }
 
             ensure_equal!(
                 l.get_type()?,
                 r.get_type()?,
-                mkerr(BinOpTypeMismatch(o, r))
+                mkerr(BinOpTypeMismatch(*o, r.clone()))
             );
 
             Ok(RetType(l.get_type()?.into_owned()))
@@ -652,9 +685,17 @@ fn type_last_layer(
                 _ => return Err(mkerr(Unimplemented)),
             })?;
 
-            ensure_equal!(l.get_type()?, &t, mkerr(BinOpTypeMismatch(o, l)));
+            ensure_equal!(
+                l.get_type()?,
+                &t,
+                mkerr(BinOpTypeMismatch(*o, l.clone()))
+            );
 
-            ensure_equal!(r.get_type()?, &t, mkerr(BinOpTypeMismatch(o, r)));
+            ensure_equal!(
+                r.get_type()?,
+                &t,
+                mkerr(BinOpTypeMismatch(*o, r.clone()))
+            );
 
             Ok(RetType(t))
         }
