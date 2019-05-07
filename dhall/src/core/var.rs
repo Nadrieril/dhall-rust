@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use dhall_syntax::{Label, V};
 
 /// Stores a pair of variables: a normal one and if relevant one
@@ -14,11 +16,26 @@ pub(crate) struct AlphaVar {
 #[derive(Debug, Clone, Eq)]
 pub(crate) struct AlphaLabel(Label);
 
-pub(crate) trait Shift {
+pub(crate) trait Shift: Sized {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self;
+
+    fn shift0(&self, delta: isize, x: &Label) -> Self {
+        self.shift(delta, &x.into())
+    }
+
+    fn shift0_multiple(&self, shift_map: &HashMap<Label, isize>) -> Self
+    where
+        Self: Clone,
+    {
+        let mut v = self.clone();
+        for (x, n) in shift_map {
+            v = v.shift0(*n, x);
+        }
+        v
+    }
 }
 
-pub(crate) trait Subst<T>: Shift {
+pub(crate) trait Subst<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
 }
 

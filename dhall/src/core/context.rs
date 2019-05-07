@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use dhall_syntax::{Label, V};
@@ -31,11 +32,7 @@ impl<T> Context<T> {
     where
         T: Shift + Clone,
     {
-        let mut vec: Vec<_> = self
-            .0
-            .iter()
-            .map(|(l, i)| (l.clone(), i.shift(1, &x.into())))
-            .collect();
+        let mut vec = self.0.as_ref().clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.shift(1, &x.into()))));
         Context(Rc::new(vec))
     }
@@ -47,18 +44,58 @@ impl<T> Context<T> {
         vec.push((x.clone(), CtxItem::Replaced(th, t)));
         Context(Rc::new(vec))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<&CtxItem<T>> {
-        let V(x, mut n) = var;
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<CtxItem<T>>
+    where
+        T: Clone + Shift,
+    {
+        let mut var = var.clone();
+        let mut shift_map: HashMap<Label, _> = HashMap::new();
         for (l, i) in self.0.iter().rev() {
-            if x == l {
-                if n == 0 {
-                    return Some(i);
-                } else {
-                    n -= 1;
-                }
+            if var == l.into() {
+                return Some(i.shift0_multiple(&shift_map));
+            } else {
+                var = var.shift(-1, &l.into());
+            }
+            if let CtxItem::Kept(_, _) = i {
+                *shift_map.entry(l.clone()).or_insert(0) += 1;
             }
         }
         None
+    }
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self
+    where
+        T: Shift,
+    {
+        Context(Rc::new(
+            self.0
+                .iter()
+                .map(|(l, i)| (l.clone(), i.shift(delta, var)))
+                .collect(),
+        ))
+    }
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
+    where
+        T: Clone + Subst<Typed>,
+    {
+        let mut vec = Vec::new();
+        vec.reserve(self.0.len());
+        let mut var = var.clone();
+        let mut iter = self.0.iter().rev();
+        for (l, i) in iter.by_ref() {
+            vec.push((l.clone(), i.subst_shift(&var, val)));
+            if let CtxItem::Kept(_, _) = i {
+                if var == l.into() {
+                    break;
+                } else {
+                    var = var.shift(-1, &l.into());
+                }
+            }
+        }
+        for (l, i) in iter {
+            vec.push((l.clone(), (*i).clone()));
+        }
+        vec.reverse();
+        Context(Rc::new(vec))
     }
 }
 
@@ -126,12 +163,7 @@ impl<T: Shift> Shift for CtxItem<T> {
 
 impl<T: Shift> Shift for Context<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Context(Rc::new(
-            self.0
-                .iter()
-                .map(|(l, i)| (l.clone(), i.shift(delta, var)))
-                .collect(),
-        ))
+        self.shift(delta, var)
     }
 }
 
@@ -158,14 +190,9 @@ impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
     }
 }
 
-impl<T: Subst<Typed>> Subst<Typed> for Context<T> {
+impl<T: Clone + Subst<Typed>> Subst<Typed> for Context<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Context(Rc::new(
-            self.0
-                .iter()
-                .map(|(l, i)| (l.clone(), i.subst_shift(var, val)))
-                .collect(),
-        ))
+        self.subst_shift(var, val)
     }
 }
 
