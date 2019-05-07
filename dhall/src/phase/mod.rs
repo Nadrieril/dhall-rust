@@ -10,7 +10,7 @@ use crate::core::value::{AlphaVar, Value};
 use crate::error::{Error, ImportError, TypeError, TypeMessage};
 
 use resolve::ImportRoot;
-use typecheck::{const_to_typed, type_of_const};
+use typecheck::type_of_const;
 
 pub(crate) mod binary;
 pub(crate) mod normalize;
@@ -32,10 +32,13 @@ pub(crate) struct Resolved(pub(crate) ResolvedSubExpr);
 /// A typed expression
 #[derive(Debug, Clone)]
 pub(crate) enum Typed {
-    // The `Sort` higher-kinded type; it doesn't have a type
-    Sort,
-    // Any other value, along with (optionally) its type
+    // Any value, along with (optionally) its type
     Value(Thunk, Option<Type>),
+    // One of the base higher-kinded typed.
+    // Used to avoid storing the same tower ot Type->Kind->Sort
+    // over and over again. Also enables having Sort as a type
+    // even though it doesn't itself have a type.
+    Const(Const),
 }
 
 /// A normalized expression.
@@ -58,14 +61,7 @@ pub struct SimpleType(pub(crate) NormalizedSubExpr);
 /// This includes [SimpleType]s but also higher-kinded expressions like
 /// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type(pub(crate) TypeInternal);
-
-#[derive(Debug, Clone)]
-pub(crate) enum TypeInternal {
-    Const(Const),
-    /// This must not contain a Const value.
-    Typed(Box<Typed>),
-}
+pub struct Type(pub(crate) Box<Typed>);
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -116,7 +112,7 @@ impl Typed {
     /// leave ill-typed sub-expressions unevaluated.
     pub fn normalize(self) -> Normalized {
         match &self {
-            Typed::Sort => {}
+            Typed::Const(_) => {}
             Typed::Value(thunk, _) => {
                 thunk.normalize_nf();
             }
@@ -130,12 +126,15 @@ impl Typed {
     pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
         Typed::Value(th, None)
     }
+    pub(crate) fn from_const(c: Const) -> Self {
+        Typed::Const(c)
+    }
 
     // TODO: Avoid cloning if possible
     pub(crate) fn to_value(&self) -> Value {
         match self {
             Typed::Value(th, _) => th.to_value(),
-            Typed::Sort => Value::Const(Const::Sort),
+            Typed::Const(c) => Value::Const(*c),
         }
     }
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
@@ -147,17 +146,15 @@ impl Typed {
     pub(crate) fn to_thunk(&self) -> Thunk {
         match self {
             Typed::Value(th, _) => th.clone(),
-            Typed::Sort => Thunk::from_value(Value::Const(Const::Sort)),
+            Typed::Const(c) => Thunk::from_value(Value::Const(*c)),
         }
     }
+    // Deprecated
     pub(crate) fn to_type(&self) -> Type {
-        match self {
-            Typed::Sort => Type(TypeInternal::Const(Const::Sort)),
-            Typed::Value(th, _) => match &*th.as_value() {
-                Value::Const(c) => Type(TypeInternal::Const(*c)),
-                _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
-            },
-        }
+        self.clone().into_type()
+    }
+    pub(crate) fn into_type(self) -> Type {
+        Type(Box::new(self))
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
@@ -167,14 +164,8 @@ impl Typed {
                 &TypecheckContext::new(),
                 TypeMessage::Untyped,
             )),
-            Typed::Sort => {
-                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
-            }
+            Typed::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
         }
-    }
-
-    pub(crate) fn const_sort() -> Self {
-        Typed::Sort
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
@@ -183,7 +174,7 @@ impl Typed {
                 th.shift(delta, var),
                 t.as_ref().map(|x| x.shift(delta, var)),
             ),
-            Typed::Sort => Typed::Sort,
+            Typed::Const(c) => Typed::Const(*c),
         }
     }
 
@@ -193,14 +184,14 @@ impl Typed {
                 th.subst_shift(var, val),
                 t.as_ref().map(|x| x.subst_shift(var, val)),
             ),
-            Typed::Sort => Typed::Sort,
+            Typed::Const(c) => Typed::Const(*c),
         }
     }
 }
 
 impl Type {
     pub(crate) fn to_normalized(&self) -> Normalized {
-        self.0.to_normalized()
+        self.0.clone().normalize()
     }
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
@@ -209,80 +200,37 @@ impl Type {
         self.0.to_value()
     }
     pub(crate) fn as_const(&self) -> Option<Const> {
-        self.0.as_const()
+        // TODO: avoid clone
+        match &self.to_value() {
+            Value::Const(c) => Some(*c),
+            _ => None,
+        }
     }
     pub(crate) fn internal_whnf(&self) -> Option<Value> {
-        self.0.whnf()
+        Some(self.to_value())
     }
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
 
     pub(crate) fn const_sort() -> Self {
-        Type(TypeInternal::Const(Const::Sort))
+        Type::from_const(Const::Sort)
     }
     pub(crate) fn const_kind() -> Self {
-        Type(TypeInternal::Const(Const::Kind))
+        Type::from_const(Const::Kind)
     }
     pub(crate) fn const_type() -> Self {
-        Type(TypeInternal::Const(Const::Type))
+        Type::from_const(Const::Type)
+    }
+    pub(crate) fn from_const(c: Const) -> Self {
+        Type(Box::new(Typed::from_const(c)))
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Type(self.0.shift(delta, var))
+        Type(Box::new(self.0.shift(delta, var)))
     }
     pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(self.0.subst_shift(var, val))
-    }
-}
-
-impl TypeInternal {
-    pub(crate) fn to_typed(&self) -> Typed {
-        match self {
-            TypeInternal::Typed(e) => e.as_ref().clone(),
-            TypeInternal::Const(c) => const_to_typed(*c),
-        }
-    }
-    pub(crate) fn to_normalized(&self) -> Normalized {
-        self.to_typed().normalize()
-    }
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-        self.to_normalized().to_expr()
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.to_typed().to_value()
-    }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        Ok(match self {
-            TypeInternal::Typed(e) => e.get_type()?,
-            TypeInternal::Const(c) => Cow::Owned(type_of_const(*c)?),
-        })
-    }
-    pub(crate) fn as_const(&self) -> Option<Const> {
-        match self {
-            TypeInternal::Const(c) => Some(*c),
-            _ => None,
-        }
-    }
-    pub(crate) fn whnf(&self) -> Option<Value> {
-        match self {
-            TypeInternal::Typed(e) => Some(e.to_value()),
-            _ => None,
-        }
-    }
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.shift(delta, var))),
-            Const(c) => Const(*c),
-        }
-    }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
-            Const(c) => Const(*c),
-        }
+        Type(Box::new(self.0.subst_shift(var, val)))
     }
 }
 
@@ -346,13 +294,6 @@ impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {
         self.to_value() == other.to_value()
-    }
-}
-
-impl Eq for TypeInternal {}
-impl PartialEq for TypeInternal {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_normalized() == other.to_normalized()
     }
 }
 

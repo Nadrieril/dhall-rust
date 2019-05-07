@@ -35,7 +35,6 @@ macro_rules! make_spec_test {
 
 use crate::error::{Error, Result};
 use crate::phase::Parsed;
-use crate::traits::DynamicType;
 use std::path::PathBuf;
 
 #[derive(Copy, Clone)]

@@ -12,7 +12,7 @@ use crate::core::context::{NormalizationContext, TypecheckContext};
 use crate::core::thunk::{Thunk, TypeThunk};
 use crate::core::value::Value;
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::{Normalized, Resolved, Type, TypeInternal, Typed};
+use crate::phase::{Normalized, Resolved, Type, Typed};
 
 macro_rules! ensure_equal {
     ($x:expr, $y:expr, $err:expr $(,)*) => {
@@ -97,7 +97,7 @@ impl TypeIntermediate {
                         TypeThunk::from_type(tb.clone()),
                     )
                     .into_thunk(),
-                    const_to_type(k),
+                    Type::from_const(k),
                 )
             }
             TypeIntermediate::RecordType(ctx, kts) => {
@@ -127,7 +127,7 @@ impl TypeIntermediate {
                             .collect(),
                     )
                     .into_thunk(),
-                    const_to_type(k),
+                    Type::from_const(k),
                 )
             }
             TypeIntermediate::UnionType(ctx, kts) => {
@@ -166,7 +166,7 @@ impl TypeIntermediate {
                             .collect(),
                     )
                     .into_thunk(),
-                    const_to_type(k),
+                    Type::from_const(k),
                 )
             }
             TypeIntermediate::ListType(ctx, t) => {
@@ -178,7 +178,7 @@ impl TypeIntermediate {
                     Value::from_builtin(Builtin::List)
                         .app(t.to_value())
                         .into_thunk(),
-                    const_to_type(Const::Type),
+                    Type::from_const(Const::Type),
                 )
             }
             TypeIntermediate::OptionalType(ctx, t) => {
@@ -190,7 +190,7 @@ impl TypeIntermediate {
                     Value::from_builtin(Builtin::Optional)
                         .app(t.to_value())
                         .into_thunk(),
-                    const_to_type(Const::Type),
+                    Type::from_const(Const::Type),
                 )
             }
         })
@@ -215,20 +215,6 @@ where
     U: Borrow<Type>,
 {
     eL0.borrow().to_value() == eR0.borrow().to_value()
-}
-
-pub(crate) fn const_to_typed(c: Const) -> Typed {
-    match c {
-        Const::Sort => Typed::const_sort(),
-        _ => Typed::from_thunk_and_type(
-            Value::Const(c).into_thunk(),
-            type_of_const(c).unwrap(),
-        ),
-    }
-}
-
-fn const_to_type(c: Const) -> Type {
-    Type(TypeInternal::Const(c))
 }
 
 pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
@@ -647,7 +633,7 @@ fn type_last_layer(
                 // ))),
             }
         }
-        Const(c) => Ok(RetTyped(const_to_typed(c))),
+        Const(c) => Ok(RetTyped(Typed::from_const(c))),
         Builtin(b) => {
             Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).note_absurd())?))
         }
