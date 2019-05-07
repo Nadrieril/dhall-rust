@@ -1,5 +1,5 @@
 use crate::error::*;
-use crate::expr::*;
+use crate::phase::*;
 
 /// A data structure that can be deserialized from a Dhall expression
 ///

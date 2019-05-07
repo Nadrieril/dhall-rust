@@ -1,9 +1,6 @@
-use crate::expr::*;
+use crate::error::TypeError;
+use crate::phase::{Normalized, Type, Typed};
 use crate::traits::StaticType;
-#[allow(unused_imports)]
-use crate::typecheck::{TypeError, TypeMessage, TypecheckContext};
-#[allow(unused_imports)]
-use dhall_syntax::{Const, ExprF};
 use std::borrow::Cow;
 
 pub trait DynamicType {
@@ -30,6 +27,6 @@ impl DynamicType for Normalized {
 
 impl DynamicType for Typed {
     fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
+        self.get_type()
     }
 }

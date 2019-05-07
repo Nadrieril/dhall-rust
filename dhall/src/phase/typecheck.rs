@@ -1,230 +1,201 @@
 #![allow(non_snake_case)]
 use std::borrow::Borrow;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt;
 
-use crate::expr::*;
-use crate::normalize::{
-    AlphaVar, NormalizationContext, Thunk, TypeThunk, Value,
-};
-use crate::traits::DynamicType;
 use dhall_proc_macros as dhall;
-use dhall_syntax;
-use dhall_syntax::context::Context;
-use dhall_syntax::*;
+use dhall_syntax::{
+    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, Span,
+    SubExpr, X,
+};
 
-use self::TypeMessage::*;
+use crate::core::context::{NormalizationContext, TypecheckContext};
+use crate::core::thunk::{Thunk, TypeThunk};
+use crate::core::value::Value;
+use crate::error::{TypeError, TypeMessage};
+use crate::phase::{Normalized, Resolved, Type, Typed};
 
-impl Resolved {
-    pub fn typecheck(self) -> Result<Typed, TypeError> {
-        type_of(self.0)
-    }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        let expr: SubExpr<_, _> = self.0;
-        let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
-        type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
-    }
-    /// Pretends this expression has been typechecked. Use with care.
-    #[allow(dead_code)]
-    pub fn skip_typecheck(self) -> Typed {
-        Typed::from_thunk_untyped(Thunk::new(
-            NormalizationContext::new(),
-            self.0,
-        ))
-    }
-}
-
-impl Typed {
-    fn to_type(&self) -> Type {
-        match &self.to_value() {
-            Value::Const(c) => Type(TypeInternal::Const(*c)),
-            _ => Type(TypeInternal::Typed(Box::new(self.clone()))),
+macro_rules! ensure_equal {
+    ($x:expr, $y:expr, $err:expr $(,)*) => {
+        if !prop_equal($x, $y) {
+            return Err($err);
         }
-    }
+    };
 }
 
-impl Normalized {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Normalized(self.0.shift(delta, var))
-    }
-    pub(crate) fn to_type(self) -> Type {
-        self.0.to_type()
-    }
+// Ensure the provided type has type `Type`
+macro_rules! ensure_simple_type {
+    ($x:expr, $err:expr $(,)*) => {{
+        match $x.get_type()?.as_const() {
+            Some(dhall_syntax::Const::Type) => {}
+            _ => return Err($err),
+        }
+    }};
 }
 
-impl Type {
-    pub(crate) fn to_normalized(&self) -> Normalized {
-        self.0.to_normalized()
-    }
-    pub(crate) fn to_expr(&self) -> SubExpr<X, X> {
-        self.0.to_expr()
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
-    }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
-    }
-    fn as_const(&self) -> Option<Const> {
-        self.0.as_const()
-    }
-    fn internal_whnf(&self) -> Option<Value> {
-        self.0.whnf()
-    }
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Type(self.0.shift(delta, var))
-    }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(self.0.subst_shift(var, val))
-    }
-
-    fn const_sort() -> Self {
-        Type(TypeInternal::Const(Const::Sort))
-    }
-    fn const_kind() -> Self {
-        Type(TypeInternal::Const(Const::Kind))
-    }
-    pub(crate) fn const_type() -> Self {
-        Type(TypeInternal::Const(Const::Type))
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypeIntermediate {
+    Pi(TypecheckContext, Label, Type, Type),
+    RecordType(TypecheckContext, BTreeMap<Label, Type>),
+    UnionType(TypecheckContext, BTreeMap<Label, Option<Type>>),
+    ListType(TypecheckContext, Type),
+    OptionalType(TypecheckContext, Type),
 }
 
-impl TypeThunk {
-    fn to_type(&self, ctx: &TypecheckContext) -> Result<Type, TypeError> {
-        match self {
-            TypeThunk::Type(t) => Ok(t.clone()),
-            TypeThunk::Thunk(th) => {
-                // TODO: rule out statically
-                mktype(ctx, th.normalize_to_expr().embed_absurd().note_absurd())
+impl TypeIntermediate {
+    fn typecheck(self) -> Result<Typed, TypeError> {
+        use crate::error::TypeMessage::*;
+        let mkerr = |ctx, msg| TypeError::new(ctx, msg);
+        Ok(match &self {
+            TypeIntermediate::Pi(ctx, x, ta, tb) => {
+                let ctx2 = ctx.insert_type(x, ta.clone());
+
+                let kA = match ta.get_type()?.as_const() {
+                    Some(k) => k,
+                    _ => {
+                        return Err(mkerr(
+                            ctx,
+                            InvalidInputType(ta.clone().to_normalized()),
+                        ))
+                    }
+                };
+
+                let kB = match tb.get_type()?.as_const() {
+                    Some(k) => k,
+                    _ => {
+                        return Err(mkerr(
+                            &ctx2,
+                            InvalidOutputType(
+                                tb.clone()
+                                    .to_normalized()
+                                    .get_type()?
+                                    .to_normalized(),
+                            ),
+                        ))
+                    }
+                };
+
+                let k = match function_check(kA, kB) {
+                    Ok(k) => k,
+                    Err(()) => {
+                        return Err(mkerr(
+                            ctx,
+                            NoDependentTypes(
+                                ta.clone().to_normalized(),
+                                tb.clone()
+                                    .to_normalized()
+                                    .get_type()?
+                                    .to_normalized(),
+                            ),
+                        ))
+                    }
+                };
+
+                Typed::from_thunk_and_type(
+                    Value::Pi(
+                        x.clone().into(),
+                        TypeThunk::from_type(ta.clone()),
+                        TypeThunk::from_type(tb.clone()),
+                    )
+                    .into_thunk(),
+                    Type::from_const(k),
+                )
             }
-        }
-    }
-}
+            TypeIntermediate::RecordType(ctx, kts) => {
+                // Check that all types are the same const
+                let mut k = None;
+                for (x, t) in kts {
+                    match (k, t.get_type()?.as_const()) {
+                        (None, Some(k2)) => k = Some(k2),
+                        (Some(k1), Some(k2)) if k1 == k2 => {}
+                        _ => {
+                            return Err(mkerr(
+                                ctx,
+                                InvalidFieldType(x.clone(), t.clone()),
+                            ))
+                        }
+                    }
+                }
+                // An empty record type has type Type
+                let k = k.unwrap_or(dhall_syntax::Const::Type);
 
-/// A semantic type. This is partially redundant with `dhall_syntax::Expr`, on purpose. `TypeInternal` should
-/// be limited to syntactic expressions: either written by the user or meant to be printed.
-/// The rule is the following: we must _not_ construct values of type `Expr` while typechecking,
-/// but only construct `TypeInternal`s.
-#[derive(Debug, Clone)]
-pub(crate) enum TypeInternal {
-    Const(Const),
-    /// This must not contain a Const value.
-    Typed(Box<Typed>),
-}
+                Typed::from_thunk_and_type(
+                    Value::RecordType(
+                        kts.iter()
+                            .map(|(k, t)| {
+                                (k.clone(), TypeThunk::from_type(t.clone()))
+                            })
+                            .collect(),
+                    )
+                    .into_thunk(),
+                    Type::from_const(k),
+                )
+            }
+            TypeIntermediate::UnionType(ctx, kts) => {
+                // Check that all types are the same const
+                let mut k = None;
+                for (x, t) in kts {
+                    if let Some(t) = t {
+                        match (k, t.get_type()?.as_const()) {
+                            (None, Some(k2)) => k = Some(k2),
+                            (Some(k1), Some(k2)) if k1 == k2 => {}
+                            _ => {
+                                return Err(mkerr(
+                                    ctx,
+                                    InvalidFieldType(x.clone(), t.clone()),
+                                ))
+                            }
+                        }
+                    }
+                }
 
-impl TypeInternal {
-    fn to_typed(&self) -> Typed {
-        match self {
-            TypeInternal::Typed(e) => e.as_ref().clone(),
-            TypeInternal::Const(c) => const_to_typed(*c),
-        }
-    }
-    fn to_normalized(&self) -> Normalized {
-        self.to_typed().normalize()
-    }
-    fn to_expr(&self) -> SubExpr<X, X> {
-        self.to_normalized().to_expr()
-    }
-    fn to_value(&self) -> Value {
-        self.to_typed().to_value()
-    }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        Ok(match self {
-            TypeInternal::Typed(e) => e.get_type()?,
-            TypeInternal::Const(c) => Cow::Owned(type_of_const(*c)?),
+                // An empty union type has type Type;
+                // an union type with only unary variants also has type Type
+                let k = k.unwrap_or(dhall_syntax::Const::Type);
+
+                Typed::from_thunk_and_type(
+                    Value::UnionType(
+                        kts.iter()
+                            .map(|(k, t)| {
+                                (
+                                    k.clone(),
+                                    t.as_ref().map(|t| {
+                                        TypeThunk::from_type(t.clone())
+                                    }),
+                                )
+                            })
+                            .collect(),
+                    )
+                    .into_thunk(),
+                    Type::from_const(k),
+                )
+            }
+            TypeIntermediate::ListType(ctx, t) => {
+                ensure_simple_type!(
+                    t,
+                    mkerr(ctx, InvalidListType(t.clone().to_normalized())),
+                );
+                Typed::from_thunk_and_type(
+                    Value::from_builtin(Builtin::List)
+                        .app(t.to_value())
+                        .into_thunk(),
+                    Type::from_const(Const::Type),
+                )
+            }
+            TypeIntermediate::OptionalType(ctx, t) => {
+                ensure_simple_type!(
+                    t,
+                    mkerr(ctx, InvalidOptionalType(t.clone().to_normalized())),
+                );
+                Typed::from_thunk_and_type(
+                    Value::from_builtin(Builtin::Optional)
+                        .app(t.to_value())
+                        .into_thunk(),
+                    Type::from_const(Const::Type),
+                )
+            }
         })
     }
-    fn as_const(&self) -> Option<Const> {
-        match self {
-            TypeInternal::Const(c) => Some(*c),
-            _ => None,
-        }
-    }
-    fn whnf(&self) -> Option<Value> {
-        match self {
-            TypeInternal::Typed(e) => Some(e.to_value()),
-            _ => None,
-        }
-    }
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.shift(delta, var))),
-            Const(c) => Const(*c),
-        }
-    }
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        use TypeInternal::*;
-        match self {
-            Typed(e) => Typed(Box::new(e.subst_shift(var, val))),
-            Const(c) => Const(*c),
-        }
-    }
 }
-
-impl Eq for TypeInternal {}
-impl PartialEq for TypeInternal {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_normalized() == other.to_normalized()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum EnvItem {
-    Type(AlphaVar, Type),
-    Value(Normalized),
-}
-
-impl EnvItem {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        use EnvItem::*;
-        match self {
-            Type(v, e) => Type(v.shift(delta, var), e.shift(delta, var)),
-            Value(e) => Value(e.shift(delta, var)),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(pub(crate) Context<Label, EnvItem>);
-
-impl TypecheckContext {
-    pub(crate) fn new() -> Self {
-        TypecheckContext(Context::new())
-    }
-    pub(crate) fn insert_type(&self, x: &Label, t: Type) -> Self {
-        TypecheckContext(
-            self.0.map(|_, e| e.shift(1, &x.into())).insert(
-                x.clone(),
-                EnvItem::Type(x.into(), t.shift(1, &x.into())),
-            ),
-        )
-    }
-    pub(crate) fn insert_value(&self, x: &Label, t: Normalized) -> Self {
-        TypecheckContext(self.0.insert(x.clone(), EnvItem::Value(t)))
-    }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Cow<'_, Type>> {
-        let V(x, n) = var;
-        match self.0.lookup(x, *n) {
-            Some(EnvItem::Type(_, t)) => Some(Cow::Borrowed(&t)),
-            Some(EnvItem::Value(t)) => Some(t.get_type()?),
-            None => None,
-        }
-    }
-    fn to_normalization_ctx(&self) -> NormalizationContext {
-        NormalizationContext::from_typecheck_ctx(self)
-    }
-}
-
-impl PartialEq for TypecheckContext {
-    fn eq(&self, _: &Self) -> bool {
-        // don't count contexts when comparing stuff
-        // this is dirty but needed for now
-        true
-    }
-}
-impl Eq for TypecheckContext {}
 
 fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     use dhall_syntax::Const::*;
@@ -246,21 +217,7 @@ where
     eL0.borrow().to_value() == eR0.borrow().to_value()
 }
 
-fn const_to_typed(c: Const) -> Typed {
-    match c {
-        Const::Sort => Typed::const_sort(),
-        _ => Typed::from_thunk_and_type(
-            Value::Const(c).into_thunk(),
-            type_of_const(c).unwrap(),
-        ),
-    }
-}
-
-fn const_to_type(c: Const) -> Type {
-    Type(TypeInternal::Const(c))
-}
-
-fn type_of_const(c: Const) -> Result<Type, TypeError> {
+pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
     match c {
         Const::Type => Ok(Type::const_kind()),
         Const::Kind => Ok(Type::const_sort()),
@@ -273,7 +230,7 @@ fn type_of_const(c: Const) -> Result<Type, TypeError> {
     }
 }
 
-fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
+fn type_of_builtin(b: Builtin) -> Expr<X, X> {
     use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
@@ -357,198 +314,16 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
     }
 }
 
-macro_rules! ensure_equal {
-    ($x:expr, $y:expr, $err:expr $(,)*) => {
-        if !prop_equal($x, $y) {
-            return Err($err);
-        }
-    };
-}
-
-// Ensure the provided type has type `Type`
-macro_rules! ensure_simple_type {
-    ($x:expr, $err:expr $(,)*) => {{
-        match $x.get_type()?.as_const() {
-            Some(dhall_syntax::Const::Type) => {}
-            _ => return Err($err),
-        }
-    }};
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TypeIntermediate {
-    Pi(TypecheckContext, Label, Type, Type),
-    RecordType(TypecheckContext, BTreeMap<Label, Type>),
-    UnionType(TypecheckContext, BTreeMap<Label, Option<Type>>),
-    ListType(TypecheckContext, Type),
-    OptionalType(TypecheckContext, Type),
-}
-
-impl TypeIntermediate {
-    fn typecheck(self) -> Result<Typed, TypeError> {
-        let mkerr = |ctx, msg| TypeError::new(ctx, msg);
-        Ok(match &self {
-            TypeIntermediate::Pi(ctx, x, ta, tb) => {
-                let ctx2 = ctx.insert_type(x, ta.clone());
-
-                let kA = match ta.get_type()?.as_const() {
-                    Some(k) => k,
-                    _ => {
-                        return Err(mkerr(
-                            ctx,
-                            InvalidInputType(ta.clone().to_normalized()),
-                        ))
-                    }
-                };
-
-                let kB = match tb.get_type()?.as_const() {
-                    Some(k) => k,
-                    _ => {
-                        return Err(mkerr(
-                            &ctx2,
-                            InvalidOutputType(
-                                tb.clone()
-                                    .to_normalized()
-                                    .get_type()?
-                                    .to_normalized(),
-                            ),
-                        ))
-                    }
-                };
-
-                let k = match function_check(kA, kB) {
-                    Ok(k) => k,
-                    Err(()) => {
-                        return Err(mkerr(
-                            ctx,
-                            NoDependentTypes(
-                                ta.clone().to_normalized(),
-                                tb.clone()
-                                    .to_normalized()
-                                    .get_type()?
-                                    .to_normalized(),
-                            ),
-                        ))
-                    }
-                };
-
-                Typed::from_thunk_and_type(
-                    Value::Pi(
-                        x.clone().into(),
-                        TypeThunk::from_type(ta.clone()),
-                        TypeThunk::from_type(tb.clone()),
-                    )
-                    .into_thunk(),
-                    const_to_type(k),
-                )
-            }
-            TypeIntermediate::RecordType(ctx, kts) => {
-                // Check that all types are the same const
-                let mut k = None;
-                for (x, t) in kts {
-                    match (k, t.get_type()?.as_const()) {
-                        (None, Some(k2)) => k = Some(k2),
-                        (Some(k1), Some(k2)) if k1 == k2 => {}
-                        _ => {
-                            return Err(mkerr(
-                                ctx,
-                                InvalidFieldType(x.clone(), t.clone()),
-                            ))
-                        }
-                    }
-                }
-                // An empty record type has type Type
-                let k = k.unwrap_or(dhall_syntax::Const::Type);
-
-                Typed::from_thunk_and_type(
-                    Value::RecordType(
-                        kts.iter()
-                            .map(|(k, t)| {
-                                (k.clone(), TypeThunk::from_type(t.clone()))
-                            })
-                            .collect(),
-                    )
-                    .into_thunk(),
-                    const_to_type(k),
-                )
-            }
-            TypeIntermediate::UnionType(ctx, kts) => {
-                // Check that all types are the same const
-                let mut k = None;
-                for (x, t) in kts {
-                    if let Some(t) = t {
-                        match (k, t.get_type()?.as_const()) {
-                            (None, Some(k2)) => k = Some(k2),
-                            (Some(k1), Some(k2)) if k1 == k2 => {}
-                            _ => {
-                                return Err(mkerr(
-                                    ctx,
-                                    InvalidFieldType(x.clone(), t.clone()),
-                                ))
-                            }
-                        }
-                    }
-                }
-
-                // An empty union type has type Type;
-                // an union type with only unary variants also has type Type
-                let k = k.unwrap_or(dhall_syntax::Const::Type);
-
-                Typed::from_thunk_and_type(
-                    Value::UnionType(
-                        kts.iter()
-                            .map(|(k, t)| {
-                                (
-                                    k.clone(),
-                                    t.as_ref().map(|t| {
-                                        TypeThunk::from_type(t.clone())
-                                    }),
-                                )
-                            })
-                            .collect(),
-                    )
-                    .into_thunk(),
-                    const_to_type(k),
-                )
-            }
-            TypeIntermediate::ListType(ctx, t) => {
-                ensure_simple_type!(
-                    t,
-                    mkerr(ctx, InvalidListType(t.clone().to_normalized())),
-                );
-                Typed::from_thunk_and_type(
-                    Value::from_builtin(Builtin::List)
-                        .app(t.to_value())
-                        .into_thunk(),
-                    const_to_type(Const::Type),
-                )
-            }
-            TypeIntermediate::OptionalType(ctx, t) => {
-                ensure_simple_type!(
-                    t,
-                    mkerr(ctx, InvalidOptionalType(t.clone().to_normalized())),
-                );
-                Typed::from_thunk_and_type(
-                    Value::from_builtin(Builtin::Optional)
-                        .app(t.to_value())
-                        .into_thunk(),
-                    const_to_type(Const::Type),
-                )
-            }
-        })
-    }
-}
-
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
-fn mktype(
+pub(crate) fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<Span, Normalized>,
 ) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
-fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
+pub(crate) fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
     mktype(
         &TypecheckContext::new(),
         SubExpr::from_expr_no_note(ExprF::Builtin(b)),
@@ -645,6 +420,7 @@ fn type_last_layer(
     ctx: &TypecheckContext,
     e: ExprF<Typed, Label, Normalized>,
 ) -> Result<Ret, TypeError> {
+    use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
     use dhall_syntax::ExprF::*;
@@ -857,9 +633,9 @@ fn type_last_layer(
                 // ))),
             }
         }
-        Const(c) => Ok(RetTyped(const_to_typed(c))),
+        Const(c) => Ok(RetTyped(Typed::from_const(c))),
         Builtin(b) => {
-            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).note_absurd())?))
+            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).absurd())?))
         }
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
@@ -927,99 +703,20 @@ fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
     Ok(e)
 }
 
-/// The specific type error
-#[derive(Debug)]
-pub(crate) enum TypeMessage {
-    UnboundVariable(V<Label>),
-    InvalidInputType(Normalized),
-    InvalidOutputType(Normalized),
-    NotAFunction(Typed),
-    TypeMismatch(Typed, Normalized, Typed),
-    AnnotMismatch(Typed, Normalized),
-    Untyped,
-    InvalidListElement(usize, Normalized, Typed),
-    InvalidListType(Normalized),
-    InvalidOptionalType(Normalized),
-    InvalidPredicate(Typed),
-    IfBranchMismatch(Typed, Typed),
-    IfBranchMustBeTerm(bool, Typed),
-    InvalidFieldType(Label, Type),
-    NotARecord(Label, Normalized),
-    MissingRecordField(Label, Typed),
-    MissingUnionField(Label, Normalized),
-    BinOpTypeMismatch(BinOp, Typed),
-    NoDependentTypes(Normalized, Normalized),
-    InvalidTextInterpolation(Typed),
-    Sort,
-    Unimplemented,
+pub(crate) fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
+    type_of(e.0)
 }
 
-/// A structured type error that includes context
-#[derive(Debug)]
-pub struct TypeError {
-    type_message: TypeMessage,
-    context: TypecheckContext,
+pub(crate) fn typecheck_with(
+    e: Resolved,
+    ty: &Type,
+) -> Result<Typed, TypeError> {
+    let expr: SubExpr<_, _> = e.0;
+    let ty: SubExpr<_, _> = ty.to_expr().absurd();
+    type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }
-
-impl TypeError {
-    pub(crate) fn new(
-        context: &TypecheckContext,
-        type_message: TypeMessage,
-    ) -> Self {
-        TypeError {
-            context: context.clone(),
-            type_message,
-        }
-    }
-}
-
-impl From<TypeError> for std::option::NoneError {
-    fn from(_: TypeError) -> std::option::NoneError {
-        std::option::NoneError
-    }
-}
-
-impl ::std::error::Error for TypeMessage {
-    fn description(&self) -> &str {
-        match *self {
-            // UnboundVariable => "Unbound variable",
-            InvalidInputType(_) => "Invalid function input",
-            InvalidOutputType(_) => "Invalid function output",
-            NotAFunction(_) => "Not a function",
-            TypeMismatch(_, _, _) => "Wrong type of function argument",
-            _ => "Unhandled error",
-        }
-    }
-}
-
-impl fmt::Display for TypeMessage {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            // UnboundVariable(_) => {
-            //     f.write_str(include_str!("errors/UnboundVariable.txt"))
-            // }
-            // TypeMismatch(e0, e1, e2) => {
-            //     let template = include_str!("errors/TypeMismatch.txt");
-            //     let s = template
-            //         .replace("$txt0", &format!("{}", e0.as_expr()))
-            //         .replace("$txt1", &format!("{}", e1.as_expr()))
-            //         .replace("$txt2", &format!("{}", e2.as_expr()))
-            //         .replace(
-            //             "$txt3",
-            //             &format!(
-            //                 "{}",
-            //                 e2.get_type()
-            //                     .unwrap()
-            //                     .as_normalized()
-            //                     .unwrap()
-            //                     .as_expr()
-            //             ),
-            //         );
-            //     f.write_str(&s)
-            // }
-            _ => f.write_str("Unhandled error message"),
-        }
-    }
+pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
+    Typed::from_thunk_untyped(Thunk::new(NormalizationContext::new(), e.0))
 }
 
 #[cfg(test)]

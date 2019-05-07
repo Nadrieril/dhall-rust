@@ -1,4 +1,4 @@
-use crate::expr::*;
+use crate::phase::*;
 use dhall_proc_macros as dhall;
 use dhall_syntax::*;
 
@@ -38,8 +38,8 @@ fn mktype(x: SubExpr<X, X>) -> SimpleType {
 
 impl<T: SimpleStaticType> StaticType for T {
     fn get_static_type() -> Type {
-        crate::expr::Normalized::from_thunk_and_type(
-            crate::normalize::Thunk::from_normalized_expr(
+        crate::phase::Normalized::from_thunk_and_type(
+            crate::core::thunk::Thunk::from_normalized_expr(
                 T::get_simple_static_type().into(),
             ),
             Type::const_type(),

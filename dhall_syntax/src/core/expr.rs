@@ -343,27 +343,17 @@ impl<N, E> Expr<N, E> {
     {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
+}
 
-    pub fn squash_embed<E2>(
-        &self,
-        f: impl FnMut(&E) -> SubExpr<N, E2>,
-    ) -> SubExpr<N, E2>
-    where
-        N: Clone,
-    {
-        trivial_result(self.visit(&mut visitor::SquashEmbedVisitor(f)))
+impl Expr<X, X> {
+    pub fn absurd<N, E>(&self) -> Expr<N, E> {
+        self.visit(&mut visitor::AbsurdVisitor)
     }
 }
 
 impl<E: Clone> Expr<X, E> {
     pub fn note_absurd<N>(&self) -> Expr<N, E> {
         self.visit(&mut visitor::NoteAbsurdVisitor)
-    }
-}
-
-impl<N: Clone> Expr<N, X> {
-    pub fn embed_absurd<E>(&self) -> Expr<N, E> {
-        self.visit(&mut visitor::EmbedAbsurdVisitor)
     }
 }
 
@@ -380,17 +370,6 @@ impl<N, E> SubExpr<N, E> {
         SubExpr(Rc::new((x, None)))
     }
 
-    pub fn unnote(&self) -> SubExpr<X, E>
-    where
-        E: Clone,
-    {
-        SubExpr::from_expr_no_note(
-            self.as_ref().visit(&mut visitor::UnNoteVisitor),
-        )
-    }
-}
-
-impl<N: Clone, E> SubExpr<N, E> {
     pub fn rewrap<E2>(&self, x: Expr<N, E2>) -> SubExpr<N, E2>
     where
         N: Clone,
@@ -422,7 +401,10 @@ impl<N: Clone, E> SubExpr<N, E> {
         &'a self,
         map_expr: impl FnMut(&'a Self) -> Self,
         map_under_binder: impl FnMut(&'a Label, &'a Self) -> Self,
-    ) -> Self {
+    ) -> Self
+    where
+        N: Clone,
+    {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // This calls ExprF::map_ref
@@ -436,9 +418,9 @@ impl<N: Clone, E> SubExpr<N, E> {
     }
 }
 
-impl<N: Clone> SubExpr<N, X> {
-    pub fn embed_absurd<T>(&self) -> SubExpr<N, T> {
-        self.rewrap(self.as_ref().embed_absurd())
+impl SubExpr<X, X> {
+    pub fn absurd<N: Clone, T>(&self) -> SubExpr<N, T> {
+        SubExpr::from_expr_no_note(self.as_ref().absurd())
     }
 }
 

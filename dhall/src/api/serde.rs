@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::expr::{Normalized, Type};
+use crate::phase::{Normalized, Type};
 use crate::traits::Deserialize;
 use dhall_syntax::*;
 use std::borrow::Cow;

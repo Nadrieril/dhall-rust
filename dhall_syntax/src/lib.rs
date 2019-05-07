@@ -13,16 +13,10 @@
 //! [dhall-rust]: https://github.com/Nadrieril/dhall-rust
 
 mod core;
+pub use crate::core::context;
+pub use crate::core::visitor;
 pub use crate::core::*;
-mod import;
-pub use crate::import::*;
-mod label;
-pub use crate::label::*;
-mod text;
-pub use crate::text::*;
 mod printer;
 pub use crate::printer::*;
 mod parser;
 pub use crate::parser::*;
-pub mod context;
-pub mod visitor;

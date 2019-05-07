@@ -1,18 +1,10 @@
-use crate::error::Error;
-use crate::expr::*;
-use dhall_syntax::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
-pub enum ImportError {
-    Recursive(Import, Box<Error>),
-    UnexpectedImport(Import),
-    ImportCycle(ImportStack, Import),
-}
+use dhall_syntax::Import;
+
+use crate::error::{Error, ImportError};
+use crate::phase::{Normalized, Parsed, Resolved};
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +14,7 @@ pub enum ImportRoot {
 
 type ImportCache = HashMap<Import, Normalized>;
 
-type ImportStack = Vec<Import>;
+pub(crate) type ImportStack = Vec<Import>;
 
 fn resolve_import(
     import: &Import,
@@ -97,7 +89,11 @@ fn do_resolve_expr(
     Ok(Resolved(expr))
 }
 
-fn skip_resolve_expr(
+pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
+    do_resolve_expr(e, &mut HashMap::new(), &Vec::new())
+}
+
+pub(crate) fn skip_resolve_expr(
     Parsed(expr, _root): Parsed,
 ) -> Result<Resolved, ImportError> {
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {
@@ -105,40 +101,6 @@ fn skip_resolve_expr(
     };
     let expr = expr.traverse_embed(resolve)?;
     Ok(Resolved(expr))
-}
-
-impl Parsed {
-    pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
-        let mut buffer = String::new();
-        File::open(f)?.read_to_string(&mut buffer)?;
-        let expr = parse_expr(&*buffer)?;
-        let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr.unnote().note_absurd(), root))
-    }
-
-    pub fn parse_str(s: &str) -> Result<Parsed, Error> {
-        let expr = parse_expr(s)?;
-        let root = ImportRoot::LocalDir(std::env::current_dir()?);
-        Ok(Parsed(expr, root))
-    }
-
-    #[allow(dead_code)]
-    pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
-        let mut buffer = Vec::new();
-        File::open(f)?.read_to_end(&mut buffer)?;
-        let expr = crate::binary::decode(&buffer)?;
-        let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-        Ok(Parsed(expr.note_absurd(), root))
-    }
-
-    pub fn resolve(self) -> Result<Resolved, ImportError> {
-        crate::imports::do_resolve_expr(self, &mut HashMap::new(), &Vec::new())
-    }
-
-    #[allow(dead_code)]
-    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
-        crate::imports::skip_resolve_expr(self)
-    }
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
+    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::expr!()") };
     let expr = expr.map_embed(no_import);
@@ -17,7 +17,7 @@ pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 pub fn subexpr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
-    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap().unnote();
+    let expr: SubExpr<_, Import> = parse_expr(&input_str).unwrap();
     let no_import =
         |_: &Import| -> X { panic!("Don't use import in dhall::subexpr!()") };
     let expr = expr.map_embed(no_import);
@@ -94,8 +94,8 @@ where
 
 // Returns an expression of type SubExpr<_, _>. Expects interpolated variables
 // to be of type SubExpr<_, _>.
-fn quote_subexpr(
-    expr: &SubExpr<X, X>,
+fn quote_subexpr<N>(
+    expr: &SubExpr<N, X>,
     ctx: &Context<Label, ()>,
 ) -> TokenStream {
     use dhall_syntax::ExprF::*;
@@ -131,7 +131,7 @@ fn quote_subexpr(
 
 // Returns an expression of type Expr<_, _>. Expects interpolated variables
 // to be of type SubExpr<_, _>.
-fn quote_expr(expr: &Expr<X, X>, ctx: &Context<Label, ()>) -> TokenStream {
+fn quote_expr<N>(expr: &Expr<N, X>, ctx: &Context<Label, ()>) -> TokenStream {
     use dhall_syntax::ExprF::*;
     match expr.map_ref_with_special_handling_of_binders(
         |e| quote_subexpr(e, ctx),

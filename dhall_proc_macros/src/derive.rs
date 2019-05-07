@@ -169,9 +169,9 @@ pub fn derive_simple_static_type_inner(
                 for #ident #ty_generics
                 #where_clause {
             fn get_simple_static_type() ->
-                    ::dhall::expr::SimpleType {
+                    ::dhall::de::SimpleType {
                 #(#assertions)*
-                ::dhall::expr::SimpleType::from(#get_type)
+                ::dhall::de::SimpleType::from(#get_type)
             }
         }
     };
