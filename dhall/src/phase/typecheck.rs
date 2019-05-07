@@ -35,19 +35,19 @@ macro_rules! ensure_simple_type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeIntermediate {
-    Pi(TypecheckContext, Label, Type, Type),
-    RecordType(TypecheckContext, BTreeMap<Label, Type>),
-    UnionType(TypecheckContext, BTreeMap<Label, Option<Type>>),
-    ListType(TypecheckContext, Type),
-    OptionalType(TypecheckContext, Type),
+    Pi(Label, Type, Type),
+    RecordType(BTreeMap<Label, Type>),
+    UnionType(BTreeMap<Label, Option<Type>>),
+    ListType(Type),
+    OptionalType(Type),
 }
 
 impl TypeIntermediate {
-    fn typecheck(self) -> Result<Typed, TypeError> {
+    fn typecheck(self, ctx: &TypecheckContext) -> Result<Typed, TypeError> {
         use crate::error::TypeMessage::*;
-        let mkerr = |ctx, msg| TypeError::new(ctx, msg);
+        let mkerr = |ctx: &TypecheckContext, msg| TypeError::new(ctx, msg);
         Ok(match &self {
-            TypeIntermediate::Pi(ctx, x, ta, tb) => {
+            TypeIntermediate::Pi(x, ta, tb) => {
                 let ctx2 = ctx.insert_type(x, ta.clone());
 
                 let kA = match ta.get_type()?.as_const() {
@@ -101,7 +101,7 @@ impl TypeIntermediate {
                     Type::from_const(k),
                 )
             }
-            TypeIntermediate::RecordType(ctx, kts) => {
+            TypeIntermediate::RecordType(kts) => {
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
@@ -131,7 +131,7 @@ impl TypeIntermediate {
                     Type::from_const(k),
                 )
             }
-            TypeIntermediate::UnionType(ctx, kts) => {
+            TypeIntermediate::UnionType(kts) => {
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
@@ -170,7 +170,7 @@ impl TypeIntermediate {
                     Type::from_const(k),
                 )
             }
-            TypeIntermediate::ListType(ctx, t) => {
+            TypeIntermediate::ListType(t) => {
                 ensure_simple_type!(
                     t,
                     mkerr(ctx, InvalidListType(t.clone().to_normalized())),
@@ -182,7 +182,7 @@ impl TypeIntermediate {
                     Type::from_const(Const::Type),
                 )
             }
-            TypeIntermediate::OptionalType(ctx, t) => {
+            TypeIntermediate::OptionalType(t) => {
                 ensure_simple_type!(
                     t,
                     mkerr(ctx, InvalidOptionalType(t.clone().to_normalized())),
@@ -337,6 +337,7 @@ enum Ret {
     RetTyped(Typed),
     /// Use the contained Type as the type of the input expression
     RetType(Type),
+    RetTypeIntermediate(TypeIntermediate),
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
@@ -356,20 +357,13 @@ fn type_with(
             let ctx2 = ctx.insert_type(x, tx.clone());
             let b = type_with(&ctx2, b.clone())?;
             let tb = b.get_type()?.into_owned();
-            Ok(RetType(
-                TypeIntermediate::Pi(ctx.clone(), x.clone(), tx, tb)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::Pi(x.clone(), tx, tb)))
         }
         Pi(x, ta, tb) => {
             let ta = mktype(ctx, ta.clone())?;
             let ctx2 = ctx.insert_type(x, ta.clone());
             let tb = mktype(&ctx2, tb.clone())?;
-            Ok(RetTyped(
-                TypeIntermediate::Pi(ctx.clone(), x.clone(), ta, tb)
-                    .typecheck()?,
-            ))
+            return TypeIntermediate::Pi(x.clone(), ta, tb).typecheck(ctx);
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -379,9 +373,7 @@ fn type_with(
             };
 
             let v = type_with(ctx, v)?;
-            let e = type_with(&ctx.insert_value(x, v.clone())?, e.clone())?;
-
-            Ok(RetType(e.get_type()?.into_owned()))
+            return type_with(&ctx.insert_value(x, v.clone())?, e.clone());
         }
         OldOptionalLit(None, t) => {
             let none = SubExpr::from_expr_no_note(ExprF::Builtin(
@@ -410,6 +402,10 @@ fn type_with(
         RetType(typ) => Typed::from_thunk_and_type(
             Thunk::new(ctx.to_normalization_ctx(), e),
             typ,
+        ),
+        RetTypeIntermediate(ti) => Typed::from_thunk_and_type(
+            Thunk::new(ctx.to_normalization_ctx(), e),
+            ti.typecheck(ctx)?.to_type(),
         ),
         RetTyped(tt) => tt,
     })
@@ -493,11 +489,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let t = t.to_type();
-            Ok(RetType(
-                TypeIntermediate::ListType(ctx.clone(), t)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::ListType(t)))
         }
         NEListLit(xs) => {
             let mut iter = xs.into_iter().enumerate();
@@ -514,28 +506,18 @@ fn type_last_layer(
                 );
             }
             let t = x.get_type()?.into_owned();
-            Ok(RetType(
-                TypeIntermediate::ListType(ctx.clone(), t)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::ListType(t)))
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
-            Ok(RetType(
-                TypeIntermediate::OptionalType(ctx.clone(), t)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::OptionalType(t)))
         }
         RecordType(kts) => {
             let kts: BTreeMap<_, _> = kts
                 .into_iter()
                 .map(|(x, t)| Ok((x, t.to_type())))
                 .collect::<Result<_, _>>()?;
-            Ok(RetTyped(
-                TypeIntermediate::RecordType(ctx.clone(), kts).typecheck()?,
-            ))
+            Ok(RetTyped(TypeIntermediate::RecordType(kts).typecheck(ctx)?))
         }
         UnionType(kts) => {
             let kts: BTreeMap<_, _> = kts
@@ -550,20 +532,14 @@ fn type_last_layer(
                     ))
                 })
                 .collect::<Result<_, _>>()?;
-            Ok(RetTyped(
-                TypeIntermediate::UnionType(ctx.clone(), kts).typecheck()?,
-            ))
+            Ok(RetTyped(TypeIntermediate::UnionType(kts).typecheck(ctx)?))
         }
         RecordLit(kvs) => {
             let kts = kvs
                 .into_iter()
                 .map(|(x, v)| Ok((x, v.get_type()?.into_owned())))
                 .collect::<Result<_, _>>()?;
-            Ok(RetType(
-                TypeIntermediate::RecordType(ctx.clone(), kts)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::RecordType(kts)))
         }
         UnionLit(x, v, kvs) => {
             let mut kts: std::collections::BTreeMap<_, _> = kvs
@@ -578,11 +554,7 @@ fn type_last_layer(
                 .collect::<Result<_, _>>()?;
             let t = v.get_type()?.into_owned();
             kts.insert(x, Some(t));
-            Ok(RetType(
-                TypeIntermediate::UnionType(ctx.clone(), kts)
-                    .typecheck()?
-                    .to_type(),
-            ))
+            Ok(RetTypeIntermediate(TypeIntermediate::UnionType(kts)))
         }
         Field(r, x) => {
             match &r.get_type()?.internal_whnf() {
@@ -599,15 +571,12 @@ fn type_last_layer(
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
-                                Ok(RetType(
+                                Ok(RetTypeIntermediate(
                                     TypeIntermediate::Pi(
-                                        ctx.clone(),
                                         "_".into(),
                                         t.to_type(ctx)?,
                                         r.clone(),
                                     )
-                                    .typecheck()?
-                                    .to_type(),
                                 ))
                             },
                             Some(None) => {
