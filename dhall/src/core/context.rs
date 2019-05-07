@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use dhall_syntax::context::Context as SimpleContext;
 use dhall_syntax::{Label, V};
 
 use crate::core::thunk::Thunk;
@@ -16,7 +15,7 @@ pub(crate) enum CtxItem<T> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Context<T>(Rc<SimpleContext<Label, CtxItem<T>>>);
+pub(crate) struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
 
 #[derive(Debug, Clone)]
 pub(crate) struct NormalizationContext(Context<()>);
@@ -26,26 +25,40 @@ pub(crate) struct TypecheckContext(Context<Type>);
 
 impl<T> Context<T> {
     pub(crate) fn new() -> Self {
-        Context(Rc::new(SimpleContext::new()))
+        Context(Rc::new(Vec::new()))
     }
     pub(crate) fn insert_kept(&self, x: &Label, t: T) -> Self
     where
         T: Shift + Clone,
     {
-        Context(Rc::new(self.0.map(|_, e| e.shift(1, &x.into())).insert(
-            x.clone(),
-            CtxItem::Kept(x.into(), t.shift(1, &x.into())),
-        )))
+        let mut vec: Vec<_> = self
+            .0
+            .iter()
+            .map(|(l, i)| (l.clone(), i.shift(1, &x.into())))
+            .collect();
+        vec.push((x.clone(), CtxItem::Kept(x.into(), t.shift(1, &x.into()))));
+        Context(Rc::new(vec))
     }
-    pub(crate) fn insert_replaced(&self, x: &Label, e: Thunk, t: T) -> Self
+    pub(crate) fn insert_replaced(&self, x: &Label, th: Thunk, t: T) -> Self
     where
         T: Clone,
     {
-        Context(Rc::new(self.0.insert(x.clone(), CtxItem::Replaced(e, t))))
+        let mut vec = self.0.as_ref().clone();
+        vec.push((x.clone(), CtxItem::Replaced(th, t)));
+        Context(Rc::new(vec))
     }
     pub(crate) fn lookup(&self, var: &V<Label>) -> Option<&CtxItem<T>> {
-        let V(x, n) = var;
-        self.0.lookup(x, *n)
+        let V(x, mut n) = var;
+        for (l, i) in self.0.iter().rev() {
+            if x == l {
+                if n == 0 {
+                    return Some(i);
+                } else {
+                    n -= 1;
+                }
+            }
+        }
+        None
     }
 }
 
@@ -113,7 +126,12 @@ impl<T: Shift> Shift for CtxItem<T> {
 
 impl<T: Shift> Shift for Context<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Context(Rc::new(self.0.map(|_, e| e.shift(delta, var))))
+        Context(Rc::new(
+            self.0
+                .iter()
+                .map(|(l, i)| (l.clone(), i.shift(delta, var)))
+                .collect(),
+        ))
     }
 }
 
@@ -142,7 +160,12 @@ impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
 
 impl<T: Subst<Typed>> Subst<Typed> for Context<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Context(Rc::new(self.0.map(|_, e| e.subst_shift(var, val))))
+        Context(Rc::new(
+            self.0
+                .iter()
+                .map(|(l, i)| (l.clone(), i.subst_shift(var, val)))
+                .collect(),
+        ))
     }
 }
 
