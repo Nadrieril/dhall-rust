@@ -62,27 +62,24 @@ impl<T> Context<T> {
         }
         None
     }
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self
+    /// Given a var that makes sense in the current context, map the given function in such a way
+    /// that the passed variable always makes sense in the context of the passed item.
+    /// Once we pass the variable definition, the variable doesn't make sense anymore so we just
+    /// copy the remaining items.
+    fn do_with_var(
+        &self,
+        var: &AlphaVar,
+        mut f: impl FnMut(&AlphaVar, &CtxItem<T>) -> CtxItem<T>,
+    ) -> Self
     where
-        T: Shift,
-    {
-        Context(Rc::new(
-            self.0
-                .iter()
-                .map(|(l, i)| (l.clone(), i.shift(delta, var)))
-                .collect(),
-        ))
-    }
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
-    where
-        T: Clone + Subst<Typed>,
+        T: Clone,
     {
         let mut vec = Vec::new();
         vec.reserve(self.0.len());
         let mut var = var.clone();
         let mut iter = self.0.iter().rev();
         for (l, i) in iter.by_ref() {
-            vec.push((l.clone(), i.subst_shift(&var, val)));
+            vec.push((l.clone(), f(&var, i)));
             if let CtxItem::Kept(_, _) = i {
                 if var == l.into() {
                     break;
@@ -96,6 +93,18 @@ impl<T> Context<T> {
         }
         vec.reverse();
         Context(Rc::new(vec))
+    }
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self
+    where
+        T: Clone + Shift,
+    {
+        self.do_with_var(var, |var, i| i.shift(delta, &var))
+    }
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
+    where
+        T: Clone + Subst<Typed>,
+    {
+        self.do_with_var(var, |var, i| i.subst_shift(&var, val))
     }
 }
 
@@ -161,7 +170,7 @@ impl<T: Shift> Shift for CtxItem<T> {
     }
 }
 
-impl<T: Shift> Shift for Context<T> {
+impl<T: Clone + Shift> Shift for Context<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         self.shift(delta, var)
     }
