@@ -29,12 +29,14 @@ enum ThunkInternal {
     Value(Marker, Value),
 }
 
-/// Stores a possibly unevaluated value. Uses RefCell to ensure that
-/// the value gets normalized at most once.
+/// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
+/// sharing computation automatically.
+/// Uses a RefCell to share computation.
 #[derive(Debug, Clone)]
 pub struct Thunk(Rc<RefCell<ThunkInternal>>);
 
-/// A thunk in type position.
+/// A thunk in type position. Can optionally store a Type from the typechecking phase to preserve
+/// type information through the normalization phase.
 #[derive(Debug, Clone)]
 pub(crate) enum TypeThunk {
     Thunk(Thunk),

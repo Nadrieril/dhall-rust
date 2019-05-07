@@ -26,13 +26,23 @@ pub(crate) struct AlphaVar {
 #[derive(Debug, Clone, Eq)]
 pub(crate) struct AlphaLabel(Label);
 
-/// A semantic value.
-/// Equality is up to alpha-equivalence (renaming of bound variables)
-/// and beta-equivalence (normalization).
+/// A semantic value. The invariants ensure this value represents a Weak-Head
+/// Normal Form (WHNF). This means that this first constructor is the first constructor of the
+/// final Normal Form (NF).
+/// This WHNF must be preserved by operations on `Value`s. In particular, `subst_shift` could break
+/// the invariants so need to be careful to reevaluate as needed.
+/// Subexpressions are Thunks, which are partially evaluated expressions that are normalized
+/// on-demand. When all the Thunks in a Value are at least in WHNF, and recursively so, then the
+/// Value is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
+/// if we have the first constructor of the NF at all levels, we actually have the NF.
+/// Equality is up to alpha-equivalence (renaming of bound variables) and beta-equivalence
+/// (normalization). Equality will normalize only as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Value {
     /// Closures
     Lam(AlphaLabel, Thunk, Thunk),
+    Pi(AlphaLabel, TypeThunk, TypeThunk),
+    // Invariant: the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Thunk>),
     /// `λ(x: a) -> Some x`
     OptionalSomeClosure(TypeThunk),
@@ -41,7 +51,6 @@ pub(crate) enum Value {
     ListConsClosure(TypeThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
-    Pi(AlphaLabel, TypeThunk, TypeThunk),
 
     Var(AlphaVar),
     Const(Const),
@@ -57,8 +66,10 @@ pub(crate) enum Value {
     UnionType(BTreeMap<Label, Option<TypeThunk>>),
     UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk>>),
     UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
+    // Invariant: this must not contain interpolations that are themselves TextLits, and
+    // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
-    /// Invariant: This must not contain a value captured by one of the variants above.
+    // Invariant: this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Thunk, Label, X>),
 }
 
