@@ -13,7 +13,7 @@ pub(crate) fn parse_file(f: &Path) -> Result<Parsed, Error> {
     File::open(f)?.read_to_string(&mut buffer)?;
     let expr = parse_expr(&*buffer)?;
     let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
-    Ok(Parsed(expr.unnote().note_absurd(), root))
+    Ok(Parsed(expr, root))
 }
 
 pub(crate) fn parse_str(s: &str) -> Result<Parsed, Error> {

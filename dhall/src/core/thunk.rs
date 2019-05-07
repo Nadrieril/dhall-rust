@@ -126,7 +126,7 @@ impl Thunk {
     }
 
     pub(crate) fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
-        Thunk::new(NormalizationContext::new(), e.embed_absurd().note_absurd())
+        Thunk::new(NormalizationContext::new(), e.absurd())
     }
 
     // Normalizes contents to normal form; faster than `normalize_nf` if
@@ -253,7 +253,7 @@ impl TypeThunk {
             TypeThunk::Type(t) => Ok(t.clone()),
             TypeThunk::Thunk(th) => {
                 // TODO: rule out statically
-                mktype(ctx, th.normalize_to_expr().embed_absurd().note_absurd())
+                mktype(ctx, th.normalize_to_expr().absurd())
             }
         }
     }

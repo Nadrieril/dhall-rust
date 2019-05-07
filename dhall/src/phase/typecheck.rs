@@ -230,7 +230,7 @@ pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
     }
 }
 
-fn type_of_builtin<E>(b: Builtin) -> Expr<X, E> {
+fn type_of_builtin(b: Builtin) -> Expr<X, X> {
     use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
@@ -635,7 +635,7 @@ fn type_last_layer(
         }
         Const(c) => Ok(RetTyped(Typed::from_const(c))),
         Builtin(b) => {
-            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).note_absurd())?))
+            Ok(RetType(mktype(ctx, rc(type_of_builtin(b)).absurd())?))
         }
         BoolLit(_) => Ok(RetType(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetType(builtin_to_type(Natural)?)),
@@ -712,7 +712,7 @@ pub(crate) fn typecheck_with(
     ty: &Type,
 ) -> Result<Typed, TypeError> {
     let expr: SubExpr<_, _> = e.0;
-    let ty: SubExpr<_, _> = ty.to_expr().embed_absurd().note_absurd();
+    let ty: SubExpr<_, _> = ty.to_expr().absurd();
     type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }
 pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
