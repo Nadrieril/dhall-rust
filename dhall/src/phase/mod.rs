@@ -6,7 +6,8 @@ use dhall_syntax::{Const, Import, Span, SubExpr, X};
 
 use crate::core::context::TypecheckContext;
 use crate::core::thunk::Thunk;
-use crate::core::value::{AlphaVar, Value};
+use crate::core::value::Value;
+use crate::core::var::AlphaVar;
 use crate::error::{Error, ImportError, TypeError, TypeMessage};
 
 use resolve::ImportRoot;

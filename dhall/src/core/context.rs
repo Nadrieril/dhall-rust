@@ -5,7 +5,8 @@ use dhall_syntax::context::Context;
 use dhall_syntax::{Label, V};
 
 use crate::core::thunk::Thunk;
-use crate::core::value::{AlphaVar, Value};
+use crate::core::value::Value;
+use crate::core::var::AlphaVar;
 use crate::phase::{Normalized, Type, Typed};
 
 #[derive(Debug, Clone)]

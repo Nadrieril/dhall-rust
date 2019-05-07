@@ -3,7 +3,8 @@ use std::rc::Rc;
 
 use crate::core::context::NormalizationContext;
 use crate::core::context::TypecheckContext;
-use crate::core::value::{AlphaVar, Value};
+use crate::core::value::Value;
+use crate::core::var::AlphaVar;
 use crate::error::TypeError;
 use crate::phase::normalize::{
     apply_any, normalize_whnf, InputSubExpr, OutputSubExpr,
