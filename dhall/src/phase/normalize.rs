@@ -5,6 +5,7 @@ use dhall_syntax::{BinOp, Builtin, ExprF, InterpolatedTextContents, Label, X};
 use crate::core::context::NormalizationContext;
 use crate::core::thunk::{Thunk, TypeThunk};
 use crate::core::value::Value;
+use crate::core::var::Subst;
 use crate::phase::{NormalizedSubExpr, ResolvedSubExpr, Typed};
 
 pub(crate) type InputSubExpr = ResolvedSubExpr;

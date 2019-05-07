@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::core::context::NormalizationContext;
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
-use crate::core::var::AlphaVar;
+use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
 use crate::phase::normalize::{
     apply_any, normalize_whnf, InputSubExpr, OutputSubExpr,
@@ -91,30 +91,6 @@ impl ThunkInternal {
             ThunkInternal::Unnormalized(_, _) => unreachable!(),
             ThunkInternal::Value(WHNF, _) => unreachable!(),
             ThunkInternal::Value(NF, v) => v,
-        }
-    }
-
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
-            ThunkInternal::Unnormalized(ctx, e) => {
-                ThunkInternal::Unnormalized(ctx.shift(delta, var), e.clone())
-            }
-            ThunkInternal::Value(m, v) => {
-                ThunkInternal::Value(*m, v.shift(delta, var))
-            }
-        }
-    }
-
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        match self {
-            ThunkInternal::Unnormalized(ctx, e) => ThunkInternal::Unnormalized(
-                ctx.subst_shift(var, val),
-                e.clone(),
-            ),
-            ThunkInternal::Value(_, v) => {
-                // The resulting value may not stay in normal form after substitution
-                ThunkInternal::Value(WHNF, v.subst_shift(var, val))
-            }
         }
     }
 }
@@ -204,14 +180,6 @@ impl Thunk {
     pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
         apply_any(self.clone(), th)
     }
-
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        self.0.borrow().shift(delta, var).into_thunk()
-    }
-
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        self.0.borrow().subst_shift(var, val).into_thunk()
-    }
 }
 
 impl TypeThunk {
@@ -267,15 +235,59 @@ impl TypeThunk {
     ) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
+}
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+impl Shift for Thunk {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        self.0.borrow().shift(delta, var).into_thunk()
+    }
+}
+
+impl Shift for ThunkInternal {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        match self {
+            ThunkInternal::Unnormalized(ctx, e) => {
+                ThunkInternal::Unnormalized(ctx.shift(delta, var), e.clone())
+            }
+            ThunkInternal::Value(m, v) => {
+                ThunkInternal::Value(*m, v.shift(delta, var))
+            }
+        }
+    }
+}
+
+impl Shift for TypeThunk {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
             TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
         }
     }
+}
 
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<Typed> for Thunk {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+        self.0.borrow().subst_shift(var, val).into_thunk()
+    }
+}
+
+impl Subst<Typed> for ThunkInternal {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+        match self {
+            ThunkInternal::Unnormalized(ctx, e) => ThunkInternal::Unnormalized(
+                ctx.subst_shift(var, val),
+                e.clone(),
+            ),
+            ThunkInternal::Value(_, v) => {
+                // The resulting value may not stay in normal form after substitution
+                ThunkInternal::Value(WHNF, v.subst_shift(var, val))
+            }
+        }
+    }
+}
+
+impl Subst<Typed> for TypeThunk {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
             TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),

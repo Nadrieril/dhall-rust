@@ -14,6 +14,14 @@ pub(crate) struct AlphaVar {
 #[derive(Debug, Clone, Eq)]
 pub(crate) struct AlphaLabel(Label);
 
+pub(crate) trait Shift {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self;
+}
+
+pub(crate) trait Subst<T>: Shift {
+    fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
+}
+
 impl AlphaVar {
     pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
         match (alpha, &self.alpha) {
@@ -25,15 +33,6 @@ impl AlphaVar {
         AlphaVar {
             normal,
             alpha: None,
-        }
-    }
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        AlphaVar {
-            normal: self.normal.shift(delta, &var.normal),
-            alpha: match (&self.alpha, &var.alpha) {
-                (Some(x), Some(v)) => Some(x.shift(delta, v)),
-                _ => None,
-            },
         }
     }
 }
@@ -48,6 +47,18 @@ impl AlphaLabel {
     }
     pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
+    }
+}
+
+impl Shift for AlphaVar {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        AlphaVar {
+            normal: self.normal.shift(delta, &var.normal),
+            alpha: match (&self.alpha, &var.alpha) {
+                (Some(x), Some(v)) => Some(x.shift(delta, v)),
+                _ => None,
+            },
+        }
     }
 }
 

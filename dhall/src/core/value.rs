@@ -7,7 +7,7 @@ use dhall_syntax::{
 };
 
 use crate::core::thunk::{Thunk, TypeThunk};
-use crate::core::var::{AlphaLabel, AlphaVar};
+use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::normalize::{
     apply_builtin, normalize_one_layer, squash_textlit, OutputSubExpr,
 };
@@ -316,8 +316,10 @@ impl Value {
     pub(crate) fn from_builtin(b: Builtin) -> Value {
         Value::AppliedBuiltin(b, vec![])
     }
+}
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+impl Shift for Value {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
@@ -413,8 +415,10 @@ impl Value {
             }
         }
     }
+}
 
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<Typed> for Value {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             // Retry normalizing since substituting may allow progress
             Value::AppliedBuiltin(b, args) => apply_builtin(

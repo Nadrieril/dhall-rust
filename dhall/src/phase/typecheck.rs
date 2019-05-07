@@ -11,6 +11,7 @@ use dhall_syntax::{
 use crate::core::context::{NormalizationContext, TypecheckContext};
 use crate::core::thunk::{Thunk, TypeThunk};
 use crate::core::value::Value;
+use crate::core::var::Subst;
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::{Normalized, Resolved, Type, Typed};
 

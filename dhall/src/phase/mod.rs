@@ -7,7 +7,7 @@ use dhall_syntax::{Const, Import, Span, SubExpr, X};
 use crate::core::context::TypecheckContext;
 use crate::core::thunk::Thunk;
 use crate::core::value::Value;
-use crate::core::var::AlphaVar;
+use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{Error, ImportError, TypeError, TypeMessage};
 
 use resolve::ImportRoot;
@@ -168,26 +168,6 @@ impl Typed {
             Typed::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
         }
     }
-
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
-            Typed::Value(th, t) => Typed::Value(
-                th.shift(delta, var),
-                t.as_ref().map(|x| x.shift(delta, var)),
-            ),
-            Typed::Const(c) => Typed::Const(*c),
-        }
-    }
-
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        match self {
-            Typed::Value(th, t) => Typed::Value(
-                th.subst_shift(var, val),
-                t.as_ref().map(|x| x.subst_shift(var, val)),
-            ),
-            Typed::Const(c) => Typed::Const(*c),
-        }
-    }
 }
 
 impl Type {
@@ -226,13 +206,6 @@ impl Type {
     pub(crate) fn from_const(c: Const) -> Self {
         Type(Box::new(Typed::from_const(c)))
     }
-
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Type(Box::new(self.0.shift(delta, var)))
-    }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(Box::new(self.0.subst_shift(var, val)))
-    }
 }
 
 impl Normalized {
@@ -259,9 +232,47 @@ impl Normalized {
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
+}
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+impl Shift for Typed {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        match self {
+            Typed::Value(th, t) => Typed::Value(
+                th.shift(delta, var),
+                t.as_ref().map(|x| x.shift(delta, var)),
+            ),
+            Typed::Const(c) => Typed::Const(*c),
+        }
+    }
+}
+
+impl Shift for Type {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+        Type(Box::new(self.0.shift(delta, var)))
+    }
+}
+
+impl Shift for Normalized {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
         Normalized(self.0.shift(delta, var))
+    }
+}
+
+impl Subst<Typed> for Typed {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+        match self {
+            Typed::Value(th, t) => Typed::Value(
+                th.subst_shift(var, val),
+                t.as_ref().map(|x| x.subst_shift(var, val)),
+            ),
+            Typed::Const(c) => Typed::Const(*c),
+        }
+    }
+}
+
+impl Subst<Typed> for Type {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+        Type(Box::new(self.0.subst_shift(var, val)))
     }
 }
 
