@@ -40,7 +40,7 @@ pub(crate) struct AlphaLabel(Label);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Value {
     /// Closures
-    Lam(AlphaLabel, Thunk, Thunk),
+    Lam(AlphaLabel, TypeThunk, Thunk),
     Pi(AlphaLabel, TypeThunk, TypeThunk),
     // Invariant: the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Thunk>),

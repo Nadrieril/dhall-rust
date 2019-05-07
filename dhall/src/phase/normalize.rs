@@ -339,7 +339,9 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => RetThunk(x),
-        ExprF::Lam(x, t, e) => RetValue(Lam(x.into(), t, e)),
+        ExprF::Lam(x, t, e) => {
+            RetValue(Lam(x.into(), TypeThunk::from_thunk(t), e))
+        }
         ExprF::Pi(x, t, e) => RetValue(Pi(
             x.into(),
             TypeThunk::from_thunk(t),
