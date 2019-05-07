@@ -3,6 +3,8 @@ pub(crate) mod traits;
 
 /// Deserialization of Dhall expressions into Rust
 pub mod de {
+    #[doc(hidden)]
+    pub use crate::phase::SimpleType;
     pub use crate::traits::{Deserialize, SimpleStaticType, StaticType};
     #[doc(hidden)]
     pub use dhall_proc_macros::SimpleStaticType;
