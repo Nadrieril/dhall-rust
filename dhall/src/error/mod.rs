@@ -69,6 +69,8 @@ pub(crate) enum TypeMessage {
     MergeVariantMissingHandler(Label),
     MergeAnnotMismatch,
     MergeHandlerTypeMismatch,
+    ProjectionMustBeRecord,
+    ProjectionMissingEntry,
     Sort,
     Unimplemented,
 }

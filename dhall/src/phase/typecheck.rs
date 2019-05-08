@@ -605,6 +605,7 @@ fn type_last_layer(
                         Some(Value::UnionType(kts)) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
+                                // TODO: avoid capture
                                 Ok(RetTypeIntermediate(
                                     TypeIntermediate::Pi(
                                         "_".into(),
@@ -774,7 +775,29 @@ fn type_last_layer(
                 (None, None) => return Err(mkerr(MergeEmptyNeedsAnnotation)),
             }
         }
-        Projection(_, _) => unimplemented!(),
+        Projection(record, labels) => {
+            let trecord = record.get_type()?;
+            let kts = match trecord.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(ProjectionMustBeRecord)),
+            };
+
+            let mut new_kts = BTreeMap::new();
+            for l in labels {
+                match kts.get(l) {
+                    None => return Err(mkerr(ProjectionMissingEntry)),
+                    Some(t) => new_kts.insert(l.clone(), t.clone()),
+                };
+            }
+
+            Ok(RetType(
+                Typed::from_thunk_and_type(
+                    Value::RecordType(new_kts).into_thunk(),
+                    trecord.get_type()?.into_owned(),
+                )
+                .to_type(),
+            ))
+        }
     }
 }
 
@@ -1137,12 +1160,12 @@ mod spec_tests {
     ti_success!(ti_success_unit_RecordOneKind, "unit/RecordOneKind");
     ti_success!(ti_success_unit_RecordOneType, "unit/RecordOneType");
     ti_success!(ti_success_unit_RecordOneValue, "unit/RecordOneValue");
-    // ti_success!(ti_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
-    // ti_success!(ti_success_unit_RecordProjectionKind, "unit/RecordProjectionKind");
-    // ti_success!(ti_success_unit_RecordProjectionType, "unit/RecordProjectionType");
-    // ti_success!(ti_success_unit_RecordProjectionValue, "unit/RecordProjectionValue");
-    // ti_success!(ti_success_unit_RecordSelectionKind, "unit/RecordSelectionKind");
-    // ti_success!(ti_success_unit_RecordSelectionType, "unit/RecordSelectionType");
+    ti_success!(ti_success_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
+    ti_success!(ti_success_unit_RecordProjectionKind, "unit/RecordProjectionKind");
+    ti_success!(ti_success_unit_RecordProjectionType, "unit/RecordProjectionType");
+    ti_success!(ti_success_unit_RecordProjectionValue, "unit/RecordProjectionValue");
+    ti_success!(ti_success_unit_RecordSelectionKind, "unit/RecordSelectionKind");
+    ti_success!(ti_success_unit_RecordSelectionType, "unit/RecordSelectionType");
     ti_success!(ti_success_unit_RecordSelectionValue, "unit/RecordSelectionValue");
     ti_success!(ti_success_unit_RecordType, "unit/RecordType");
     ti_success!(ti_success_unit_RecordTypeEmpty, "unit/RecordTypeEmpty");
