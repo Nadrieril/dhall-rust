@@ -43,6 +43,18 @@ impl<SubExpr> InterpolatedTextContents<SubExpr> {
 }
 
 impl<SubExpr> InterpolatedText<SubExpr> {
+    pub fn head(&self) -> &str {
+        &self.head
+    }
+
+    pub fn head_mut(&mut self) -> &mut String {
+        &mut self.head
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.head.is_empty() && self.tail.is_empty()
+    }
+
     pub fn traverse_ref<'a, SubExpr2, E, F>(
         &'a self,
         mut f: F,

@@ -15,7 +15,7 @@ This is still quite unstable so use at your own risk. Documentation is severely 
 
 - Parsing: 100%
 - Imports: 10%
-- Normalization: 83%
+- Normalization: 99%
 - Typechecking: 83%
 
 You can see what's missing from the commented out tests in `dhall/src/normalize.rs` and `dhall/src/typecheck.rs`.

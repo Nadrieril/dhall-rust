@@ -1007,6 +1007,7 @@ mod spec_tests {
     tc_failure!(tc_failure_combineMixedRecords, "combineMixedRecords");
     // tc_failure!(tc_failure_duplicateFields, "duplicateFields");
     tc_failure!(tc_failure_hurkensParadox, "hurkensParadox");
+    // tc_failure!(tc_failure_importBoundary, "importBoundary");
     tc_failure!(tc_failure_mixedUnions, "mixedUnions");
     tc_failure!(tc_failure_preferMixedRecords, "preferMixedRecords");
     tc_failure!(tc_failure_unit_FunctionApplicationArgumentNotMatch, "unit/FunctionApplicationArgumentNotMatch");
@@ -1039,6 +1040,7 @@ mod spec_tests {
     tc_failure!(tc_failure_unit_OperatorEqualNotBool, "unit/OperatorEqualNotBool");
     tc_failure!(tc_failure_unit_OperatorListConcatenateLhsNotList, "unit/OperatorListConcatenateLhsNotList");
     tc_failure!(tc_failure_unit_OperatorListConcatenateListsNotMatch, "unit/OperatorListConcatenateListsNotMatch");
+    tc_failure!(tc_failure_unit_OperatorListConcatenateNotListsButMatch, "unit/OperatorListConcatenateNotListsButMatch");
     tc_failure!(tc_failure_unit_OperatorListConcatenateRhsNotList, "unit/OperatorListConcatenateRhsNotList");
     tc_failure!(tc_failure_unit_OperatorNotEqualNotBool, "unit/OperatorNotEqualNotBool");
     tc_failure!(tc_failure_unit_OperatorOrNotBool, "unit/OperatorOrNotBool");
@@ -1083,8 +1085,8 @@ mod spec_tests {
     tc_failure!(tc_failure_unit_UnionTypeNotType, "unit/UnionTypeNotType");
     tc_failure!(tc_failure_unit_VariableFree, "unit/VariableFree");
 
-    // ti_success!(ti_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
-    // ti_success!(ti_success_simple_kindParameter, "simple/kindParameter");
+    ti_success!(ti_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
+    ti_success!(ti_success_simple_kindParameter, "simple/kindParameter");
     ti_success!(ti_success_unit_Bool, "unit/Bool");
     ti_success!(ti_success_unit_Double, "unit/Double");
     ti_success!(ti_success_unit_DoubleLiteral, "unit/DoubleLiteral");
@@ -1157,6 +1159,10 @@ mod spec_tests {
     ti_success!(ti_success_unit_OptionalBuild, "unit/OptionalBuild");
     ti_success!(ti_success_unit_OptionalFold, "unit/OptionalFold");
     ti_success!(ti_success_unit_RecordEmpty, "unit/RecordEmpty");
+    ti_success!(ti_success_unit_RecordNestedKind, "unit/RecordNestedKind");
+    ti_success!(ti_success_unit_RecordNestedKindLike, "unit/RecordNestedKindLike");
+    ti_success!(ti_success_unit_RecordNestedType, "unit/RecordNestedType");
+    ti_success!(ti_success_unit_RecordNestedTypeLike, "unit/RecordNestedTypeLike");
     ti_success!(ti_success_unit_RecordOneKind, "unit/RecordOneKind");
     ti_success!(ti_success_unit_RecordOneType, "unit/RecordOneType");
     ti_success!(ti_success_unit_RecordOneValue, "unit/RecordOneValue");
@@ -1170,15 +1176,20 @@ mod spec_tests {
     ti_success!(ti_success_unit_RecordType, "unit/RecordType");
     ti_success!(ti_success_unit_RecordTypeEmpty, "unit/RecordTypeEmpty");
     ti_success!(ti_success_unit_RecordTypeKind, "unit/RecordTypeKind");
+    ti_success!(ti_success_unit_RecordTypeKindLike, "unit/RecordTypeKindLike");
+    ti_success!(ti_success_unit_RecordTypeNestedKind, "unit/RecordTypeNestedKind");
+    ti_success!(ti_success_unit_RecordTypeNestedKindLike, "unit/RecordTypeNestedKindLike");
     ti_success!(ti_success_unit_RecordTypeType, "unit/RecordTypeType");
     // ti_success!(ti_success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
     // ti_success!(ti_success_unit_RecursiveRecordMergeRecursively, "unit/RecursiveRecordMergeRecursively");
+    // ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyKinds, "unit/RecursiveRecordMergeRecursivelyKinds");
     // ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyTypes, "unit/RecursiveRecordMergeRecursivelyTypes");
     // ti_success!(ti_success_unit_RecursiveRecordMergeRhsEmpty, "unit/RecursiveRecordMergeRhsEmpty");
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwo, "unit/RecursiveRecordMergeTwo");
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwoKinds, "unit/RecursiveRecordMergeTwoKinds");
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwoTypes, "unit/RecursiveRecordMergeTwoTypes");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursively, "unit/RecursiveRecordTypeMergeRecursively");
+    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyKinds, "unit/RecursiveRecordTypeMergeRecursivelyKinds");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyTypes, "unit/RecursiveRecordTypeMergeRecursivelyTypes");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRhsEmpty, "unit/RecursiveRecordTypeMergeRhsEmpty");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwo, "unit/RecursiveRecordTypeMergeTwo");
@@ -1199,6 +1210,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_Type, "unit/Type");
     ti_success!(ti_success_unit_TypeAnnotation, "unit/TypeAnnotation");
     ti_success!(ti_success_unit_TypeAnnotationSort, "unit/TypeAnnotationSort");
+    ti_success!(ti_success_unit_UnionConstructorEmptyField, "unit/UnionConstructorEmptyField");
     ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
     ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
     ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");

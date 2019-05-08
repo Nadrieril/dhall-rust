@@ -838,18 +838,20 @@ mod spec_tests {
     norm!(success_prelude_Text_concat_1, "prelude/Text/concat/1");
     norm!(success_prelude_Text_concatMap_0, "prelude/Text/concatMap/0");
     norm!(success_prelude_Text_concatMap_1, "prelude/Text/concatMap/1");
-    // norm!(success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
-    // norm!(success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
-    // norm!(success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");
-    // norm!(success_prelude_Text_concatSep_1, "prelude/Text/concatSep/1");
-    // norm!(success_prelude_Text_show_0, "prelude/Text/show/0");
-    // norm!(success_prelude_Text_show_1, "prelude/Text/show/1");
-    // norm!(success_remoteSystems, "remoteSystems");
+    norm!(success_prelude_Text_concatMapSep_0, "prelude/Text/concatMapSep/0");
+    norm!(success_prelude_Text_concatMapSep_1, "prelude/Text/concatMapSep/1");
+    norm!(success_prelude_Text_concatSep_0, "prelude/Text/concatSep/0");
+    norm!(success_prelude_Text_concatSep_1, "prelude/Text/concatSep/1");
+    norm!(success_prelude_Text_show_0, "prelude/Text/show/0");
+    norm!(success_prelude_Text_show_1, "prelude/Text/show/1");
+    norm!(success_remoteSystems, "remoteSystems");
 
     norm!(success_simple_doubleShow, "simple/doubleShow");
     norm!(success_simple_enum, "simple/enum");
     norm!(success_simple_integerShow, "simple/integerShow");
     // norm!(success_simple_integerToDouble, "simple/integerToDouble");
+    norm!(success_simple_letAvoidCapture, "simple/letAvoidCapture");
+    norm!(success_simple_letenum, "simple/letenum");
     norm!(success_simple_letlet, "simple/letlet");
     norm!(success_simple_listBuild, "simple/listBuild");
     norm!(success_simple_multiLine, "simple/multiLine");
@@ -860,6 +862,7 @@ mod spec_tests {
     norm!(success_simple_optionalBuild, "simple/optionalBuild");
     norm!(success_simple_optionalBuildFold, "simple/optionalBuildFold");
     norm!(success_simple_optionalFold, "simple/optionalFold");
+    norm!(success_simple_simpleAddition, "simple/simpleAddition");
     norm!(success_simple_sortOperator, "simple/sortOperator");
     norm!(success_simplifications_and, "simplifications/and");
     norm!(success_simplifications_eq, "simplifications/eq");
@@ -867,6 +870,7 @@ mod spec_tests {
     norm!(success_simplifications_ne, "simplifications/ne");
     norm!(success_simplifications_or, "simplifications/or");
 
+    norm!(success_unit_BareInterpolation, "unit/BareInterpolation");
     norm!(success_unit_Bool, "unit/Bool");
     norm!(success_unit_Double, "unit/Double");
     norm!(success_unit_DoubleLiteral, "unit/DoubleLiteral");
@@ -978,6 +982,8 @@ mod spec_tests {
     norm!(success_unit_OperatorPlusRhsZero, "unit/OperatorPlusRhsZero");
     norm!(success_unit_OperatorTextConcatenateLhsEmpty, "unit/OperatorTextConcatenateLhsEmpty");
     norm!(success_unit_OperatorTextConcatenateLhsNonEmpty, "unit/OperatorTextConcatenateLhsNonEmpty");
+    norm!(success_unit_OperatorTextConcatenateRhsEmpty, "unit/OperatorTextConcatenateRhsEmpty");
+    norm!(success_unit_OperatorTextConcatenateRhsNonEmpty, "unit/OperatorTextConcatenateRhsNonEmpty");
     norm!(success_unit_OperatorTextConcatenateTextText, "unit/OperatorTextConcatenateTextText");
     norm!(success_unit_OperatorTimesLhsOne, "unit/OperatorTimesLhsOne");
     norm!(success_unit_OperatorTimesLhsZero, "unit/OperatorTimesLhsZero");
@@ -1037,10 +1043,14 @@ mod spec_tests {
     norm!(success_unit_UnionTypeNormalizeArguments, "unit/UnionTypeNormalizeArguments");
     norm!(success_unit_Variable, "unit/Variable");
 
-    alpha_norm!(alpha_success_unit_FunctionBindingUnderscore, "unit/FunctionBindingUnderscore");
-    alpha_norm!(alpha_success_unit_FunctionBindingX, "unit/FunctionBindingX");
-    alpha_norm!(alpha_success_unit_FunctionNestedBindingX, "unit/FunctionNestedBindingX");
-    alpha_norm!(alpha_success_unit_FunctionTypeBindingUnderscore, "unit/FunctionTypeBindingUnderscore");
-    alpha_norm!(alpha_success_unit_FunctionTypeBindingX, "unit/FunctionTypeBindingX");
-    alpha_norm!(alpha_success_unit_FunctionTypeNestedBindingX, "unit/FunctionTypeNestedBindingX");
+    alpha_norm!(regression_preludeBoolFold, "regression/preludeBoolFold");
+    alpha_norm!(unit_FunctionBindingUnderscore, "unit/FunctionBindingUnderscore");
+    alpha_norm!(unit_FunctionBindingX, "unit/FunctionBindingX");
+    alpha_norm!(unit_FunctionNestedBindingX, "unit/FunctionNestedBindingX");
+    alpha_norm!(unit_FunctionNestedBindingXX, "unit/FunctionNestedBindingXX");
+    // alpha_norm!(unit_FunctionNestedBindingXXFree, "unit/FunctionNestedBindingXXFree");
+    alpha_norm!(unit_FunctionNestedBindingXY, "unit/FunctionNestedBindingXY");
+    alpha_norm!(unit_FunctionTypeBindingUnderscore, "unit/FunctionTypeBindingUnderscore");
+    alpha_norm!(unit_FunctionTypeBindingX, "unit/FunctionTypeBindingX");
+    alpha_norm!(unit_FunctionTypeNestedBindingX, "unit/FunctionTypeNestedBindingX");
 }

@@ -319,6 +319,47 @@ fn can_be_shortcutted(rule: Rule) -> bool {
     }
 }
 
+// Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
+// literals.
+fn trim_indent(lines: &mut Vec<ParsedText>) {
+    let is_indent = |c: char| c == ' ' || c == '\t';
+
+    // There is at least one line so this is safe
+    let last_line_head = lines.last().unwrap().head();
+    let indent_chars = last_line_head
+        .char_indices()
+        .take_while(|(_, c)| is_indent(*c));
+    let mut min_indent_idx = match indent_chars.last() {
+        Some((i, _)) => i,
+        // If there is no indent char, then no indent needs to be stripped
+        None => return,
+    };
+
+    for line in lines.iter() {
+        // Ignore empty lines
+        if line.is_empty() {
+            continue;
+        }
+        // Take chars from line while they match the current minimum indent.
+        let indent_chars = last_line_head[0..=min_indent_idx]
+            .char_indices()
+            .zip(line.head().chars())
+            .take_while(|((_, c1), c2)| c1 == c2);
+        match indent_chars.last() {
+            Some(((i, _), _)) => min_indent_idx = i,
+            // If there is no indent char, then no indent needs to be stripped
+            None => return,
+        };
+    }
+
+    // Remove the shared indent from non-empty lines
+    for line in lines.iter_mut() {
+        if !line.is_empty() {
+            line.head_mut().replace_range(0..=min_indent_idx, "");
+        }
+    }
+}
+
 make_parser! {
     token_rule!(EOI<()>);
 
@@ -378,53 +419,40 @@ make_parser! {
 
     rule!(single_quote_literal<ParsedText>; children!(
         [single_quote_continue(lines)] => {
-            let space = InterpolatedTextContents::Text(" ".to_owned());
-            let newline = InterpolatedTextContents::Text("\n".to_owned());
-            let min_indent = lines
-                .iter()
-                .map(|l| {
-                    l.iter().rev().take_while(|c| **c == space).count()
-                })
-                .min()
-                .unwrap();
+            let newline: ParsedText = "\n".to_string().into();
+
+            let mut lines: Vec<ParsedText> = lines
+                .into_iter()
+                .rev()
+                .map(|l| l.into_iter().rev().collect::<ParsedText>())
+                .collect();
+
+            trim_indent(&mut lines);
 
             lines
                 .into_iter()
-                .rev()
-                .map(|mut l| { l.split_off(l.len() - min_indent); l })
-                .intersperse(vec![newline])
-                .flat_map(|x| x.into_iter().rev())
+                .intersperse(newline)
+                .flat_map(|x| x.into_iter())
                 .collect::<ParsedText>()
         }
     ));
     rule!(single_quote_char<&'a str>;
         captured_str!(s) => s
     );
-    rule!(escaped_quote_pair<&'a str>;
+    rule!(escaped_quote_pair<&'a str> as single_quote_char;
         captured_str!(_) => "''"
     );
-    rule!(escaped_interpolation<&'a str>;
+    rule!(escaped_interpolation<&'a str> as single_quote_char;
         captured_str!(_) => "${"
     );
     rule!(interpolation<ParsedSubExpr>; children!(
         [expression(e)] => e
     ));
 
+    // Returns a vec of lines in reversed order, where each line is also in reversed order.
     rule!(single_quote_continue<Vec<Vec<ParsedTextContents>>>; children!(
         [interpolation(c), single_quote_continue(lines)] => {
             let c = InterpolatedTextContents::Expr(c);
-            let mut lines = lines;
-            lines.last_mut().unwrap().push(c);
-            lines
-        },
-        [escaped_quote_pair(c), single_quote_continue(lines)] => {
-            let c = InterpolatedTextContents::Text(c.to_owned());
-            let mut lines = lines;
-            lines.last_mut().unwrap().push(c);
-            lines
-        },
-        [escaped_interpolation(c), single_quote_continue(lines)] => {
-            let c = InterpolatedTextContents::Text(c.to_owned());
             let mut lines = lines;
             lines.last_mut().unwrap().push(c);
             lines
@@ -435,6 +463,7 @@ make_parser! {
             lines
         },
         [single_quote_char(c), single_quote_continue(lines)] => {
+            // TODO: don't allocate for every char
             let c = InterpolatedTextContents::Text(c.to_owned());
             let mut lines = lines;
             lines.last_mut().unwrap().push(c);
