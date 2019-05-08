@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use dhall_proc_macros as dhall;
 use dhall_syntax::{
     rc, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
-    Natural, X,
+    NaiveDouble, Natural, X,
 };
 
 use crate::core::thunk::{Thunk, TypeThunk};
@@ -44,6 +44,7 @@ pub(crate) enum Value {
     BoolLit(bool),
     NaturalLit(Natural),
     IntegerLit(Integer),
+    DoubleLit(NaiveDouble),
     EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
     EmptyListLit(TypeThunk),
@@ -122,6 +123,7 @@ impl Value {
             Value::BoolLit(b) => rc(ExprF::BoolLit(*b)),
             Value::NaturalLit(n) => rc(ExprF::NaturalLit(*n)),
             Value::IntegerLit(n) => rc(ExprF::IntegerLit(*n)),
+            Value::DoubleLit(n) => rc(ExprF::DoubleLit(*n)),
             Value::EmptyOptionalLit(n) => rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::OptionalNone)),
                 n.normalize_to_expr_maybe_alpha(alpha),
@@ -224,7 +226,8 @@ impl Value {
             | Value::Const(_)
             | Value::BoolLit(_)
             | Value::NaturalLit(_)
-            | Value::IntegerLit(_) => {}
+            | Value::IntegerLit(_)
+            | Value::DoubleLit(_) => {}
 
             Value::EmptyOptionalLit(tth)
             | Value::OptionalSomeClosure(tth)
@@ -348,6 +351,7 @@ impl Shift for Value {
             Value::BoolLit(b) => Value::BoolLit(*b),
             Value::NaturalLit(n) => Value::NaturalLit(*n),
             Value::IntegerLit(n) => Value::IntegerLit(*n),
+            Value::DoubleLit(n) => Value::DoubleLit(*n),
             Value::EmptyOptionalLit(tth) => {
                 Value::EmptyOptionalLit(tth.shift(delta, var))
             }
@@ -479,6 +483,7 @@ impl Subst<Typed> for Value {
             Value::BoolLit(b) => Value::BoolLit(*b),
             Value::NaturalLit(n) => Value::NaturalLit(*n),
             Value::IntegerLit(n) => Value::IntegerLit(*n),
+            Value::DoubleLit(n) => Value::DoubleLit(*n),
             Value::EmptyOptionalLit(tth) => {
                 Value::EmptyOptionalLit(tth.subst_shift(var, val))
             }

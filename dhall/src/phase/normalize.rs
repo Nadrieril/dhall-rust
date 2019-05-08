@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use dhall_syntax::{BinOp, Builtin, ExprF, InterpolatedTextContents, Label, X};
+use dhall_syntax::{
+    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
+    NaiveDouble, X,
+};
 
 use crate::core::context::NormalizationContext;
 use crate::core::thunk::{Thunk, TypeThunk};
@@ -41,6 +44,50 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                 r,
                 TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
             )),
+            _ => Err(()),
+        },
+        (IntegerShow, [n, r..]) => match &*n.as_value() {
+            IntegerLit(n) => {
+                let s = if *n < 0 {
+                    n.to_string()
+                } else {
+                    format!("+{}", n)
+                };
+                Ok((r, TextLit(vec![InterpolatedTextContents::Text(s)])))
+            }
+            _ => Err(()),
+        },
+        (IntegerToDouble, [n, r..]) => match &*n.as_value() {
+            IntegerLit(n) => Ok((r, DoubleLit(NaiveDouble::from(*n as f64)))),
+            _ => Err(()),
+        },
+        (DoubleShow, [n, r..]) => match &*n.as_value() {
+            DoubleLit(n) => Ok((
+                r,
+                TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
+            )),
+            _ => Err(()),
+        },
+        (TextShow, [v, r..]) => match &*v.as_value() {
+            TextLit(elts) => {
+                match elts.as_slice() {
+                    // If there are no interpolations (invariants ensure that when there are no
+                    // interpolations, there is a single Text item) in the literal.
+                    [InterpolatedTextContents::Text(s)] => {
+                        // Printing InterpolatedText takes care of all the escaping
+                        let txt: InterpolatedText<X> = std::iter::once(
+                            InterpolatedTextContents::Text(s.clone()),
+                        )
+                        .collect();
+                        let s = txt.to_string();
+                        Ok((
+                            r,
+                            TextLit(vec![InterpolatedTextContents::Text(s)]),
+                        ))
+                    }
+                    _ => Err(()),
+                }
+            }
             _ => Err(()),
         },
         (ListLength, [_, l, r..]) => match &*l.as_value() {
@@ -322,9 +369,9 @@ pub(crate) fn normalize_whnf(
 
 pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
     use Value::{
-        BoolLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam, NEListLit,
-        NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType, TextLit,
-        UnionConstructor, UnionLit, UnionType,
+        BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam,
+        NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
+        TextLit, UnionConstructor, UnionLit, UnionType,
     };
 
     // Small helper enum to avoid repetition
@@ -358,7 +405,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::BoolLit(b) => RetValue(BoolLit(b)),
         ExprF::NaturalLit(n) => RetValue(NaturalLit(n)),
         ExprF::IntegerLit(n) => RetValue(IntegerLit(n)),
-        ExprF::DoubleLit(_) => RetExpr(expr),
+        ExprF::DoubleLit(n) => RetValue(DoubleLit(n)),
         ExprF::OldOptionalLit(None, t) => {
             RetValue(EmptyOptionalLit(TypeThunk::from_thunk(t)))
         }
@@ -613,12 +660,12 @@ mod spec_tests {
     norm!(success_prelude_Bool_or_1, "prelude/Bool/or/1");
     norm!(success_prelude_Bool_show_0, "prelude/Bool/show/0");
     norm!(success_prelude_Bool_show_1, "prelude/Bool/show/1");
-    // norm!(success_prelude_Double_show_0, "prelude/Double/show/0");
-    // norm!(success_prelude_Double_show_1, "prelude/Double/show/1");
-    // norm!(success_prelude_Integer_show_0, "prelude/Integer/show/0");
-    // norm!(success_prelude_Integer_show_1, "prelude/Integer/show/1");
-    // norm!(success_prelude_Integer_toDouble_0, "prelude/Integer/toDouble/0");
-    // norm!(success_prelude_Integer_toDouble_1, "prelude/Integer/toDouble/1");
+    norm!(success_prelude_Double_show_0, "prelude/Double/show/0");
+    norm!(success_prelude_Double_show_1, "prelude/Double/show/1");
+    norm!(success_prelude_Integer_show_0, "prelude/Integer/show/0");
+    norm!(success_prelude_Integer_show_1, "prelude/Integer/show/1");
+    norm!(success_prelude_Integer_toDouble_0, "prelude/Integer/toDouble/0");
+    norm!(success_prelude_Integer_toDouble_1, "prelude/Integer/toDouble/1");
     norm!(success_prelude_List_all_0, "prelude/List/all/0");
     norm!(success_prelude_List_all_1, "prelude/List/all/1");
     norm!(success_prelude_List_any_0, "prelude/List/any/0");
@@ -677,8 +724,8 @@ mod spec_tests {
     norm!(success_prelude_Natural_show_1, "prelude/Natural/show/1");
     norm!(success_prelude_Natural_sum_0, "prelude/Natural/sum/0");
     norm!(success_prelude_Natural_sum_1, "prelude/Natural/sum/1");
-    // norm!(success_prelude_Natural_toDouble_0, "prelude/Natural/toDouble/0");
-    // norm!(success_prelude_Natural_toDouble_1, "prelude/Natural/toDouble/1");
+    norm!(success_prelude_Natural_toDouble_0, "prelude/Natural/toDouble/0");
+    norm!(success_prelude_Natural_toDouble_1, "prelude/Natural/toDouble/1");
     norm!(success_prelude_Natural_toInteger_0, "prelude/Natural/toInteger/0");
     norm!(success_prelude_Natural_toInteger_1, "prelude/Natural/toInteger/1");
     norm!(success_prelude_Optional_all_0, "prelude/Optional/all/0");
@@ -722,9 +769,9 @@ mod spec_tests {
     // norm!(success_prelude_Text_show_1, "prelude/Text/show/1");
     // norm!(success_remoteSystems, "remoteSystems");
 
-    // norm!(success_simple_doubleShow, "simple/doubleShow");
+    norm!(success_simple_doubleShow, "simple/doubleShow");
     norm!(success_simple_enum, "simple/enum");
-    // norm!(success_simple_integerShow, "simple/integerShow");
+    norm!(success_simple_integerShow, "simple/integerShow");
     // norm!(success_simple_integerToDouble, "simple/integerToDouble");
     norm!(success_simple_letlet, "simple/letlet");
     norm!(success_simple_listBuild, "simple/listBuild");
@@ -747,7 +794,7 @@ mod spec_tests {
     norm!(success_unit_Double, "unit/Double");
     norm!(success_unit_DoubleLiteral, "unit/DoubleLiteral");
     norm!(success_unit_DoubleShow, "unit/DoubleShow");
-    // norm!(success_unit_DoubleShowValue, "unit/DoubleShowValue");
+    norm!(success_unit_DoubleShowValue, "unit/DoubleShowValue");
     norm!(success_unit_EmptyAlternative, "unit/EmptyAlternative");
     norm!(success_unit_FunctionApplicationCapture, "unit/FunctionApplicationCapture");
     norm!(success_unit_FunctionApplicationNoSubstitute, "unit/FunctionApplicationNoSubstitute");
@@ -763,11 +810,11 @@ mod spec_tests {
     norm!(success_unit_Integer, "unit/Integer");
     norm!(success_unit_IntegerNegative, "unit/IntegerNegative");
     norm!(success_unit_IntegerPositive, "unit/IntegerPositive");
-    // norm!(success_unit_IntegerShow_12, "unit/IntegerShow-12");
-    // norm!(success_unit_IntegerShow12, "unit/IntegerShow12");
+    norm!(success_unit_IntegerShow_12, "unit/IntegerShow-12");
+    norm!(success_unit_IntegerShow12, "unit/IntegerShow12");
     norm!(success_unit_IntegerShow, "unit/IntegerShow");
-    // norm!(success_unit_IntegerToDouble_12, "unit/IntegerToDouble-12");
-    // norm!(success_unit_IntegerToDouble12, "unit/IntegerToDouble12");
+    norm!(success_unit_IntegerToDouble_12, "unit/IntegerToDouble-12");
+    norm!(success_unit_IntegerToDouble12, "unit/IntegerToDouble12");
     norm!(success_unit_IntegerToDouble, "unit/IntegerToDouble");
     norm!(success_unit_Kind, "unit/Kind");
     norm!(success_unit_Let, "unit/Let");
@@ -900,7 +947,7 @@ mod spec_tests {
     norm!(success_unit_TextLiteral, "unit/TextLiteral");
     norm!(success_unit_TextNormalizeInterpolations, "unit/TextNormalizeInterpolations");
     norm!(success_unit_TextShow, "unit/TextShow");
-    // norm!(success_unit_TextShowAllEscapes, "unit/TextShowAllEscapes");
+    norm!(success_unit_TextShowAllEscapes, "unit/TextShowAllEscapes");
     norm!(success_unit_True, "unit/True");
     norm!(success_unit_Type, "unit/Type");
     norm!(success_unit_TypeAnnotation, "unit/TypeAnnotation");

@@ -250,12 +250,23 @@ impl<SubExpr: Display + Clone> Display for InterpolatedText<SubExpr> {
                         match c {
                             '\\' => f.write_str("\\\\"),
                             '"' => f.write_str("\\\""),
-                            '$' => f.write_str("\\$"),
+                            '$' => f.write_str("\\u0024"),
                             '\u{0008}' => f.write_str("\\b"),
                             '\u{000C}' => f.write_str("\\f"),
                             '\n' => f.write_str("\\n"),
                             '\r' => f.write_str("\\r"),
                             '\t' => f.write_str("\\t"),
+                            '\u{0000}'..='\u{001F}' => {
+                                // Escape to an explicit "\u{XXXX}" form
+                                let escaped: String =
+                                    c.escape_default().collect();
+                                // Print as "\uXXXX"
+                                write!(
+                                    f,
+                                    "\\u{:0>4}",
+                                    &escaped[3..escaped.len() - 1]
+                                )
+                            }
                             c => write!(f, "{}", c),
                         }?;
                     }
