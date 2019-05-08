@@ -297,13 +297,13 @@ impl Display for BinOp {
             TextAppend => "++",
             NaturalPlus => "+",
             BoolAnd => "&&",
-            Combine => "/\\",
+            RecursiveRecordMerge => "∧",
             NaturalTimes => "*",
             BoolEQ => "==",
             BoolNE => "!=",
-            CombineTypes => "//\\\\",
+            RecursiveRecordTypeMerge => "⩓",
             ImportAlt => "?",
-            Prefer => "//",
+            RightBiasedRecordMerge => "⫽",
             ListAppend => "#",
         })
     }

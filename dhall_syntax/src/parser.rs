@@ -762,21 +762,21 @@ make_parser! {
     rule!(combine_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::Combine;
+            let o = crate::BinOp::RecursiveRecordMerge;
             rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
     rule!(prefer_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::Prefer;
+            let o = crate::BinOp::RightBiasedRecordMerge;
             rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
     rule!(combine_types_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::CombineTypes;
+            let o = crate::BinOp::RecursiveRecordTypeMerge;
             rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));

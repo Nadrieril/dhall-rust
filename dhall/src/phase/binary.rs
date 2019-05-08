@@ -85,9 +85,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<ParsedExpr, DecodeError> {
                     5 => NaturalTimes,
                     6 => TextAppend,
                     7 => ListAppend,
-                    8 => Combine,
-                    9 => Prefer,
-                    10 => CombineTypes,
+                    8 => RecursiveRecordMerge,
+                    9 => RightBiasedRecordMerge,
+                    10 => RecursiveRecordTypeMerge,
                     11 => ImportAlt,
                     _ => {
                         Err(DecodeError::WrongFormatError("binop".to_owned()))?

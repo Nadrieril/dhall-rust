@@ -89,11 +89,11 @@ pub enum BinOp {
     /// x && y`
     BoolAnd,
     /// x ∧ y`
-    Combine,
-    /// x // y
-    Prefer,
-    /// x //\\ y
-    CombineTypes,
+    RecursiveRecordMerge,
+    /// x ⫽ y
+    RightBiasedRecordMerge,
+    /// x ⩓ y
+    RecursiveRecordTypeMerge,
     /// x * y`
     NaturalTimes,
     /// x == y`
