@@ -11,7 +11,7 @@ use dhall_syntax::{
 use crate::core::context::{NormalizationContext, TypecheckContext};
 use crate::core::thunk::{Thunk, TypeThunk};
 use crate::core::value::Value;
-use crate::core::var::Subst;
+use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::{Normalized, Resolved, Type, Typed};
 
@@ -452,15 +452,16 @@ fn type_last_layer(
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
     use dhall_syntax::ExprF::*;
+    use Ret::*;
     let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
 
-    use Ret::*;
     match e {
-        Lam(_, _, _) => unreachable!(),
-        Pi(_, _, _) => unreachable!(),
-        Let(_, _, _, _) => unreachable!(),
-        Embed(_) => unreachable!(),
-        Var(_) => unreachable!(),
+        Lam(_, _, _)
+        | Pi(_, _, _)
+        | Let(_, _, _, _)
+        | OldOptionalLit(_, _)
+        | Embed(_)
+        | Var(_) => unreachable!(),
         App(f, a) => {
             let tf = f.get_type()?;
             let tf_internal = tf.internal_whnf();
@@ -699,7 +700,81 @@ fn type_last_layer(
 
             Ok(RetType(t))
         }
-        _ => Err(mkerr(Unimplemented)),
+        Merge(record, union, type_annot) => {
+            let handlers = match record.get_type()?.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(Merge1ArgMustBeRecord(record.clone()))),
+            };
+
+            let variants = match union.get_type()?.to_value() {
+                Value::UnionType(kts) => kts,
+                _ => return Err(mkerr(Merge2ArgMustBeUnion(union.clone()))),
+            };
+
+            let mut inferred_type = None;
+            for (x, handler) in handlers.iter() {
+                let handler_return_type = match variants.get(x) {
+                    // Union alternative with type
+                    Some(Some(variant_type)) => {
+                        let variant_type = variant_type.to_type(ctx)?;
+                        let handler_type = handler.to_type(ctx)?;
+                        let (x, tx, tb) = match &handler_type.to_value() {
+                            Value::Pi(x, tx, tb) => {
+                                (x.clone(), tx.to_type(ctx)?, tb.to_type(ctx)?)
+                            }
+                            _ => {
+                                return Err(mkerr(NotAFunction(
+                                    handler_type.to_typed(),
+                                )))
+                            }
+                        };
+                        ensure_equal!(&variant_type, &tx, {
+                            mkerr(TypeMismatch(
+                                handler_type.to_typed(),
+                                tx.clone().to_normalized(),
+                                variant_type.to_typed(),
+                            ))
+                        });
+                        // TODO: check that x is not free in tb first
+                        tb.shift(-1, &x.into())
+                    }
+                    // Union alternative without type
+                    Some(None) => handler.to_type(ctx)?,
+                    None => {
+                        return Err(mkerr(MergeHandlerMissingVariant(
+                            x.clone(),
+                        )))
+                    }
+                };
+                match &inferred_type {
+                    None => inferred_type = Some(handler_return_type),
+                    Some(t) => {
+                        ensure_equal!(
+                            t,
+                            &handler_return_type,
+                            mkerr(MergeHandlerTypeMismatch)
+                        );
+                    }
+                }
+            }
+            for x in variants.keys() {
+                if !handlers.contains_key(x) {
+                    return Err(mkerr(MergeVariantMissingHandler(x.clone())));
+                }
+            }
+
+            match (inferred_type, type_annot) {
+                (Some(ref t1), Some(t2)) => {
+                    let t2 = t2.to_type();
+                    ensure_equal!(t1, &t2, mkerr(MergeAnnotMismatch));
+                    Ok(RetType(t2))
+                }
+                (Some(t), None) => Ok(RetType(t)),
+                (None, Some(t)) => Ok(RetType(t.to_type())),
+                (None, None) => return Err(mkerr(MergeEmptyNeedsAnnotation)),
+            }
+        }
+        Projection(_, _) => unimplemented!(),
     }
 }
 
@@ -902,7 +977,7 @@ mod spec_tests {
     // tc_success!(tc_success_simple_anonymousFunctionsInTypes, "simple/anonymousFunctionsInTypes");
     // tc_success!(tc_success_simple_fieldsAreTypes, "simple/fieldsAreTypes");
     // tc_success!(tc_success_simple_kindParameter, "simple/kindParameter");
-    // tc_success!(tc_success_simple_mergeEquivalence, "simple/mergeEquivalence");
+    tc_success!(tc_success_simple_mergeEquivalence, "simple/mergeEquivalence");
     // tc_success!(tc_success_simple_mixedFieldAccess, "simple/mixedFieldAccess");
     tc_success!(tc_success_simple_unionsOfTypes, "simple/unionsOfTypes");
 
@@ -1024,9 +1099,9 @@ mod spec_tests {
     ti_success!(ti_success_unit_ListLiteralNormalizeArguments, "unit/ListLiteralNormalizeArguments");
     ti_success!(ti_success_unit_ListLiteralOne, "unit/ListLiteralOne");
     ti_success!(ti_success_unit_ListReverse, "unit/ListReverse");
-    // ti_success!(ti_success_unit_MergeEmptyUnion, "unit/MergeEmptyUnion");
-    // ti_success!(ti_success_unit_MergeOne, "unit/MergeOne");
-    // ti_success!(ti_success_unit_MergeOneWithAnnotation, "unit/MergeOneWithAnnotation");
+    ti_success!(ti_success_unit_MergeEmptyUnion, "unit/MergeEmptyUnion");
+    ti_success!(ti_success_unit_MergeOne, "unit/MergeOne");
+    ti_success!(ti_success_unit_MergeOneWithAnnotation, "unit/MergeOneWithAnnotation");
     ti_success!(ti_success_unit_Natural, "unit/Natural");
     ti_success!(ti_success_unit_NaturalBuild, "unit/NaturalBuild");
     ti_success!(ti_success_unit_NaturalEven, "unit/NaturalEven");

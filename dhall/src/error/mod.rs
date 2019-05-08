@@ -62,6 +62,13 @@ pub(crate) enum TypeMessage {
     BinOpTypeMismatch(BinOp, Typed),
     NoDependentTypes(Normalized, Normalized),
     InvalidTextInterpolation(Typed),
+    Merge1ArgMustBeRecord(Typed),
+    Merge2ArgMustBeUnion(Typed),
+    MergeEmptyNeedsAnnotation,
+    MergeHandlerMissingVariant(Label),
+    MergeVariantMissingHandler(Label),
+    MergeAnnotMismatch,
+    MergeHandlerTypeMismatch,
     Sort,
     Unimplemented,
 }

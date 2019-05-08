@@ -183,6 +183,9 @@ impl Type {
     pub(crate) fn to_thunk(&self) -> Thunk {
         self.0.to_thunk()
     }
+    pub(crate) fn to_typed(&self) -> Typed {
+        self.0.as_ref().clone()
+    }
     pub(crate) fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
         match &self.to_value() {
