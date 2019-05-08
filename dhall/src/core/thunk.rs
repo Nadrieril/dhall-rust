@@ -235,6 +235,13 @@ impl TypeThunk {
         }
     }
 
+    pub(crate) fn to_thunk(&self) -> Thunk {
+        match self {
+            TypeThunk::Thunk(th) => th.clone(),
+            TypeThunk::Type(t) => t.to_thunk(),
+        }
+    }
+
     pub(crate) fn to_type(
         &self,
         ctx: &TypecheckContext,

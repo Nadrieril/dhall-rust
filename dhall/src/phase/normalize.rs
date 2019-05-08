@@ -344,6 +344,31 @@ pub(crate) fn squash_textlit(
     ret
 }
 
+fn merge_maps<K, V>(
+    map1: &BTreeMap<K, V>,
+    map2: &BTreeMap<K, V>,
+    mut f: impl FnMut(&V, &V) -> V,
+) -> BTreeMap<K, V>
+where
+    K: Ord + Clone,
+    V: Clone,
+{
+    let mut kvs = BTreeMap::new();
+    for (x, v2) in map2 {
+        let newv = if let Some(v1) = map1.get(x) {
+            f(v1, v2)
+        } else {
+            v2.clone()
+        };
+        kvs.insert(x.clone(), newv);
+    }
+    for (x, v1) in map1 {
+        // Insert only if key not already present
+        kvs.entry(x.clone()).or_insert_with(|| v1.clone());
+    }
+    kvs
+}
+
 /// Reduces the imput expression to a Value. Evaluates as little as possible.
 pub(crate) fn normalize_whnf(
     ctx: NormalizationContext,
@@ -470,7 +495,8 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         ExprF::BinOp(o, ref x, ref y) => {
             use BinOp::{
                 BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus,
-                NaturalTimes, TextAppend,
+                NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
+                RightBiasedRecordMerge, TextAppend,
             };
             let x_borrow = x.as_value();
             let y_borrow = y.as_value();
@@ -531,6 +557,69 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
                     RetValue(TextLit(squash_textlit(
                         once(x).chain(y.iter().cloned()),
                     )))
+                }
+
+                (RightBiasedRecordMerge, _, RecordLit(kvs))
+                    if kvs.is_empty() =>
+                {
+                    RetThunkRef(x)
+                }
+                (RightBiasedRecordMerge, RecordLit(kvs), _)
+                    if kvs.is_empty() =>
+                {
+                    RetThunkRef(y)
+                }
+                (RightBiasedRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
+                    let mut kvs = kvs2.clone();
+                    for (x, v) in kvs1 {
+                        // Insert only if key not already present
+                        kvs.entry(x.clone()).or_insert_with(|| v.clone());
+                    }
+                    RetValue(RecordLit(kvs))
+                }
+
+                (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
+                    RetThunkRef(x)
+                }
+                (RecursiveRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
+                    RetThunkRef(y)
+                }
+                (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
+                    let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
+                        Thunk::from_partial_expr(ExprF::BinOp(
+                            RecursiveRecordMerge,
+                            v1.clone(),
+                            v2.clone(),
+                        ))
+                    });
+                    RetValue(RecordLit(kvs))
+                }
+
+                (RecursiveRecordTypeMerge, _, RecordType(kvs))
+                    if kvs.is_empty() =>
+                {
+                    RetThunkRef(x)
+                }
+                (RecursiveRecordTypeMerge, RecordType(kvs), _)
+                    if kvs.is_empty() =>
+                {
+                    RetThunkRef(y)
+                }
+                (
+                    RecursiveRecordTypeMerge,
+                    RecordType(kvs1),
+                    RecordType(kvs2),
+                ) => {
+                    let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
+                        TypeThunk::from_thunk(Thunk::from_partial_expr(
+                            ExprF::BinOp(
+                                RecursiveRecordTypeMerge,
+                                v1.to_thunk(),
+                                v2.to_thunk(),
+                            ),
+                        ))
+                    });
+                    RetValue(RecordType(kvs))
                 }
 
                 _ => {
@@ -635,9 +724,9 @@ mod spec_tests {
 
     norm!(success_haskell_tutorial_access_0, "haskell-tutorial/access/0");
     norm!(success_haskell_tutorial_access_1, "haskell-tutorial/access/1");
-    // norm!(success_haskell_tutorial_combineTypes_0, "haskell-tutorial/combineTypes/0");
-    // norm!(success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
-    // norm!(success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
+    norm!(success_haskell_tutorial_combineTypes_0, "haskell-tutorial/combineTypes/0");
+    norm!(success_haskell_tutorial_combineTypes_1, "haskell-tutorial/combineTypes/1");
+    norm!(success_haskell_tutorial_prefer_0, "haskell-tutorial/prefer/0");
     norm!(success_haskell_tutorial_projection_0, "haskell-tutorial/projection/0");
 
     norm!(success_prelude_Bool_and_0, "prelude/Bool/and/0");
@@ -783,7 +872,7 @@ mod spec_tests {
     norm!(success_simple_optionalBuild, "simple/optionalBuild");
     norm!(success_simple_optionalBuildFold, "simple/optionalBuildFold");
     norm!(success_simple_optionalFold, "simple/optionalFold");
-    // norm!(success_simple_sortOperator, "simple/sortOperator");
+    norm!(success_simple_sortOperator, "simple/sortOperator");
     norm!(success_simplifications_and, "simplifications/and");
     norm!(success_simplifications_eq, "simplifications/eq");
     norm!(success_simplifications_ifThenElse, "simplifications/ifThenElse");
@@ -924,22 +1013,22 @@ mod spec_tests {
     norm!(success_unit_RecordSelectionNormalizeArguments, "unit/RecordSelectionNormalizeArguments");
     norm!(success_unit_RecordType, "unit/RecordType");
     norm!(success_unit_RecordTypeEmpty, "unit/RecordTypeEmpty");
-    // norm!(success_unit_RecursiveRecordMergeCollision, "unit/RecursiveRecordMergeCollision");
-    // norm!(success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
-    // norm!(success_unit_RecursiveRecordMergeNoCollision, "unit/RecursiveRecordMergeNoCollision");
-    // norm!(success_unit_RecursiveRecordMergeNormalizeArguments, "unit/RecursiveRecordMergeNormalizeArguments");
-    // norm!(success_unit_RecursiveRecordMergeRhsEmpty, "unit/RecursiveRecordMergeRhsEmpty");
-    // norm!(success_unit_RecursiveRecordTypeMergeCollision, "unit/RecursiveRecordTypeMergeCollision");
-    // norm!(success_unit_RecursiveRecordTypeMergeLhsEmpty, "unit/RecursiveRecordTypeMergeLhsEmpty");
-    // norm!(success_unit_RecursiveRecordTypeMergeNoCollision, "unit/RecursiveRecordTypeMergeNoCollision");
-    // norm!(success_unit_RecursiveRecordTypeMergeNormalizeArguments, "unit/RecursiveRecordTypeMergeNormalizeArguments");
-    // norm!(success_unit_RecursiveRecordTypeMergeRhsEmpty, "unit/RecursiveRecordTypeMergeRhsEmpty");
-    // norm!(success_unit_RecursiveRecordTypeMergeSorts, "unit/RecursiveRecordTypeMergeSorts");
-    // norm!(success_unit_RightBiasedRecordMergeCollision, "unit/RightBiasedRecordMergeCollision");
-    // norm!(success_unit_RightBiasedRecordMergeLhsEmpty, "unit/RightBiasedRecordMergeLhsEmpty");
-    // norm!(success_unit_RightBiasedRecordMergeNoCollision, "unit/RightBiasedRecordMergeNoCollision");
-    // norm!(success_unit_RightBiasedRecordMergeNormalizeArguments, "unit/RightBiasedRecordMergeNormalizeArguments");
-    // norm!(success_unit_RightBiasedRecordMergeRhsEmpty, "unit/RightBiasedRecordMergeRhsEmpty");
+    norm!(success_unit_RecursiveRecordMergeCollision, "unit/RecursiveRecordMergeCollision");
+    norm!(success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
+    norm!(success_unit_RecursiveRecordMergeNoCollision, "unit/RecursiveRecordMergeNoCollision");
+    norm!(success_unit_RecursiveRecordMergeNormalizeArguments, "unit/RecursiveRecordMergeNormalizeArguments");
+    norm!(success_unit_RecursiveRecordMergeRhsEmpty, "unit/RecursiveRecordMergeRhsEmpty");
+    norm!(success_unit_RecursiveRecordTypeMergeCollision, "unit/RecursiveRecordTypeMergeCollision");
+    norm!(success_unit_RecursiveRecordTypeMergeLhsEmpty, "unit/RecursiveRecordTypeMergeLhsEmpty");
+    norm!(success_unit_RecursiveRecordTypeMergeNoCollision, "unit/RecursiveRecordTypeMergeNoCollision");
+    norm!(success_unit_RecursiveRecordTypeMergeNormalizeArguments, "unit/RecursiveRecordTypeMergeNormalizeArguments");
+    norm!(success_unit_RecursiveRecordTypeMergeRhsEmpty, "unit/RecursiveRecordTypeMergeRhsEmpty");
+    norm!(success_unit_RecursiveRecordTypeMergeSorts, "unit/RecursiveRecordTypeMergeSorts");
+    norm!(success_unit_RightBiasedRecordMergeCollision, "unit/RightBiasedRecordMergeCollision");
+    norm!(success_unit_RightBiasedRecordMergeLhsEmpty, "unit/RightBiasedRecordMergeLhsEmpty");
+    norm!(success_unit_RightBiasedRecordMergeNoCollision, "unit/RightBiasedRecordMergeNoCollision");
+    norm!(success_unit_RightBiasedRecordMergeNormalizeArguments, "unit/RightBiasedRecordMergeNormalizeArguments");
+    norm!(success_unit_RightBiasedRecordMergeRhsEmpty, "unit/RightBiasedRecordMergeRhsEmpty");
     norm!(success_unit_SomeNormalizeArguments, "unit/SomeNormalizeArguments");
     norm!(success_unit_Sort, "unit/Sort");
     norm!(success_unit_Text, "unit/Text");

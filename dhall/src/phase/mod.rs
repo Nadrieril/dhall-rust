@@ -180,6 +180,9 @@ impl Type {
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
+    pub(crate) fn to_thunk(&self) -> Thunk {
+        self.0.to_thunk()
+    }
     pub(crate) fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
         match &self.to_value() {
