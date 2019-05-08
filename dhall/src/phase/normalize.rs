@@ -344,6 +344,37 @@ pub(crate) fn squash_textlit(
     ret
 }
 
+/// Reduces the imput expression to a Value. Evaluates as little as possible.
+pub(crate) fn normalize_whnf(
+    ctx: NormalizationContext,
+    expr: InputSubExpr,
+) -> Value {
+    match expr.as_ref() {
+        ExprF::Embed(e) => return e.to_value(),
+        ExprF::Var(v) => return ctx.lookup(v),
+        _ => {}
+    }
+
+    // Thunk subexpressions
+    let expr: ExprF<Thunk, Label, X> =
+        expr.as_ref().map_ref_with_special_handling_of_binders(
+            |e| Thunk::new(ctx.clone(), e.clone()),
+            |x, e| Thunk::new(ctx.skip(x), e.clone()),
+            |_| unreachable!(),
+            Label::clone,
+        );
+
+    normalize_one_layer(expr)
+}
+
+// Small helper enum to avoid repetition
+enum Ret<'a> {
+    RetValue(Value),
+    RetThunk(Thunk),
+    RetThunkRef(&'a Thunk),
+    RetExpr(ExprF<Thunk, Label, X>),
+}
+
 fn merge_maps<K, V>(
     map1: &BTreeMap<K, V>,
     map2: &BTreeMap<K, V>,
@@ -369,44 +400,134 @@ where
     kvs
 }
 
-/// Reduces the imput expression to a Value. Evaluates as little as possible.
-pub(crate) fn normalize_whnf(
-    ctx: NormalizationContext,
-    expr: InputSubExpr,
-) -> Value {
-    match expr.as_ref() {
-        ExprF::Embed(e) => return e.to_value(),
-        ExprF::Var(v) => return ctx.lookup(v),
-        _ => {}
-    }
+fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
+    use BinOp::{
+        BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus, NaturalTimes,
+        RecursiveRecordMerge, RecursiveRecordTypeMerge, RightBiasedRecordMerge,
+        TextAppend,
+    };
+    use Ret::{RetThunkRef, RetValue};
+    use Value::{
+        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
+        TextLit,
+    };
+    let x_borrow = x.as_value();
+    let y_borrow = y.as_value();
+    Some(match (o, &*x_borrow, &*y_borrow) {
+        (BoolAnd, BoolLit(true), _) => RetThunkRef(y),
+        (BoolAnd, _, BoolLit(true)) => RetThunkRef(x),
+        (BoolAnd, BoolLit(false), _) => RetValue(BoolLit(false)),
+        (BoolAnd, _, BoolLit(false)) => RetValue(BoolLit(false)),
+        (BoolAnd, _, _) if x == y => RetThunkRef(x),
+        (BoolOr, BoolLit(true), _) => RetValue(BoolLit(true)),
+        (BoolOr, _, BoolLit(true)) => RetValue(BoolLit(true)),
+        (BoolOr, BoolLit(false), _) => RetThunkRef(y),
+        (BoolOr, _, BoolLit(false)) => RetThunkRef(x),
+        (BoolOr, _, _) if x == y => RetThunkRef(x),
+        (BoolEQ, BoolLit(true), _) => RetThunkRef(y),
+        (BoolEQ, _, BoolLit(true)) => RetThunkRef(x),
+        (BoolEQ, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x == y)),
+        (BoolEQ, _, _) if x == y => RetValue(BoolLit(true)),
+        (BoolNE, BoolLit(false), _) => RetThunkRef(y),
+        (BoolNE, _, BoolLit(false)) => RetThunkRef(x),
+        (BoolNE, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x != y)),
+        (BoolNE, _, _) if x == y => RetValue(BoolLit(false)),
 
-    // Thunk subexpressions
-    let expr: ExprF<Thunk, Label, X> =
-        expr.as_ref().map_ref_with_special_handling_of_binders(
-            |e| Thunk::new(ctx.clone(), e.clone()),
-            |x, e| Thunk::new(ctx.skip(x), e.clone()),
-            |_| unreachable!(),
-            Label::clone,
-        );
+        (NaturalPlus, NaturalLit(0), _) => RetThunkRef(y),
+        (NaturalPlus, _, NaturalLit(0)) => RetThunkRef(x),
+        (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
+            RetValue(NaturalLit(x + y))
+        }
+        (NaturalTimes, NaturalLit(0), _) => RetValue(NaturalLit(0)),
+        (NaturalTimes, _, NaturalLit(0)) => RetValue(NaturalLit(0)),
+        (NaturalTimes, NaturalLit(1), _) => RetThunkRef(y),
+        (NaturalTimes, _, NaturalLit(1)) => RetThunkRef(x),
+        (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
+            RetValue(NaturalLit(x * y))
+        }
 
-    normalize_one_layer(expr)
+        (ListAppend, EmptyListLit(_), _) => RetThunkRef(y),
+        (ListAppend, _, EmptyListLit(_)) => RetThunkRef(x),
+        (ListAppend, NEListLit(xs), NEListLit(ys)) => {
+            RetValue(NEListLit(xs.iter().chain(ys.iter()).cloned().collect()))
+        }
+
+        (TextAppend, TextLit(x), _) if x.is_empty() => RetThunkRef(y),
+        (TextAppend, _, TextLit(y)) if y.is_empty() => RetThunkRef(x),
+        (TextAppend, TextLit(x), TextLit(y)) => {
+            RetValue(TextLit(squash_textlit(x.iter().chain(y.iter()).cloned())))
+        }
+        (TextAppend, TextLit(x), _) => {
+            use std::iter::once;
+            let y = InterpolatedTextContents::Expr(y.clone());
+            RetValue(TextLit(squash_textlit(x.iter().cloned().chain(once(y)))))
+        }
+        (TextAppend, _, TextLit(y)) => {
+            use std::iter::once;
+            let x = InterpolatedTextContents::Expr(x.clone());
+            RetValue(TextLit(squash_textlit(once(x).chain(y.iter().cloned()))))
+        }
+
+        (RightBiasedRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
+            RetThunkRef(x)
+        }
+        (RightBiasedRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
+            RetThunkRef(y)
+        }
+        (RightBiasedRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
+            let mut kvs = kvs2.clone();
+            for (x, v) in kvs1 {
+                // Insert only if key not already present
+                kvs.entry(x.clone()).or_insert_with(|| v.clone());
+            }
+            RetValue(RecordLit(kvs))
+        }
+
+        (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
+            RetThunkRef(x)
+        }
+        (RecursiveRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
+            RetThunkRef(y)
+        }
+        (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
+            let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
+                Thunk::from_partial_expr(ExprF::BinOp(
+                    RecursiveRecordMerge,
+                    v1.clone(),
+                    v2.clone(),
+                ))
+            });
+            RetValue(RecordLit(kvs))
+        }
+
+        (RecursiveRecordTypeMerge, _, RecordType(kvs)) if kvs.is_empty() => {
+            RetThunkRef(x)
+        }
+        (RecursiveRecordTypeMerge, RecordType(kvs), _) if kvs.is_empty() => {
+            RetThunkRef(y)
+        }
+        (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
+            let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
+                TypeThunk::from_thunk(Thunk::from_partial_expr(ExprF::BinOp(
+                    RecursiveRecordTypeMerge,
+                    v1.to_thunk(),
+                    v2.to_thunk(),
+                )))
+            });
+            RetValue(RecordType(kvs))
+        }
+
+        _ => return None,
+    })
 }
 
 pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
+    use Ret::{RetExpr, RetThunk, RetThunkRef, RetValue};
     use Value::{
         BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam,
         NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
         TextLit, UnionConstructor, UnionLit, UnionType,
     };
-
-    // Small helper enum to avoid repetition
-    enum Ret<'a> {
-        RetValue(Value),
-        RetThunk(Thunk),
-        RetThunkRef(&'a Thunk),
-        RetExpr(ExprF<Thunk, Label, X>),
-    }
-    use Ret::{RetExpr, RetThunk, RetThunkRef, RetValue};
 
     let ret = match expr {
         ExprF::Embed(_) => unreachable!(),
@@ -492,143 +613,10 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
                 }
             }
         }
-        ExprF::BinOp(o, ref x, ref y) => {
-            use BinOp::{
-                BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus,
-                NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
-                RightBiasedRecordMerge, TextAppend,
-            };
-            let x_borrow = x.as_value();
-            let y_borrow = y.as_value();
-            match (o, &*x_borrow, &*y_borrow) {
-                (BoolAnd, BoolLit(true), _) => RetThunkRef(y),
-                (BoolAnd, _, BoolLit(true)) => RetThunkRef(x),
-                (BoolAnd, BoolLit(false), _) => RetValue(BoolLit(false)),
-                (BoolAnd, _, BoolLit(false)) => RetValue(BoolLit(false)),
-                (BoolAnd, _, _) if x == y => RetThunkRef(x),
-                (BoolOr, BoolLit(true), _) => RetValue(BoolLit(true)),
-                (BoolOr, _, BoolLit(true)) => RetValue(BoolLit(true)),
-                (BoolOr, BoolLit(false), _) => RetThunkRef(y),
-                (BoolOr, _, BoolLit(false)) => RetThunkRef(x),
-                (BoolOr, _, _) if x == y => RetThunkRef(x),
-                (BoolEQ, BoolLit(true), _) => RetThunkRef(y),
-                (BoolEQ, _, BoolLit(true)) => RetThunkRef(x),
-                (BoolEQ, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x == y)),
-                (BoolEQ, _, _) if x == y => RetValue(BoolLit(true)),
-                (BoolNE, BoolLit(false), _) => RetThunkRef(y),
-                (BoolNE, _, BoolLit(false)) => RetThunkRef(x),
-                (BoolNE, BoolLit(x), BoolLit(y)) => RetValue(BoolLit(x != y)),
-                (BoolNE, _, _) if x == y => RetValue(BoolLit(false)),
-
-                (NaturalPlus, NaturalLit(0), _) => RetThunkRef(y),
-                (NaturalPlus, _, NaturalLit(0)) => RetThunkRef(x),
-                (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-                    RetValue(NaturalLit(x + y))
-                }
-                (NaturalTimes, NaturalLit(0), _) => RetValue(NaturalLit(0)),
-                (NaturalTimes, _, NaturalLit(0)) => RetValue(NaturalLit(0)),
-                (NaturalTimes, NaturalLit(1), _) => RetThunkRef(y),
-                (NaturalTimes, _, NaturalLit(1)) => RetThunkRef(x),
-                (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-                    RetValue(NaturalLit(x * y))
-                }
-
-                (ListAppend, EmptyListLit(_), _) => RetThunkRef(y),
-                (ListAppend, _, EmptyListLit(_)) => RetThunkRef(x),
-                (ListAppend, NEListLit(xs), NEListLit(ys)) => RetValue(
-                    NEListLit(xs.iter().chain(ys.iter()).cloned().collect()),
-                ),
-
-                (TextAppend, TextLit(x), _) if x.is_empty() => RetThunkRef(y),
-                (TextAppend, _, TextLit(y)) if y.is_empty() => RetThunkRef(x),
-                (TextAppend, TextLit(x), TextLit(y)) => RetValue(TextLit(
-                    squash_textlit(x.iter().chain(y.iter()).cloned()),
-                )),
-                (TextAppend, TextLit(x), _) => {
-                    use std::iter::once;
-                    let y = InterpolatedTextContents::Expr(y.clone());
-                    RetValue(TextLit(squash_textlit(
-                        x.iter().cloned().chain(once(y)),
-                    )))
-                }
-                (TextAppend, _, TextLit(y)) => {
-                    use std::iter::once;
-                    let x = InterpolatedTextContents::Expr(x.clone());
-                    RetValue(TextLit(squash_textlit(
-                        once(x).chain(y.iter().cloned()),
-                    )))
-                }
-
-                (RightBiasedRecordMerge, _, RecordLit(kvs))
-                    if kvs.is_empty() =>
-                {
-                    RetThunkRef(x)
-                }
-                (RightBiasedRecordMerge, RecordLit(kvs), _)
-                    if kvs.is_empty() =>
-                {
-                    RetThunkRef(y)
-                }
-                (RightBiasedRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-                    let mut kvs = kvs2.clone();
-                    for (x, v) in kvs1 {
-                        // Insert only if key not already present
-                        kvs.entry(x.clone()).or_insert_with(|| v.clone());
-                    }
-                    RetValue(RecordLit(kvs))
-                }
-
-                (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
-                    RetThunkRef(x)
-                }
-                (RecursiveRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
-                    RetThunkRef(y)
-                }
-                (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-                    let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                        Thunk::from_partial_expr(ExprF::BinOp(
-                            RecursiveRecordMerge,
-                            v1.clone(),
-                            v2.clone(),
-                        ))
-                    });
-                    RetValue(RecordLit(kvs))
-                }
-
-                (RecursiveRecordTypeMerge, _, RecordType(kvs))
-                    if kvs.is_empty() =>
-                {
-                    RetThunkRef(x)
-                }
-                (RecursiveRecordTypeMerge, RecordType(kvs), _)
-                    if kvs.is_empty() =>
-                {
-                    RetThunkRef(y)
-                }
-                (
-                    RecursiveRecordTypeMerge,
-                    RecordType(kvs1),
-                    RecordType(kvs2),
-                ) => {
-                    let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                        TypeThunk::from_thunk(Thunk::from_partial_expr(
-                            ExprF::BinOp(
-                                RecursiveRecordTypeMerge,
-                                v1.to_thunk(),
-                                v2.to_thunk(),
-                            ),
-                        ))
-                    });
-                    RetValue(RecordType(kvs))
-                }
-
-                _ => {
-                    drop(x_borrow);
-                    drop(y_borrow);
-                    RetExpr(expr)
-                }
-            }
-        }
+        ExprF::BinOp(o, ref x, ref y) => match apply_binop(o, x, y) {
+            Some(ret) => ret,
+            None => RetExpr(expr),
+        },
 
         ExprF::Projection(_, ls) if ls.is_empty() => {
             RetValue(RecordLit(std::collections::BTreeMap::new()))
