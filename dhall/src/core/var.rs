@@ -17,19 +17,34 @@ pub(crate) struct AlphaVar {
 pub(crate) struct AlphaLabel(Label);
 
 pub(crate) trait Shift: Sized {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self;
+    // Shift an expression to move it around binders without changing the meaning of its free
+    // variables. Shift by 1 to move an expression under a binder. Shift by -1 to extract an
+    // expression from under a binder, if the expression does not refer to that bound variable.
+    // Returns None if delta was negative and the variable was free in the expression.
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self>;
 
-    fn shift0(&self, delta: isize, x: &Label) -> Self {
-        self.shift(delta, &x.into())
+    fn over_binder<T>(&self, x: T) -> Option<Self>
+    where
+        T: Into<AlphaVar>,
+    {
+        self.shift(-1, &x.into())
     }
 
-    fn shift0_multiple(&self, shift_map: &HashMap<Label, isize>) -> Self
+    fn under_binder<T>(&self, x: T) -> Self
+    where
+        T: Into<AlphaVar>,
+    {
+        // Can't fail since delta is positive
+        self.shift(1, &x.into()).unwrap()
+    }
+
+    fn under_multiple_binders(&self, shift_map: &HashMap<Label, usize>) -> Self
     where
         Self: Clone,
     {
         let mut v = self.clone();
         for (x, n) in shift_map {
-            v = v.shift0(*n, x);
+            v = v.shift(*n as isize, &x.into()).unwrap();
         }
         v
     }
@@ -68,20 +83,20 @@ impl AlphaLabel {
 }
 
 impl Shift for AlphaVar {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        AlphaVar {
-            normal: self.normal.shift(delta, &var.normal),
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(AlphaVar {
+            normal: self.normal.shift(delta, &var.normal)?,
             alpha: match (&self.alpha, &var.alpha) {
-                (Some(x), Some(v)) => Some(x.shift(delta, v)),
+                (Some(x), Some(v)) => Some(x.shift(delta, v)?),
                 _ => None,
             },
-        }
+        })
     }
 }
 
 impl Shift for () {
-    fn shift(&self, _delta: isize, _var: &AlphaVar) -> Self {
-        ()
+    fn shift(&self, _delta: isize, _var: &AlphaVar) -> Option<Self> {
+        Some(())
     }
 }
 

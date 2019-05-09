@@ -442,22 +442,26 @@ pub fn rc<E>(x: Expr<X, E>) -> SubExpr<X, E> {
 
 /// Add an isize to an usize
 /// Panics on over/underflow
-fn add_ui(u: usize, i: isize) -> usize {
-    if i < 0 {
-        u.checked_sub(i.checked_neg().unwrap() as usize).unwrap()
+fn add_ui(u: usize, i: isize) -> Option<usize> {
+    Some(if i < 0 {
+        u.checked_sub(i.checked_neg()? as usize)?
     } else {
-        u.checked_add(i as usize).unwrap()
-    }
+        u.checked_add(i as usize)?
+    })
 }
 
 impl<Label: PartialEq + Clone> V<Label> {
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Self {
+    pub fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
         let V(x, n) = var;
         let V(y, m) = self;
-        if x == y && n <= m {
-            V(y.clone(), add_ui(*m, delta))
+        Some(if x == y && n <= m {
+            V(y.clone(), add_ui(*m, delta)?)
         } else {
             V(y.clone(), *m)
-        }
+        })
+    }
+
+    pub fn over_binder(&self, x: &Label) -> Option<Self> {
+        self.shift(-1, &V(x.clone(), 0))
     }
 }

@@ -264,38 +264,38 @@ impl TypeThunk {
 }
 
 impl Shift for Thunk {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        self.0.borrow().shift(delta, var).into_thunk()
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(self.0.borrow().shift(delta, var)?.into_thunk())
     }
 }
 
 impl Shift for ThunkInternal {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
             ThunkInternal::Unnormalized(ctx, e) => {
-                ThunkInternal::Unnormalized(ctx.shift(delta, var), e.clone())
+                ThunkInternal::Unnormalized(ctx.shift(delta, var)?, e.clone())
             }
             ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
-                e.map_ref_with_special_handling_of_binders(
-                    |v| v.shift(delta, var),
-                    |x, v| v.shift(delta, &var.shift(1, &x.into())),
-                    X::clone,
-                    Label::clone,
-                ),
+                e.traverse_ref_with_special_handling_of_binders(
+                    |v| Ok(v.shift(delta, var)?),
+                    |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
+                    |x| Ok(X::clone(x)),
+                    |l| Ok(Label::clone(l)),
+                )?,
             ),
             ThunkInternal::Value(m, v) => {
-                ThunkInternal::Value(*m, v.shift(delta, var))
+                ThunkInternal::Value(*m, v.shift(delta, var)?)
             }
-        }
+        })
     }
 }
 
 impl Shift for TypeThunk {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
-            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)),
-            TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)),
-        }
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
+            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)?),
+            TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)?),
+        })
     }
 }
 
@@ -317,8 +317,8 @@ impl Subst<Typed> for ThunkInternal {
                     |v| v.subst_shift(var, val),
                     |x, v| {
                         v.subst_shift(
-                            &var.shift(1, &x.into()),
-                            &val.shift(1, &x.into()),
+                            &var.under_binder(x),
+                            &val.under_binder(x),
                         )
                     },
                     X::clone,

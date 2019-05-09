@@ -33,7 +33,7 @@ impl<T> Context<T> {
         T: Shift + Clone,
     {
         let mut vec = self.0.as_ref().clone();
-        vec.push((x.clone(), CtxItem::Kept(x.into(), t.shift(1, &x.into()))));
+        vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
         Context(Rc::new(vec))
     }
     pub(crate) fn insert_replaced(&self, x: &Label, th: Thunk, t: T) -> Self
@@ -51,11 +51,10 @@ impl<T> Context<T> {
         let mut var = var.clone();
         let mut shift_map: HashMap<Label, _> = HashMap::new();
         for (l, i) in self.0.iter().rev() {
-            if var == l.into() {
-                return Ok(i.shift0_multiple(&shift_map));
-            } else {
-                var = var.shift(-1, &l.into());
-            }
+            match var.over_binder(l) {
+                None => return Ok(i.under_multiple_binders(&shift_map)),
+                Some(newvar) => var = newvar,
+            };
             if let CtxItem::Kept(_, _) = i {
                 *shift_map.entry(l.clone()).or_insert(0) += 1;
             }
@@ -67,11 +66,11 @@ impl<T> Context<T> {
     /// that the passed variable always makes sense in the context of the passed item.
     /// Once we pass the variable definition, the variable doesn't make sense anymore so we just
     /// copy the remaining items.
-    fn do_with_var(
+    fn do_with_var<E>(
         &self,
         var: &AlphaVar,
-        mut f: impl FnMut(&AlphaVar, &CtxItem<T>) -> CtxItem<T>,
-    ) -> Self
+        mut f: impl FnMut(&AlphaVar, &CtxItem<T>) -> Result<CtxItem<T>, E>,
+    ) -> Result<Self, E>
     where
         T: Clone,
     {
@@ -80,32 +79,32 @@ impl<T> Context<T> {
         let mut var = var.clone();
         let mut iter = self.0.iter().rev();
         for (l, i) in iter.by_ref() {
-            vec.push((l.clone(), f(&var, i)));
+            vec.push((l.clone(), f(&var, i)?));
             if let CtxItem::Kept(_, _) = i {
-                if var == l.into() {
-                    break;
-                } else {
-                    var = var.shift(-1, &l.into());
-                }
+                match var.over_binder(l) {
+                    None => break,
+                    Some(newvar) => var = newvar,
+                };
             }
         }
         for (l, i) in iter {
             vec.push((l.clone(), (*i).clone()));
         }
         vec.reverse();
-        Context(Rc::new(vec))
+        Ok(Context(Rc::new(vec)))
     }
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self>
     where
         T: Clone + Shift,
     {
-        self.do_with_var(var, |var, i| i.shift(delta, &var))
+        Some(self.do_with_var(var, |var, i| Ok(i.shift(delta, &var)?))?)
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
     where
         T: Clone + Subst<Typed>,
     {
-        self.do_with_var(var, |var, i| i.subst_shift(&var, val))
+        self.do_with_var(var, |var, i| Ok::<_, !>(i.subst_shift(&var, val)))
+            .unwrap()
     }
 }
 
@@ -158,27 +157,27 @@ impl TypecheckContext {
 }
 
 impl<T: Shift> Shift for CtxItem<T> {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
             CtxItem::Kept(v, t) => {
-                CtxItem::Kept(v.shift(delta, var), t.shift(delta, var))
+                CtxItem::Kept(v.shift(delta, var)?, t.shift(delta, var)?)
             }
             CtxItem::Replaced(e, t) => {
-                CtxItem::Replaced(e.shift(delta, var), t.shift(delta, var))
+                CtxItem::Replaced(e.shift(delta, var)?, t.shift(delta, var)?)
             }
-        }
+        })
     }
 }
 
 impl<T: Clone + Shift> Shift for Context<T> {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         self.shift(delta, var)
     }
 }
 
 impl Shift for NormalizationContext {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        NormalizationContext(self.0.shift(delta, var))
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(NormalizationContext(self.0.shift(delta, var)?))
     }
 }
 
@@ -189,12 +188,12 @@ impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
                 e.subst_shift(var, val),
                 t.subst_shift(var, val),
             ),
-            CtxItem::Kept(v, t) if v == var => {
-                CtxItem::Replaced(val.to_thunk(), t.subst_shift(var, val))
-            }
-            CtxItem::Kept(v, t) => {
-                CtxItem::Kept(v.shift(-1, var), t.subst_shift(var, val))
-            }
+            CtxItem::Kept(v, t) => match v.shift(-1, var) {
+                None => {
+                    CtxItem::Replaced(val.to_thunk(), t.subst_shift(var, val))
+                }
+                Some(newvar) => CtxItem::Kept(newvar, t.subst_shift(var, val)),
+            },
         }
     }
 }

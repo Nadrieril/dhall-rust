@@ -732,6 +732,7 @@ fn type_last_layer(
                                 )))
                             }
                         };
+
                         ensure_equal!(&variant_type, &tx, {
                             mkerr(TypeMismatch(
                                 handler_type.to_typed(),
@@ -739,8 +740,16 @@ fn type_last_layer(
                                 variant_type.to_typed(),
                             ))
                         });
-                        // TODO: check that x is not free in tb first
-                        tb.shift(-1, &x.into())
+
+                        // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
+                        match tb.over_binder(x) {
+                            Some(x) => x,
+                            None => {
+                                return Err(mkerr(
+                                    MergeHandlerReturnTypeMustNotBeDependent,
+                                ))
+                            }
+                        }
                     }
                     // Union alternative without type
                     Some(None) => handler.to_type(ctx)?,

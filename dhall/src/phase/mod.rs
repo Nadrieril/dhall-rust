@@ -238,26 +238,26 @@ impl Normalized {
 }
 
 impl Shift for Typed {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
             Typed::Value(th, t) => Typed::Value(
-                th.shift(delta, var),
-                t.as_ref().map(|x| x.shift(delta, var)),
+                th.shift(delta, var)?,
+                t.as_ref().map(|x| Ok(x.shift(delta, var)?)).transpose()?,
             ),
             Typed::Const(c) => Typed::Const(*c),
-        }
+        })
     }
 }
 
 impl Shift for Type {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Type(Box::new(self.0.shift(delta, var)))
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(Type(Box::new(self.0.shift(delta, var)?)))
     }
 }
 
 impl Shift for Normalized {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        Normalized(self.0.shift(delta, var))
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(Normalized(self.0.shift(delta, var)?))
     }
 }
 

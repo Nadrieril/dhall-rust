@@ -6,6 +6,7 @@
 #![feature(bind_by_move_pattern_guards)]
 #![feature(try_trait)]
 #![feature(inner_deref)]
+#![feature(never_type)]
 #![cfg_attr(test, feature(custom_inner_attributes))]
 #![allow(
     clippy::type_complexity,

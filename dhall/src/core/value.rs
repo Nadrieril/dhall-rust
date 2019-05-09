@@ -98,14 +98,14 @@ impl Value {
             }
             Value::ListConsClosure(a, None) => {
                 // Avoid accidental capture of the new `x` variable
-                let a1 = a.shift(1, &Label::from("x").into());
+                let a1 = a.under_binder(Label::from("x"));
                 let a1 = a1.normalize_to_expr_maybe_alpha(alpha);
                 let a = a.normalize_to_expr_maybe_alpha(alpha);
                 dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
             }
             Value::ListConsClosure(n, Some(v)) => {
                 // Avoid accidental capture of the new `xs` variable
-                let v = v.shift(1, &Label::from("xs").into());
+                let v = v.under_binder(Label::from("xs"));
                 let v = v.normalize_to_expr_maybe_alpha(alpha);
                 let a = n.normalize_to_expr_maybe_alpha(alpha);
                 dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
@@ -322,102 +322,121 @@ impl Value {
 }
 
 impl Shift for Value {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Self {
-        match self {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
-                t.shift(delta, var),
-                e.shift(delta, &var.shift(1, &x.into())),
+                t.shift(delta, var)?,
+                e.shift(delta, &var.under_binder(x))?,
             ),
             Value::AppliedBuiltin(b, args) => Value::AppliedBuiltin(
                 *b,
-                args.iter().map(|v| v.shift(delta, var)).collect(),
+                args.iter()
+                    .map(|v| Ok(v.shift(delta, var)?))
+                    .collect::<Result<_, _>>()?,
             ),
             Value::NaturalSuccClosure => Value::NaturalSuccClosure,
             Value::OptionalSomeClosure(tth) => {
-                Value::OptionalSomeClosure(tth.shift(delta, var))
+                Value::OptionalSomeClosure(tth.shift(delta, var)?)
             }
             Value::ListConsClosure(t, v) => Value::ListConsClosure(
-                t.shift(delta, var),
-                v.as_ref().map(|v| v.shift(delta, var)),
+                t.shift(delta, var)?,
+                v.as_ref().map(|v| Ok(v.shift(delta, var)?)).transpose()?,
             ),
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),
-                t.shift(delta, var),
-                e.shift(delta, &var.shift(1, &x.into())),
+                t.shift(delta, var)?,
+                e.shift(delta, &var.under_binder(x))?,
             ),
-            Value::Var(v) => Value::Var(v.shift(delta, var)),
+            Value::Var(v) => Value::Var(v.shift(delta, var)?),
             Value::Const(c) => Value::Const(*c),
             Value::BoolLit(b) => Value::BoolLit(*b),
             Value::NaturalLit(n) => Value::NaturalLit(*n),
             Value::IntegerLit(n) => Value::IntegerLit(*n),
             Value::DoubleLit(n) => Value::DoubleLit(*n),
             Value::EmptyOptionalLit(tth) => {
-                Value::EmptyOptionalLit(tth.shift(delta, var))
+                Value::EmptyOptionalLit(tth.shift(delta, var)?)
             }
             Value::NEOptionalLit(th) => {
-                Value::NEOptionalLit(th.shift(delta, var))
+                Value::NEOptionalLit(th.shift(delta, var)?)
             }
             Value::EmptyListLit(tth) => {
-                Value::EmptyListLit(tth.shift(delta, var))
+                Value::EmptyListLit(tth.shift(delta, var)?)
             }
             Value::NEListLit(elts) => Value::NEListLit(
-                elts.iter().map(|v| v.shift(delta, var)).collect(),
+                elts.iter()
+                    .map(|v| Ok(v.shift(delta, var)?))
+                    .collect::<Result<_, _>>()?,
             ),
             Value::RecordLit(kvs) => Value::RecordLit(
                 kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.shift(delta, var)))
-                    .collect(),
+                    .map(|(k, v)| Ok((k.clone(), v.shift(delta, var)?)))
+                    .collect::<Result<_, _>>()?,
             ),
             Value::RecordType(kvs) => Value::RecordType(
                 kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.shift(delta, var)))
-                    .collect(),
+                    .map(|(k, v)| Ok((k.clone(), v.shift(delta, var)?)))
+                    .collect::<Result<_, _>>()?,
             ),
             Value::UnionType(kts) => Value::UnionType(
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                        Ok((
+                            k.clone(),
+                            v.as_ref()
+                                .map(|v| Ok(v.shift(delta, var)?))
+                                .transpose()?,
+                        ))
                     })
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
             Value::UnionConstructor(x, kts) => Value::UnionConstructor(
                 x.clone(),
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                        Ok((
+                            k.clone(),
+                            v.as_ref()
+                                .map(|v| Ok(v.shift(delta, var)?))
+                                .transpose()?,
+                        ))
                     })
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
             Value::UnionLit(x, v, kts) => Value::UnionLit(
                 x.clone(),
-                v.shift(delta, var),
+                v.shift(delta, var)?,
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.shift(delta, var)))
+                        Ok((
+                            k.clone(),
+                            v.as_ref()
+                                .map(|v| Ok(v.shift(delta, var)?))
+                                .transpose()?,
+                        ))
                     })
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
             Value::TextLit(elts) => Value::TextLit(
                 elts.iter()
                     .map(|contents| {
                         use InterpolatedTextContents::{Expr, Text};
-                        match contents {
-                            Expr(th) => Expr(th.shift(delta, var)),
+                        Ok(match contents {
+                            Expr(th) => Expr(th.shift(delta, var)?),
                             Text(s) => Text(s.clone()),
-                        }
+                        })
                     })
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
-            Value::PartialExpr(e) => {
-                Value::PartialExpr(e.map_ref_with_special_handling_of_binders(
-                    |v| v.shift(delta, var),
-                    |x, v| v.shift(delta, &var.shift(1, &x.into())),
-                    X::clone,
-                    Label::clone,
-                ))
-            }
-        }
+            Value::PartialExpr(e) => Value::PartialExpr(
+                e.traverse_ref_with_special_handling_of_binders(
+                    |v| Ok(v.shift(delta, var)?),
+                    |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
+                    |x| Ok(X::clone(x)),
+                    |l| Ok(Label::clone(l)),
+                )?,
+            ),
+        })
     }
 }
 
@@ -435,8 +454,8 @@ impl Subst<Typed> for Value {
                     |v| v.subst_shift(var, val),
                     |x, v| {
                         v.subst_shift(
-                            &var.shift(1, &x.into()),
-                            &val.shift(1, &x.into()),
+                            &var.under_binder(x),
+                            &val.under_binder(x),
                         )
                     },
                     X::clone,
@@ -456,10 +475,7 @@ impl Subst<Typed> for Value {
             Value::Lam(x, t, e) => Value::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
-                e.subst_shift(
-                    &var.shift(1, &x.into()),
-                    &val.shift(1, &x.into()),
-                ),
+                e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
             Value::NaturalSuccClosure => Value::NaturalSuccClosure,
             Value::OptionalSomeClosure(tth) => {
@@ -472,13 +488,12 @@ impl Subst<Typed> for Value {
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),
                 t.subst_shift(var, val),
-                e.subst_shift(
-                    &var.shift(1, &x.into()),
-                    &val.shift(1, &x.into()),
-                ),
+                e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
-            Value::Var(v) if v == var => val.to_value().clone(),
-            Value::Var(v) => Value::Var(v.shift(-1, var)),
+            Value::Var(v) => match v.shift(-1, var) {
+                None => val.to_value().clone(),
+                Some(newvar) => Value::Var(newvar),
+            },
             Value::Const(c) => Value::Const(*c),
             Value::BoolLit(b) => Value::BoolLit(*b),
             Value::NaturalLit(n) => Value::NaturalLit(*n),
