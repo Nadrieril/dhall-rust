@@ -5,7 +5,10 @@ use std::io::Write;
 use std::path::Path;
 use walkdir::WalkDir;
 
-fn dhall_files_in_dir<'a>(dir: &'a Path) -> impl Iterator<Item = String> + 'a {
+fn dhall_files_in_dir<'a>(
+    dir: &'a Path,
+    take_a_suffix: bool,
+) -> impl Iterator<Item = (String, String)> + 'a {
     WalkDir::new(dir)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -16,9 +19,51 @@ fn dhall_files_in_dir<'a>(dir: &'a Path) -> impl Iterator<Item = String> + 'a {
                 return None;
             }
             let path = path.to_string_lossy();
-            let path = path[..path.len() - 6].to_owned();
-            Some(path)
+            let path = &path[..path.len() - 6];
+            let path = if take_a_suffix {
+                if &path[path.len() - 1..] != "A" {
+                    return None;
+                } else {
+                    path[..path.len() - 1].to_owned()
+                }
+            } else {
+                path.to_owned()
+            };
+            let name = path.replace("/", "_").replace("-", "_");
+            Some((name, path))
         })
+}
+
+fn make_test_module(
+    w: &mut impl Write,
+    mod_name: &str,
+    dir: &Path,
+    feature: &str,
+    mut exclude: impl FnMut(&str) -> bool,
+) -> std::io::Result<()> {
+    writeln!(w, "mod {} {{", mod_name)?;
+    for (name, path) in dhall_files_in_dir(&dir.join("success/"), true) {
+        if exclude(&path) {
+            continue;
+        }
+        writeln!(
+            w,
+            r#"make_spec_test!({}, Success, success_{}, "{}");"#,
+            feature, name, path
+        )?;
+    }
+    for (name, path) in dhall_files_in_dir(&dir.join("failure/"), false) {
+        if exclude(&path) {
+            continue;
+        }
+        writeln!(
+            w,
+            r#"make_spec_test!({}, Failure, failure_{}, "{}");"#,
+            feature, name, path
+        )?;
+    }
+    writeln!(w, "}}")?;
+    Ok(())
 }
 
 fn main() -> std::io::Result<()> {
@@ -29,31 +74,40 @@ fn main() -> std::io::Result<()> {
     let out_dir = env::var("OUT_DIR").unwrap();
     let tests_dir = Path::new("../dhall-lang/tests/");
 
-    let parser_tests_path = Path::new(&out_dir).join("parser_tests.rs");
+    let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
     let mut file = File::create(parser_tests_path)?;
 
-    for path in dhall_files_in_dir(&tests_dir.join("parser/success/")) {
-        let path = &path[..path.len() - 1];
-        let name = path.replace("/", "_");
-        // Skip this test; parser is way too slow indebug mode
-        if name == "largeExpression" {
-            continue;
-        }
-        writeln!(
-            file,
-            r#"make_spec_test!(Parser, Success, success_{}, "{}");"#,
-            name, path
-        )?;
-    }
+    make_test_module(
+        &mut file,
+        "parse",
+        &tests_dir.join("parser/"),
+        "Parser",
+        |path| {
+            // Too slow in debug mode
+            path == "largeExpression"
+        },
+    )?;
 
-    for path in dhall_files_in_dir(&tests_dir.join("parser/failure/")) {
-        let name = path.replace("/", "_");
-        writeln!(
-            file,
-            r#"make_spec_test!(Parser, Failure, failure_{}, "{}");"#,
-            name, path
-        )?;
-    }
+    make_test_module(
+        &mut file,
+        "beta_normalize",
+        &tests_dir.join("normalization/"),
+        "Normalization",
+        |path| {
+            // We don't support bignums
+            path == "simple/integerToDouble"
+            // Too slow
+            || path == "remoteSystems"
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        "alpha_normalize",
+        &tests_dir.join("alpha-normalization/"),
+        "AlphaNormalization",
+        |_| false,
+    )?;
 
     Ok(())
 }

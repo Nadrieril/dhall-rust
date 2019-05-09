@@ -172,3 +172,8 @@ pub fn run_test(
     }
     Ok(())
 }
+
+mod spec {
+    // See build.rs
+    include!(concat!(env!("OUT_DIR"), "/spec_tests.rs"));
+}

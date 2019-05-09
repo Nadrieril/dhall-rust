@@ -29,10 +29,3 @@ pub(crate) fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
     let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
     Ok(Parsed(expr.note_absurd(), root))
 }
-
-#[cfg(test)]
-mod spec_tests {
-    #![rustfmt::skip]
-    // See build.rs
-    include!(concat!(env!("OUT_DIR"), "/parser_tests.rs"));
-}
