@@ -338,6 +338,10 @@ impl<N, E> SubExpr<N, E> {
         SubExpr(Rc::new((x, None)))
     }
 
+    pub fn from_builtin(b: Builtin) -> Self {
+        SubExpr::from_expr_no_note(ExprF::Builtin(b))
+    }
+
     pub fn rewrap<E2>(&self, x: Expr<N, E2>) -> SubExpr<N, E2>
     where
         N: Clone,

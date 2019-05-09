@@ -328,10 +328,7 @@ pub(crate) fn mktype(
 }
 
 pub(crate) fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
-    mktype(
-        &TypecheckContext::new(),
-        SubExpr::from_expr_no_note(ExprF::Builtin(b)),
-    )
+    mktype(&TypecheckContext::new(), SubExpr::from_builtin(b))
 }
 
 /// Intermediary return type
@@ -390,15 +387,12 @@ fn type_with(
             return type_with(&ctx.insert_value(x, v.clone())?, e.clone());
         }
         OldOptionalLit(None, t) => {
-            let none = SubExpr::from_expr_no_note(ExprF::Builtin(
-                Builtin::OptionalNone,
-            ));
+            let none = SubExpr::from_builtin(Builtin::OptionalNone);
             let e = e.rewrap(App(none, t.clone()));
             return type_with(ctx, e);
         }
         OldOptionalLit(Some(x), t) => {
-            let optional =
-                SubExpr::from_expr_no_note(ExprF::Builtin(Builtin::Optional));
+            let optional = SubExpr::from_builtin(Builtin::Optional);
             let x = x.rewrap(SomeLit(x.clone()));
             let t = t.rewrap(App(optional, t.clone()));
             let e = e.rewrap(Annot(x, t));
