@@ -391,7 +391,7 @@ fn type_with(
             let e = e.rewrap(Annot(x, t));
             return type_with(ctx, e);
         }
-        Embed(p) => p.clone().into(),
+        Embed(p) => p.clone().into_typed(),
         Var(var) => match ctx.lookup(&var) {
             Some(typed) => typed,
             None => {

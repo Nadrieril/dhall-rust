@@ -20,7 +20,7 @@ pub fn subexpr(input: TokenStream) -> TokenStream {
     quote::subexpr(input)
 }
 
-#[proc_macro_derive(SimpleStaticType)]
-pub fn derive_simple_static_type(input: TokenStream) -> TokenStream {
-    derive::derive_simple_static_type(input)
+#[proc_macro_derive(StaticType)]
+pub fn derive_static_type(input: TokenStream) -> TokenStream {
+    derive::derive_static_type(input)
 }

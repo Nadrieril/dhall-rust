@@ -35,15 +35,15 @@
 //! ### Custom datatype
 //!
 //! If you have a custom datatype for which you derived [serde::Deserialize], chances are
-//! you will be able to derive [SimpleStaticType][de::SimpleStaticType] for it as well.
+//! you will be able to derive [StaticType][de::StaticType] for it as well.
 //! This gives you access to a dhall representation of your datatype that can be outputted
 //! to users, and allows easy type-safe deserializing.
 //!
 //! ```edition2018
 //! use serde::Deserialize;
-//! use dhall::de::SimpleStaticType;
+//! use dhall::de::StaticType;
 //!
-//! #[derive(Debug, Deserialize, SimpleStaticType)]
+//! #[derive(Debug, Deserialize, StaticType)]
 //! struct Point {
 //!     x: u64,
 //!     y: u64,
@@ -68,7 +68,7 @@
 //! If you used to consume JSON or YAML in a loosely typed way, you can continue to do so
 //! with dhall. You only need to replace [serde_json::from_str] or [serde_yaml::from_str]
 //! with [dhall::de::from_str][de::from_str].
-//! More generally, if the [SimpleStaticType][de::SimpleStaticType] derive doesn't suit your
+//! More generally, if the [StaticType][de::StaticType] derive doesn't suit your
 //! needs, you can still deserialize any valid dhall file that serde can handle.
 //!
 //! [serde_json::from_str]: https://docs.serde.rs/serde_json/de/fn.from_str.html
@@ -130,4 +130,4 @@ pub mod error;
 pub(crate) mod phase;
 pub(crate) use api::traits;
 
-pub use api::de;
+pub use api::*;

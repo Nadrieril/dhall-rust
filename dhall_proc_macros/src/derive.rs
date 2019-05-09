@@ -6,19 +6,19 @@ use syn::spanned::Spanned;
 use syn::Error;
 use syn::{parse_quote, DeriveInput};
 
-pub fn derive_simple_static_type(input: TokenStream) -> TokenStream {
-    TokenStream::from(match derive_simple_static_type_inner(input) {
+pub fn derive_static_type(input: TokenStream) -> TokenStream {
+    TokenStream::from(match derive_static_type_inner(input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })
 }
 
-fn get_simple_static_type<T>(ty: T) -> proc_macro2::TokenStream
+fn static_type<T>(ty: T) -> proc_macro2::TokenStream
 where
     T: quote::ToTokens,
 {
     quote!(
-        <#ty as ::dhall::de::SimpleStaticType>::get_simple_static_type()
+        <#ty as ::dhall::de::StaticType>::static_type()
     )
 }
 
@@ -48,39 +48,35 @@ fn derive_for_struct(
             .collect(),
         syn::Fields::Unit => vec![],
     };
-    let fields = fields
-        .into_iter()
-        .map(|(name, ty)| {
-            let name = dhall_syntax::Label::from(name);
-            constraints.push(ty.clone());
-            let ty = get_simple_static_type(ty);
-            (name, quote!(#ty.into()))
-        })
-        .collect();
-    let record =
-        crate::quote::quote_exprf(dhall_syntax::ExprF::RecordType(fields));
-    Ok(quote! { dhall_syntax::rc(#record) })
+    let entries = fields.into_iter().map(|(name, ty)| {
+        constraints.push(ty.clone());
+        let ty = static_type(ty);
+        quote!( (#name.to_owned(), #ty) )
+    });
+    Ok(quote! { ::dhall::de::Type::make_record_type(
+        vec![ #(#entries),* ].into_iter()
+    ) })
 }
 
 fn derive_for_enum(
     data: &syn::DataEnum,
     constraints: &mut Vec<syn::Type>,
 ) -> Result<proc_macro2::TokenStream, Error> {
-    let variants = data
+    let entries: Vec<_> = data
         .variants
         .iter()
         .map(|v| {
-            let name = dhall_syntax::Label::from(v.ident.to_string());
+            let name = v.ident.to_string();
             match &v.fields {
-                syn::Fields::Unit => Ok((name, None)),
+                syn::Fields::Unit => Ok(quote!( (#name.to_owned(), None) )),
                 syn::Fields::Unnamed(fields) if fields.unnamed.is_empty() => {
-                    Ok((name, None))
+                    Ok(quote!( (#name.to_owned(), None) ))
                 }
                 syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                     let ty = &fields.unnamed.iter().next().unwrap().ty;
                     constraints.push(ty.clone());
-                    let ty = get_simple_static_type(ty);
-                    Ok((name, Some(quote!(#ty.into()))))
+                    let ty = static_type(ty);
+                    Ok(quote!( (#name.to_owned(), Some(#ty)) ))
                 }
                 syn::Fields::Unnamed(_) => Err(Error::new(
                     v.span(),
@@ -94,17 +90,17 @@ fn derive_for_enum(
         })
         .collect::<Result<_, Error>>()?;
 
-    let union =
-        crate::quote::quote_exprf(dhall_syntax::ExprF::UnionType(variants));
-    Ok(quote! { dhall_syntax::rc(#union) })
+    Ok(quote! { ::dhall::de::Type::make_union_type(
+        vec![ #(#entries),* ].into_iter()
+    ) })
 }
 
-pub fn derive_simple_static_type_inner(
+pub fn derive_static_type_inner(
     input: TokenStream,
 ) -> Result<proc_macro2::TokenStream, Error> {
     let input: DeriveInput = syn::parse_macro_input::parse(input)?;
 
-    // List of types that must impl Type
+    // List of types that must impl StaticType
     let mut constraints = vec![];
 
     let get_type = match &input.data {
@@ -132,13 +128,13 @@ pub fn derive_simple_static_type_inner(
 
     // Hygienic errors
     let assertions = constraints.iter().enumerate().map(|(i, ty)| {
-        // Ensure that ty: Type, with an appropriate span
+        // Ensure that ty: StaticType, with an appropriate span
         let assert_name =
             syn::Ident::new(&format!("_AssertType{}", i), ty.span());
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: ::dhall::de::SimpleStaticType));
+            .push(parse_quote!(#ty: ::dhall::de::StaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -155,23 +151,23 @@ pub fn derive_simple_static_type_inner(
         }
     });
 
-    // Ensure that all the fields have a Type impl
+    // Ensure that all the fields have a StaticType impl
     let mut where_clause = orig_where_clause.clone();
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: ::dhall::de::SimpleStaticType));
+            .push(parse_quote!(#ty: ::dhall::de::StaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics ::dhall::de::SimpleStaticType
+        impl #impl_generics ::dhall::de::StaticType
                 for #ident #ty_generics
                 #where_clause {
-            fn get_simple_static_type() ->
-                    ::dhall::de::SimpleType {
+            fn static_type() ->
+                    ::dhall::de::Type {
                 #(#assertions)*
-                ::dhall::de::SimpleType::from(#get_type)
+                #get_type
             }
         }
     };

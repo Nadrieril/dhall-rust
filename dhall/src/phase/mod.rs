@@ -49,19 +49,6 @@ pub(crate) enum Typed {
 #[derive(Debug, Clone)]
 pub(crate) struct Normalized(pub(crate) Typed);
 
-/// A Dhall expression representing a simple type.
-///
-/// This captures what is usually simply called a "type", like
-/// `Bool`, `{ x: Integer }` or `Natural -> Text`.
-///
-/// For a more general notion of "type", see [Type].
-#[derive(Debug, Clone)]
-pub struct SimpleType(pub(crate) NormalizedSubExpr);
-
-/// A Dhall expression representing a (possibly higher-kinded) type.
-///
-/// This includes [SimpleType]s but also higher-kinded expressions like
-/// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type(pub(crate) Typed);
 
@@ -131,6 +118,12 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed::Const(c)
     }
+    pub(crate) fn from_value_untyped(v: Value) -> Self {
+        Typed::Untyped(Thunk::from_value(v))
+    }
+    pub(crate) fn from_normalized_expr_untyped(e: NormalizedSubExpr) -> Self {
+        Typed::from_thunk_untyped(Thunk::from_normalized_expr(e))
+    }
 
     // TODO: Avoid cloning if possible
     pub(crate) fn to_value(&self) -> Value {
@@ -179,6 +172,7 @@ impl Typed {
 }
 
 impl Type {
+    // Deprecated
     pub(crate) fn to_normalized(&self) -> Normalized {
         self.0.clone().normalize()
     }
@@ -202,19 +196,12 @@ impl Type {
         self.0.get_type()
     }
 
-    pub(crate) fn const_type() -> Self {
-        Type::from_const(Const::Type)
-    }
     pub(crate) fn from_const(c: Const) -> Self {
         Type(Typed::from_const(c))
     }
 }
 
 impl Normalized {
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Normalized(Typed::from_thunk_and_type(th, t))
-    }
-
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
@@ -225,8 +212,11 @@ impl Normalized {
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn to_type(self) -> Type {
+    pub(crate) fn to_type(&self) -> Type {
         self.0.to_type()
+    }
+    pub(crate) fn into_typed(self) -> Typed {
+        self.0
     }
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
@@ -301,7 +291,6 @@ macro_rules! derive_traits_for_wrapper_struct {
 derive_traits_for_wrapper_struct!(Parsed);
 derive_traits_for_wrapper_struct!(Resolved);
 derive_traits_for_wrapper_struct!(Normalized);
-derive_traits_for_wrapper_struct!(SimpleType);
 
 impl Eq for Typed {}
 impl PartialEq for Typed {
@@ -319,29 +308,5 @@ impl Display for Typed {
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_normalized().fmt(f)
-    }
-}
-
-// Exposed for the macros
-#[doc(hidden)]
-impl From<SimpleType> for NormalizedSubExpr {
-    fn from(x: SimpleType) -> NormalizedSubExpr {
-        x.0
-    }
-}
-
-// Exposed for the macros
-#[doc(hidden)]
-impl From<NormalizedSubExpr> for SimpleType {
-    fn from(x: NormalizedSubExpr) -> SimpleType {
-        SimpleType(x)
-    }
-}
-
-// Exposed for the macros
-#[doc(hidden)]
-impl From<Normalized> for Typed {
-    fn from(x: Normalized) -> Typed {
-        x.0
     }
 }
