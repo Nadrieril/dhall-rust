@@ -1048,7 +1048,7 @@ mod spec_tests {
     alpha_norm!(unit_FunctionBindingX, "unit/FunctionBindingX");
     alpha_norm!(unit_FunctionNestedBindingX, "unit/FunctionNestedBindingX");
     alpha_norm!(unit_FunctionNestedBindingXX, "unit/FunctionNestedBindingXX");
-    // alpha_norm!(unit_FunctionNestedBindingXXFree, "unit/FunctionNestedBindingXXFree");
+    alpha_norm!(unit_FunctionNestedBindingXXFree, "unit/FunctionNestedBindingXXFree");
     alpha_norm!(unit_FunctionNestedBindingXY, "unit/FunctionNestedBindingXY");
     alpha_norm!(unit_FunctionTypeBindingUnderscore, "unit/FunctionTypeBindingUnderscore");
     alpha_norm!(unit_FunctionTypeBindingX, "unit/FunctionTypeBindingX");

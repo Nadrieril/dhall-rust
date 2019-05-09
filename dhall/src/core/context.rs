@@ -44,7 +44,7 @@ impl<T> Context<T> {
         vec.push((x.clone(), CtxItem::Replaced(th, t)));
         Context(Rc::new(vec))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<CtxItem<T>>
+    pub(crate) fn lookup(&self, var: &V<Label>) -> Result<CtxItem<T>, V<Label>>
     where
         T: Clone + Shift,
     {
@@ -52,7 +52,7 @@ impl<T> Context<T> {
         let mut shift_map: HashMap<Label, _> = HashMap::new();
         for (l, i) in self.0.iter().rev() {
             if var == l.into() {
-                return Some(i.shift0_multiple(&shift_map));
+                return Ok(i.shift0_multiple(&shift_map));
             } else {
                 var = var.shift(-1, &l.into());
             }
@@ -60,7 +60,8 @@ impl<T> Context<T> {
                 *shift_map.entry(l.clone()).or_insert(0) += 1;
             }
         }
-        None
+        // Free variable
+        Err(var)
     }
     /// Given a var that makes sense in the current context, map the given function in such a way
     /// that the passed variable always makes sense in the context of the passed item.
@@ -117,10 +118,9 @@ impl NormalizationContext {
     }
     pub(crate) fn lookup(&self, var: &V<Label>) -> Value {
         match self.0.lookup(var) {
-            Some(CtxItem::Replaced(t, ())) => t.to_value(),
-            Some(CtxItem::Kept(newvar, ())) => Value::Var(newvar.clone()),
-            // Free variable
-            None => Value::Var(AlphaVar::from_var(var.clone())),
+            Ok(CtxItem::Replaced(t, ())) => t.to_value(),
+            Ok(CtxItem::Kept(newvar, ())) => Value::Var(newvar.clone()),
+            Err(var) => Value::Var(AlphaVar::from_var(var)),
         }
     }
 }
@@ -145,14 +145,14 @@ impl TypecheckContext {
     }
     pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Typed> {
         match self.0.lookup(var) {
-            Some(CtxItem::Kept(newvar, t)) => Some(Typed::from_thunk_and_type(
+            Ok(CtxItem::Kept(newvar, t)) => Some(Typed::from_thunk_and_type(
                 Thunk::from_value(Value::Var(newvar.clone())),
                 t.clone(),
             )),
-            Some(CtxItem::Replaced(th, t)) => {
+            Ok(CtxItem::Replaced(th, t)) => {
                 Some(Typed::from_thunk_and_type(th.clone(), t.clone()))
             }
-            None => None,
+            Err(_) => None,
         }
     }
 }
