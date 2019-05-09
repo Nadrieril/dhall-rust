@@ -49,8 +49,7 @@ pub enum Typed {
 #[derive(Debug, Clone)]
 pub struct Normalized(Typed);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type(Typed);
+pub type Type = Typed;
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -119,7 +118,7 @@ impl Typed {
         Typed::Const(c)
     }
     pub fn from_value_untyped(v: Value) -> Self {
-        Typed::Untyped(Thunk::from_value(v))
+        Typed::from_thunk_untyped(Thunk::from_value(v))
     }
     pub fn from_normalized_expr_untyped(e: NormalizedSubExpr) -> Self {
         Typed::from_thunk_untyped(Thunk::from_normalized_expr(e))
@@ -148,8 +147,19 @@ impl Typed {
     pub fn to_type(&self) -> Type {
         self.clone().into_type()
     }
+    // Deprecated
     pub fn into_type(self) -> Type {
-        Type(self)
+        self
+    }
+    pub fn to_normalized(&self) -> Normalized {
+        self.clone().normalize()
+    }
+    pub fn as_const(&self) -> Option<Const> {
+        // TODO: avoid clone
+        match &self.to_value() {
+            Value::Const(c) => Some(*c),
+            _ => None,
+        }
     }
 
     pub fn normalize_mut(&mut self) {
@@ -168,36 +178,6 @@ impl Typed {
             Typed::Typed(_, t) => Ok(Cow::Borrowed(t)),
             Typed::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
         }
-    }
-}
-
-impl Type {
-    // Deprecated
-    pub fn to_normalized(&self) -> Normalized {
-        self.0.clone().normalize()
-    }
-    pub fn to_expr(&self) -> NormalizedSubExpr {
-        self.0.to_expr()
-    }
-    pub fn to_value(&self) -> Value {
-        self.0.to_value()
-    }
-    pub fn to_typed(&self) -> Typed {
-        self.0.clone()
-    }
-    pub fn as_const(&self) -> Option<Const> {
-        // TODO: avoid clone
-        match &self.to_value() {
-            Value::Const(c) => Some(*c),
-            _ => None,
-        }
-    }
-    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
-    }
-
-    pub fn from_const(c: Const) -> Self {
-        Type(Typed::from_const(c))
     }
 }
 
@@ -220,9 +200,6 @@ impl Normalized {
     pub fn into_typed(self) -> Typed {
         self.0
     }
-    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
-    }
 }
 
 impl Shift for Typed {
@@ -235,12 +212,6 @@ impl Shift for Typed {
             ),
             Typed::Const(c) => Typed::Const(*c),
         })
-    }
-}
-
-impl Shift for Type {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(Type(self.0.shift(delta, var)?))
     }
 }
 
@@ -260,12 +231,6 @@ impl Subst<Typed> for Typed {
             ),
             Typed::Const(c) => Typed::Const(*c),
         }
-    }
-}
-
-impl Subst<Typed> for Type {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(self.0.subst_shift(var, val))
     }
 }
 
@@ -304,11 +269,5 @@ impl PartialEq for Typed {
 impl Display for Typed {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
-    }
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.to_normalized().fmt(f)
     }
 }

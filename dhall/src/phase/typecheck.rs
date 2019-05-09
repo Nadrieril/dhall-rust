@@ -47,7 +47,7 @@ fn tck_pi_type(
         _ => {
             return Err(TypeError::new(
                 ctx,
-                InvalidInputType(tx.clone().to_normalized()),
+                InvalidInputType(tx.to_normalized()),
             ))
         }
     };
@@ -57,9 +57,7 @@ fn tck_pi_type(
         _ => {
             return Err(TypeError::new(
                 &ctx2,
-                InvalidOutputType(
-                    te.clone().to_normalized().get_type()?.to_normalized(),
-                ),
+                InvalidOutputType(te.get_type()?.to_normalized()),
             ))
         }
     };
@@ -70,8 +68,8 @@ fn tck_pi_type(
             return Err(TypeError::new(
                 ctx,
                 NoDependentTypes(
-                    tx.clone().to_normalized(),
-                    te.clone().to_normalized().get_type()?.to_normalized(),
+                    tx.to_normalized(),
+                    te.get_type()?.to_normalized(),
                 ),
             ))
         }
@@ -171,7 +169,7 @@ fn tck_list_type(ctx: &TypecheckContext, t: Type) -> Result<Typed, TypeError> {
     use crate::error::TypeMessage::*;
     ensure_simple_type!(
         t,
-        TypeError::new(ctx, InvalidListType(t.clone().to_normalized())),
+        TypeError::new(ctx, InvalidListType(t.to_normalized())),
     );
     Ok(Typed::from_thunk_and_type(
         Value::from_builtin(Builtin::List)
@@ -188,7 +186,7 @@ fn tck_optional_type(
     use crate::error::TypeMessage::*;
     ensure_simple_type!(
         t,
-        TypeError::new(ctx, InvalidOptionalType(t.clone().to_normalized())),
+        TypeError::new(ctx, InvalidOptionalType(t.to_normalized())),
     );
     Ok(Typed::from_thunk_and_type(
         Value::from_builtin(Builtin::Optional)
@@ -451,11 +449,7 @@ fn type_last_layer(
                 _ => return Err(mkerr(NotAFunction(f.clone()))),
             };
             ensure_equal!(a.get_type()?, &tx, {
-                mkerr(TypeMismatch(
-                    f.clone(),
-                    tx.clone().to_normalized(),
-                    a.clone(),
-                ))
+                mkerr(TypeMismatch(f.clone(), tx.to_normalized(), a.clone()))
             });
 
             Ok(RetTypeOnly(tb.subst_shift(&x.into(), &a)))
@@ -671,47 +665,44 @@ fn type_last_layer(
 
             let mut inferred_type = None;
             for (x, handler) in handlers.iter() {
-                let handler_return_type =
-                    match variants.get(x) {
-                        // Union alternative with type
-                        Some(Some(variant_type)) => {
-                            let variant_type = variant_type.to_type();
-                            let handler_type = handler.to_type();
-                            let (x, tx, tb) = match &handler_type.to_value() {
-                                Value::Pi(x, tx, tb) => {
-                                    (x.clone(), tx.to_type(), tb.to_type())
-                                }
-                                _ => {
-                                    return Err(mkerr(NotAFunction(
-                                        handler_type.to_typed(),
-                                    )))
-                                }
-                            };
+                let handler_return_type = match variants.get(x) {
+                    // Union alternative with type
+                    Some(Some(variant_type)) => {
+                        let variant_type = variant_type.to_type();
+                        let handler_type = handler.to_type();
+                        let (x, tx, tb) = match &handler_type.to_value() {
+                            Value::Pi(x, tx, tb) => {
+                                (x.clone(), tx.to_type(), tb.to_type())
+                            }
+                            _ => return Err(mkerr(NotAFunction(handler_type))),
+                        };
 
-                            ensure_equal!(&variant_type, &tx, {
-                                mkerr(TypeMismatch(
-                                    handler_type.to_typed(),
-                                    tx.clone().to_normalized(),
-                                    variant_type.to_typed(),
-                                ))
-                            });
+                        ensure_equal!(&variant_type, &tx, {
+                            mkerr(TypeMismatch(
+                                handler_type,
+                                tx.to_normalized(),
+                                variant_type,
+                            ))
+                        });
 
-                            // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
-                            match tb.over_binder(x) {
-                                Some(x) => x,
-                                None => return Err(mkerr(
+                        // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
+                        match tb.over_binder(x) {
+                            Some(x) => x,
+                            None => {
+                                return Err(mkerr(
                                     MergeHandlerReturnTypeMustNotBeDependent,
-                                )),
+                                ))
                             }
                         }
-                        // Union alternative without type
-                        Some(None) => handler.to_type(),
-                        None => {
-                            return Err(mkerr(MergeHandlerMissingVariant(
-                                x.clone(),
-                            )))
-                        }
-                    };
+                    }
+                    // Union alternative without type
+                    Some(None) => handler.to_type(),
+                    None => {
+                        return Err(mkerr(MergeHandlerMissingVariant(
+                            x.clone(),
+                        )))
+                    }
+                };
                 match &inferred_type {
                     None => inferred_type = Some(handler_return_type),
                     Some(t) => {

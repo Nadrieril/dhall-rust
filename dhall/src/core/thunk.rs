@@ -198,7 +198,7 @@ impl TypeThunk {
     }
 
     pub fn from_type(t: Type) -> TypeThunk {
-        TypeThunk(t.to_typed())
+        TypeThunk(t)
     }
 
     pub fn normalize_mut(&mut self) {
