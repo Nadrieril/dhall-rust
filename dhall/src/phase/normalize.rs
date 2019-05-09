@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
+    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents,
     NaiveDouble, X,
 };
 
@@ -356,12 +356,11 @@ pub(crate) fn normalize_whnf(
     }
 
     // Thunk subexpressions
-    let expr: ExprF<Thunk, Label, X> =
+    let expr: ExprF<Thunk, X> =
         expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| Thunk::new(ctx.clone(), e.clone()),
             |x, e| Thunk::new(ctx.skip(x), e.clone()),
             |_| unreachable!(),
-            Label::clone,
         );
 
     normalize_one_layer(expr)
@@ -372,7 +371,7 @@ enum Ret<'a> {
     RetValue(Value),
     RetThunk(Thunk),
     RetThunkRef(&'a Thunk),
-    RetExpr(ExprF<Thunk, Label, X>),
+    RetExpr(ExprF<Thunk, X>),
 }
 
 fn merge_maps<K, V>(
@@ -521,7 +520,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     })
 }
 
-pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
+pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
     use Ret::{RetExpr, RetThunk, RetThunkRef, RetValue};
     use Value::{
         BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam,

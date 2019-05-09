@@ -16,41 +16,37 @@ pub trait GenericVisitor<Input, Return>: Sized {
 /// or just one, and Rust is ok with either. See for example TraverseRefVisitor
 /// and TraverseEmbedVisitor.
 /// This is very generic. For a more legible trait, see ExprFInFallibleVisitor
-pub trait ExprFVeryGenericVisitor<'a, Ret, SE1, L1, E1>: Sized {
+pub trait ExprFVeryGenericVisitor<'a, Ret, SE1, E1>: Sized {
     type Error;
     type SE2;
-    type L2;
     type E2;
 
     fn visit_subexpr(
         &mut self,
         subexpr: &'a SE1,
     ) -> Result<Self::SE2, Self::Error>;
-    fn visit_label(&mut self, label: &'a L1) -> Result<Self::L2, Self::Error>;
 
-    fn visit_binder(
+    fn visit_subexpr_under_binder(
         self,
-        label: &'a L1,
+        label: &'a Label,
         subexpr: &'a SE1,
-    ) -> Result<(Self::L2, Self::SE2), Self::Error>;
+    ) -> Result<Self::SE2, Self::Error>;
 
     fn visit_embed_squash(self, embed: &'a E1) -> Result<Ret, Self::Error>;
 
     // Called with the result of the map, in the non-embed case.
     // Useful to change the result type, and/or avoid some loss of info
     fn visit_resulting_exprf(
-        result: ExprF<Self::SE2, Self::L2, Self::E2>,
+        result: ExprF<Self::SE2, Self::E2>,
     ) -> Result<Ret, Self::Error>;
 }
 
-impl<'a, T, Ret, SE1, L1, E1>
-    GenericVisitor<&'a ExprF<SE1, L1, E1>, Result<Ret, T::Error>> for T
+impl<'a, T, Ret, SE1, E1>
+    GenericVisitor<&'a ExprF<SE1, E1>, Result<Ret, T::Error>> for T
 where
-    L1: Ord,
-    T::L2: Ord,
-    T: ExprFVeryGenericVisitor<'a, Ret, SE1, L1, E1>,
+    T: ExprFVeryGenericVisitor<'a, Ret, SE1, E1>,
 {
-    fn visit(self, input: &'a ExprF<SE1, L1, E1>) -> Result<Ret, T::Error> {
+    fn visit(self, input: &'a ExprF<SE1, E1>) -> Result<Ret, T::Error> {
         fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
             x: &'a [T],
             f: F,
@@ -66,32 +62,28 @@ where
                 None => None,
             })
         }
-        fn vecmap<'a, V, Ret, SE, L, E>(
-            x: &'a Vec<(L, SE)>,
+        fn vecmap<'a, V, Ret, SE, E>(
+            x: &'a Vec<(Label, SE)>,
             mut v: V,
-        ) -> Result<Vec<(V::L2, V::SE2)>, V::Error>
+        ) -> Result<Vec<(Label, V::SE2)>, V::Error>
         where
-            L: Ord,
-            V::L2: Ord,
-            V: ExprFVeryGenericVisitor<'a, Ret, SE, L, E>,
+            V: ExprFVeryGenericVisitor<'a, Ret, SE, E>,
         {
             x.iter()
-                .map(|(k, x)| Ok((v.visit_label(k)?, v.visit_subexpr(x)?)))
+                .map(|(k, x)| Ok((k.clone(), v.visit_subexpr(x)?)))
                 .collect()
         }
-        fn vecoptmap<'a, V, Ret, SE, L, E>(
-            x: &'a Vec<(L, Option<SE>)>,
+        fn vecoptmap<'a, V, Ret, SE, E>(
+            x: &'a Vec<(Label, Option<SE>)>,
             mut v: V,
-        ) -> Result<Vec<(V::L2, Option<V::SE2>)>, V::Error>
+        ) -> Result<Vec<(Label, Option<V::SE2>)>, V::Error>
         where
-            L: Ord,
-            V::L2: Ord,
-            V: ExprFVeryGenericVisitor<'a, Ret, SE, L, E>,
+            V: ExprFVeryGenericVisitor<'a, Ret, SE, E>,
         {
             x.iter()
                 .map(|(k, x)| {
                     Ok((
-                        v.visit_label(k)?,
+                        k.clone(),
                         match x {
                             Some(x) => Some(v.visit_subexpr(x)?),
                             None => None,
@@ -104,22 +96,22 @@ where
         let mut v = self;
         use crate::ExprF::*;
         T::visit_resulting_exprf(match input {
-            Var(V(l, n)) => Var(V(v.visit_label(l)?, *n)),
+            Var(v) => Var(v.clone()),
             Lam(l, t, e) => {
                 let t = v.visit_subexpr(t)?;
-                let (l, e) = v.visit_binder(l, e)?;
-                Lam(l, t, e)
+                let e = v.visit_subexpr_under_binder(l, e)?;
+                Lam(l.clone(), t, e)
             }
             Pi(l, t, e) => {
                 let t = v.visit_subexpr(t)?;
-                let (l, e) = v.visit_binder(l, e)?;
-                Pi(l, t, e)
+                let e = v.visit_subexpr_under_binder(l, e)?;
+                Pi(l.clone(), t, e)
             }
             Let(l, t, a, e) => {
                 let t = opt(t, &mut |e| v.visit_subexpr(e))?;
                 let a = v.visit_subexpr(a)?;
-                let (l, e) = v.visit_binder(l, e)?;
-                Let(l, t, a, e)
+                let e = v.visit_subexpr_under_binder(l, e)?;
+                Let(l.clone(), t, a, e)
             }
             App(f, a) => App(v.visit_subexpr(f)?, v.visit_subexpr(a)?),
             Annot(x, t) => Annot(v.visit_subexpr(x)?, v.visit_subexpr(t)?),
@@ -148,20 +140,16 @@ where
             RecordType(kts) => RecordType(vecmap(kts, v)?),
             RecordLit(kvs) => RecordLit(vecmap(kvs, v)?),
             UnionType(kts) => UnionType(vecoptmap(kts, v)?),
-            UnionLit(k, x, kts) => UnionLit(
-                v.visit_label(k)?,
-                v.visit_subexpr(x)?,
-                vecoptmap(kts, v)?,
-            ),
+            UnionLit(k, x, kts) => {
+                UnionLit(k.clone(), v.visit_subexpr(x)?, vecoptmap(kts, v)?)
+            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,
                 opt(t, |e| v.visit_subexpr(e))?,
             ),
-            Field(e, l) => Field(v.visit_subexpr(e)?, v.visit_label(l)?),
-            Projection(e, ls) => {
-                Projection(v.visit_subexpr(e)?, vec(ls, |l| v.visit_label(l))?)
-            }
+            Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
+            Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
             Embed(a) => return v.visit_embed_squash(a),
         })
     }
@@ -169,48 +157,35 @@ where
 
 /// Like ExprFVeryGenericVisitor, but sets the return
 /// type to ExprF<_>
-pub trait ExprFFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2>: Sized {
+pub trait ExprFFallibleVisitor<'a, SE1, SE2, E1, E2>: Sized {
     type Error;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error>;
-    fn visit_label(&mut self, label: &'a L1) -> Result<L2, Self::Error>;
     fn visit_embed(self, embed: &'a E1) -> Result<E2, Self::Error>;
 
     fn visit_subexpr_under_binder(
         mut self,
-        _label: &'a L1,
+        _label: &'a Label,
         subexpr: &'a SE1,
     ) -> Result<SE2, Self::Error> {
         self.visit_subexpr(subexpr)
     }
 
-    fn visit_binder(
-        mut self,
-        label: &'a L1,
-        subexpr: &'a SE1,
-    ) -> Result<(L2, SE2), Self::Error> {
-        Ok((
-            self.visit_label(label)?,
-            self.visit_subexpr_under_binder(label, subexpr)?,
-        ))
-    }
-
     fn visit_embed_squash(
         self,
         embed: &'a E1,
-    ) -> Result<ExprF<SE2, L2, E2>, Self::Error> {
+    ) -> Result<ExprF<SE2, E2>, Self::Error> {
         Ok(ExprF::Embed(self.visit_embed(embed)?))
     }
 }
 
-impl<'a, T, SE1, SE2, L1, L2, E1, E2>
-    ExprFVeryGenericVisitor<'a, ExprF<SE2, L2, E2>, SE1, L1, E1> for T
+impl<'a, T, SE1, SE2, E1, E2>
+    ExprFVeryGenericVisitor<'a, ExprF<SE2, E2>, SE1, E1> for T
 where
-    T: ExprFFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2>,
+    T: ExprFFallibleVisitor<'a, SE1, SE2, E1, E2>,
 {
     type Error = T::Error;
     type SE2 = SE2;
-    type L2 = L2;
     type E2 = E2;
 
     fn visit_subexpr(
@@ -220,127 +195,105 @@ where
         self.visit_subexpr(subexpr)
     }
 
-    fn visit_label(&mut self, label: &'a L1) -> Result<Self::L2, Self::Error> {
-        self.visit_label(label)
-    }
-
-    fn visit_binder(
+    fn visit_subexpr_under_binder(
         self,
-        label: &'a L1,
+        label: &'a Label,
         subexpr: &'a SE1,
-    ) -> Result<(Self::L2, Self::SE2), Self::Error> {
-        self.visit_binder(label, subexpr)
+    ) -> Result<Self::SE2, Self::Error> {
+        self.visit_subexpr_under_binder(label, subexpr)
     }
 
     fn visit_embed_squash(
         self,
         embed: &'a E1,
-    ) -> Result<ExprF<SE2, L2, E2>, Self::Error> {
+    ) -> Result<ExprF<SE2, E2>, Self::Error> {
         self.visit_embed_squash(embed)
     }
 
     // Called with the result of the map, in the non-embed case.
     // Useful to change the result type, and/or avoid some loss of info
     fn visit_resulting_exprf(
-        result: ExprF<Self::SE2, Self::L2, Self::E2>,
-    ) -> Result<ExprF<SE2, L2, E2>, Self::Error> {
+        result: ExprF<Self::SE2, Self::E2>,
+    ) -> Result<ExprF<SE2, E2>, Self::Error> {
         Ok(result)
     }
 }
 
 /// Like ExprFFallibleVisitor, but without the error handling.
-pub trait ExprFInFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2>: Sized {
+pub trait ExprFInFallibleVisitor<'a, SE1, SE2, E1, E2>: Sized {
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> SE2;
-    fn visit_label(&mut self, label: &'a L1) -> L2;
     fn visit_embed(self, embed: &'a E1) -> E2;
 
     fn visit_subexpr_under_binder(
         mut self,
-        _label: &'a L1,
+        _label: &'a Label,
         subexpr: &'a SE1,
     ) -> SE2 {
         self.visit_subexpr(subexpr)
     }
 
-    fn visit_binder(mut self, label: &'a L1, subexpr: &'a SE1) -> (L2, SE2) {
-        (
-            self.visit_label(label),
-            self.visit_subexpr_under_binder(label, subexpr),
-        )
-    }
-
-    fn visit_embed_squash(self, embed: &'a E1) -> ExprF<SE2, L2, E2> {
+    fn visit_embed_squash(self, embed: &'a E1) -> ExprF<SE2, E2> {
         ExprF::Embed(self.visit_embed(embed))
     }
 }
 
 struct InfallibleWrapper<T>(T);
 
-impl<'a, T, SE1, SE2, L1, L2, E1, E2>
-    ExprFFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2> for InfallibleWrapper<T>
+impl<'a, T, SE1, SE2, E1, E2> ExprFFallibleVisitor<'a, SE1, SE2, E1, E2>
+    for InfallibleWrapper<T>
 where
-    T: ExprFInFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2>,
+    T: ExprFInFallibleVisitor<'a, SE1, SE2, E1, E2>,
 {
     type Error = X;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error> {
         Ok(self.0.visit_subexpr(subexpr))
     }
-    fn visit_label(&mut self, label: &'a L1) -> Result<L2, Self::Error> {
-        Ok(self.0.visit_label(label))
-    }
     fn visit_embed(self, embed: &'a E1) -> Result<E2, Self::Error> {
         Ok(self.0.visit_embed(embed))
     }
 
-    fn visit_binder(
+    fn visit_subexpr_under_binder(
         self,
-        label: &'a L1,
+        label: &'a Label,
         subexpr: &'a SE1,
-    ) -> Result<(L2, SE2), Self::Error> {
-        Ok(self.0.visit_binder(label, subexpr))
+    ) -> Result<SE2, Self::Error> {
+        Ok(self.0.visit_subexpr_under_binder(label, subexpr))
     }
 
     fn visit_embed_squash(
         self,
         embed: &'a E1,
-    ) -> Result<ExprF<SE2, L2, E2>, Self::Error> {
+    ) -> Result<ExprF<SE2, E2>, Self::Error> {
         Ok(self.0.visit_embed_squash(embed))
     }
 }
 
-impl<'a, T, SE1, SE2, L1, L2, E1, E2>
-    GenericVisitor<&'a ExprF<SE1, L1, E1>, ExprF<SE2, L2, E2>> for T
+impl<'a, T, SE1, SE2, E1, E2> GenericVisitor<&'a ExprF<SE1, E1>, ExprF<SE2, E2>>
+    for T
 where
-    L1: Ord,
-    L2: Ord,
-    T: ExprFInFallibleVisitor<'a, SE1, SE2, L1, L2, E1, E2>,
+    T: ExprFInFallibleVisitor<'a, SE1, SE2, E1, E2>,
 {
-    fn visit(self, input: &'a ExprF<SE1, L1, E1>) -> ExprF<SE2, L2, E2> {
+    fn visit(self, input: &'a ExprF<SE1, E1>) -> ExprF<SE2, E2> {
         trivial_result(InfallibleWrapper(self).visit(input))
     }
 }
 
-pub struct TraverseRefWithBindersVisitor<F1, F2, F4, F5> {
+pub struct TraverseRefWithBindersVisitor<F1, F2, F4> {
     pub visit_subexpr: F1,
     pub visit_under_binder: F2,
     pub visit_embed: F4,
-    pub visit_label: F5,
 }
 
-impl<'a, SE, L, E, SE2, L2, E2, Err, F1, F2, F4, F5>
-    ExprFFallibleVisitor<'a, SE, SE2, L, L2, E, E2>
-    for TraverseRefWithBindersVisitor<F1, F2, F4, F5>
+impl<'a, SE, E, SE2, E2, Err, F1, F2, F4>
+    ExprFFallibleVisitor<'a, SE, SE2, E, E2>
+    for TraverseRefWithBindersVisitor<F1, F2, F4>
 where
     SE: 'a,
-    L: 'a,
     E: 'a,
-    L: Ord,
-    L2: Ord,
     F1: FnMut(&'a SE) -> Result<SE2, Err>,
-    F2: FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
+    F2: FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
     F4: FnOnce(&'a E) -> Result<E2, Err>,
-    F5: FnMut(&'a L) -> Result<L2, Err>,
 {
     type Error = Err;
 
@@ -349,7 +302,7 @@ where
     }
     fn visit_subexpr_under_binder(
         self,
-        label: &'a L,
+        label: &'a Label,
         subexpr: &'a SE,
     ) -> Result<SE2, Self::Error> {
         (self.visit_under_binder)(label, subexpr)
@@ -357,29 +310,20 @@ where
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
         (self.visit_embed)(embed)
     }
-    fn visit_label(&mut self, label: &'a L) -> Result<L2, Self::Error> {
-        (self.visit_label)(label)
-    }
 }
 
-pub struct TraverseRefVisitor<F1, F3, F4> {
+pub struct TraverseRefVisitor<F1, F3> {
     pub visit_subexpr: F1,
     pub visit_embed: F3,
-    pub visit_label: F4,
 }
 
-impl<'a, SE, L, E, SE2, L2, E2, Err, F1, F3, F4>
-    ExprFFallibleVisitor<'a, SE, SE2, L, L2, E, E2>
-    for TraverseRefVisitor<F1, F3, F4>
+impl<'a, SE, E, SE2, E2, Err, F1, F3> ExprFFallibleVisitor<'a, SE, SE2, E, E2>
+    for TraverseRefVisitor<F1, F3>
 where
     SE: 'a,
-    L: 'a,
     E: 'a,
-    L: Ord,
-    L2: Ord,
     F1: FnMut(&'a SE) -> Result<SE2, Err>,
     F3: FnOnce(&'a E) -> Result<E2, Err>,
-    F4: FnMut(&'a L) -> Result<L2, Err>,
 {
     type Error = Err;
 
@@ -389,15 +333,12 @@ where
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
         (self.visit_embed)(embed)
     }
-    fn visit_label(&mut self, label: &'a L) -> Result<L2, Self::Error> {
-        (self.visit_label)(label)
-    }
 }
 
 pub struct TraverseEmbedVisitor<F1>(pub F1);
 
 impl<'a, 'b, N, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, Label, Label, E, E2>
+    ExprFFallibleVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, E, E2>
     for &'b mut TraverseEmbedVisitor<F1>
 where
     N: Clone + 'a,
@@ -414,15 +355,12 @@ where
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
         (self.0)(embed)
     }
-    fn visit_label(&mut self, label: &'a Label) -> Result<Label, Self::Error> {
-        Ok(Label::clone(label))
-    }
 }
 
 pub struct NoteAbsurdVisitor;
 
 impl<'a, 'b, N, E>
-    ExprFInFallibleVisitor<'a, SubExpr<X, E>, SubExpr<N, E>, Label, Label, E, E>
+    ExprFInFallibleVisitor<'a, SubExpr<X, E>, SubExpr<N, E>, E, E>
     for &'b mut NoteAbsurdVisitor
 where
     E: Clone + 'a,
@@ -433,15 +371,12 @@ where
     fn visit_embed(self, embed: &'a E) -> E {
         E::clone(embed)
     }
-    fn visit_label(&mut self, label: &'a Label) -> Label {
-        Label::clone(label)
-    }
 }
 
 pub struct AbsurdVisitor;
 
 impl<'a, 'b, N, E>
-    ExprFInFallibleVisitor<'a, SubExpr<X, X>, SubExpr<N, E>, Label, Label, X, E>
+    ExprFInFallibleVisitor<'a, SubExpr<X, X>, SubExpr<N, E>, X, E>
     for &'b mut AbsurdVisitor
 {
     fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X, X>) -> SubExpr<N, E> {
@@ -449,8 +384,5 @@ impl<'a, 'b, N, E>
     }
     fn visit_embed(self, embed: &'a X) -> E {
         match *embed {}
-    }
-    fn visit_label(&mut self, label: &'a Label) -> Label {
-        Label::clone(label)
     }
 }

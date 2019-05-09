@@ -3,7 +3,7 @@ use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
-impl<SE: Display + Clone, E: Display> Display for ExprF<SE, Label, E> {
+impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::ExprF::*;
         match self {
@@ -202,7 +202,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             f.write_str("(")?;
         }
 
-        // Uses the ExprF<PhasedExpr<_>, _, _, _> instance
+        // Uses the ExprF<PhasedExpr<_>, _> instance
         phased_self.fmt(f)?;
 
         if needs_paren {

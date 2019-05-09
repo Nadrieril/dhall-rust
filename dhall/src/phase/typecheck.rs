@@ -421,7 +421,6 @@ fn type_with(
                     |e| type_with(ctx, e.clone()),
                     |_, _| unreachable!(),
                     |_| unreachable!(),
-                    |l| Ok(Label::clone(l)),
                 )?;
             let ret = type_last_layer(ctx, &expr)?;
             let ret = match ret {
@@ -449,7 +448,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: &ExprF<Typed, Label, X>,
+    e: &ExprF<Typed, X>,
 ) -> Result<Ret, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;

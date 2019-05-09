@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
-use dhall_syntax::{ExprF, Label, X};
+use dhall_syntax::{ExprF, X};
 
 use crate::core::context::NormalizationContext;
 use crate::core::context::TypecheckContext;
@@ -30,7 +30,7 @@ enum ThunkInternal {
     /// Partially normalized value whose subexpressions have been thunked (this is returned from
     /// typechecking). Note that this is different from `Value::PartialExpr` because there is no
     /// requirement of WHNF here.
-    PartialExpr(ExprF<Thunk, Label, X>),
+    PartialExpr(ExprF<Thunk, X>),
     /// Partially normalized value.
     /// Invariant: if the marker is `NF`, the value must be fully normalized
     Value(Marker, Value),
@@ -121,7 +121,7 @@ impl Thunk {
         Thunk::new(NormalizationContext::new(), e.absurd())
     }
 
-    pub(crate) fn from_partial_expr(e: ExprF<Thunk, Label, X>) -> Thunk {
+    pub(crate) fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }
 
@@ -280,7 +280,6 @@ impl Shift for ThunkInternal {
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
                     |x| Ok(X::clone(x)),
-                    |l| Ok(Label::clone(l)),
                 )?,
             ),
             ThunkInternal::Value(m, v) => {
@@ -322,7 +321,6 @@ impl Subst<Typed> for ThunkInternal {
                         )
                     },
                     X::clone,
-                    Label::clone,
                 ),
             ),
             ThunkInternal::Value(_, v) => {

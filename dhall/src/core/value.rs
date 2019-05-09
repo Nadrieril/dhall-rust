@@ -58,7 +58,7 @@ pub(crate) enum Value {
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
     // Invariant: this must not contain a value captured by one of the variants above.
-    PartialExpr(ExprF<Thunk, Label, X>),
+    PartialExpr(ExprF<Thunk, X>),
 }
 
 impl Value {
@@ -433,7 +433,6 @@ impl Shift for Value {
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
                     |x| Ok(X::clone(x)),
-                    |l| Ok(Label::clone(l)),
                 )?,
             ),
         })
@@ -459,7 +458,6 @@ impl Subst<Typed> for Value {
                         )
                     },
                     X::clone,
-                    Label::clone,
                 ))
             }
             // Retry normalizing since substituting may allow progress

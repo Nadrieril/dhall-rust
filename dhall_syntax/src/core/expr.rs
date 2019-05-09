@@ -150,14 +150,14 @@ impl<Note, Embed: PartialEq> std::cmp::PartialEq for SubExpr<Note, Embed> {
 
 impl<Note, Embed: Eq> std::cmp::Eq for SubExpr<Note, Embed> {}
 
-pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Label, Embed>;
+pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExprF<SubExpr, Label, Embed> {
+pub enum ExprF<SubExpr, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
@@ -218,110 +218,79 @@ pub enum ExprF<SubExpr, Label, Embed> {
     Embed(Embed),
 }
 
-impl<SE, L, E> ExprF<SE, L, E> {
+impl<SE, E> ExprF<SE, E> {
     pub(crate) fn visit<'a, V, Return>(&'a self, v: V) -> Return
     where
-        V: visitor::GenericVisitor<&'a ExprF<SE, L, E>, Return>,
+        V: visitor::GenericVisitor<&'a ExprF<SE, E>, Return>,
     {
         v.visit(self)
     }
 
-    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, L2, E2, Err>(
+    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, E2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-        visit_under_binder: impl FnOnce(&'a L, &'a SE) -> Result<SE2, Err>,
+        visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
         visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
-        visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
-    ) -> Result<ExprF<SE2, L2, E2>, Err>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> Result<ExprF<SE2, E2>, Err> {
         self.visit(visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
             visit_embed,
-            visit_label,
         })
     }
 
-    fn traverse_ref<'a, SE2, L2, E2, Err>(
+    fn traverse_ref<'a, SE2, E2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
-        visit_label: impl FnMut(&'a L) -> Result<L2, Err>,
-    ) -> Result<ExprF<SE2, L2, E2>, Err>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> Result<ExprF<SE2, E2>, Err> {
         self.visit(visitor::TraverseRefVisitor {
             visit_subexpr,
             visit_embed,
-            visit_label,
         })
     }
 
-    pub fn map_ref_with_special_handling_of_binders<'a, SE2, L2, E2>(
+    pub fn map_ref_with_special_handling_of_binders<'a, SE2, E2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-        mut map_under_binder: impl FnMut(&'a L, &'a SE) -> SE2,
+        mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
         map_embed: impl FnOnce(&'a E) -> E2,
-        mut map_label: impl FnMut(&'a L) -> L2,
-    ) -> ExprF<SE2, L2, E2>
-    where
-        L: Ord,
-        L2: Ord,
-    {
+    ) -> ExprF<SE2, E2> {
         trivial_result(self.traverse_ref_with_special_handling_of_binders(
             |x| Ok(map_subexpr(x)),
             |l, x| Ok(map_under_binder(l, x)),
             |x| Ok(map_embed(x)),
-            |x| Ok(map_label(x)),
         ))
     }
 
-    pub fn map_ref<'a, SE2, L2, E2>(
+    pub fn map_ref<'a, SE2, E2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         map_embed: impl FnOnce(&'a E) -> E2,
-        mut map_label: impl FnMut(&'a L) -> L2,
-    ) -> ExprF<SE2, L2, E2>
-    where
-        L: Ord,
-        L2: Ord,
-    {
-        trivial_result(self.traverse_ref(
-            |x| Ok(map_subexpr(x)),
-            |x| Ok(map_embed(x)),
-            |x| Ok(map_label(x)),
-        ))
+    ) -> ExprF<SE2, E2> {
+        trivial_result(
+            self.traverse_ref(|x| Ok(map_subexpr(x)), |x| Ok(map_embed(x))),
+        )
     }
 
     pub fn traverse_ref_simple<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprF<SE2, L, E>, Err>
+    ) -> Result<ExprF<SE2, E>, Err>
     where
-        L: Ord + Clone,
         E: Clone,
     {
-        self.traverse_ref(
-            visit_subexpr,
-            |x| Ok(E::clone(x)),
-            |x| Ok(L::clone(x)),
-        )
+        self.traverse_ref(visit_subexpr, |x| Ok(E::clone(x)))
     }
 
     pub fn map_ref_simple<'a, SE2>(
         &'a self,
         map_subexpr: impl Fn(&'a SE) -> SE2,
-    ) -> ExprF<SE2, L, E>
+    ) -> ExprF<SE2, E>
     where
-        L: Ord + Clone,
         E: Clone,
     {
-        self.map_ref(map_subexpr, E::clone, L::clone)
+        self.map_ref(map_subexpr, E::clone)
     }
 }
 
@@ -411,7 +380,6 @@ impl<N, E> SubExpr<N, E> {
                 map_expr,
                 map_under_binder,
                 |_| unreachable!(),
-                Label::clone,
             )),
         }
     }
