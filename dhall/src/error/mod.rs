@@ -72,6 +72,8 @@ pub(crate) enum TypeMessage {
     ProjectionMustBeRecord,
     ProjectionMissingEntry,
     Sort,
+    RecordTypeDuplicateField,
+    UnionTypeDuplicateField,
     Unimplemented,
 }
 

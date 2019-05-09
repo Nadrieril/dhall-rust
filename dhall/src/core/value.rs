@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use dhall_proc_macros as dhall;
 use dhall_syntax::{
@@ -49,11 +49,11 @@ pub(crate) enum Value {
     NEOptionalLit(Thunk),
     EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
-    RecordLit(BTreeMap<Label, Thunk>),
-    RecordType(BTreeMap<Label, TypeThunk>),
-    UnionType(BTreeMap<Label, Option<TypeThunk>>),
-    UnionConstructor(Label, BTreeMap<Label, Option<TypeThunk>>),
-    UnionLit(Label, Thunk, BTreeMap<Label, Option<TypeThunk>>),
+    RecordLit(HashMap<Label, Thunk>),
+    RecordType(HashMap<Label, TypeThunk>),
+    UnionType(HashMap<Label, Option<TypeThunk>>),
+    UnionConstructor(Label, HashMap<Label, Option<TypeThunk>>),
+    UnionLit(Label, Thunk, HashMap<Label, Option<TypeThunk>>),
     // Invariant: this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),

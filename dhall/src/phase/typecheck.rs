@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use dhall_proc_macros as dhall;
 use dhall_syntax::{
@@ -36,8 +36,8 @@ macro_rules! ensure_simple_type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeIntermediate {
     Pi(Label, Type, Type),
-    RecordType(BTreeMap<Label, Type>),
-    UnionType(BTreeMap<Label, Option<Type>>),
+    RecordType(Vec<(Label, Type)>),
+    UnionType(Vec<(Label, Option<Type>)>),
     ListType(Type),
     OptionalType(Type),
 }
@@ -102,6 +102,7 @@ impl TypeIntermediate {
                 )
             }
             TypeIntermediate::RecordType(kts) => {
+                let mut new_kts = HashMap::new();
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
@@ -115,23 +116,27 @@ impl TypeIntermediate {
                             ))
                         }
                     }
+                    use std::collections::hash_map::Entry;
+                    let entry = new_kts.entry(x.clone());
+                    match &entry {
+                        Entry::Occupied(_) => {
+                            return Err(mkerr(ctx, RecordTypeDuplicateField))
+                        }
+                        Entry::Vacant(_) => {
+                            entry.or_insert(TypeThunk::from_type(t.clone()))
+                        }
+                    };
                 }
                 // An empty record type has type Type
                 let k = k.unwrap_or(dhall_syntax::Const::Type);
 
                 Typed::from_thunk_and_type(
-                    Value::RecordType(
-                        kts.iter()
-                            .map(|(k, t)| {
-                                (k.clone(), TypeThunk::from_type(t.clone()))
-                            })
-                            .collect(),
-                    )
-                    .into_thunk(),
+                    Value::RecordType(new_kts).into_thunk(),
                     Type::from_const(k),
                 )
             }
             TypeIntermediate::UnionType(kts) => {
+                let mut new_kts = HashMap::new();
                 // Check that all types are the same const
                 let mut k = None;
                 for (x, t) in kts {
@@ -147,6 +152,16 @@ impl TypeIntermediate {
                             }
                         }
                     }
+                    use std::collections::hash_map::Entry;
+                    let entry = new_kts.entry(x.clone());
+                    match &entry {
+                        Entry::Occupied(_) => {
+                            return Err(mkerr(ctx, UnionTypeDuplicateField))
+                        }
+                        Entry::Vacant(_) => entry.or_insert(
+                            t.as_ref().map(|t| TypeThunk::from_type(t.clone())),
+                        ),
+                    };
                 }
 
                 // An empty union type has type Type;
@@ -154,19 +169,7 @@ impl TypeIntermediate {
                 let k = k.unwrap_or(dhall_syntax::Const::Type);
 
                 Typed::from_thunk_and_type(
-                    Value::UnionType(
-                        kts.iter()
-                            .map(|(k, t)| {
-                                (
-                                    k.clone(),
-                                    t.as_ref().map(|t| {
-                                        TypeThunk::from_type(t.clone())
-                                    }),
-                                )
-                            })
-                            .collect(),
-                    )
-                    .into_thunk(),
+                    Value::UnionType(new_kts).into_thunk(),
                     Type::from_const(k),
                 )
             }
@@ -546,14 +549,14 @@ fn type_last_layer(
             Ok(RetTypeIntermediate(TypeIntermediate::OptionalType(t)))
         }
         RecordType(kts) => {
-            let kts: BTreeMap<_, _> = kts
+            let kts = kts
                 .iter()
                 .map(|(x, t)| Ok((x.clone(), t.to_type())))
                 .collect::<Result<_, _>>()?;
             Ok(RetTyped(TypeIntermediate::RecordType(kts).typecheck(ctx)?))
         }
         UnionType(kts) => {
-            let kts: BTreeMap<_, _> = kts
+            let kts = kts
                 .iter()
                 .map(|(x, t)| {
                     Ok((
@@ -575,7 +578,7 @@ fn type_last_layer(
             Ok(RetTypeIntermediate(TypeIntermediate::RecordType(kts)))
         }
         UnionLit(x, v, kvs) => {
-            let mut kts: std::collections::BTreeMap<_, _> = kvs
+            let mut kts: Vec<_> = kvs
                 .iter()
                 .map(|(x, v)| {
                     let t = match v {
@@ -586,7 +589,7 @@ fn type_last_layer(
                 })
                 .collect::<Result<_, _>>()?;
             let t = v.get_type()?.into_owned();
-            kts.insert(x.clone(), Some(t));
+            kts.push((x.clone(), Some(t)));
             Ok(RetTypeIntermediate(TypeIntermediate::UnionType(kts)))
         }
         Field(r, x) => {
@@ -782,7 +785,7 @@ fn type_last_layer(
                 _ => return Err(mkerr(ProjectionMustBeRecord)),
             };
 
-            let mut new_kts = BTreeMap::new();
+            let mut new_kts = HashMap::new();
             for l in labels {
                 match kts.get(l) {
                     None => return Err(mkerr(ProjectionMissingEntry)),
@@ -1005,7 +1008,7 @@ mod spec_tests {
     tc_success!(tc_success_simple_unionsOfTypes, "simple/unionsOfTypes");
 
     tc_failure!(tc_failure_combineMixedRecords, "combineMixedRecords");
-    // tc_failure!(tc_failure_duplicateFields, "duplicateFields");
+    tc_failure!(tc_failure_duplicateFields, "duplicateFields");
     tc_failure!(tc_failure_hurkensParadox, "hurkensParadox");
     // tc_failure!(tc_failure_importBoundary, "importBoundary");
     tc_failure!(tc_failure_mixedUnions, "mixedUnions");

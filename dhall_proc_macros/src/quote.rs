@@ -3,7 +3,6 @@ use dhall_syntax::context::Context;
 use dhall_syntax::*;
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::collections::BTreeMap;
 
 pub fn expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_str = input.to_string();
@@ -201,25 +200,27 @@ where
     quote! { vec![ #(#e),* ] }
 }
 
-fn quote_map<TS>(m: BTreeMap<Label, TS>) -> TokenStream
+fn quote_map<TS>(m: impl IntoIterator<Item = (Label, TS)>) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
     let entries = m.into_iter().map(|(k, v)| {
         let k = quote_label(&k);
-        quote!(m.insert(#k, #v);)
+        quote!(m.push((#k, #v));)
     });
     quote! { {
-        use std::collections::BTreeMap;
-        let mut m = BTreeMap::new();
+        use std::vec::Vec;
+        let mut m = Vec::new();
         #( #entries )*
         m
     } }
 }
 
-fn quote_opt_map<TS>(m: BTreeMap<Label, Option<TS>>) -> TokenStream
+fn quote_opt_map<TS>(
+    m: impl IntoIterator<Item = (Label, Option<TS>)>,
+) -> TokenStream
 where
     TS: quote::ToTokens + std::fmt::Debug,
 {
-    quote_map(m.into_iter().map(|(k, v)| (k, quote_opt(v))).collect())
+    quote_map(m.into_iter().map(|(k, v)| (k, quote_opt(v))))
 }

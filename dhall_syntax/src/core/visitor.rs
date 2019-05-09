@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::*;
 
 /// A way too generic Visitor trait.
@@ -68,10 +66,10 @@ where
                 None => None,
             })
         }
-        fn btmap<'a, V, Ret, SE, L, E>(
-            x: &'a BTreeMap<L, SE>,
+        fn vecmap<'a, V, Ret, SE, L, E>(
+            x: &'a Vec<(L, SE)>,
             mut v: V,
-        ) -> Result<BTreeMap<V::L2, V::SE2>, V::Error>
+        ) -> Result<Vec<(V::L2, V::SE2)>, V::Error>
         where
             L: Ord,
             V::L2: Ord,
@@ -81,10 +79,10 @@ where
                 .map(|(k, x)| Ok((v.visit_label(k)?, v.visit_subexpr(x)?)))
                 .collect()
         }
-        fn btoptmap<'a, V, Ret, SE, L, E>(
-            x: &'a BTreeMap<L, Option<SE>>,
+        fn vecoptmap<'a, V, Ret, SE, L, E>(
+            x: &'a Vec<(L, Option<SE>)>,
             mut v: V,
-        ) -> Result<BTreeMap<V::L2, Option<V::SE2>>, V::Error>
+        ) -> Result<Vec<(V::L2, Option<V::SE2>)>, V::Error>
         where
             L: Ord,
             V::L2: Ord,
@@ -147,13 +145,13 @@ where
                 v.visit_subexpr(t)?,
             ),
             SomeLit(e) => SomeLit(v.visit_subexpr(e)?),
-            RecordType(kts) => RecordType(btmap(kts, v)?),
-            RecordLit(kvs) => RecordLit(btmap(kvs, v)?),
-            UnionType(kts) => UnionType(btoptmap(kts, v)?),
+            RecordType(kts) => RecordType(vecmap(kts, v)?),
+            RecordLit(kvs) => RecordLit(vecmap(kvs, v)?),
+            UnionType(kts) => UnionType(vecoptmap(kts, v)?),
             UnionLit(k, x, kts) => UnionLit(
                 v.visit_label(k)?,
                 v.visit_subexpr(x)?,
-                btoptmap(kts, v)?,
+                vecoptmap(kts, v)?,
             ),
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,

@@ -2,7 +2,6 @@ use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::Parser;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -887,29 +886,33 @@ make_parser! {
     ));
 
     rule!(empty_record_literal<ParsedSubExpr> as expression; span;
-        captured_str!(_) => spanned(span, RecordLit(BTreeMap::new()))
+        captured_str!(_) => spanned(span, RecordLit(Vec::new()))
     );
 
     rule!(empty_record_type<ParsedSubExpr> as expression; span;
-        captured_str!(_) => spanned(span, RecordType(BTreeMap::new()))
+        captured_str!(_) => spanned(span, RecordType(Vec::new()))
     );
 
     rule!(non_empty_record_type_or_literal<ParsedSubExpr> as expression; span;
           children!(
         [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
-            map.insert(first_label, first_expr);
+            map.push((first_label, first_expr));
+            // Sort until we stop using binary decode for parser tests
+            map.sort_by(|(l1, _), (l2, _)| l1.cmp(l2));
             spanned(span, RecordType(map))
         },
         [label(first_label), non_empty_record_literal(rest)] => {
             let (first_expr, mut map) = rest;
-            map.insert(first_label, first_expr);
+            map.push((first_label, first_expr));
+            // Sort until we stop using binary decode for parser tests
+            map.sort_by(|(l1, _), (l2, _)| l1.cmp(l2));
             spanned(span, RecordLit(map))
         },
     ));
 
     rule!(non_empty_record_type
-          <(ParsedSubExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedSubExpr, Vec<(Label, ParsedSubExpr)>)>; children!(
         [expression(expr), record_type_entry(entries)..] => {
             (expr, entries.collect())
         }
@@ -920,7 +923,7 @@ make_parser! {
     ));
 
     rule!(non_empty_record_literal
-          <(ParsedSubExpr, BTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedSubExpr, Vec<(Label, ParsedSubExpr)>)>; children!(
         [expression(expr), record_literal_entry(entries)..] => {
             (expr, entries.collect())
         }
@@ -932,12 +935,18 @@ make_parser! {
 
     rule!(union_type_or_literal<ParsedSubExpr> as expression; span; children!(
         [empty_union_type(_)] => {
-            spanned(span, UnionType(BTreeMap::new()))
+            spanned(span, UnionType(Vec::new()))
         },
         [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
+            let mut entries = entries;
+            // Sort until we stop using binary decode for parser tests
+            entries.sort_by(|(l1, _), (l2, _)| l1.cmp(l2));
             spanned(span, UnionLit(l, e, entries))
         },
         [non_empty_union_type_or_literal((None, entries))] => {
+            let mut entries = entries;
+            // Sort until we stop using binary decode for parser tests
+            entries.sort_by(|(l1, _), (l2, _)| l1.cmp(l2));
             spanned(span, UnionType(entries))
         },
     ));
@@ -946,20 +955,20 @@ make_parser! {
 
     rule!(non_empty_union_type_or_literal
           <(Option<(Label, ParsedSubExpr)>,
-            BTreeMap<Label, Option<ParsedSubExpr>>)>;
+            Vec<(Label, Option<ParsedSubExpr>)>)>;
             children!(
         [label(l), union_literal_variant_value((e, entries))] => {
             (Some((l, e)), entries)
         },
         [label(l), union_type_or_literal_variant_type((e, rest))] => {
             let (x, mut entries) = rest;
-            entries.insert(l, e);
+            entries.push((l, e));
             (x, entries)
         },
     ));
 
     rule!(union_literal_variant_value
-          <(ParsedSubExpr, BTreeMap<Label, Option<ParsedSubExpr>>)>;
+          <(ParsedSubExpr, Vec<(Label, Option<ParsedSubExpr>)>)>;
             children!(
         [expression(e), union_type_entry(entries)..] => {
             (e, entries.collect())
@@ -975,19 +984,19 @@ make_parser! {
     rule!(union_type_or_literal_variant_type
           <(Option<ParsedSubExpr>,
             (Option<(Label, ParsedSubExpr)>,
-             BTreeMap<Label, Option<ParsedSubExpr>>))>;
+             Vec<(Label, Option<ParsedSubExpr>)>))>;
                 children!(
         [expression(e), non_empty_union_type_or_literal(rest)] => {
             (Some(e), rest)
         },
         [expression(e)] => {
-            (Some(e), (None, BTreeMap::new()))
+            (Some(e), (None, Vec::new()))
         },
         [non_empty_union_type_or_literal(rest)] => {
             (None, rest)
         },
         [] => {
-            (None, (None, BTreeMap::new()))
+            (None, (None, Vec::new()))
         },
     ));
 

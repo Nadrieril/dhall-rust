@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::visitor;
@@ -202,13 +201,13 @@ pub enum ExprF<SubExpr, Label, Embed> {
     ///  `Some e`
     SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
-    RecordType(BTreeMap<Label, SubExpr>),
+    RecordType(Vec<(Label, SubExpr)>),
     ///  `{ k1 = v1, k2 = v2 }`
-    RecordLit(BTreeMap<Label, SubExpr>),
+    RecordLit(Vec<(Label, SubExpr)>),
     ///  `< k1 : t1, k2 >`
-    UnionType(BTreeMap<Label, Option<SubExpr>>),
+    UnionType(Vec<(Label, Option<SubExpr>)>),
     ///  `< k1 = t1, k2 : t2, k3 >`
-    UnionLit(Label, SubExpr, BTreeMap<Label, Option<SubExpr>>),
+    UnionLit(Label, SubExpr, Vec<(Label, Option<SubExpr>)>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use dhall_syntax::{
     BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
@@ -118,7 +118,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
         },
         (ListIndexed, [_, l, r..]) => match &*l.as_value() {
             EmptyListLit(t) => {
-                let mut kts = BTreeMap::new();
+                let mut kts = HashMap::new();
                 kts.insert(
                     "index".into(),
                     TypeThunk::from_value(Value::from_builtin(Natural)),
@@ -132,7 +132,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                     .enumerate()
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
-                        let mut kvs = BTreeMap::new();
+                        let mut kvs = HashMap::new();
                         kvs.insert("index".into(), Thunk::from_value(i));
                         kvs.insert("value".into(), e.clone());
                         Thunk::from_value(RecordLit(kvs))
@@ -376,15 +376,15 @@ enum Ret<'a> {
 }
 
 fn merge_maps<K, V>(
-    map1: &BTreeMap<K, V>,
-    map2: &BTreeMap<K, V>,
+    map1: &HashMap<K, V>,
+    map2: &HashMap<K, V>,
     mut f: impl FnMut(&V, &V) -> V,
-) -> BTreeMap<K, V>
+) -> HashMap<K, V>
 where
-    K: Ord + Clone,
+    K: std::hash::Hash + Eq + Clone,
     V: Clone,
 {
-    let mut kvs = BTreeMap::new();
+    let mut kvs = HashMap::new();
     for (x, v2) in map2 {
         let newv = if let Some(v1) = map1.get(x) {
             f(v1, v2)
@@ -619,7 +619,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Label, X>) -> Value {
         },
 
         ExprF::Projection(_, ls) if ls.is_empty() => {
-            RetValue(RecordLit(std::collections::BTreeMap::new()))
+            RetValue(RecordLit(HashMap::new()))
         }
         ExprF::Projection(ref v, ref ls) => {
             let v_borrow = v.as_value();
