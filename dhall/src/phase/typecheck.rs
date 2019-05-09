@@ -33,172 +33,169 @@ macro_rules! ensure_simple_type {
     }};
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TypeIntermediate {
-    Pi(Label, Type, Type),
-    RecordType(Vec<(Label, Type)>),
-    UnionType(Vec<(Label, Option<Type>)>),
-    ListType(Type),
-    OptionalType(Type),
+fn tck_pi_type(
+    ctx: &TypecheckContext,
+    x: Label,
+    tx: Type,
+    te: Type,
+) -> Result<Typed, TypeError> {
+    use crate::error::TypeMessage::*;
+    let ctx2 = ctx.insert_type(&x, tx.clone());
+
+    let kA = match tx.get_type()?.as_const() {
+        Some(k) => k,
+        _ => {
+            return Err(TypeError::new(
+                ctx,
+                InvalidInputType(tx.clone().to_normalized()),
+            ))
+        }
+    };
+
+    let kB = match te.get_type()?.as_const() {
+        Some(k) => k,
+        _ => {
+            return Err(TypeError::new(
+                &ctx2,
+                InvalidOutputType(
+                    te.clone().to_normalized().get_type()?.to_normalized(),
+                ),
+            ))
+        }
+    };
+
+    let k = match function_check(kA, kB) {
+        Ok(k) => k,
+        Err(()) => {
+            return Err(TypeError::new(
+                ctx,
+                NoDependentTypes(
+                    tx.clone().to_normalized(),
+                    te.clone().to_normalized().get_type()?.to_normalized(),
+                ),
+            ))
+        }
+    };
+
+    Ok(Typed::from_thunk_and_type(
+        Value::Pi(x.into(), TypeThunk::from_type(tx), TypeThunk::from_type(te))
+            .into_thunk(),
+        Type::from_const(k),
+    ))
 }
 
-impl TypeIntermediate {
-    fn typecheck(self, ctx: &TypecheckContext) -> Result<Typed, TypeError> {
-        use crate::error::TypeMessage::*;
-        let mkerr = |ctx: &TypecheckContext, msg| TypeError::new(ctx, msg);
-        Ok(match &self {
-            TypeIntermediate::Pi(x, ta, tb) => {
-                let ctx2 = ctx.insert_type(x, ta.clone());
-
-                let kA = match ta.get_type()?.as_const() {
-                    Some(k) => k,
-                    _ => {
-                        return Err(mkerr(
-                            ctx,
-                            InvalidInputType(ta.clone().to_normalized()),
-                        ))
-                    }
-                };
-
-                let kB = match tb.get_type()?.as_const() {
-                    Some(k) => k,
-                    _ => {
-                        return Err(mkerr(
-                            &ctx2,
-                            InvalidOutputType(
-                                tb.clone()
-                                    .to_normalized()
-                                    .get_type()?
-                                    .to_normalized(),
-                            ),
-                        ))
-                    }
-                };
-
-                let k = match function_check(kA, kB) {
-                    Ok(k) => k,
-                    Err(()) => {
-                        return Err(mkerr(
-                            ctx,
-                            NoDependentTypes(
-                                ta.clone().to_normalized(),
-                                tb.clone()
-                                    .to_normalized()
-                                    .get_type()?
-                                    .to_normalized(),
-                            ),
-                        ))
-                    }
-                };
-
-                Typed::from_thunk_and_type(
-                    Value::Pi(
-                        x.clone().into(),
-                        TypeThunk::from_type(ta.clone()),
-                        TypeThunk::from_type(tb.clone()),
-                    )
-                    .into_thunk(),
-                    Type::from_const(k),
-                )
+fn tck_record_type(
+    ctx: &TypecheckContext,
+    kts: impl IntoIterator<Item = Result<(Label, Type), TypeError>>,
+) -> Result<Typed, TypeError> {
+    use crate::error::TypeMessage::*;
+    use std::collections::hash_map::Entry;
+    let mut new_kts = HashMap::new();
+    // Check that all types are the same const
+    let mut k = None;
+    for e in kts {
+        let (x, t) = e?;
+        match (k, t.get_type()?.as_const()) {
+            (None, Some(k2)) => k = Some(k2),
+            (Some(k1), Some(k2)) if k1 == k2 => {}
+            _ => {
+                return Err(TypeError::new(
+                    ctx,
+                    InvalidFieldType(x.clone(), t.clone()),
+                ))
             }
-            TypeIntermediate::RecordType(kts) => {
-                let mut new_kts = HashMap::new();
-                // Check that all types are the same const
-                let mut k = None;
-                for (x, t) in kts {
-                    match (k, t.get_type()?.as_const()) {
-                        (None, Some(k2)) => k = Some(k2),
-                        (Some(k1), Some(k2)) if k1 == k2 => {}
-                        _ => {
-                            return Err(mkerr(
-                                ctx,
-                                InvalidFieldType(x.clone(), t.clone()),
-                            ))
-                        }
-                    }
-                    use std::collections::hash_map::Entry;
-                    let entry = new_kts.entry(x.clone());
-                    match &entry {
-                        Entry::Occupied(_) => {
-                            return Err(mkerr(ctx, RecordTypeDuplicateField))
-                        }
-                        Entry::Vacant(_) => {
-                            entry.or_insert(TypeThunk::from_type(t.clone()))
-                        }
-                    };
-                }
-                // An empty record type has type Type
-                let k = k.unwrap_or(dhall_syntax::Const::Type);
-
-                Typed::from_thunk_and_type(
-                    Value::RecordType(new_kts).into_thunk(),
-                    Type::from_const(k),
-                )
+        }
+        let entry = new_kts.entry(x.clone());
+        match &entry {
+            Entry::Occupied(_) => {
+                return Err(TypeError::new(ctx, RecordTypeDuplicateField))
             }
-            TypeIntermediate::UnionType(kts) => {
-                let mut new_kts = HashMap::new();
-                // Check that all types are the same const
-                let mut k = None;
-                for (x, t) in kts {
-                    if let Some(t) = t {
-                        match (k, t.get_type()?.as_const()) {
-                            (None, Some(k2)) => k = Some(k2),
-                            (Some(k1), Some(k2)) if k1 == k2 => {}
-                            _ => {
-                                return Err(mkerr(
-                                    ctx,
-                                    InvalidFieldType(x.clone(), t.clone()),
-                                ))
-                            }
-                        }
-                    }
-                    use std::collections::hash_map::Entry;
-                    let entry = new_kts.entry(x.clone());
-                    match &entry {
-                        Entry::Occupied(_) => {
-                            return Err(mkerr(ctx, UnionTypeDuplicateField))
-                        }
-                        Entry::Vacant(_) => entry.or_insert(
-                            t.as_ref().map(|t| TypeThunk::from_type(t.clone())),
-                        ),
-                    };
-                }
-
-                // An empty union type has type Type;
-                // an union type with only unary variants also has type Type
-                let k = k.unwrap_or(dhall_syntax::Const::Type);
-
-                Typed::from_thunk_and_type(
-                    Value::UnionType(new_kts).into_thunk(),
-                    Type::from_const(k),
-                )
+            Entry::Vacant(_) => {
+                entry.or_insert(TypeThunk::from_type(t.clone()))
             }
-            TypeIntermediate::ListType(t) => {
-                ensure_simple_type!(
-                    t,
-                    mkerr(ctx, InvalidListType(t.clone().to_normalized())),
-                );
-                Typed::from_thunk_and_type(
-                    Value::from_builtin(Builtin::List)
-                        .app(t.to_value())
-                        .into_thunk(),
-                    Type::from_const(Const::Type),
-                )
-            }
-            TypeIntermediate::OptionalType(t) => {
-                ensure_simple_type!(
-                    t,
-                    mkerr(ctx, InvalidOptionalType(t.clone().to_normalized())),
-                );
-                Typed::from_thunk_and_type(
-                    Value::from_builtin(Builtin::Optional)
-                        .app(t.to_value())
-                        .into_thunk(),
-                    Type::from_const(Const::Type),
-                )
-            }
-        })
+        };
     }
+    // An empty record type has type Type
+    let k = k.unwrap_or(dhall_syntax::Const::Type);
+
+    Ok(Typed::from_thunk_and_type(
+        Value::RecordType(new_kts).into_thunk(),
+        Type::from_const(k),
+    ))
+}
+
+fn tck_union_type(
+    ctx: &TypecheckContext,
+    kts: impl IntoIterator<Item = Result<(Label, Option<Type>), TypeError>>,
+) -> Result<Typed, TypeError> {
+    use crate::error::TypeMessage::*;
+    use std::collections::hash_map::Entry;
+    let mut new_kts = HashMap::new();
+    // Check that all types are the same const
+    let mut k = None;
+    for e in kts {
+        let (x, t) = e?;
+        if let Some(t) = &t {
+            match (k, t.get_type()?.as_const()) {
+                (None, Some(k2)) => k = Some(k2),
+                (Some(k1), Some(k2)) if k1 == k2 => {}
+                _ => {
+                    return Err(TypeError::new(
+                        ctx,
+                        InvalidFieldType(x.clone(), t.clone()),
+                    ))
+                }
+            }
+        }
+        let entry = new_kts.entry(x.clone());
+        match &entry {
+            Entry::Occupied(_) => {
+                return Err(TypeError::new(ctx, UnionTypeDuplicateField))
+            }
+            Entry::Vacant(_) => entry
+                .or_insert(t.as_ref().map(|t| TypeThunk::from_type(t.clone()))),
+        };
+    }
+
+    // An empty union type has type Type;
+    // an union type with only unary variants also has type Type
+    let k = k.unwrap_or(dhall_syntax::Const::Type);
+
+    Ok(Typed::from_thunk_and_type(
+        Value::UnionType(new_kts).into_thunk(),
+        Type::from_const(k),
+    ))
+}
+
+fn tck_list_type(ctx: &TypecheckContext, t: Type) -> Result<Typed, TypeError> {
+    use crate::error::TypeMessage::*;
+    ensure_simple_type!(
+        t,
+        TypeError::new(ctx, InvalidListType(t.clone().to_normalized())),
+    );
+    Ok(Typed::from_thunk_and_type(
+        Value::from_builtin(Builtin::List)
+            .app(t.to_value())
+            .into_thunk(),
+        Type::from_const(Const::Type),
+    ))
+}
+
+fn tck_optional_type(
+    ctx: &TypecheckContext,
+    t: Type,
+) -> Result<Typed, TypeError> {
+    use crate::error::TypeMessage::*;
+    ensure_simple_type!(
+        t,
+        TypeError::new(ctx, InvalidOptionalType(t.clone().to_normalized())),
+    );
+    Ok(Typed::from_thunk_and_type(
+        Value::from_builtin(Builtin::Optional)
+            .app(t.to_value())
+            .into_thunk(),
+        Type::from_const(Const::Type),
+    ))
 }
 
 fn function_check(a: Const, b: Const) -> Result<Const, ()> {
@@ -337,7 +334,6 @@ enum Ret {
     RetTyped(Typed),
     /// Use the contained Type as the type of the input expression
     RetType(Type),
-    RetTypeIntermediate(TypeIntermediate),
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
@@ -364,17 +360,14 @@ fn type_with(
                 b.to_thunk(),
             );
             let tb = b.get_type()?.into_owned();
-            let ti = TypeIntermediate::Pi(x.clone(), tx, tb);
-            Typed::from_thunk_and_type(
-                Thunk::from_value(v),
-                ti.typecheck(ctx)?.to_type(),
-            )
+            let t = tck_pi_type(ctx, x.clone(), tx, tb)?.to_type();
+            Typed::from_thunk_and_type(Thunk::from_value(v), t)
         }
         Pi(x, ta, tb) => {
             let ta = mktype(ctx, ta.clone())?;
             let ctx2 = ctx.insert_type(x, ta.clone());
             let tb = mktype(&ctx2, tb.clone())?;
-            return TypeIntermediate::Pi(x.clone(), ta, tb).typecheck(ctx);
+            return tck_pi_type(ctx, x.clone(), ta, tb);
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -417,14 +410,7 @@ fn type_with(
                     |_| unreachable!(),
                 )?;
             let ret = type_last_layer(ctx, &expr)?;
-            let ret = match ret {
-                RetTypeIntermediate(ti) => {
-                    RetType(ti.typecheck(ctx)?.to_type())
-                }
-                ret => ret,
-            };
             match ret {
-                RetTypeIntermediate(_) => unreachable!(),
                 RetType(typ) => {
                     let expr = expr.map_ref_simple(|typed| typed.to_thunk());
                     Typed::from_thunk_and_type(
@@ -518,7 +504,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let t = t.to_type();
-            Ok(RetTypeIntermediate(TypeIntermediate::ListType(t)))
+            Ok(RetType(tck_list_type(ctx, t)?.to_type()))
         }
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
@@ -535,55 +521,37 @@ fn type_last_layer(
                 );
             }
             let t = x.get_type()?.into_owned();
-            Ok(RetTypeIntermediate(TypeIntermediate::ListType(t)))
+            Ok(RetType(tck_list_type(ctx, t)?.to_type()))
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
-            Ok(RetTypeIntermediate(TypeIntermediate::OptionalType(t)))
+            Ok(RetType(tck_optional_type(ctx, t)?.to_type()))
         }
-        RecordType(kts) => {
-            let kts = kts
-                .iter()
-                .map(|(x, t)| Ok((x.clone(), t.to_type())))
-                .collect::<Result<_, _>>()?;
-            Ok(RetTyped(TypeIntermediate::RecordType(kts).typecheck(ctx)?))
-        }
-        UnionType(kts) => {
-            let kts = kts
-                .iter()
-                .map(|(x, t)| {
-                    Ok((
-                        x.clone(),
-                        match t {
-                            None => None,
-                            Some(t) => Some(t.to_type()),
-                        },
-                    ))
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(RetTyped(TypeIntermediate::UnionType(kts).typecheck(ctx)?))
-        }
-        RecordLit(kvs) => {
+        RecordType(kts) => Ok(RetTyped(tck_record_type(
+            ctx,
+            kts.iter().map(|(x, t)| Ok((x.clone(), t.to_type()))),
+        )?)),
+        UnionType(kts) => Ok(RetTyped(tck_union_type(
+            ctx,
+            kts.iter()
+                .map(|(x, t)| Ok((x.clone(), t.as_ref().map(|t| t.to_type())))),
+        )?)),
+        RecordLit(kvs) => Ok(RetType(
+            tck_record_type(
+                ctx,
+                kvs.iter()
+                    .map(|(x, v)| Ok((x.clone(), v.get_type()?.into_owned()))),
+            )?
+            .into_type(),
+        )),
+        UnionLit(x, v, kvs) => {
+            use std::iter::once;
             let kts = kvs
                 .iter()
-                .map(|(x, v)| Ok((x.clone(), v.get_type()?.into_owned())))
-                .collect::<Result<_, _>>()?;
-            Ok(RetTypeIntermediate(TypeIntermediate::RecordType(kts)))
-        }
-        UnionLit(x, v, kvs) => {
-            let mut kts: Vec<_> = kvs
-                .iter()
-                .map(|(x, v)| {
-                    let t = match v {
-                        Some(x) => Some(x.to_type()),
-                        None => None,
-                    };
-                    Ok((x.clone(), t))
-                })
-                .collect::<Result<_, _>>()?;
+                .map(|(x, v)| Ok((x.clone(), v.as_ref().map(|v| v.to_type()))));
             let t = v.get_type()?.into_owned();
-            kts.push((x.clone(), Some(t)));
-            Ok(RetTypeIntermediate(TypeIntermediate::UnionType(kts)))
+            let kts = kts.chain(once(Ok((x.clone(), Some(t)))));
+            Ok(RetType(tck_union_type(ctx, kts)?.to_type()))
         }
         Field(r, x) => {
             match &r.get_type()?.internal_whnf() {
@@ -602,12 +570,13 @@ fn type_last_layer(
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
                                 // TODO: avoid capture
-                                Ok(RetTypeIntermediate(
-                                    TypeIntermediate::Pi(
+                                Ok(RetType(
+                                    tck_pi_type(
+                                        ctx,
                                         "_".into(),
                                         t.to_type(ctx)?,
                                         r.clone(),
-                                    )
+                                    )?.to_type()
                                 ))
                             },
                             Some(None) => {
