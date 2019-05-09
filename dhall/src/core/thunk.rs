@@ -4,14 +4,11 @@ use std::rc::Rc;
 use dhall_syntax::{ExprF, X};
 
 use crate::core::context::NormalizationContext;
-use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::TypeError;
 use crate::phase::normalize::{
     apply_any, normalize_one_layer, normalize_whnf, InputSubExpr, OutputSubExpr,
 };
-use crate::phase::typecheck::mktype;
 use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone, Copy)]
@@ -45,10 +42,7 @@ pub struct Thunk(Rc<RefCell<ThunkInternal>>);
 /// A thunk in type position. Can optionally store a Type from the typechecking phase to preserve
 /// type information through the normalization phase.
 #[derive(Debug, Clone)]
-pub(crate) enum TypeThunk {
-    Thunk(Thunk),
-    Type(Type),
-}
+pub(crate) struct TypeThunk(Typed);
 
 impl ThunkInternal {
     fn into_thunk(self) -> Thunk {
@@ -181,10 +175,6 @@ impl Thunk {
         self.as_value().clone()
     }
 
-    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
-        self.normalize_to_expr_maybe_alpha(false)
-    }
-
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
@@ -207,52 +197,31 @@ impl TypeThunk {
     }
 
     pub(crate) fn from_thunk(th: Thunk) -> TypeThunk {
-        TypeThunk::Thunk(th)
+        TypeThunk(Typed::from_thunk_untyped(th))
     }
 
     pub(crate) fn from_type(t: Type) -> TypeThunk {
-        TypeThunk::Type(t)
+        TypeThunk(t.to_typed())
     }
 
     pub(crate) fn normalize_mut(&mut self) {
-        match self {
-            TypeThunk::Thunk(th) => th.normalize_mut(),
-            TypeThunk::Type(_) => {}
-        }
+        self.0.normalize_mut()
     }
 
     pub(crate) fn normalize_nf(&self) -> Value {
-        match self {
-            TypeThunk::Thunk(th) => th.normalize_nf().clone(),
-            TypeThunk::Type(t) => t.to_value().normalize(),
-        }
+        self.0.to_value().normalize()
     }
 
     pub(crate) fn to_value(&self) -> Value {
-        match self {
-            TypeThunk::Thunk(th) => th.to_value(),
-            TypeThunk::Type(t) => t.to_value(),
-        }
+        self.0.to_value()
     }
 
     pub(crate) fn to_thunk(&self) -> Thunk {
-        match self {
-            TypeThunk::Thunk(th) => th.clone(),
-            TypeThunk::Type(t) => t.to_thunk(),
-        }
+        self.0.to_thunk()
     }
 
-    pub(crate) fn to_type(
-        &self,
-        ctx: &TypecheckContext,
-    ) -> Result<Type, TypeError> {
-        match self {
-            TypeThunk::Type(t) => Ok(t.clone()),
-            TypeThunk::Thunk(th) => {
-                // TODO: rule out statically
-                mktype(ctx, th.normalize_to_expr().absurd())
-            }
-        }
+    pub(crate) fn to_type(&self) -> Type {
+        self.0.to_type()
     }
 
     pub(crate) fn normalize_to_expr_maybe_alpha(
@@ -291,10 +260,7 @@ impl Shift for ThunkInternal {
 
 impl Shift for TypeThunk {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.shift(delta, var)?),
-            TypeThunk::Type(t) => TypeThunk::Type(t.shift(delta, var)?),
-        })
+        Some(TypeThunk(self.0.shift(delta, var)?))
     }
 }
 
@@ -333,10 +299,7 @@ impl Subst<Typed> for ThunkInternal {
 
 impl Subst<Typed> for TypeThunk {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        match self {
-            TypeThunk::Thunk(th) => TypeThunk::Thunk(th.subst_shift(var, val)),
-            TypeThunk::Type(t) => TypeThunk::Type(t.subst_shift(var, val)),
-        }
+        TypeThunk(self.0.subst_shift(var, val))
     }
 }
 

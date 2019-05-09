@@ -34,7 +34,7 @@ pub(crate) struct Resolved(pub(crate) ResolvedSubExpr);
 #[derive(Debug, Clone)]
 pub(crate) enum Typed {
     // Any value, along with (optionally) its type
-    Value(Thunk, Option<Type>),
+    Value(Thunk, Option<Box<Type>>),
     // One of the base higher-kinded typed.
     // Used to avoid storing the same tower ot Type->Kind->Sort
     // over and over again. Also enables having Sort as a type
@@ -62,7 +62,7 @@ pub struct SimpleType(pub(crate) NormalizedSubExpr);
 /// This includes [SimpleType]s but also higher-kinded expressions like
 /// `Type`, `Kind` and `{ x: Type }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type(pub(crate) Box<Typed>);
+pub struct Type(pub(crate) Typed);
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -122,7 +122,7 @@ impl Typed {
     }
 
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed::Value(th, Some(t))
+        Typed::Value(th, Some(Box::new(t)))
     }
     pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
         Typed::Value(th, None)
@@ -155,7 +155,14 @@ impl Typed {
         self.clone().into_type()
     }
     pub(crate) fn into_type(self) -> Type {
-        Type(Box::new(self))
+        Type(self)
+    }
+
+    pub(crate) fn normalize_mut(&mut self) {
+        match self {
+            Typed::Value(th, _) => th.normalize_mut(),
+            Typed::Const(_) => {}
+        }
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
@@ -180,11 +187,8 @@ impl Type {
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
-    }
     pub(crate) fn to_typed(&self) -> Typed {
-        self.0.as_ref().clone()
+        self.0.clone()
     }
     pub(crate) fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
@@ -193,24 +197,15 @@ impl Type {
             _ => None,
         }
     }
-    pub(crate) fn internal_whnf(&self) -> Option<Value> {
-        Some(self.to_value())
-    }
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
 
-    pub(crate) fn const_sort() -> Self {
-        Type::from_const(Const::Sort)
-    }
-    pub(crate) fn const_kind() -> Self {
-        Type::from_const(Const::Kind)
-    }
     pub(crate) fn const_type() -> Self {
         Type::from_const(Const::Type)
     }
     pub(crate) fn from_const(c: Const) -> Self {
-        Type(Box::new(Typed::from_const(c)))
+        Type(Typed::from_const(c))
     }
 }
 
@@ -242,7 +237,9 @@ impl Shift for Typed {
         Some(match self {
             Typed::Value(th, t) => Typed::Value(
                 th.shift(delta, var)?,
-                t.as_ref().map(|x| Ok(x.shift(delta, var)?)).transpose()?,
+                t.as_ref()
+                    .map(|x| Ok(Box::new(x.shift(delta, var)?)))
+                    .transpose()?,
             ),
             Typed::Const(c) => Typed::Const(*c),
         })
@@ -251,7 +248,7 @@ impl Shift for Typed {
 
 impl Shift for Type {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(Type(Box::new(self.0.shift(delta, var)?)))
+        Some(Type(self.0.shift(delta, var)?))
     }
 }
 
@@ -266,7 +263,7 @@ impl Subst<Typed> for Typed {
         match self {
             Typed::Value(th, t) => Typed::Value(
                 th.subst_shift(var, val),
-                t.as_ref().map(|x| x.subst_shift(var, val)),
+                t.as_ref().map(|x| Box::new(x.subst_shift(var, val))),
             ),
             Typed::Const(c) => Typed::Const(*c),
         }
@@ -275,7 +272,7 @@ impl Subst<Typed> for Typed {
 
 impl Subst<Typed> for Type {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        Type(Box::new(self.0.subst_shift(var, val)))
+        Type(self.0.subst_shift(var, val))
     }
 }
 
