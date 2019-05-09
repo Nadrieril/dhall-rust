@@ -203,8 +203,16 @@ impl Type {
 
 impl Normalized {
     #[allow(dead_code)]
+    pub fn to_expr(&self) -> NormalizedSubExpr {
+        self.0.to_expr()
+    }
+    #[allow(dead_code)]
     pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
+    }
+    #[allow(dead_code)]
+    pub fn to_type(&self) -> Type {
+        self.0.to_type()
     }
     pub fn to_value(&self) -> Value {
         self.0.to_value()
