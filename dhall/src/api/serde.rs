@@ -1,6 +1,6 @@
 use crate::api::de::{Deserialize, Value};
 use crate::error::{Error, Result};
-use dhall_syntax::{SubExpr,ExprF, X};
+use dhall_syntax::{ExprF, SubExpr, X};
 use std::borrow::Cow;
 
 impl<'a, T> Deserialize for T

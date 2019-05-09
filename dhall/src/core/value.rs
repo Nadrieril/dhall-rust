@@ -25,7 +25,7 @@ use crate::phase::Typed;
 /// Equality is up to alpha-equivalence (renaming of bound variables) and beta-equivalence
 /// (normalization). Equality will normalize only as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Value {
+pub enum Value {
     /// Closures
     Lam(AlphaLabel, TypeThunk, Thunk),
     Pi(AlphaLabel, TypeThunk, TypeThunk),
@@ -62,20 +62,17 @@ pub(crate) enum Value {
 }
 
 impl Value {
-    pub(crate) fn into_thunk(self) -> Thunk {
+    pub fn into_thunk(self) -> Thunk {
         Thunk::from_value(self)
     }
 
     /// Convert the value to a fully normalized syntactic expression
-    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+    pub fn normalize_to_expr(&self) -> OutputSubExpr {
         self.normalize_to_expr_maybe_alpha(false)
     }
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> OutputSubExpr {
+    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -213,13 +210,13 @@ impl Value {
     }
 
     // Deprecated
-    pub(crate) fn normalize(&self) -> Value {
+    pub fn normalize(&self) -> Value {
         let mut v = self.clone();
         v.normalize_mut();
         v
     }
 
-    pub(crate) fn normalize_mut(&mut self) {
+    pub fn normalize_mut(&mut self) {
         match self {
             Value::NaturalSuccClosure
             | Value::Var(_)
@@ -302,21 +299,21 @@ impl Value {
     }
 
     /// Apply to a value
-    pub(crate) fn app(self, val: Value) -> Value {
+    pub fn app(self, val: Value) -> Value {
         self.app_val(val)
     }
 
     /// Apply to a value
-    pub(crate) fn app_val(self, val: Value) -> Value {
+    pub fn app_val(self, val: Value) -> Value {
         self.app_thunk(val.into_thunk())
     }
 
     /// Apply to a thunk
-    pub(crate) fn app_thunk(self, th: Thunk) -> Value {
+    pub fn app_thunk(self, th: Thunk) -> Value {
         Thunk::from_value(self).app_thunk(th)
     }
 
-    pub(crate) fn from_builtin(b: Builtin) -> Value {
+    pub fn from_builtin(b: Builtin) -> Value {
         Value::AppliedBuiltin(b, vec![])
     }
 }

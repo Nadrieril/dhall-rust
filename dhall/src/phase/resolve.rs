@@ -14,7 +14,7 @@ pub enum ImportRoot {
 
 type ImportCache = HashMap<Import, Normalized>;
 
-pub(crate) type ImportStack = Vec<Import>;
+pub type ImportStack = Vec<Import>;
 
 fn resolve_import(
     import: &Import,
@@ -89,11 +89,11 @@ fn do_resolve_expr(
     Ok(Resolved(expr))
 }
 
-pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
+pub fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
     do_resolve_expr(e, &mut HashMap::new(), &Vec::new())
 }
 
-pub(crate) fn skip_resolve_expr(
+pub fn skip_resolve_expr(
     Parsed(expr, _root): Parsed,
 ) -> Result<Resolved, ImportError> {
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {

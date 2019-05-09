@@ -10,25 +10,25 @@ use crate::error::TypeError;
 use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone)]
-pub(crate) enum CtxItem<T> {
+pub enum CtxItem<T> {
     Kept(AlphaVar, T),
     Replaced(Thunk, T),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
+pub struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizationContext(Context<()>);
+pub struct NormalizationContext(Context<()>);
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(Context<Type>);
+pub struct TypecheckContext(Context<Type>);
 
 impl<T> Context<T> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Context(Rc::new(Vec::new()))
     }
-    pub(crate) fn insert_kept(&self, x: &Label, t: T) -> Self
+    pub fn insert_kept(&self, x: &Label, t: T) -> Self
     where
         T: Shift + Clone,
     {
@@ -36,7 +36,7 @@ impl<T> Context<T> {
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
         Context(Rc::new(vec))
     }
-    pub(crate) fn insert_replaced(&self, x: &Label, th: Thunk, t: T) -> Self
+    pub fn insert_replaced(&self, x: &Label, th: Thunk, t: T) -> Self
     where
         T: Clone,
     {
@@ -44,7 +44,7 @@ impl<T> Context<T> {
         vec.push((x.clone(), CtxItem::Replaced(th, t)));
         Context(Rc::new(vec))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Result<CtxItem<T>, V<Label>>
+    pub fn lookup(&self, var: &V<Label>) -> Result<CtxItem<T>, V<Label>>
     where
         T: Clone + Shift,
     {
@@ -109,13 +109,13 @@ impl<T> Context<T> {
 }
 
 impl NormalizationContext {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         NormalizationContext(Context::new())
     }
-    pub(crate) fn skip(&self, x: &Label) -> Self {
+    pub fn skip(&self, x: &Label) -> Self {
         NormalizationContext(self.0.insert_kept(x, ()))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Value {
+    pub fn lookup(&self, var: &V<Label>) -> Value {
         match self.0.lookup(var) {
             Ok(CtxItem::Replaced(t, ())) => t.to_value(),
             Ok(CtxItem::Kept(newvar, ())) => Value::Var(newvar.clone()),
@@ -125,24 +125,20 @@ impl NormalizationContext {
 }
 
 impl TypecheckContext {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         TypecheckContext(Context::new())
     }
-    pub(crate) fn insert_type(&self, x: &Label, t: Type) -> Self {
+    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
         TypecheckContext(self.0.insert_kept(x, t))
     }
-    pub(crate) fn insert_value(
-        &self,
-        x: &Label,
-        e: Typed,
-    ) -> Result<Self, TypeError> {
+    pub fn insert_value(&self, x: &Label, e: Typed) -> Result<Self, TypeError> {
         Ok(TypecheckContext(self.0.insert_replaced(
             x,
             e.to_thunk(),
             e.get_type()?.into_owned(),
         )))
     }
-    pub(crate) fn lookup(&self, var: &V<Label>) -> Option<Typed> {
+    pub fn lookup(&self, var: &V<Label>) -> Option<Typed> {
         match self.0.lookup(var) {
             Ok(CtxItem::Kept(newvar, t)) => Some(Typed::from_thunk_and_type(
                 Thunk::from_value(Value::Var(newvar.clone())),

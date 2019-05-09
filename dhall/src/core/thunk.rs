@@ -42,7 +42,7 @@ pub struct Thunk(Rc<RefCell<ThunkInternal>>);
 /// A thunk in type position. Can optionally store a Type from the typechecking phase to preserve
 /// type information through the normalization phase.
 #[derive(Debug, Clone)]
-pub(crate) struct TypeThunk(Typed);
+pub struct TypeThunk(Typed);
 
 impl ThunkInternal {
     fn into_thunk(self) -> Thunk {
@@ -103,25 +103,25 @@ impl ThunkInternal {
 }
 
 impl Thunk {
-    pub(crate) fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+    pub fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
         ThunkInternal::Unnormalized(ctx, e).into_thunk()
     }
 
-    pub(crate) fn from_value(v: Value) -> Thunk {
+    pub fn from_value(v: Value) -> Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
 
-    pub(crate) fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
+    pub fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
         Thunk::new(NormalizationContext::new(), e.absurd())
     }
 
-    pub(crate) fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
+    pub fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }
 
     // Normalizes contents to normal form; faster than `normalize_nf` if
     // no one else shares this thunk
-    pub(crate) fn normalize_mut(&mut self) {
+    pub fn normalize_mut(&mut self) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
             Some(refcell) => RefCell::get_mut(refcell).normalize_nf(),
@@ -159,75 +159,69 @@ impl Thunk {
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub(crate) fn normalize_nf(&self) -> Ref<Value> {
+    pub fn normalize_nf(&self) -> Ref<Value> {
         self.do_normalize_nf();
         Ref::map(self.0.borrow(), ThunkInternal::as_nf)
     }
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub(crate) fn as_value(&self) -> Ref<Value> {
+    pub fn as_value(&self) -> Ref<Value> {
         self.do_normalize_whnf();
         Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
     }
 
-    pub(crate) fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         self.as_value().clone()
     }
 
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> OutputSubExpr {
+    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app_val(&self, val: Value) -> Value {
+    pub fn app_val(&self, val: Value) -> Value {
         self.app_thunk(val.into_thunk())
     }
 
-    pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
+    pub fn app_thunk(&self, th: Thunk) -> Value {
         apply_any(self.clone(), th)
     }
 }
 
 impl TypeThunk {
-    pub(crate) fn from_value(v: Value) -> TypeThunk {
+    pub fn from_value(v: Value) -> TypeThunk {
         TypeThunk::from_thunk(Thunk::from_value(v))
     }
 
-    pub(crate) fn from_thunk(th: Thunk) -> TypeThunk {
+    pub fn from_thunk(th: Thunk) -> TypeThunk {
         TypeThunk(Typed::from_thunk_untyped(th))
     }
 
-    pub(crate) fn from_type(t: Type) -> TypeThunk {
+    pub fn from_type(t: Type) -> TypeThunk {
         TypeThunk(t.to_typed())
     }
 
-    pub(crate) fn normalize_mut(&mut self) {
+    pub fn normalize_mut(&mut self) {
         self.0.normalize_mut()
     }
 
-    pub(crate) fn normalize_nf(&self) -> Value {
+    pub fn normalize_nf(&self) -> Value {
         self.0.to_value().normalize()
     }
 
-    pub(crate) fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         self.0.to_value()
     }
 
-    pub(crate) fn to_thunk(&self) -> Thunk {
+    pub fn to_thunk(&self) -> Thunk {
         self.0.to_thunk()
     }
 
-    pub(crate) fn to_type(&self) -> Type {
+    pub fn to_type(&self) -> Type {
         self.0.to_type()
     }
 
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> OutputSubExpr {
+    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 }

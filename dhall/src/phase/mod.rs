@@ -19,20 +19,20 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub(crate) type ParsedSubExpr = SubExpr<Span, Import>;
-pub(crate) type ResolvedSubExpr = SubExpr<Span, Normalized>;
-pub(crate) type NormalizedSubExpr = SubExpr<X, X>;
+pub type ParsedSubExpr = SubExpr<Span, Import>;
+pub type ResolvedSubExpr = SubExpr<Span, Normalized>;
+pub type NormalizedSubExpr = SubExpr<X, X>;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Parsed(pub(crate) ParsedSubExpr, pub(crate) ImportRoot);
+pub struct Parsed(ParsedSubExpr, ImportRoot);
 
 /// An expression where all imports have been resolved
 #[derive(Debug, Clone)]
-pub(crate) struct Resolved(pub(crate) ResolvedSubExpr);
+pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub(crate) enum Typed {
+pub enum Typed {
     // Any value, along with (optionally) its type
     Untyped(Thunk),
     Typed(Thunk, Box<Type>),
@@ -47,10 +47,10 @@ pub(crate) enum Typed {
 ///
 /// Invariant: the contained Typed expression must be in normal form,
 #[derive(Debug, Clone)]
-pub(crate) struct Normalized(pub(crate) Typed);
+pub struct Normalized(Typed);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Type(pub(crate) Typed);
+pub struct Type(Typed);
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -109,57 +109,57 @@ impl Typed {
         Normalized(self)
     }
 
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+    pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         Typed::Typed(th, Box::new(t))
     }
-    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
+    pub fn from_thunk_untyped(th: Thunk) -> Self {
         Typed::Untyped(th)
     }
-    pub(crate) fn from_const(c: Const) -> Self {
+    pub fn from_const(c: Const) -> Self {
         Typed::Const(c)
     }
-    pub(crate) fn from_value_untyped(v: Value) -> Self {
+    pub fn from_value_untyped(v: Value) -> Self {
         Typed::Untyped(Thunk::from_value(v))
     }
-    pub(crate) fn from_normalized_expr_untyped(e: NormalizedSubExpr) -> Self {
+    pub fn from_normalized_expr_untyped(e: NormalizedSubExpr) -> Self {
         Typed::from_thunk_untyped(Thunk::from_normalized_expr(e))
     }
 
     // TODO: Avoid cloning if possible
-    pub(crate) fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         match self {
             Typed::Untyped(th) | Typed::Typed(th, _) => th.to_value(),
             Typed::Const(c) => Value::Const(*c),
         }
     }
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+    pub fn to_expr(&self) -> NormalizedSubExpr {
         self.to_value().normalize_to_expr()
     }
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.to_value().normalize_to_expr_maybe_alpha(true)
     }
-    pub(crate) fn to_thunk(&self) -> Thunk {
+    pub fn to_thunk(&self) -> Thunk {
         match self {
             Typed::Untyped(th) | Typed::Typed(th, _) => th.clone(),
             Typed::Const(c) => Thunk::from_value(Value::Const(*c)),
         }
     }
     // Deprecated
-    pub(crate) fn to_type(&self) -> Type {
+    pub fn to_type(&self) -> Type {
         self.clone().into_type()
     }
-    pub(crate) fn into_type(self) -> Type {
+    pub fn into_type(self) -> Type {
         Type(self)
     }
 
-    pub(crate) fn normalize_mut(&mut self) {
+    pub fn normalize_mut(&mut self) {
         match self {
             Typed::Untyped(th) | Typed::Typed(th, _) => th.normalize_mut(),
             Typed::Const(_) => {}
         }
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         match self {
             Typed::Untyped(_) => Err(TypeError::new(
                 &TypecheckContext::new(),
@@ -173,46 +173,46 @@ impl Typed {
 
 impl Type {
     // Deprecated
-    pub(crate) fn to_normalized(&self) -> Normalized {
+    pub fn to_normalized(&self) -> Normalized {
         self.0.clone().normalize()
     }
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+    pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
-    pub(crate) fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn to_typed(&self) -> Typed {
+    pub fn to_typed(&self) -> Typed {
         self.0.clone()
     }
-    pub(crate) fn as_const(&self) -> Option<Const> {
+    pub fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
         match &self.to_value() {
             Value::Const(c) => Some(*c),
             _ => None,
         }
     }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
 
-    pub(crate) fn from_const(c: Const) -> Self {
+    pub fn from_const(c: Const) -> Self {
         Type(Typed::from_const(c))
     }
 }
 
 impl Normalized {
     #[allow(dead_code)]
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
-    pub(crate) fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn into_typed(self) -> Typed {
+    pub fn into_typed(self) -> Typed {
         self.0
     }
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
 }

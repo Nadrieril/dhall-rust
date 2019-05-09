@@ -6,7 +6,7 @@ use dhall_syntax::{Label, V};
 /// that corresponds to the alpha-normalized version of the first one.
 /// Equality is up to alpha-equivalence.
 #[derive(Debug, Clone, Eq)]
-pub(crate) struct AlphaVar {
+pub struct AlphaVar {
     normal: V<Label>,
     alpha: Option<V<()>>,
 }
@@ -14,9 +14,9 @@ pub(crate) struct AlphaVar {
 // Exactly like a Label, but equality returns always true.
 // This is so that Value equality is exactly alpha-equivalence.
 #[derive(Debug, Clone, Eq)]
-pub(crate) struct AlphaLabel(Label);
+pub struct AlphaLabel(Label);
 
-pub(crate) trait Shift: Sized {
+pub trait Shift: Sized {
     // Shift an expression to move it around binders without changing the meaning of its free
     // variables. Shift by 1 to move an expression under a binder. Shift by -1 to extract an
     // expression from under a binder, if the expression does not refer to that bound variable.
@@ -50,18 +50,18 @@ pub(crate) trait Shift: Sized {
     }
 }
 
-pub(crate) trait Subst<T> {
+pub trait Subst<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
 }
 
 impl AlphaVar {
-    pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
+    pub fn to_var(&self, alpha: bool) -> V<Label> {
         match (alpha, &self.alpha) {
             (true, Some(x)) => V("_".into(), x.1),
             _ => self.normal.clone(),
         }
     }
-    pub(crate) fn from_var(normal: V<Label>) -> Self {
+    pub fn from_var(normal: V<Label>) -> Self {
         AlphaVar {
             normal,
             alpha: None,
@@ -70,14 +70,14 @@ impl AlphaVar {
 }
 
 impl AlphaLabel {
-    pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
+    pub fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
             "_".into()
         } else {
             self.to_label()
         }
     }
-    pub(crate) fn to_label(&self) -> Label {
+    pub fn to_label(&self) -> Label {
         self.clone().into()
     }
 }

@@ -218,7 +218,7 @@ where
     eL0.borrow().to_value() == eR0.borrow().to_value()
 }
 
-pub(crate) fn type_of_const(c: Const) -> Result<Type, TypeError> {
+pub fn type_of_const(c: Const) -> Result<Type, TypeError> {
     match c {
         Const::Type => Ok(Type::from_const(Const::Kind)),
         Const::Kind => Ok(Type::from_const(Const::Sort)),
@@ -317,14 +317,14 @@ fn type_of_builtin(b: Builtin) -> Expr<X, X> {
 
 /// Takes an expression that is meant to contain a Type
 /// and turn it into a type, typechecking it along the way.
-pub(crate) fn mktype(
+pub fn mktype(
     ctx: &TypecheckContext,
     e: SubExpr<Span, Normalized>,
 ) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
 
-pub(crate) fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
+pub fn builtin_to_type(b: Builtin) -> Result<Type, TypeError> {
     mktype(&TypecheckContext::new(), SubExpr::from_builtin(b))
 }
 
@@ -777,19 +777,16 @@ fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
     Ok(e)
 }
 
-pub(crate) fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
+pub fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
     type_of(e.0)
 }
 
-pub(crate) fn typecheck_with(
-    e: Resolved,
-    ty: &Type,
-) -> Result<Typed, TypeError> {
+pub fn typecheck_with(e: Resolved, ty: &Type) -> Result<Typed, TypeError> {
     let expr: SubExpr<_, _> = e.0;
     let ty: SubExpr<_, _> = ty.to_expr().absurd();
     type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }
-pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
+pub fn skip_typecheck(e: Resolved) -> Typed {
     Typed::from_thunk_untyped(Thunk::new(NormalizationContext::new(), e.0))
 }
 
