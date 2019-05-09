@@ -128,6 +128,5 @@ pub(crate) mod api;
 pub(crate) mod core;
 pub mod error;
 pub(crate) mod phase;
-pub(crate) use api::traits;
 
 pub use api::*;

@@ -1,13 +1,14 @@
+use crate::api::de::{Deserialize, Value};
 use crate::error::{Error, Result};
-use crate::phase::{Normalized, Type};
-use crate::traits::Deserialize;
-use dhall_syntax::*;
+use dhall_syntax::{SubExpr,ExprF, X};
 use std::borrow::Cow;
 
-impl<'a, T: serde::Deserialize<'a>> Deserialize<'a> for T {
-    fn from_str(s: &'a str, ty: Option<&Type>) -> Result<Self> {
-        let expr = Normalized::from_str(s, ty)?;
-        T::deserialize(Deserializer(Cow::Owned(expr.to_expr())))
+impl<'a, T> Deserialize for T
+where
+    T: serde::Deserialize<'a>,
+{
+    fn from_dhall(v: &Value) -> Result<Self> {
+        T::deserialize(Deserializer(Cow::Owned(v.to_expr())))
     }
 }
 

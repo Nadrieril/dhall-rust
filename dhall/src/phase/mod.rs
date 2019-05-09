@@ -50,7 +50,7 @@ pub(crate) enum Typed {
 pub(crate) struct Normalized(pub(crate) Typed);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type(pub(crate) Typed);
+pub(crate) struct Type(pub(crate) Typed);
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -202,18 +202,12 @@ impl Type {
 }
 
 impl Normalized {
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-        self.0.to_expr()
-    }
     #[allow(dead_code)]
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
     pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
-    }
-    pub(crate) fn to_type(&self) -> Type {
-        self.0.to_type()
     }
     pub(crate) fn into_typed(self) -> Typed {
         self.0

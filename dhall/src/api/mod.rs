@@ -1,16 +1,43 @@
 mod serde;
 pub(crate) mod static_type;
-pub(crate) mod traits;
 
-// pub struct Value(crate::phase::Normalized);
+pub use value::Value;
+
+mod value {
+    use super::Type;
+    use crate::error::Result;
+    use crate::phase::{NormalizedSubExpr, Parsed, Typed};
+
+    // A Dhall value
+    pub struct Value(Typed);
+
+    impl Value {
+        pub fn from_str(s: &str, ty: Option<&Type>) -> Result<Self> {
+            let resolved = Parsed::parse_str(s)?.resolve()?;
+            let typed = match ty {
+                None => resolved.typecheck()?,
+                Some(t) => resolved.typecheck_with(&t.to_type())?,
+            };
+            Ok(Value(typed))
+        }
+        pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+            self.0.to_expr()
+        }
+        pub(crate) fn to_typed(&self) -> Typed {
+            self.0.clone()
+        }
+    }
+}
 
 pub use typ::Type;
 
 mod typ {
+    use dhall_syntax::Builtin;
+
     use crate::core::thunk::{Thunk, TypeThunk};
     use crate::core::value::Value;
+    use crate::error::Result;
     use crate::phase::{NormalizedSubExpr, Typed};
-    use dhall_syntax::Builtin;
 
     /// A Dhall expression representing a type.
     ///
@@ -72,17 +99,37 @@ mod typ {
         pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
             self.0.to_expr()
         }
+        pub(crate) fn to_type(&self) -> crate::phase::Type {
+            self.0.to_type()
+        }
+    }
+
+    impl crate::de::Deserialize for Type {
+        fn from_dhall(v: &crate::api::Value) -> Result<Self> {
+            Ok(Type(v.to_typed()))
+        }
     }
 }
 
 /// Deserialization of Dhall expressions into Rust
 pub mod de {
     pub use super::static_type::StaticType;
-    pub use super::Type;
-    #[doc(hidden)]
-    pub use crate::traits::Deserialize;
+    pub use super::{Type, Value};
+    use crate::error::Result;
     #[doc(hidden)]
     pub use dhall_proc_macros::StaticType;
+
+    /// A data structure that can be deserialized from a Dhall expression
+    ///
+    /// This is automatically implemented for any type that [serde][serde]
+    /// can deserialize.
+    ///
+    /// This trait cannot be implemented manually.
+    // TODO: seal trait
+    pub trait Deserialize: Sized {
+        /// See [dhall::de::from_str][crate::de::from_str]
+        fn from_dhall(v: &Value) -> Result<Self>;
+    }
 
     /// Deserialize an instance of type T from a string of Dhall text.
     ///
@@ -93,11 +140,11 @@ pub mod de {
     ///
     /// If a type is provided, this additionally checks that the provided
     /// expression has that type.
-    pub fn from_str<'a, T: Deserialize<'a>>(
-        s: &'a str,
-        ty: Option<&crate::phase::Type>,
-    ) -> crate::error::Result<T> {
-        T::from_str(s, ty)
+    pub fn from_str<T>(s: &str, ty: Option<&Type>) -> Result<T>
+    where
+        T: Deserialize,
+    {
+        T::from_dhall(&Value::from_str(s, ty)?)
     }
 
     /// Deserialize an instance of type T from a string of Dhall text,
@@ -107,11 +154,10 @@ pub mod de {
     /// typecheck it before deserialization. Relative imports will be resolved relative to the
     /// provided file. More control over this process is not yet available
     /// but will be in a coming version of this crate.
-    pub fn from_str_auto_type<'a, T: Deserialize<'a> + StaticType>(
-        s: &'a str,
-    ) -> crate::error::Result<T> {
-        // from_str(s, Some(&<T as StaticType>::static_type()))
-        // TODO
-        from_str(s, None)
+    pub fn from_str_auto_type<T>(s: &str) -> Result<T>
+    where
+        T: Deserialize + StaticType,
+    {
+        from_str(s, Some(&<T as StaticType>::static_type()))
     }
 }
