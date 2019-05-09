@@ -34,7 +34,8 @@ pub(crate) struct Resolved(pub(crate) ResolvedSubExpr);
 #[derive(Debug, Clone)]
 pub(crate) enum Typed {
     // Any value, along with (optionally) its type
-    Value(Thunk, Option<Box<Type>>),
+    Untyped(Thunk),
+    Typed(Thunk, Box<Type>),
     // One of the base higher-kinded typed.
     // Used to avoid storing the same tower ot Type->Kind->Sort
     // over and over again. Also enables having Sort as a type
@@ -114,7 +115,7 @@ impl Typed {
     pub fn normalize(self) -> Normalized {
         match &self {
             Typed::Const(_) => {}
-            Typed::Value(thunk, _) => {
+            Typed::Untyped(thunk) | Typed::Typed(thunk, _) => {
                 thunk.normalize_nf();
             }
         }
@@ -122,10 +123,10 @@ impl Typed {
     }
 
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed::Value(th, Some(Box::new(t)))
+        Typed::Typed(th, Box::new(t))
     }
     pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed::Value(th, None)
+        Typed::Untyped(th)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         Typed::Const(c)
@@ -134,7 +135,7 @@ impl Typed {
     // TODO: Avoid cloning if possible
     pub(crate) fn to_value(&self) -> Value {
         match self {
-            Typed::Value(th, _) => th.to_value(),
+            Typed::Untyped(th) | Typed::Typed(th, _) => th.to_value(),
             Typed::Const(c) => Value::Const(*c),
         }
     }
@@ -146,7 +147,7 @@ impl Typed {
     }
     pub(crate) fn to_thunk(&self) -> Thunk {
         match self {
-            Typed::Value(th, _) => th.clone(),
+            Typed::Untyped(th) | Typed::Typed(th, _) => th.clone(),
             Typed::Const(c) => Thunk::from_value(Value::Const(*c)),
         }
     }
@@ -160,18 +161,18 @@ impl Typed {
 
     pub(crate) fn normalize_mut(&mut self) {
         match self {
-            Typed::Value(th, _) => th.normalize_mut(),
+            Typed::Untyped(th) | Typed::Typed(th, _) => th.normalize_mut(),
             Typed::Const(_) => {}
         }
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         match self {
-            Typed::Value(_, Some(t)) => Ok(Cow::Borrowed(t)),
-            Typed::Value(_, None) => Err(TypeError::new(
+            Typed::Untyped(_) => Err(TypeError::new(
                 &TypecheckContext::new(),
                 TypeMessage::Untyped,
             )),
+            Typed::Typed(_, t) => Ok(Cow::Borrowed(t)),
             Typed::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
         }
     }
@@ -235,11 +236,10 @@ impl Normalized {
 impl Shift for Typed {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            Typed::Value(th, t) => Typed::Value(
+            Typed::Untyped(th) => Typed::Untyped(th.shift(delta, var)?),
+            Typed::Typed(th, t) => Typed::Typed(
                 th.shift(delta, var)?,
-                t.as_ref()
-                    .map(|x| Ok(Box::new(x.shift(delta, var)?)))
-                    .transpose()?,
+                Box::new(t.shift(delta, var)?),
             ),
             Typed::Const(c) => Typed::Const(*c),
         })
@@ -261,9 +261,10 @@ impl Shift for Normalized {
 impl Subst<Typed> for Typed {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            Typed::Value(th, t) => Typed::Value(
+            Typed::Untyped(th) => Typed::Untyped(th.subst_shift(var, val)),
+            Typed::Typed(th, t) => Typed::Typed(
                 th.subst_shift(var, val),
-                t.as_ref().map(|x| Box::new(x.subst_shift(var, val))),
+                Box::new(t.subst_shift(var, val)),
             ),
             Typed::Const(c) => Typed::Const(*c),
         }
