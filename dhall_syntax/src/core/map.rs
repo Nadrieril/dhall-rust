@@ -99,6 +99,7 @@ mod dup_tree_map {
                 }
                 Entry::Occupied(mut e) => e.get_mut().push(value),
             }
+            self.size += 1;
         }
 
         pub fn len(&self) -> usize {
