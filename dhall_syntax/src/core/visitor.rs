@@ -1,4 +1,5 @@
 use crate::*;
+use std::iter::FromIterator;
 
 /// A way too generic Visitor trait.
 pub trait GenericVisitor<Input, Return>: Sized {
@@ -62,25 +63,29 @@ where
                 None => None,
             })
         }
-        fn vecmap<'a, V, Ret, SE, E>(
-            x: &'a Vec<(Label, SE)>,
+        fn dupmap<'a, V, Ret, SE, E, T>(
+            x: impl IntoIterator<Item = (&'a Label, &'a SE)>,
             mut v: V,
-        ) -> Result<Vec<(Label, V::SE2)>, V::Error>
+        ) -> Result<T, V::Error>
         where
+            SE: 'a,
+            T: FromIterator<(Label, V::SE2)>,
             V: ExprFVeryGenericVisitor<'a, Ret, SE, E>,
         {
-            x.iter()
+            x.into_iter()
                 .map(|(k, x)| Ok((k.clone(), v.visit_subexpr(x)?)))
                 .collect()
         }
-        fn vecoptmap<'a, V, Ret, SE, E>(
-            x: &'a Vec<(Label, Option<SE>)>,
+        fn optdupmap<'a, V, Ret, SE, E, T>(
+            x: impl IntoIterator<Item = (&'a Label, &'a Option<SE>)>,
             mut v: V,
-        ) -> Result<Vec<(Label, Option<V::SE2>)>, V::Error>
+        ) -> Result<T, V::Error>
         where
+            SE: 'a,
+            T: FromIterator<(Label, Option<V::SE2>)>,
             V: ExprFVeryGenericVisitor<'a, Ret, SE, E>,
         {
-            x.iter()
+            x.into_iter()
                 .map(|(k, x)| {
                     Ok((
                         k.clone(),
@@ -137,11 +142,11 @@ where
                 v.visit_subexpr(t)?,
             ),
             SomeLit(e) => SomeLit(v.visit_subexpr(e)?),
-            RecordType(kts) => RecordType(vecmap(kts, v)?),
-            RecordLit(kvs) => RecordLit(vecmap(kvs, v)?),
-            UnionType(kts) => UnionType(vecoptmap(kts, v)?),
+            RecordType(kts) => RecordType(dupmap(kts, v)?),
+            RecordLit(kvs) => RecordLit(dupmap(kvs, v)?),
+            UnionType(kts) => UnionType(optdupmap(kts, v)?),
             UnionLit(k, x, kts) => {
-                UnionLit(k.clone(), v.visit_subexpr(x)?, vecoptmap(kts, v)?)
+                UnionLit(k.clone(), v.visit_subexpr(x)?, optdupmap(kts, v)?)
             }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,

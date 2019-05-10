@@ -161,15 +161,15 @@ fn quote_expr<N>(expr: &Expr<N, X>, ctx: &Context<Label, ()>) -> TokenStream {
 }
 
 fn quote_builtin(b: Builtin) -> TokenStream {
-    format!("dhall_syntax::Builtin::{:?}", b).parse().unwrap()
+    format!("::dhall_syntax::Builtin::{:?}", b).parse().unwrap()
 }
 
 fn quote_const(c: Const) -> TokenStream {
-    format!("dhall_syntax::Const::{:?}", c).parse().unwrap()
+    format!("::dhall_syntax::Const::{:?}", c).parse().unwrap()
 }
 
 fn quote_binop(b: BinOp) -> TokenStream {
-    format!("dhall_syntax::BinOp::{:?}", b).parse().unwrap()
+    format!("::dhall_syntax::BinOp::{:?}", b).parse().unwrap()
 }
 
 fn quote_label(l: &Label) -> TokenStream {
@@ -178,7 +178,7 @@ fn quote_label(l: &Label) -> TokenStream {
 }
 
 fn rc(x: TokenStream) -> TokenStream {
-    quote! { dhall_syntax::rc(#x) }
+    quote! { ::dhall_syntax::rc(#x) }
 }
 
 fn quote_opt<TS>(x: Option<TS>) -> TokenStream
@@ -204,11 +204,10 @@ where
 {
     let entries = m.into_iter().map(|(k, v)| {
         let k = quote_label(&k);
-        quote!(m.push((#k, #v));)
+        quote!(m.insert(#k, #v);)
     });
     quote! { {
-        use std::vec::Vec;
-        let mut m = Vec::new();
+        let mut m = ::dhall_syntax::map::DupTreeMap::new();
         #( #entries )*
         m
     } }

@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use std::rc::Rc;
 
+use crate::map::DupTreeMap;
 use crate::visitor;
 use crate::*;
 
@@ -201,13 +202,13 @@ pub enum ExprF<SubExpr, Embed> {
     ///  `Some e`
     SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
-    RecordType(Vec<(Label, SubExpr)>),
+    RecordType(DupTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
-    RecordLit(Vec<(Label, SubExpr)>),
+    RecordLit(DupTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
-    UnionType(Vec<(Label, Option<SubExpr>)>),
+    UnionType(DupTreeMap<Label, Option<SubExpr>>),
     ///  `< k1 = t1, k2 : t2, k3 >`
-    UnionLit(Label, SubExpr, Vec<(Label, Option<SubExpr>)>),
+    UnionLit(Label, SubExpr, DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`

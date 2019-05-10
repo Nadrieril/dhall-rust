@@ -7,4 +7,5 @@ pub use label::*;
 mod text;
 pub use text::*;
 pub mod context;
+pub mod map;
 pub mod visitor;
