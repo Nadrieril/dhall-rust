@@ -1,113 +1,129 @@
 parser:
-x.{ y: T }
 ./a%20b
 ./"a%20b"
 text interpolation and escapes
 remove `double`
-rename imports/parenthesizeUsing
-imports/
-    Missing missing
-    Headers https://example.com/foo using ./headers
-    HeadersHashPrecedence https://example.com/foo using ./headers sha256:0000000000000000000000000000000000000000000000000000000000000000
-    HeadersHash https://example.com/foo using (./headers sha256:0000000000000000000000000000000000000000000000000000000000000000)
-operator precedence
-DoubleLitPositive 1.23
-DoubleLitNegative -1.23
-DoubleLitExponent 1.23e4
-DoubleLitExponentNoDot 1e4
-DoubleLitExponentNegative 1.23e-4
-DoubleLitInfinity Infinity
-DoubleLitNegInfinity -Infinity
-DoubleLitNaN NaN
-DoubleLitSecretelyInt 1.0
-DoubleLitZero 0.0
-BuiltinListBuild List/Build
-FunctionApplicationOneArg f x
-FunctionApplicationMultipleArgs f x y z
-Annotation x : T
-ListLitNonEmpty [x, y]
-ListLitNonEmptyAnnotated [x, y] : List T
-OptionalLitEmpty []: Optional T
-OptionalLitNonEmpty [x]: Optional T
-Field r.x
-FieldBuiltinName r.List
-FieldQuoted r.`x`
-Projection r.{x, y, z}
-Let let x: T = v in e
-LetNested let x: T = v in let y: U = w in e
-LetMulti let x: T = v let y: U = w in e
-LambdaUnicode λ(x : T) -> y
-FunctionTypePi forall(x: T) -> U
-FunctionTypePiUnicode ∀(x: T) -> U
-FunctionTypePiNested forall(x: T) -> forall(y: U) -> V
-FunctionTypePiUnderscore forall(_: T) -> U
-FunctionTypeArrow T -> U
-RecordLit {x = 1, y = 2}
-RecordType {x: T, y: U}
-OperatorBoolOr x || y
-OperatorBoolOrAssoc w || x || y || z
-OperatorImportAlt x ? y
-OperatorImportAltAssoc w ? x ? y ? z
-OperatorNaturalPlus x + y
-OperatorNaturalPlusAssoc w + x + y + z
-OperatorTextAppend x ++ y
-OperatorTextAppendAssoc w ++ x ++ y ++ z
-OperatorListAppend x # y
-OperatorListAppendAssoc w # x # y # z
-OperatorBoolAnd x && y
-OperatorBoolAndAssoc w && x && y && z
-OperatorNaturalTimes x * y
-OperatorNaturalTimesAssoc w * x * y * z
-OperatorBoolEQ x == y
-OperatorBoolEQAssoc w == x == y == z
-OperatorBoolNE x != y
-OperatorBoolNEAssoc w != x != y != z
-OperatorRecursiveRecordMerge x //\\ y
-OperatorRecursiveRecordMergeAssoc w //\\ x //\\ y //\\ z
-OperatorRecursiveRecordTypeMerge x /\ y
-OperatorRecursiveRecordTypeMergeAssoc w /\ x /\ y /\ z
-OperatorRightBiasedRecordMerge x // y
-OperatorRightBiasedRecordMergeAssoc w // x // y // z
-OperatorRecursiveRecordMergeUnicode x ∧ y
-OperatorRecursiveRecordMergeUnicodeAssoc w ∧ x /\ y ∧ z
-OperatorRightBiasedRecordMergeUnicode x ⫽ y
-OperatorRightBiasedRecordMergeUnicodeAssoc w ⫽ x // y ⫽ z
-OperatorRecursiveRecordTypeMergeUnicode x ⩓ y
-OperatorRecursiveRecordTypeMergeUnicodeAssoc w ⩓ x //\\ y ⩓ z
+remove imports/parenthesizeUsing
+remove multilet
+success/
+    imports/
+        Missing missing
+        Headers https://example.com/foo using ./headers
+        HeadersInteriorHash https://example.com/foo using (./headers sha256:0000000000000000000000000000000000000000000000000000000000000000)
+        HeadersExteriorHash (https://example.com/foo using ./headers) sha256:0000000000000000000000000000000000000000000000000000000000000000
+        HeadersHashPrecedence https://example.com/foo using ./headers sha256:0000000000000000000000000000000000000000000000000000000000000000
+        HeadersDoubleHashPrecedence https://example.com/foo using ./headers sha256:0000000000000000000000000000000000000000000000000000000000000000 sha256:1111111111111111111111111111111111111111111111111111111111111111
+    DoubleLitPositive 1.23
+    DoubleLitNegative -1.23
+    DoubleLitExponent 1.23e4
+    DoubleLitExponentNoDot 1e4
+    DoubleLitExponentNegative 1.23e-4
+    DoubleLitInfinity Infinity
+    DoubleLitNegInfinity -Infinity
+    DoubleLitNaN NaN
+    DoubleLitSecretelyInt 1.0
+    DoubleLitZero 0.0
+    BuiltinListBuild List/Build
+    FunctionApplicationOneArg f x
+    FunctionApplicationMultipleArgs f x y z
+    Annotation x : T
+    ListLitNonEmpty [x, y]
+    ListLitNonEmptyAnnotated [x, y] : List T
+    OptionalLitEmpty []: Optional T
+    OptionalLitNonEmpty [x]: Optional T
+    Field r.x
+    FieldBuiltinName r.List
+    FieldQuoted r.`x`
+    Projection r.{x, y, z}
+    Let let x: T = v in e
+    LetNested let x: T = v in let y: U = w in e
+    LetMulti let x: T = v let y: U = w in e
+    LambdaUnicode λ(x : T) -> y
+    FunctionTypePi forall(x: T) -> U
+    FunctionTypePiUnicode ∀(x: T) -> U
+    FunctionTypePiNested forall(x: T) -> ∀(y: U) -> V
+    FunctionTypePiUnderscore forall(_: T) -> U
+    FunctionTypeArrow T -> U
+    RecordLit { x = 1, y = 2 }
+    RecordType { x: T, y: U }
+    operators/
+        ImportAlt x ? y
+        ImportAltAssoc w ? x ? y ? z
+        BoolOr x || y
+        BoolOrAssoc w || x || y || z
+        NaturalPlus x + y
+        NaturalPlusAssoc w + x + y + z
+        TextAppend x ++ y
+        TextAppendAssoc w ++ x ++ y ++ z
+        ListAppend x # y
+        ListAppendAssoc w # x # y # z
+        BoolAnd x && y
+        BoolAndAssoc w && x && y && z
+        NaturalTimes x * y
+        NaturalTimesAssoc w * x * y * z
+        BoolEQ x == y
+        BoolEQAssoc w == x == y == z
+        BoolNE x != y
+        BoolNEAssoc w != x != y != z
+        RecursiveRecordMerge x //\\ y
+        RecursiveRecordMergeAssoc w //\\ x //\\ y //\\ z
+        RecursiveRecordTypeMerge x /\ y
+        RecursiveRecordTypeMergeAssoc w /\ x /\ y /\ z
+        RightBiasedRecordMerge x // y
+        RightBiasedRecordMergeAssoc w // x // y // z
+        RecursiveRecordMergeUnicode x ∧ y
+        RecursiveRecordMergeUnicodeAssoc w ∧ x /\ y ∧ z
+        RightBiasedRecordMergeUnicode x ⫽ y
+        RightBiasedRecordMergeUnicodeAssoc w ⫽ x // y ⫽ z
+        RecursiveRecordTypeMergeUnicode x ⩓ y
+        RecursiveRecordTypeMergeUnicodeAssoc w ⩓ x //\\ y ⩓ z
+        PrecedenceAll1 a ? b || c + d ++ e # f && g ∧ h ⫽ i ⩓ j * k == l != m n.o
+        PrecedenceAll2 a b != c == d * e ⩓ f ⫽ g ∧ h && i # j ++ k + l || m ? n
+        PrecedenceNat a + b * d + e f * (g + h)
+        PrecedenceBool a && b || c d == e || f != g && h || i
+        PrecedenceRecord a // b c /\ d ⫽ e.{x} ∧ f
+failure/
+    ProjectionByExpressionNeedsParens r.{ x: T }
 
 
 import:
-recover type error
-recover recursive import error
-don't recover cycle
+success/
+    recover type error
+    recover recursive import error
+failure/
+    don't recover cycle
 
 normalization:
 variables across import boundaries
-"${"${x}"}"
-"${"${""}"}${x}"
-"${""}${x}"
+    TextLitNested1 "${""}${x}"
+    TextLitNested2 "${"${x}"}"
+    TextLitNested3 "${"${""}"}${x}"
+    EquivalenceDouble if b then NaN else NaN
+    EquivalenceAlpha if b then \(x: T) -> x else \(y: T) -> y
 
 typecheck:
-(merge {} <>) : Bool
-merge x True
-merge x (Some 1)
-let x: T = merge x y in ...
-let _ = Bool in merge {foo = \(x: _) -> x} <foo: Bool>.foo
-let foo = Bool in merge {foo = \(x: foo) -> x} <foo: Bool>.foo
-merge { x = 1 } < x >.x
-merge {=} < x >.x
-merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
-merge { x = True, y = 1 } < x | y >.x
-merge {x=...,y=...} <x>.x
-merge {x=...,} <x|y>.x
-merge {x=...,y=...} <x:T>.x
-merge {x=...,} <x:T|y:T>.x
-merge { x = None } < x = Bool >
-<x, x>
-<x, x:T>
-<x=1|x:T>
-{ x: T, x: T }
 something that involves destructuring a recordtype after merge
+success/
+    MergeEmptyAlternative merge { x = 1 } < x >.x
+    MergeTrickyShadowing let _ = Bool in merge {_ = \(x: _) -> x} (<_: Bool>._ True)
+    EquivalenceAlpha \(TODO: forall(x: Type) -> x) -> TODO : forall(y: Type) -> y
+failure/
+    MergeEmptyNeedsDirectAnnotation1 \(x: <>) -> (merge {=} x) : Bool
+    MergeEmptyNeedsDirectAnnotation2 \(x: <>) -> let y: Bool = merge {=} x in 1
+    MergeBoolIsNotUnion merge x True
+    MergeOptionalIsNotUnion merge x (Some 1)
+    MergeMissingHandler1 merge {=} < x >.x
+    MergeMissingHandler2 merge {x=...,} <x|y>.x
+    merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
+    merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
+    merge { x = True, y = 1 } < x | y >.x
+    merge {x=...,y=...} <x>.x
+    merge {x=...,y=...} <x:T>.x
+    MergeHandlerFreeVar merge { x = None } < x = Bool >
+    UnionTypeDuplicateVariants1 <x, x>
+    UnionTypeDuplicateVariants2 <x, x:T>
+    UnionLitDuplicateVariants <x=1|x:T>
+    RecordLitDuplicateFields { x: T, x: T }
+    EquivalenceAlphaTrap \(TODO: forall(_: Type) -> _) -> TODO : forall(x: Type) -> _
 
 equivalence:
-forall(x: T) -> x = forall(x: T) -> y
