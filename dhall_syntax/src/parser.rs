@@ -431,7 +431,7 @@ make_parser! {
             lines
                 .into_iter()
                 .intersperse(newline)
-                .flat_map(|x| x.into_iter())
+                .flat_map(InterpolatedText::into_iter)
                 .collect::<ParsedText>()
         }
     ));
@@ -1003,7 +1003,7 @@ make_parser! {
     ));
 }
 
-pub fn parse_expr<'a>(s: &'a str) -> ParseResult<ParsedSubExpr> {
+pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let rc_input = s.to_string().into();
     let expr = do_parse(rc_input, pairs.next().unwrap())?;

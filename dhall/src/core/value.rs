@@ -132,7 +132,7 @@ impl Value {
                 rc(ExprF::EmptyListLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
-                elts.into_iter()
+                elts.iter()
                     .map(|n| n.normalize_to_expr_maybe_alpha(alpha))
                     .collect(),
             )),

@@ -101,9 +101,7 @@ impl Shift for () {
 }
 
 impl<T> Subst<T> for () {
-    fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {
-        ()
-    }
+    fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {}
 }
 
 impl std::cmp::PartialEq for AlphaVar {

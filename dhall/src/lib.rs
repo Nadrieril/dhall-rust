@@ -12,7 +12,9 @@
     clippy::type_complexity,
     clippy::infallible_destructuring_match,
     clippy::many_single_char_names,
-    clippy::match_wild_err_arm
+    clippy::match_wild_err_arm,
+    clippy::redundant_closure,
+    clippy::ptr_arg
 )]
 
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive

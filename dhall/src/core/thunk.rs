@@ -299,7 +299,7 @@ impl Subst<Typed> for TypeThunk {
 
 impl std::cmp::PartialEq for Thunk {
     fn eq(&self, other: &Self) -> bool {
-        &*self.as_value() == &*other.as_value()
+        *self.as_value() == *other.as_value()
     }
 }
 impl std::cmp::Eq for Thunk {}

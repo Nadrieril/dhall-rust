@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use dhall_proc_macros as dhall;
@@ -17,7 +15,7 @@ use crate::phase::{Normalized, Resolved, Type, Typed};
 
 macro_rules! ensure_equal {
     ($x:expr, $y:expr, $err:expr $(,)*) => {
-        if !prop_equal($x, $y) {
+        if $x.to_value() != $y.to_value() {
             return Err($err);
         }
     };
@@ -42,7 +40,7 @@ fn tck_pi_type(
     use crate::error::TypeMessage::*;
     let ctx2 = ctx.insert_type(&x, tx.clone());
 
-    let kA = match tx.get_type()?.as_const() {
+    let ka = match tx.get_type()?.as_const() {
         Some(k) => k,
         _ => {
             return Err(TypeError::new(
@@ -52,7 +50,7 @@ fn tck_pi_type(
         }
     };
 
-    let kB = match te.get_type()?.as_const() {
+    let kb = match te.get_type()?.as_const() {
         Some(k) => k,
         _ => {
             return Err(TypeError::new(
@@ -62,7 +60,7 @@ fn tck_pi_type(
         }
     };
 
-    let k = match function_check(kA, kB) {
+    let k = match function_check(ka, kb) {
         Ok(k) => k,
         Err(()) => {
             return Err(TypeError::new(
@@ -109,7 +107,7 @@ fn tck_record_type(
                 return Err(TypeError::new(ctx, RecordTypeDuplicateField))
             }
             Entry::Vacant(_) => {
-                entry.or_insert(TypeThunk::from_type(t.clone()))
+                entry.or_insert_with(|| TypeThunk::from_type(t.clone()))
             }
         };
     }
@@ -150,8 +148,9 @@ fn tck_union_type(
             Entry::Occupied(_) => {
                 return Err(TypeError::new(ctx, UnionTypeDuplicateField))
             }
-            Entry::Vacant(_) => entry
-                .or_insert(t.as_ref().map(|t| TypeThunk::from_type(t.clone()))),
+            Entry::Vacant(_) => entry.or_insert_with(|| {
+                t.as_ref().map(|t| TypeThunk::from_type(t.clone()))
+            }),
         };
     }
 
@@ -207,24 +206,12 @@ fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     }
 }
 
-// Equality up to alpha-equivalence (renaming of bound variables)
-fn prop_equal<T, U>(eL0: T, eR0: U) -> bool
-where
-    T: Borrow<Type>,
-    U: Borrow<Type>,
-{
-    eL0.borrow().to_value() == eR0.borrow().to_value()
-}
-
 pub fn type_of_const(c: Const) -> Result<Type, TypeError> {
     match c {
         Const::Type => Ok(Type::from_const(Const::Kind)),
         Const::Kind => Ok(Type::from_const(Const::Sort)),
         Const::Sort => {
-            return Err(TypeError::new(
-                &TypecheckContext::new(),
-                TypeMessage::Sort,
-            ))
+            Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
         }
     }
 }
@@ -728,7 +715,7 @@ fn type_last_layer(
                 }
                 (Some(t), None) => Ok(RetTypeOnly(t)),
                 (None, Some(t)) => Ok(RetTypeOnly(t.to_type())),
-                (None, None) => return Err(mkerr(MergeEmptyNeedsAnnotation)),
+                (None, None) => Err(mkerr(MergeEmptyNeedsAnnotation)),
             }
         }
         Projection(record, labels) => {
