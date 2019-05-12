@@ -43,6 +43,8 @@ use crate::phase::Parsed;
 #[derive(Copy, Clone)]
 pub enum Feature {
     Parser,
+    Printer,
+    BinaryEncoding,
     Import,
     Normalization,
     AlphaNormalization,
@@ -80,6 +82,8 @@ pub fn run_test(
     use self::Status::*;
     let feature_prefix = match feature {
         Parser => "parser/",
+        Printer => "parser/",
+        BinaryEncoding => "parser/",
         Import => "import/",
         Normalization => "normalization/",
         AlphaNormalization => "alpha-normalization/",
@@ -93,45 +97,62 @@ pub fn run_test(
             let expr_file_path = base_path.clone() + "A.dhall";
             let expr = parse_file_str(&expr_file_path)?;
 
-            if let Parser = feature {
-                // Compare parse/decoded
-                let expected_file_path = base_path + "B.dhallb";
-                let expected_file_path = PathBuf::from(&expected_file_path);
-                let mut expected_data = Vec::new();
-                {
-                    File::open(&expected_file_path)?
-                        .read_to_end(&mut expected_data)?;
+            match feature {
+                Parser => {
+                    // Compare parse/decoded
+                    let expected_file_path = base_path + "B.dhallb";
+                    let expected_file_path = PathBuf::from(&expected_file_path);
+                    let mut expected_data = Vec::new();
+                    {
+                        File::open(&expected_file_path)?
+                            .read_to_end(&mut expected_data)?;
+                    }
+                    let expected = Parsed::parse_binary(&expected_data)?;
+                    assert_eq_pretty!(expr, expected);
+
+                    return Ok(());
                 }
-                let expected = Parsed::parse_binary(&expected_data)?;
-                assert_eq_pretty!(expr, expected);
+                Printer => {
+                    // Round-trip pretty-printer
+                    let expr_string = expr.to_string();
+                    let expected = expr;
+                    let expr: Parsed = Parsed::parse_str(&expr_string)?;
+                    assert_eq!(expr, expected);
 
-                // Compare encoded/expected
-                let expr_data = expr.encode()?;
-                // Compare bit-by-bit
-                if expr_data != expected_data {
-                    // use std::io::Write;
-                    // File::create(&expected_file_path)?.write_all(&expr_data)?;
-                    // Pretty-print difference
-                    assert_eq_pretty!(
-                        serde_cbor::de::from_slice::<serde_cbor::value::Value>(
-                            &expr_data
-                        )
-                        .unwrap(),
-                        serde_cbor::de::from_slice::<serde_cbor::value::Value>(
-                            &expected_data
-                        )
-                        .unwrap()
-                    );
-                    // If difference was not visible in the cbor::Value
-                    assert_eq!(expr_data, expected_data);
+                    return Ok(());
                 }
+                BinaryEncoding => {
+                    let expected_file_path = base_path + "B.dhallb";
+                    let expected_file_path = PathBuf::from(&expected_file_path);
+                    let mut expected_data = Vec::new();
+                    {
+                        File::open(&expected_file_path)?
+                            .read_to_end(&mut expected_data)?;
+                    }
+                    let expr_data = expr.encode()?;
 
-                // Round-trip pretty-printer
-                let expr_string = expr.to_string();
-                let expr: Parsed = Parsed::parse_str(&expr_string)?;
-                assert_eq!(expr, expected);
+                    // Compare bit-by-bit
+                    if expr_data != expected_data {
+                        // use std::io::Write;
+                        // File::create(&expected_file_path)?.write_all(&expr_data)?;
+                        // Pretty-print difference
+                        assert_eq_pretty!(
+                            serde_cbor::de::from_slice::<
+                                serde_cbor::value::Value,
+                            >(&expr_data)
+                            .unwrap(),
+                            serde_cbor::de::from_slice::<
+                                serde_cbor::value::Value,
+                            >(&expected_data)
+                            .unwrap()
+                        );
+                        // If difference was not visible in the cbor::Value
+                        assert_eq!(expr_data, expected_data);
+                    }
 
-                return Ok(());
+                    return Ok(());
+                }
+                _ => {}
             }
 
             let expr = expr.resolve()?;
@@ -143,7 +164,7 @@ pub fn run_test(
                 .normalize();
 
             match feature {
-                Parser => unreachable!(),
+                Parser | Printer | BinaryEncoding => unreachable!(),
                 Import => {
                     let expr = expr.skip_typecheck().normalize();
                     assert_eq_display!(expr, expected);
@@ -177,6 +198,7 @@ pub fn run_test(
                         e => panic!("Expected parse error, got: {:?}", e),
                     }
                 }
+                Printer | BinaryEncoding => unreachable!(),
                 Import => {
                     parse_file_str(&file_path)?.resolve().unwrap_err();
                 }

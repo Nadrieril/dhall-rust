@@ -85,6 +85,32 @@ fn main() -> std::io::Result<()> {
         |path| {
             // Too slow in debug mode
             path == "success/largeExpression"
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        "printer",
+        &tests_dir.join("parser/"),
+        "Printer",
+        |path| {
+            // Failure tests are only for the parser
+            path.starts_with("failure/")
+            // Too slow in debug mode
+            || path == "success/largeExpression"
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        "binary_encoding",
+        &tests_dir.join("parser/"),
+        "BinaryEncoding",
+        |path| {
+            // Failure tests are only for the parser
+            path.starts_with("failure/")
+            // Too slow in debug mode
+            || path == "success/largeExpression"
             // Fails binary encoding
             || path == "success/multilet"
             || path == "success/double"
