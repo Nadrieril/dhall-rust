@@ -85,6 +85,10 @@ fn main() -> std::io::Result<()> {
         |path| {
             // Too slow in debug mode
             path == "largeExpression"
+            // Fails binary encoding
+            || path == "multilet"
+            || path == "double"
+            || path == "unit/import/parenthesizeUsing"
         },
     )?;
 

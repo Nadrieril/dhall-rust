@@ -605,7 +605,7 @@ fn type_last_layer(
                     ensure_equal!(
                         x.get_type()?,
                         &text_type,
-                        mkerr(InvalidTextInterpolation(x)),
+                        mkerr(InvalidTextInterpolation(x.clone())),
                     );
                 }
             }

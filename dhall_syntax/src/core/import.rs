@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 /// The beginning of a file path which anchors subsequent path components
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum FilePrefix {
@@ -16,7 +14,7 @@ pub enum FilePrefix {
 /// The location of import (i.e. local vs. remote vs. environment)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ImportLocation {
-    Local(FilePrefix, PathBuf),
+    Local(FilePrefix, Vec<String>),
     Remote(URL),
     Env(String),
     Missing,
@@ -26,7 +24,7 @@ pub enum ImportLocation {
 pub struct URL {
     pub scheme: Scheme,
     pub authority: String,
-    pub path: PathBuf,
+    pub path: Vec<String>,
     pub query: Option<String>,
     pub headers: Option<Box<ImportHashed>>,
 }

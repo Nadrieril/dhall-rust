@@ -22,6 +22,12 @@ pub fn parse_str(s: &str) -> Result<Parsed, Error> {
     Ok(Parsed(expr, root))
 }
 
+pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
+    let expr = crate::phase::binary::decode(data)?;
+    let root = ImportRoot::LocalDir(std::env::current_dir()?);
+    Ok(Parsed(expr.note_absurd(), root))
+}
+
 pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
     let mut buffer = Vec::new();
     File::open(f)?.read_to_end(&mut buffer)?;

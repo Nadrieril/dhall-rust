@@ -33,9 +33,12 @@ macro_rules! make_spec_test {
     };
 }
 
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+
 use crate::error::{Error, Result};
 use crate::phase::Parsed;
-use std::path::PathBuf;
 
 #[derive(Copy, Clone)]
 pub enum Feature {
@@ -55,10 +58,6 @@ pub enum Status {
 
 fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
     Parsed::parse_file(&PathBuf::from(file_path))
-}
-
-fn parse_binary_file_str<'i>(file_path: &str) -> Result<Parsed> {
-    Parsed::parse_binary_file(&PathBuf::from(file_path))
 }
 
 pub fn run_test_stringy_error(
@@ -101,10 +100,37 @@ pub fn run_test(
             let expr = parse_file_str(&expr_file_path)?;
 
             if let Parser = feature {
+                // Compare parse/decoded
                 let expected_file_path = base_path + "B.dhallb";
-                let expected = parse_binary_file_str(&expected_file_path)?;
-
+                let expected_file_path = PathBuf::from(&expected_file_path);
+                let mut expected_data = Vec::new();
+                {
+                    File::open(&expected_file_path)?
+                        .read_to_end(&mut expected_data)?;
+                }
+                let expected = Parsed::parse_binary(&expected_data)?;
                 assert_eq_pretty!(expr, expected);
+
+                // Compare encoded/expected
+                let expr_data = expr.encode()?;
+                // Compare bit-by-bit
+                if expr_data != expected_data {
+                    // use std::io::Write;
+                    // File::create(&expected_file_path)?.write_all(&expr_data)?;
+                    // Pretty-print difference
+                    assert_eq_pretty!(
+                        serde_cbor::de::from_slice::<serde_cbor::value::Value>(
+                            &expr_data
+                        )
+                        .unwrap(),
+                        serde_cbor::de::from_slice::<serde_cbor::value::Value>(
+                            &expected_data
+                        )
+                        .unwrap()
+                    );
+                    // If difference was not visible in the cbor::Value
+                    assert_eq!(expr_data, expected_data);
+                }
 
                 // Round-trip pretty-printer
                 let expr_string = expr.to_string();

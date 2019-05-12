@@ -8,7 +8,7 @@ use crate::core::context::TypecheckContext;
 use crate::core::thunk::Thunk;
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::{Error, ImportError, TypeError, TypeMessage};
+use crate::error::{EncodeError, Error, ImportError, TypeError, TypeMessage};
 
 use resolve::ImportRoot;
 use typecheck::type_of_const;
@@ -20,6 +20,7 @@ pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
 pub type ParsedSubExpr = SubExpr<Span, Import>;
+pub type DecodedSubExpr = SubExpr<X, Import>;
 pub type ResolvedSubExpr = SubExpr<Span, Normalized>;
 pub type NormalizedSubExpr = SubExpr<X, X>;
 
@@ -55,23 +56,29 @@ impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_file(f)
     }
-
     pub fn parse_str(s: &str) -> Result<Parsed, Error> {
         parse::parse_str(s)
     }
-
     #[allow(dead_code)]
     pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_binary_file(f)
+    }
+    #[allow(dead_code)]
+    pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
+        parse::parse_binary(data)
     }
 
     pub fn resolve(self) -> Result<Resolved, ImportError> {
         resolve::resolve(self)
     }
-
     #[allow(dead_code)]
     pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
         resolve::skip_resolve_expr(self)
+    }
+
+    #[allow(dead_code)]
+    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
+        crate::phase::binary::encode(&self.0)
     }
 }
 

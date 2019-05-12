@@ -353,22 +353,20 @@ impl Display for Hash {
 }
 impl Display for ImportHashed {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use std::path::PathBuf;
         use FilePrefix::*;
         use ImportLocation::*;
-        let quoted_path_component = |s: &str| -> String {
+        let fmt_remote_path_component = |s: &str| -> String {
+            use percent_encoding::{
+                utf8_percent_encode, PATH_SEGMENT_ENCODE_SET,
+            };
+            utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
+        };
+        let fmt_local_path_component = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
                 s.to_owned()
             } else {
                 format!("\"{}\"", s)
             }
-        };
-        let fmt_path = |f: &mut fmt::Formatter, p: &PathBuf| {
-            let res: String = p
-                .iter()
-                .map(|c| quoted_path_component(c.to_string_lossy().as_ref()))
-                .join("/");
-            f.write_str(&res)
         };
 
         match &self.location {
@@ -380,11 +378,20 @@ impl Display for ImportHashed {
                     Absolute => "",
                 };
                 write!(f, "{}/", prefix)?;
-                fmt_path(f, path)?;
+                let path: String = path
+                    .iter()
+                    .map(|c| fmt_local_path_component(c.as_ref()))
+                    .join("/");
+                f.write_str(&path)?;
             }
             Remote(url) => {
                 write!(f, "{}://{}/", url.scheme, url.authority,)?;
-                fmt_path(f, &url.path)?;
+                let path: String = url
+                    .path
+                    .iter()
+                    .map(|c| fmt_remote_path_component(c.as_ref()))
+                    .join("/");
+                f.write_str(&path)?;
                 if let Some(q) = &url.query {
                     write!(f, "?{}", q)?
                 }

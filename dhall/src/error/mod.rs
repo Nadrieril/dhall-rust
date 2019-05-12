@@ -14,6 +14,7 @@ pub enum Error {
     IO(IOError),
     Parse(ParseError),
     Decode(DecodeError),
+    Encode(EncodeError),
     Resolve(ImportError),
     Typecheck(TypeError),
     Deserialize(String),
@@ -30,6 +31,11 @@ pub enum ImportError {
 pub enum DecodeError {
     CBORError(serde_cbor::error::Error),
     WrongFormatError(String),
+}
+
+#[derive(Debug)]
+pub enum EncodeError {
+    CBORError(serde_cbor::error::Error),
 }
 
 /// A structured type error that includes context
@@ -140,6 +146,7 @@ impl std::fmt::Display for Error {
             Error::IO(err) => write!(f, "{}", err),
             Error::Parse(err) => write!(f, "{}", err),
             Error::Decode(err) => write!(f, "{:?}", err),
+            Error::Encode(err) => write!(f, "{:?}", err),
             Error::Resolve(err) => write!(f, "{:?}", err),
             Error::Typecheck(err) => write!(f, "{:?}", err),
             Error::Deserialize(err) => write!(f, "{}", err),
@@ -161,6 +168,11 @@ impl From<ParseError> for Error {
 impl From<DecodeError> for Error {
     fn from(err: DecodeError) -> Error {
         Error::Decode(err)
+    }
+}
+impl From<EncodeError> for Error {
+    fn from(err: EncodeError) -> Error {
+        Error::Encode(err)
     }
 }
 impl From<ImportError> for Error {

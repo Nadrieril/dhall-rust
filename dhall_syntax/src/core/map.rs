@@ -62,20 +62,30 @@ mod dup_tree_map {
         size: usize,
     }
 
-    pub type IterInternal<'a, K, V> =
+    pub type IterInternalIntermediate<'a, K, V> =
         iter::Zip<iter::Repeat<&'a K>, one_or_more::Iter<'a, V>>;
-    pub type Iter<'a, K, V> = iter::FlatMap<
+    pub type IterInternal<'a, K, V> = iter::FlatMap<
         btree_map::Iter<'a, K, OneOrMore<V>>,
-        IterInternal<'a, K, V>,
-        for<'b> fn((&'b K, &'b OneOrMore<V>)) -> IterInternal<'b, K, V>,
+        IterInternalIntermediate<'a, K, V>,
+        for<'b> fn(
+            (&'b K, &'b OneOrMore<V>),
+        ) -> IterInternalIntermediate<'b, K, V>,
     >;
-    pub type IntoIterInternal<K, V> =
+    pub struct Iter<'a, K, V> {
+        iter: IterInternal<'a, K, V>,
+        size: usize,
+    }
+    pub type IntoIterInternalIntermediate<K, V> =
         iter::Zip<iter::Repeat<K>, one_or_more::IntoIter<V>>;
-    pub type IntoIter<K, V> = iter::FlatMap<
+    pub type IntoIterInternal<K, V> = iter::FlatMap<
         btree_map::IntoIter<K, OneOrMore<V>>,
-        IntoIterInternal<K, V>,
-        fn((K, OneOrMore<V>)) -> IntoIterInternal<K, V>,
+        IntoIterInternalIntermediate<K, V>,
+        fn((K, OneOrMore<V>)) -> IntoIterInternalIntermediate<K, V>,
     >;
+    pub struct IntoIter<K: Clone, V> {
+        iter: IntoIterInternal<K, V>,
+        size: usize,
+    }
 
     impl<K, V> DupTreeMap<K, V> {
         pub fn new() -> Self
@@ -115,10 +125,13 @@ mod dup_tree_map {
         {
             fn foo<'a, K, V>(
                 (k, oom): (&'a K, &'a OneOrMore<V>),
-            ) -> IterInternal<'a, K, V> {
+            ) -> IterInternalIntermediate<'a, K, V> {
                 iter::repeat(k).zip(oom.iter())
             }
-            self.map.iter().flat_map(foo)
+            Iter {
+                iter: self.map.iter().flat_map(foo),
+                size: self.size,
+            }
         }
     }
 
@@ -139,13 +152,18 @@ mod dup_tree_map {
         type IntoIter = IntoIter<K, V>;
 
         fn into_iter(self) -> Self::IntoIter {
-            fn foo<K, V>((k, oom): (K, OneOrMore<V>)) -> IntoIterInternal<K, V>
+            fn foo<K, V>(
+                (k, oom): (K, OneOrMore<V>),
+            ) -> IntoIterInternalIntermediate<K, V>
             where
                 K: Clone,
             {
                 iter::repeat(k).zip(oom.into_iter())
             }
-            self.map.into_iter().flat_map(foo)
+            IntoIter {
+                iter: self.map.into_iter().flat_map(foo),
+                size: self.size,
+            }
         }
     }
 
@@ -176,4 +194,41 @@ mod dup_tree_map {
             map
         }
     }
+
+    impl<'a, K, V> Iterator for Iter<'a, K, V> {
+        type Item = (&'a K, &'a V);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = self.iter.next();
+            if next.is_some() {
+                self.size -= 1;
+            }
+            next
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.size, Some(self.size))
+        }
+    }
+
+    impl<K, V> Iterator for IntoIter<K, V>
+    where
+        K: Clone,
+    {
+        type Item = (K, V);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = self.iter.next();
+            if next.is_some() {
+                self.size -= 1;
+            }
+            next
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.size, Some(self.size))
+        }
+    }
+
+    // unsafe impl<K, V> iter::TrustedLen for IntoIter<K, V> {}
 }

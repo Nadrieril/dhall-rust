@@ -30,6 +30,7 @@ fn resolve_import(
     };
     match &import.location_hashed.location {
         Local(prefix, path) => {
+            let path: PathBuf = path.iter().cloned().collect();
             let path = match prefix {
                 // TODO: fail gracefully
                 Parent => cwd.parent().unwrap().join(path),

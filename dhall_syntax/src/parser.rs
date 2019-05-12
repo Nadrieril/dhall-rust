@@ -2,7 +2,6 @@ use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::Parser;
 use std::borrow::Cow;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -557,24 +556,24 @@ make_parser! {
         },
         [quoted_path_component(s)] => s.to_string(),
     ));
-    rule!(path<PathBuf>; children!(
+    rule!(path<Vec<String>>; children!(
         [path_component(components)..] => {
             components.collect()
         }
     ));
 
-    rule_group!(local<(FilePrefix, PathBuf)>);
+    rule_group!(local<(FilePrefix, Vec<String>)>);
 
-    rule!(parent_path<(FilePrefix, PathBuf)> as local; children!(
+    rule!(parent_path<(FilePrefix, Vec<String>)> as local; children!(
         [path(p)] => (FilePrefix::Parent, p)
     ));
-    rule!(here_path<(FilePrefix, PathBuf)> as local; children!(
+    rule!(here_path<(FilePrefix, Vec<String>)> as local; children!(
         [path(p)] => (FilePrefix::Here, p)
     ));
-    rule!(home_path<(FilePrefix, PathBuf)> as local; children!(
+    rule!(home_path<(FilePrefix, Vec<String>)> as local; children!(
         [path(p)] => (FilePrefix::Home, p)
     ));
-    rule!(absolute_path<(FilePrefix, PathBuf)> as local; children!(
+    rule!(absolute_path<(FilePrefix, Vec<String>)> as local; children!(
         [path(p)] => (FilePrefix::Absolute, p)
     ));
 
