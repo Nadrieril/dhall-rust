@@ -75,29 +75,29 @@ impl<'a> From<&'a Label> for V<Label> {
 // pretty-printing to work correctly
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BinOp {
-    /// x ? y
+    /// `x ? y`
     ImportAlt,
-    /// x || y`
+    /// `x || y`
     BoolOr,
-    /// x + y`
+    /// `x + y`
     NaturalPlus,
-    /// x ++ y`
+    /// `x ++ y`
     TextAppend,
-    /// x # y
+    /// `x # y`
     ListAppend,
-    /// x && y`
+    /// `x && y`
     BoolAnd,
-    /// x ∧ y`
+    /// `x ∧ y`
     RecursiveRecordMerge,
-    /// x ⫽ y
+    /// `x ⫽ y`
     RightBiasedRecordMerge,
-    /// x ⩓ y
+    /// `x ⩓ y`
     RecursiveRecordTypeMerge,
-    /// x * y`
+    /// `x * y`
     NaturalTimes,
-    /// x == y`
+    /// `x == y`
     BoolEQ,
-    /// x != y`
+    /// `x != y`
     BoolNE,
 }
 
