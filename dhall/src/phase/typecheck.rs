@@ -787,23 +787,23 @@ mod spec_tests {
 
     macro_rules! tc_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Typecheck, Success, $name, $path);
+            make_spec_test!(Typecheck, Success, $name, &("success/".to_owned() + $path));
         };
     }
     macro_rules! tc_failure {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Typecheck, Failure, $name, $path);
+            make_spec_test!(Typecheck, Failure, $name, &("failure/".to_owned() + $path));
         };
     }
 
     macro_rules! ti_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(TypeInference, Success, $name, $path);
+            make_spec_test!(TypeInference, Success, $name, &("success/".to_owned() + $path));
         };
     }
     // macro_rules! ti_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(TypeInference, Failure, $name, $path);
+    //         make_spec_test!(TypeInference, Failure, $name, &("failure/".to_owned() + $path));
     //     };
     // }
 

@@ -86,14 +86,8 @@ pub fn run_test(
         Typecheck => "typecheck/",
         TypeInference => "type-inference/",
     };
-    let status_prefix = match status {
-        Success => "success/",
-        Failure => "failure/",
-    };
-    let base_path = "../dhall-lang/tests/".to_owned()
-        + feature_prefix
-        + status_prefix
-        + base_path;
+    let base_path =
+        "../dhall-lang/tests/".to_owned() + feature_prefix + base_path;
     match status {
         Success => {
             let expr_file_path = base_path.clone() + "A.dhall";

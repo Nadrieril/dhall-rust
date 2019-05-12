@@ -43,22 +43,22 @@ fn make_test_module(
 ) -> std::io::Result<()> {
     writeln!(w, "mod {} {{", mod_name)?;
     for (name, path) in dhall_files_in_dir(&dir.join("success/"), true) {
-        if exclude(&path) {
+        if exclude(&("success/".to_owned() + &path)) {
             continue;
         }
         writeln!(
             w,
-            r#"make_spec_test!({}, Success, success_{}, "{}");"#,
+            r#"make_spec_test!({}, Success, success_{}, "success/{}");"#,
             feature, name, path
         )?;
     }
     for (name, path) in dhall_files_in_dir(&dir.join("failure/"), false) {
-        if exclude(&path) {
+        if exclude(&("failure/".to_owned() + &path)) {
             continue;
         }
         writeln!(
             w,
-            r#"make_spec_test!({}, Failure, failure_{}, "{}");"#,
+            r#"make_spec_test!({}, Failure, failure_{}, "failure/{}");"#,
             feature, name, path
         )?;
     }
@@ -84,11 +84,11 @@ fn main() -> std::io::Result<()> {
         "Parser",
         |path| {
             // Too slow in debug mode
-            path == "largeExpression"
+            path == "success/largeExpression"
             // Fails binary encoding
-            || path == "multilet"
-            || path == "double"
-            || path == "unit/import/parenthesizeUsing"
+            || path == "success/multilet"
+            || path == "success/double"
+            || path == "success/unit/import/parenthesizeUsing"
         },
     )?;
 
@@ -99,9 +99,9 @@ fn main() -> std::io::Result<()> {
         "Normalization",
         |path| {
             // We don't support bignums
-            path == "simple/integerToDouble"
+            path == "success/simple/integerToDouble"
             // Too slow
-            || path == "remoteSystems"
+            || path == "success/remoteSystems"
         },
     )?;
 
