@@ -111,10 +111,11 @@ fn main() -> std::io::Result<()> {
             path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
-            // Fails binary encoding
+            // Too much of a pain to implement; shouldn't make a difference
+            // since lets disappear on normalization.
             || path == "success/multilet"
+            // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
-            || path == "success/unit/import/parenthesizeUsing"
         },
     )?;
 

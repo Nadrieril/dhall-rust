@@ -380,6 +380,7 @@ enum Serialize<'a> {
     CBOR(cbor::Value),
     RecordMap(&'a DupTreeMap<Label, ParsedSubExpr>),
     UnionMap(&'a DupTreeMap<Label, Option<ParsedSubExpr>>),
+    Import(&'a Import),
 }
 
 macro_rules! count {
@@ -564,12 +565,12 @@ where
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(_x) => unimplemented!(),
-                //                     match cbor_value_to_dhall(&x)?.as_ref() {
-                //                         Embed(import) => Some(Box::new(
-                //                             import.location_hashed.clone(),
-                //                         )),
-                //                     }
+                Some(location_hashed) => ser_seq.serialize_element(
+                    &self::Serialize::Import(&Import {
+                        mode: ImportMode::Code,
+                        location_hashed: location_hashed.as_ref().clone(),
+                    }),
+                )?,
             };
             ser_seq.serialize_element(&url.authority)?;
             for p in &url.path {
@@ -616,6 +617,7 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
                     (cbor::Value::String(k.into()), v)
                 }))
             }
+            Serialize::Import(import) => serialize_import(ser, import),
         }
     }
 }
