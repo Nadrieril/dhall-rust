@@ -598,6 +598,47 @@ fn type_last_layer(
             }
             Ok(RetTypeOnly(text_type))
         }
+        BinOp(RightBiasedRecordMerge, l, r) => {
+            let l_type = l.get_type()?;
+            let l_kind = l_type.get_type()?;
+            let r_type = r.get_type()?;
+            let r_kind = r_type.get_type()?;
+
+            // Check the equality of kinds.
+            // This is to disallow expression such as:
+            // "{ x = Text } // { y = 1 }"
+            ensure_equal!(
+                l_kind,
+                r_kind,
+                mkerr(RecordMismatch(l.clone(), r.clone())),
+            );
+
+            // Extract the LHS record type
+            let mut kts_x = match l_type.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(MustCombineRecord(l.clone()))),
+            };
+
+            // Extract the RHS record type
+            let kts_y = match r_type.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(MustCombineRecord(r.clone()))),
+            };
+
+            // Union the two records, prefering
+            // the values found in the RHS.
+            for (label, value) in kts_y {
+                kts_x.insert(label, value);
+            }
+
+            // Construct the final record type from the union
+            Ok(RetTypeOnly(tck_record_type(
+                ctx,
+                kts_x.iter()
+                     .map(|(x, v)| Ok((x.clone(), v.to_type()))),
+            )?
+            .into_type()))
+        }
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.to_value() {
                 Value::AppliedBuiltin(List, _) => {}
@@ -1135,11 +1176,11 @@ mod spec_tests {
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwo, "unit/RecursiveRecordTypeMergeTwo");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoKinds, "unit/RecursiveRecordTypeMergeTwoKinds");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoTypes, "unit/RecursiveRecordTypeMergeTwoTypes");
-    // ti_success!(ti_success_unit_RightBiasedRecordMergeRhsEmpty, "unit/RightBiasedRecordMergeRhsEmpty");
-    // ti_success!(ti_success_unit_RightBiasedRecordMergeTwo, "unit/RightBiasedRecordMergeTwo");
-    // ti_success!(ti_success_unit_RightBiasedRecordMergeTwoDifferent, "unit/RightBiasedRecordMergeTwoDifferent");
-    // ti_success!(ti_success_unit_RightBiasedRecordMergeTwoKinds, "unit/RightBiasedRecordMergeTwoKinds");
-    // ti_success!(ti_success_unit_RightBiasedRecordMergeTwoTypes, "unit/RightBiasedRecordMergeTwoTypes");
+    ti_success!(ti_success_unit_RightBiasedRecordMergeRhsEmpty, "unit/RightBiasedRecordMergeRhsEmpty");
+    ti_success!(ti_success_unit_RightBiasedRecordMergeTwo, "unit/RightBiasedRecordMergeTwo");
+    ti_success!(ti_success_unit_RightBiasedRecordMergeTwoDifferent, "unit/RightBiasedRecordMergeTwoDifferent");
+    ti_success!(ti_success_unit_RightBiasedRecordMergeTwoKinds, "unit/RightBiasedRecordMergeTwoKinds");
+    ti_success!(ti_success_unit_RightBiasedRecordMergeTwoTypes, "unit/RightBiasedRecordMergeTwoTypes");
     ti_success!(ti_success_unit_SomeTrue, "unit/SomeTrue");
     ti_success!(ti_success_unit_Text, "unit/Text");
     ti_success!(ti_success_unit_TextLiteral, "unit/TextLiteral");
