@@ -599,6 +599,8 @@ fn type_last_layer(
             Ok(RetTypeOnly(text_type))
         }
         BinOp(RightBiasedRecordMerge, l, r) => {
+            use crate::phase::normalize::merge_maps;
+
             let l_type = l.get_type()?;
             let l_kind = l_type.get_type()?;
             let r_type = r.get_type()?;
@@ -614,7 +616,7 @@ fn type_last_layer(
             );
 
             // Extract the LHS record type
-            let mut kts_x = match l_type.to_value() {
+            let kts_x = match l_type.to_value() {
                 Value::RecordType(kts) => kts,
                 _ => return Err(mkerr(MustCombineRecord(l.clone()))),
             };
@@ -627,15 +629,13 @@ fn type_last_layer(
 
             // Union the two records, prefering
             // the values found in the RHS.
-            for (label, value) in kts_y {
-                kts_x.insert(label, value);
-            }
+            let kts = merge_maps(&kts_x, &kts_y, |_, r_t| r_t.clone());
 
             // Construct the final record type from the union
             Ok(RetTypeOnly(tck_record_type(
                 ctx,
-                kts_x.iter()
-                     .map(|(x, v)| Ok((x.clone(), v.to_type()))),
+                kts.iter()
+                   .map(|(x, v)| Ok((x.clone(), v.to_type()))),
             )?
             .into_type()))
         }
