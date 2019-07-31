@@ -687,6 +687,7 @@ fn type_last_layer(
                 NaturalTimes => Natural,
                 TextAppend => Text,
                 ListAppend => unreachable!(),
+                RecursiveRecordMerge => unreachable!(),
                 _ => return Err(mkerr(Unimplemented)),
             })?;
 
