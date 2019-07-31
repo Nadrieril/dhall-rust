@@ -598,6 +598,71 @@ fn type_last_layer(
             }
             Ok(RetTypeOnly(text_type))
         }
+        BinOp(RecursiveRecordMerge, l, r) => {
+            // A recursive function to dig down into
+            // records of records when merging.
+            fn combine_record_types(
+                ctx: &TypecheckContext,
+                kts_l: HashMap<Label, TypeThunk>,
+                kts_r: HashMap<Label, TypeThunk>,
+            ) -> Result<Typed, TypeError> {
+                use crate::phase::normalize::outer_join;
+
+                // If the Label exists for both records and Type for the values
+                // are records themselves, then we hit the recursive case.
+                // Otherwise we have a field collision.
+                let combine = |k: &Label, inner_l: &TypeThunk, inner_r: &TypeThunk|
+                    -> Result<Typed, TypeError> {
+                    match (inner_l.to_value(), inner_r.to_value()) {
+                        (Value::RecordType(inner_l_kvs), Value::RecordType(inner_r_kvs)) =>
+                            combine_record_types(ctx, inner_l_kvs, inner_r_kvs),
+                        (_, _) => Err(TypeError::new(ctx, FieldCollision(k.clone()))),
+                    }
+                };
+
+                let kts: HashMap<Label, Result<Typed, TypeError>> = outer_join(
+                    |l| Ok(l.to_type()),
+                    |r| Ok(r.to_type()),
+                    |k: &Label, l: &TypeThunk, r: &TypeThunk| combine(k, l, r),
+                    &kts_l,
+                    &kts_r,
+                );
+
+                Ok(tck_record_type(
+                    ctx,
+                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r)))
+                )?
+                .into_type())
+            };
+
+            let l_type = l.get_type()?;
+            let l_kind = l_type.get_type()?;
+            let r_type = r.get_type()?;
+            let r_kind = r_type.get_type()?;
+
+            // Check the equality of kinds.
+            // This is to disallow expression such as:
+            // "{ x = Text } // { y = 1 }"
+            ensure_equal!(
+                l_kind,
+                r_kind,
+                mkerr(RecordMismatch(l.clone(), r.clone())),
+            );
+
+            // Extract the LHS record type
+            let kts_x = match l_type.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(MustCombineRecord(l.clone()))),
+            };
+
+            // Extract the RHS record type
+            let kts_y = match r_type.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(MustCombineRecord(r.clone()))),
+            };
+
+            combine_record_types(ctx, kts_x, kts_y).map(|r| RetTypeOnly(r))
+        }
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.to_value() {
                 Value::AppliedBuiltin(List, _) => {}
@@ -1120,14 +1185,14 @@ mod spec_tests {
     ti_success!(ti_success_unit_RecordTypeNestedKind, "unit/RecordTypeNestedKind");
     ti_success!(ti_success_unit_RecordTypeNestedKindLike, "unit/RecordTypeNestedKindLike");
     ti_success!(ti_success_unit_RecordTypeType, "unit/RecordTypeType");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeRecursively, "unit/RecursiveRecordMergeRecursively");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyKinds, "unit/RecursiveRecordMergeRecursivelyKinds");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyTypes, "unit/RecursiveRecordMergeRecursivelyTypes");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeRhsEmpty, "unit/RecursiveRecordMergeRhsEmpty");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeTwo, "unit/RecursiveRecordMergeTwo");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeTwoKinds, "unit/RecursiveRecordMergeTwoKinds");
-    // ti_success!(ti_success_unit_RecursiveRecordMergeTwoTypes, "unit/RecursiveRecordMergeTwoTypes");
+    ti_success!(ti_success_unit_RecursiveRecordMergeLhsEmpty, "unit/RecursiveRecordMergeLhsEmpty");
+    ti_success!(ti_success_unit_RecursiveRecordMergeRecursively, "unit/RecursiveRecordMergeRecursively");
+    ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyKinds, "unit/RecursiveRecordMergeRecursivelyKinds");
+    ti_success!(ti_success_unit_RecursiveRecordMergeRecursivelyTypes, "unit/RecursiveRecordMergeRecursivelyTypes");
+    ti_success!(ti_success_unit_RecursiveRecordMergeRhsEmpty, "unit/RecursiveRecordMergeRhsEmpty");
+    ti_success!(ti_success_unit_RecursiveRecordMergeTwo, "unit/RecursiveRecordMergeTwo");
+    ti_success!(ti_success_unit_RecursiveRecordMergeTwoKinds, "unit/RecursiveRecordMergeTwoKinds");
+    ti_success!(ti_success_unit_RecursiveRecordMergeTwoTypes, "unit/RecursiveRecordMergeTwoTypes");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursively, "unit/RecursiveRecordTypeMergeRecursively");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyKinds, "unit/RecursiveRecordTypeMergeRecursivelyKinds");
     // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyTypes, "unit/RecursiveRecordTypeMergeRecursivelyTypes");
