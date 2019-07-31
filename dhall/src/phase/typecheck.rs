@@ -663,6 +663,7 @@ fn type_last_layer(
                 NaturalTimes => Natural,
                 TextAppend => Text,
                 ListAppend => unreachable!(),
+                RightBiasedRecordMerge => unreachable!(),
                 _ => return Err(mkerr(Unimplemented)),
             })?;
 
