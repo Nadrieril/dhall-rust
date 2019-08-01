@@ -598,6 +598,83 @@ fn type_last_layer(
             }
             Ok(RetTypeOnly(text_type))
         }
+        BinOp(RecursiveRecordTypeMerge, l, r) => {
+            // A recursive function to dig down into
+            // records of records when merging.
+            fn combine_record_types(
+                ctx: &TypecheckContext,
+                kts_l: HashMap<Label, TypeThunk>,
+                kts_r: HashMap<Label, TypeThunk>,
+            ) -> Result<Typed, TypeError> {
+                use crate::phase::normalize::intersection_with_key;
+
+                // If the Label exists for both records and Type for the values
+                // are records themselves, then we hit the recursive case.
+                // Otherwise we have a field collision.
+                let combine = |k: &Label, kts_l_inner: &TypeThunk, kts_r_inner: &TypeThunk|
+                    -> Result<Typed, TypeError> {
+                    match (kts_l_inner.to_value(), kts_r_inner.to_value()) {
+                        (Value::RecordType(kvs_l_inner), Value::RecordType(kvs_r_inner)) =>
+                            combine_record_types(ctx, kvs_l_inner, kvs_r_inner),
+                        (_, _) => Err(TypeError::new(ctx, FieldCollision(k.clone()))),
+                    }
+                };
+
+                let kts = intersection_with_key(
+                    |k: &Label, l: &TypeThunk, r: &TypeThunk| combine(k, l, r),
+                    &kts_l,
+                    &kts_r,
+                );
+
+                Ok(tck_record_type(
+                    ctx,
+                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r)))
+                )?
+                .into_type())
+            };
+
+            // Extract the Const of the LHS
+            let k_l = match l.get_type()?.to_value() {
+                Value::Const(k) => k,
+                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(l.clone()))),
+            };
+
+            // Extract the Const of the RHS
+            let k_r = match r.get_type()?.to_value() {
+                Value::Const(k) => k,
+                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(r.clone()))),
+            };
+
+            // Const values must match for the Records
+            let k = match (k_l, k_r) {
+                (dhall_syntax::Const::Type, dhall_syntax::Const::Type) => dhall_syntax::Const::Type,
+                (dhall_syntax::Const::Kind, dhall_syntax::Const::Kind) => dhall_syntax::Const::Kind,
+                (dhall_syntax::Const::Sort, dhall_syntax::Const::Sort) => dhall_syntax::Const::Sort,
+                (l_mismatch, r_mismatch) =>
+                    return Err(mkerr(RecordTypeMismatch(
+                        Typed::from_const(l_mismatch),
+                        Typed::from_const(r_mismatch),
+                        l.clone(),
+                        r.clone(),
+                    ))),
+            };
+
+            // Extract the LHS record type
+            let kts_x = match l.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(l.clone()))),
+            };
+
+            // Extract the RHS record type
+            let kts_y = match r.to_value() {
+                Value::RecordType(kts) => kts,
+                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(r.clone()))),
+            };
+
+            // Ensure that the records combine without a type error
+            // and if not output the final Const value.
+            combine_record_types(ctx, kts_x, kts_y).and(Ok(RetTypeOnly(Typed::from_const(k))))
+        }
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.to_value() {
                 Value::AppliedBuiltin(List, _) => {}
@@ -622,6 +699,7 @@ fn type_last_layer(
                 NaturalTimes => Natural,
                 TextAppend => Text,
                 ListAppend => unreachable!(),
+                RecursiveRecordTypeMerge => unreachable!(),
                 _ => return Err(mkerr(Unimplemented)),
             })?;
 
@@ -1128,13 +1206,13 @@ mod spec_tests {
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwo, "unit/RecursiveRecordMergeTwo");
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwoKinds, "unit/RecursiveRecordMergeTwoKinds");
     // ti_success!(ti_success_unit_RecursiveRecordMergeTwoTypes, "unit/RecursiveRecordMergeTwoTypes");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursively, "unit/RecursiveRecordTypeMergeRecursively");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyKinds, "unit/RecursiveRecordTypeMergeRecursivelyKinds");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyTypes, "unit/RecursiveRecordTypeMergeRecursivelyTypes");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeRhsEmpty, "unit/RecursiveRecordTypeMergeRhsEmpty");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwo, "unit/RecursiveRecordTypeMergeTwo");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoKinds, "unit/RecursiveRecordTypeMergeTwoKinds");
-    // ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoTypes, "unit/RecursiveRecordTypeMergeTwoTypes");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursively, "unit/RecursiveRecordTypeMergeRecursively");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyKinds, "unit/RecursiveRecordTypeMergeRecursivelyKinds");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeRecursivelyTypes, "unit/RecursiveRecordTypeMergeRecursivelyTypes");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeRhsEmpty, "unit/RecursiveRecordTypeMergeRhsEmpty");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwo, "unit/RecursiveRecordTypeMergeTwo");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoKinds, "unit/RecursiveRecordTypeMergeTwoKinds");
+    ti_success!(ti_success_unit_RecursiveRecordTypeMergeTwoTypes, "unit/RecursiveRecordTypeMergeTwoTypes");
     // ti_success!(ti_success_unit_RightBiasedRecordMergeRhsEmpty, "unit/RightBiasedRecordMergeRhsEmpty");
     // ti_success!(ti_success_unit_RightBiasedRecordMergeTwo, "unit/RightBiasedRecordMergeTwo");
     // ti_success!(ti_success_unit_RightBiasedRecordMergeTwoDifferent, "unit/RightBiasedRecordMergeTwoDifferent");

@@ -372,6 +372,38 @@ enum Ret<'a> {
     Expr(ExprF<Thunk, X>),
 }
 
+/// Performs an intersection of two HashMaps.
+///
+/// # Arguments
+///
+/// * `f` - Will compute the final value from the intersecting
+///         key and the values from both maps.
+///
+/// # Description
+///
+/// If the key is present in both maps then the final value for
+/// that key is computed via the `f` function.
+///
+/// The final map will contain the shared keys from the
+/// two input maps with the final computed value from `f`.
+pub(crate) fn intersection_with_key<K, T, U, V>(
+    mut f: impl FnMut(&K, &T, &U) -> V,
+    map1: &HashMap<K, T>,
+    map2: &HashMap<K, U>,
+) -> HashMap<K, V>
+where
+    K: std::hash::Hash + Eq + Clone,
+{
+    let mut kvs = HashMap::new();
+
+    for (k, t) in map1 {
+        // Only insert in the final map if the key exists in both
+        if let Some(u) = map2.get(k) { kvs.insert(k.clone(), f(k, t, u)); }
+    }
+
+    kvs
+}
+
 fn merge_maps<K, V>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,

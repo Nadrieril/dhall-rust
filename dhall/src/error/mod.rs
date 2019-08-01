@@ -55,6 +55,7 @@ pub(crate) enum TypeMessage {
     TypeMismatch(Typed, Normalized, Typed),
     AnnotMismatch(Typed, Normalized),
     Untyped,
+    FieldCollision(Label),
     InvalidListElement(usize, Normalized, Typed),
     InvalidListType(Normalized),
     InvalidOptionalType(Normalized),
@@ -80,6 +81,8 @@ pub(crate) enum TypeMessage {
     ProjectionMissingEntry,
     Sort,
     RecordTypeDuplicateField,
+    RecordTypeMergeRequiresRecordType(Type),
+    RecordTypeMismatch(Type, Type, Type, Type),
     UnionTypeDuplicateField,
     Unimplemented,
 }
