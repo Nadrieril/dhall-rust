@@ -1044,7 +1044,6 @@ mod spec_tests {
     tc_success!(tc_success_recordOfTypes, "recordOfTypes");
     // tc_success!(tc_success_simple_access_0, "simple/access/0");
     // tc_success!(tc_success_simple_access_1, "simple/access/1");
-    // tc_success!(tc_success_simple_alternativesAreTypes, "simple/alternativesAreTypes");
     // tc_success!(tc_success_simple_anonymousFunctionsInTypes, "simple/anonymousFunctionsInTypes");
     // tc_success!(tc_success_simple_fieldsAreTypes, "simple/fieldsAreTypes");
     // tc_success!(tc_success_simple_kindParameter, "simple/kindParameter");
@@ -1174,6 +1173,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_ListReverse, "unit/ListReverse");
     ti_success!(ti_success_unit_MergeEmptyUnion, "unit/MergeEmptyUnion");
     ti_success!(ti_success_unit_MergeOne, "unit/MergeOne");
+    ti_success!(ti_success_unit_MergeOneEmpty, "unit/MergeOneEmpty");
     ti_success!(ti_success_unit_MergeOneWithAnnotation, "unit/MergeOneWithAnnotation");
     ti_success!(ti_success_unit_Natural, "unit/Natural");
     ti_success!(ti_success_unit_NaturalBuild, "unit/NaturalBuild");
@@ -1260,7 +1260,7 @@ mod spec_tests {
     ti_success!(ti_success_unit_TypeAnnotationSort, "unit/TypeAnnotationSort");
     ti_success!(ti_success_unit_UnionConstructorEmptyField, "unit/UnionConstructorEmptyField");
     ti_success!(ti_success_unit_UnionConstructorField, "unit/UnionConstructorField");
-    ti_success!(ti_success_unit_UnionOne, "unit/UnionOne");
+    ti_success!(ti_success_unit_UnionLiteralOne, "unit/UnionLiteralOne");
     ti_success!(ti_success_unit_UnionTypeEmpty, "unit/UnionTypeEmpty");
     ti_success!(ti_success_unit_UnionTypeKind, "unit/UnionTypeKind");
     ti_success!(ti_success_unit_UnionTypeOne, "unit/UnionTypeOne");
