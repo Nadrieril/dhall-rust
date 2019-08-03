@@ -878,6 +878,7 @@ make_parser! {
     rule!(selector<Either<Label, Vec<Label>>>; children!(
         [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
+        [expression(e)] => unimplemented!("selection by expression"), // TODO
     ));
 
     rule!(labels<Vec<Label>>; children!(

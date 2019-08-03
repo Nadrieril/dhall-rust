@@ -35,11 +35,11 @@ fn dhall_files_in_dir<'a>(
 }
 
 fn make_test_module(
-    w: &mut impl Write,
-    mod_name: &str,
-    dir: &Path,
-    feature: &str,
-    mut exclude: impl FnMut(&str) -> bool,
+    w: &mut impl Write, // Where to output the generated code
+    mod_name: &str, // Name of the module, used in the output of `cargo test`
+    dir: &Path,     // Directory containing the tests files
+    feature: &str,  // Relevant variant of `dhall::tests::Feature`
+    mut exclude: impl FnMut(&str) -> bool, // Given a file name, whether to exclude it
 ) -> std::io::Result<()> {
     writeln!(w, "mod {} {{", mod_name)?;
     for (name, path) in dhall_files_in_dir(&dir.join("success/"), true) {
@@ -67,6 +67,8 @@ fn make_test_module(
 }
 
 fn main() -> std::io::Result<()> {
+    // Tries to detect when the submodule gets updated; doesn't really work.
+    // To force regeneration of the test list, just `touch dhall-lang/.git`
     println!("cargo:rerun-if-changed=../dhall-lang/.git");
     println!(
         "cargo:rerun-if-changed=../.git/modules/dhall-lang/refs/heads/master"
@@ -129,6 +131,9 @@ fn main() -> std::io::Result<()> {
             path == "success/simple/integerToDouble"
             // Too slow
             || path == "success/remoteSystems"
+            // TODO: selection by expression
+            || path == "success/unit/RecordProjectionTypeEmpty"
+            || path == "success/unit/RecordProjectionTypeNonEmpty"
         },
     )?;
 
