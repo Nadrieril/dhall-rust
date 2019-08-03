@@ -632,12 +632,13 @@ fn type_last_layer(
             let kts = merge_maps(&kts_x, &kts_y, |_, r_t| r_t.clone());
 
             // Construct the final record type from the union
-            Ok(RetTypeOnly(tck_record_type(
-                ctx,
-                kts.iter()
-                   .map(|(x, v)| Ok((x.clone(), v.to_type()))),
-            )?
-            .into_type()))
+            Ok(RetTypeOnly(
+                tck_record_type(
+                    ctx,
+                    kts.iter().map(|(x, v)| Ok((x.clone(), v.to_type()))),
+                )?
+                .into_type(),
+            ))
         }
         BinOp(RecursiveRecordMerge, l, r) => {
             // A recursive function to dig down into
@@ -652,12 +653,20 @@ fn type_last_layer(
                 // If the Label exists for both records and Type for the values
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
-                let combine = |k: &Label, inner_l: &TypeThunk, inner_r: &TypeThunk|
-                    -> Result<Typed, TypeError> {
+                let combine = |k: &Label,
+                               inner_l: &TypeThunk,
+                               inner_r: &TypeThunk|
+                 -> Result<Typed, TypeError> {
                     match (inner_l.to_value(), inner_r.to_value()) {
-                        (Value::RecordType(inner_l_kvs), Value::RecordType(inner_r_kvs)) =>
-                            combine_record_types(ctx, inner_l_kvs, inner_r_kvs),
-                        (_, _) => Err(TypeError::new(ctx, FieldCollision(k.clone()))),
+                        (
+                            Value::RecordType(inner_l_kvs),
+                            Value::RecordType(inner_r_kvs),
+                        ) => {
+                            combine_record_types(ctx, inner_l_kvs, inner_r_kvs)
+                        }
+                        (_, _) => {
+                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
+                        }
                     }
                 };
 
@@ -671,7 +680,7 @@ fn type_last_layer(
 
                 Ok(tck_record_type(
                     ctx,
-                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r)))
+                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
                 )?
                 .into_type())
             };
@@ -717,12 +726,20 @@ fn type_last_layer(
                 // If the Label exists for both records and Type for the values
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
-                let combine = |k: &Label, kts_l_inner: &TypeThunk, kts_r_inner: &TypeThunk|
-                    -> Result<Typed, TypeError> {
+                let combine = |k: &Label,
+                               kts_l_inner: &TypeThunk,
+                               kts_r_inner: &TypeThunk|
+                 -> Result<Typed, TypeError> {
                     match (kts_l_inner.to_value(), kts_r_inner.to_value()) {
-                        (Value::RecordType(kvs_l_inner), Value::RecordType(kvs_r_inner)) =>
-                            combine_record_types(ctx, kvs_l_inner, kvs_r_inner),
-                        (_, _) => Err(TypeError::new(ctx, FieldCollision(k.clone()))),
+                        (
+                            Value::RecordType(kvs_l_inner),
+                            Value::RecordType(kvs_r_inner),
+                        ) => {
+                            combine_record_types(ctx, kvs_l_inner, kvs_r_inner)
+                        }
+                        (_, _) => {
+                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
+                        }
                     }
                 };
 
@@ -734,7 +751,7 @@ fn type_last_layer(
 
                 Ok(tck_record_type(
                     ctx,
-                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r)))
+                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
                 )?
                 .into_type())
             };
@@ -742,40 +759,59 @@ fn type_last_layer(
             // Extract the Const of the LHS
             let k_l = match l.get_type()?.to_value() {
                 Value::Const(k) => k,
-                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(l.clone()))),
+                _ => {
+                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
+                        l.clone(),
+                    )))
+                }
             };
 
             // Extract the Const of the RHS
             let k_r = match r.get_type()?.to_value() {
                 Value::Const(k) => k,
-                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(r.clone()))),
+                _ => {
+                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
+                        r.clone(),
+                    )))
+                }
             };
 
             // Const values must match for the Records
-            let k = if k_l == k_r { k_l } else {
+            let k = if k_l == k_r {
+                k_l
+            } else {
                 return Err(mkerr(RecordTypeMismatch(
                     Typed::from_const(k_l),
                     Typed::from_const(k_r),
                     l.clone(),
                     r.clone(),
-                )))
+                )));
             };
 
             // Extract the LHS record type
             let kts_x = match l.to_value() {
                 Value::RecordType(kts) => kts,
-                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(l.clone()))),
+                _ => {
+                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
+                        l.clone(),
+                    )))
+                }
             };
 
             // Extract the RHS record type
             let kts_y = match r.to_value() {
                 Value::RecordType(kts) => kts,
-                _ => return Err(mkerr(RecordTypeMergeRequiresRecordType(r.clone()))),
+                _ => {
+                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
+                        r.clone(),
+                    )))
+                }
             };
 
             // Ensure that the records combine without a type error
             // and if not output the final Const value.
-            combine_record_types(ctx, kts_x, kts_y).and(Ok(RetTypeOnly(Typed::from_const(k))))
+            combine_record_types(ctx, kts_x, kts_y)
+                .and(Ok(RetTypeOnly(Typed::from_const(k))))
         }
         BinOp(o @ ListAppend, l, r) => {
             match l.get_type()?.to_value() {

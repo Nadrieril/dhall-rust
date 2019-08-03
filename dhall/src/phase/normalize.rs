@@ -398,7 +398,9 @@ where
 
     for (k, t) in map1 {
         // Only insert in the final map if the key exists in both
-        if let Some(u) = map2.get(k) { kvs.insert(k.clone(), f(k, t, u)); }
+        if let Some(u) = map2.get(k) {
+            kvs.insert(k.clone(), f(k, t, u));
+        }
     }
 
     kvs
