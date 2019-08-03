@@ -687,17 +687,13 @@ fn type_last_layer(
             };
 
             // Const values must match for the Records
-            let k = match (k_l, k_r) {
-                (dhall_syntax::Const::Type, dhall_syntax::Const::Type) => dhall_syntax::Const::Type,
-                (dhall_syntax::Const::Kind, dhall_syntax::Const::Kind) => dhall_syntax::Const::Kind,
-                (dhall_syntax::Const::Sort, dhall_syntax::Const::Sort) => dhall_syntax::Const::Sort,
-                (l_mismatch, r_mismatch) =>
-                    return Err(mkerr(RecordTypeMismatch(
-                        Typed::from_const(l_mismatch),
-                        Typed::from_const(r_mismatch),
-                        l.clone(),
-                        r.clone(),
-                    ))),
+            let k = if k_l == k_r { k_l } else {
+                return Err(mkerr(RecordTypeMismatch(
+                    Typed::from_const(k_l),
+                    Typed::from_const(k_r),
+                    l.clone(),
+                    r.clone(),
+                )))
             };
 
             // Extract the LHS record type
