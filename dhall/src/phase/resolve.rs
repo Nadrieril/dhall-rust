@@ -122,12 +122,18 @@ mod spec_tests {
 
     // import_success!(success_alternativeEnvNatural, "alternativeEnvNatural");
     // import_success!(success_alternativeEnvSimple, "alternativeEnvSimple");
+    // import_success!(success_alternativeHashMismatch, "alternativeHashMismatch");
     // import_success!(success_alternativeNatural, "alternativeNatural");
+    // import_success!(success_alternativeParseError, "alternativeParseError");
     // import_success!(success_asText, "asText");
+    // import_success!(success_customHeaders, "customHeaders");
     import_success!(success_fieldOrder, "fieldOrder");
+    // import_success!(success_headerForwarding, "headerForwarding");
+    // import_success!(success_noHeaderForwarding, "noHeaderForwarding");
     // import_failure!(failure_alternativeEnv, "alternativeEnv");
     // import_failure!(failure_alternativeEnvMissing, "alternativeEnvMissing");
     // import_failure!(failure_cycle, "cycle");
+    // import_failure!(failure_hashMismatch, "hashMismatch");
     // import_failure!(failure_missing, "missing");
     // import_failure!(failure_referentiallyInsane, "referentiallyInsane");
 }

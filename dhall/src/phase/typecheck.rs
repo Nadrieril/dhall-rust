@@ -1167,6 +1167,7 @@ mod spec_tests {
     // tc_failure!(tc_failure_importBoundary, "importBoundary");
     tc_failure!(tc_failure_mixedUnions, "mixedUnions");
     tc_failure!(tc_failure_preferMixedRecords, "preferMixedRecords");
+    // tc_failure!(tc_failure_customHeadersUsingBoundVariable, "customHeadersUsingBoundVariable");
     tc_failure!(tc_failure_unit_FunctionApplicationArgumentNotMatch, "unit/FunctionApplicationArgumentNotMatch");
     tc_failure!(tc_failure_unit_FunctionApplicationIsNotFunction, "unit/FunctionApplicationIsNotFunction");
     tc_failure!(tc_failure_unit_FunctionArgumentTypeNotAType, "unit/FunctionArgumentTypeNotAType");

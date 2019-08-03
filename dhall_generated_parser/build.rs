@@ -26,6 +26,7 @@ fn main() -> std::io::Result<()> {
             rules.get_mut(&line[2..]).map(|x| x.silent = true);
         }
     }
+    rules.remove("http");
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
 
@@ -39,6 +40,17 @@ fn main() -> std::io::Result<()> {
         "simple_label = {{
               keyword ~ simple_label_next_char+
             | !keyword ~ simple_label_first_char ~ simple_label_next_char*
+    }}"
+    )?;
+    // TODO: this is a cheat; actually implement inline headers instead
+    writeln!(
+        &mut file,
+        "http = {{
+            http_raw
+            ~ (whsp
+                ~ using
+                ~ whsp1
+                ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
     }}"
     )?;
     writeln!(

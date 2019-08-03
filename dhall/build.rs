@@ -87,6 +87,9 @@ fn main() -> std::io::Result<()> {
         |path| {
             // Too slow in debug mode
             path == "success/largeExpression"
+            // TODO: Inline headers are not implemented
+            || path == "success/unit/import/parenthesizeUsing"
+            || path == "success/unit/import/inlineUsing"
         },
     )?;
 
@@ -100,6 +103,8 @@ fn main() -> std::io::Result<()> {
             path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
+            // TODO: Inline headers are not implemented
+            || path == "success/unit/import/inlineUsing"
         },
     )?;
 
@@ -118,6 +123,9 @@ fn main() -> std::io::Result<()> {
             || path == "success/multilet"
             // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
+            // TODO: Inline headers are not implemented
+            || path == "success/unit/import/parenthesizeUsing"
+            || path == "success/unit/import/inlineUsing"
         },
     )?;
 

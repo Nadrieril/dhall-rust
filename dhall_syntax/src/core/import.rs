@@ -26,6 +26,7 @@ pub struct URL {
     pub authority: String,
     pub path: Vec<String>,
     pub query: Option<String>,
+    // TODO: implement inline headers
     pub headers: Option<Box<ImportHashed>>,
 }
 

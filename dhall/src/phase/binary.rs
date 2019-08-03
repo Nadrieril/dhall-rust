@@ -216,18 +216,19 @@ fn cbor_value_to_dhall(
                         };
                         let headers = match rest.next() {
                             Some(Null) => None,
-                            Some(x) => {
-                                match cbor_value_to_dhall(&x)?.as_ref() {
-                                    Embed(import) => Some(Box::new(
-                                        import.location_hashed.clone(),
-                                    )),
-                                    _ => Err(DecodeError::WrongFormatError(
-                                        "import/remote/headers".to_owned(),
-                                    ))?,
-                                }
-                            }
+                            // TODO
+                            // Some(x) => {
+                            //     match cbor_value_to_dhall(&x)?.as_ref() {
+                            //         Embed(import) => Some(Box::new(
+                            //             import.location_hashed.clone(),
+                            //         )),
+                            //         _ => Err(DecodeError::WrongFormatError(
+                            //             "import/remote/headers".to_owned(),
+                            //         ))?,
+                            //     }
+                            // }
                             _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers".to_owned(),
+                                "import/remote/headers is unimplemented".to_owned(),
                             ))?,
                         };
                         let authority = match rest.next() {
@@ -378,7 +379,6 @@ enum Serialize<'a> {
     CBOR(cbor::Value),
     RecordMap(&'a DupTreeMap<Label, ParsedSubExpr>),
     UnionMap(&'a DupTreeMap<Label, Option<ParsedSubExpr>>),
-    Import(&'a Import),
 }
 
 macro_rules! count {
@@ -566,10 +566,10 @@ where
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
                 Some(location_hashed) => ser_seq.serialize_element(
-                    &self::Serialize::Import(&Import {
+                    &self::Serialize::Expr(&SubExpr::from_expr_no_note(ExprF::Embed(Import {
                         mode: ImportMode::Code,
                         location_hashed: location_hashed.as_ref().clone(),
-                    }),
+                    }))),
                 )?,
             };
             ser_seq.serialize_element(&url.authority)?;
@@ -617,7 +617,6 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
                     (cbor::Value::String(k.into()), v)
                 }))
             }
-            Serialize::Import(import) => serialize_import(ser, import),
         }
     }
 }
