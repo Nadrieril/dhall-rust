@@ -14,5 +14,6 @@ percent-encoding = "1.0.1"
 pest = "2.1"
 either = "1.5.2"
 take_mut = "0.2.2"
+hex = "0.3.2"
 dhall_generated_parser = { path = "../dhall_generated_parser" }
 improved_slice_patterns = { version = "2.0.0", path = "../improved_slice_patterns" }

@@ -196,17 +196,15 @@ fn cbor_value_to_dhall(
                 };
                 let hash = match hash {
                     Null => None,
-                    Array(vec) => match vec.as_slice() {
-                        [String(protocol), String(hash)] => Some(Hash {
-                            protocol: protocol.clone(),
-                            hash: hash.clone(),
-                        }),
-                        _ => Err(DecodeError::WrongFormatError(
-                            "import/hash".to_owned(),
-                        ))?,
+                    Bytes(bytes) => match bytes.as_slice() {
+                        [18, 32, rest..] => Some(Hash::SHA256(rest.to_vec())),
+                        _ => Err(DecodeError::WrongFormatError(format!(
+                            "import/hash/unknown_multihash: {:?}",
+                            bytes
+                        )))?,
                     },
                     _ => Err(DecodeError::WrongFormatError(
-                        "import/hash".to_owned(),
+                        "import/hash/should_be_bytes".to_owned(),
                     ))?,
                 };
                 let mut rest = rest.iter();
@@ -518,7 +516,7 @@ fn serialize_import<S>(ser: S, import: &Import) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
-    use cbor::Value::{Array, Null, String, U64};
+    use cbor::Value::{Bytes, Null, U64};
     use serde::ser::SerializeSeq;
 
     let count = 4 + match &import.location_hashed.location {
@@ -533,8 +531,10 @@ where
 
     let hash = match &import.location_hashed.hash {
         None => Null,
-        Some(h) => {
-            Array(vec![String(h.protocol.clone()), String(h.hash.clone())])
+        Some(Hash::SHA256(h)) => {
+            let mut bytes = vec![18, 32];
+            bytes.extend_from_slice(h);
+            Bytes(bytes)
         }
     };
     ser_seq.serialize_element(&hash)?;

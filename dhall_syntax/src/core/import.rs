@@ -43,9 +43,8 @@ pub enum ImportMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Hash {
-    pub protocol: String,
-    pub hash: String,
+pub enum Hash {
+    SHA256(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
