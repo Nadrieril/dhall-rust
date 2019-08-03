@@ -382,13 +382,13 @@ enum Ret<'a> {
 /// * `fu` - Will convert the values of the second map
 ///          into the target value.
 ///
-/// * `ftu` - Will convert the key and values from both maps
+/// * `fktu` - Will convert the key and values from both maps
 ///           into the target type.
 ///
 /// # Description
 ///
 /// If the key is present in both maps then the final value for
-/// that key is computed via the `ftu` function. Otherwise, the
+/// that key is computed via the `fktu` function. Otherwise, the
 /// final value will be calculated by either the `ft` or `fu` value
 /// depending on which map the key is present in.
 ///
@@ -397,35 +397,36 @@ enum Ret<'a> {
 pub(crate) fn outer_join<K, T, U, V>(
     mut ft: impl FnMut(&T) -> V,
     mut fu: impl FnMut(&U) -> V,
-    mut ftu: impl FnMut(&K, &T, &U) -> V,
+    mut fktu: impl FnMut(&K, &T, &U) -> V,
     map1: &HashMap<K, T>,
     map2: &HashMap<K, U>,
 ) -> HashMap<K, V>
 where
     K: std::hash::Hash + Eq + Clone,
 {
-    let mut kus = HashMap::new();
+    let mut kvs = HashMap::new();
+
     for (k1, t) in map1 {
         let v = if let Some(u) = map2.get(k1) {
             // The key exists in both maps
             // so use all values for computation
-            ftu(k1, t, u)
+            fktu(k1, t, u)
         } else {
             // Key only exists in map1
             ft(t)
         };
-        kus.insert(k1.clone(), v);
+        kvs.insert(k1.clone(), v);
     }
 
     for (k1, u) in map2 {
         // Insert if key was missing in map1
-        kus.entry(k1.clone()).or_insert(fu(u));
+        kvs.entry(k1.clone()).or_insert(fu(u));
     }
 
-    kus
+    kvs
 }
 
-fn merge_maps<K, V>(
+pub(crate) fn merge_maps<K, V>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,
     mut f: impl FnMut(&V, &V) -> V,
