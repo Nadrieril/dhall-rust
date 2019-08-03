@@ -83,6 +83,8 @@ pub(crate) enum TypeMessage {
     Sort,
     RecordMismatch(Typed, Typed),
     RecordTypeDuplicateField,
+    RecordTypeMergeRequiresRecordType(Type),
+    RecordTypeMismatch(Type, Type, Type, Type),
     UnionTypeDuplicateField,
     Unimplemented,
 }
