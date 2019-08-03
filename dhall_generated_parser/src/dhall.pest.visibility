@@ -155,6 +155,7 @@ first_application_expression
 selector_expression
 selector
 labels
+# type_selector
 primitive_expression
 # record_type_or_literal
 empty_record_literal

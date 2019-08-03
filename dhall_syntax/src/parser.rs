@@ -461,6 +461,11 @@ make_parser! {
             lines.push(vec![]);
             lines
         },
+        [single_quote_char("\r\n"), single_quote_continue(lines)] => {
+            let mut lines = lines;
+            lines.push(vec![]);
+            lines
+        },
         [single_quote_char(c), single_quote_continue(lines)] => {
             // TODO: don't allocate for every char
             let c = InterpolatedTextContents::Text(c.to_owned());
@@ -654,12 +659,15 @@ make_parser! {
         },
     ));
 
-    rule!(hash<Hash>; captured_str!(s) =>
-        Hash {
-            protocol: s.trim()[..6].to_owned(),
-            hash: s.trim()[7..].to_owned(),
+    rule!(hash<Hash>; captured_str!(s) => {
+        let s = s.trim();
+        let protocol = &s[..6];
+        let hash = &s[7..];
+        if protocol != "sha256" {
+            Err(format!("Unknown hashing protocol '{}'", protocol))?
         }
-    );
+        Hash::SHA256(hex::decode(hash).unwrap())
+    });
 
     rule!(import_hashed<ImportHashed>; children!(
         [import_type(location)] =>
@@ -870,6 +878,7 @@ make_parser! {
     rule!(selector<Either<Label, Vec<Label>>>; children!(
         [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
+        [expression(e)] => unimplemented!("selection by expression"), // TODO
     ));
 
     rule!(labels<Vec<Label>>; children!(

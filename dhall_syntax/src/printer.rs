@@ -348,7 +348,9 @@ impl Display for Label {
 
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}:{}", self.protocol, self.hash)
+        match self {
+            Hash::SHA256(hash) => write!(f, "sha256:{}", hex::encode(hash)),
+        }
     }
 }
 impl Display for ImportHashed {

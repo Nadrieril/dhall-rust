@@ -5,6 +5,7 @@ text interpolation and escapes
 remove `double`
 remove imports/parenthesizeUsing
 remove multilet
+selection by expression unit tests
 success/
     imports/
         Missing missing
