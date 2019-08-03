@@ -372,7 +372,7 @@ enum Ret<'a> {
     Expr(ExprF<Thunk, X>),
 }
 
-fn merge_maps<K, V>(
+pub(crate) fn merge_maps<K, V>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,
     mut f: impl FnMut(&V, &V) -> V,
