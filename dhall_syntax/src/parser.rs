@@ -402,11 +402,31 @@ make_parser! {
                 "n" => "\n".to_owned(),
                 "r" => "\r".to_owned(),
                 "t" => "\t".to_owned(),
+                // "uXXXX" or "u{XXXXX}"
                 _ => {
-                    // "uXXXX"
-                    use std::convert::TryFrom;
-                    let c = u16::from_str_radix(&s[1..5], 16).unwrap();
-                    let c = char::try_from(u32::from(c)).unwrap();
+                    use std::convert::{TryFrom, TryInto};
+
+                    let s = &s[1..];
+                    let s = if &s[0..1] == "{" {
+                        &s[1..s.len()-1]
+                    } else {
+                        &s[0..s.len()]
+                    };
+
+                    if s.len() > 8 {
+                        Err(format!("Escape sequences can't have more than 8 chars: \"{}\"", s))?
+                    }
+
+                    // pad with zeroes
+                    let s: String = std::iter::repeat('0')
+                        .take(8 - s.len())
+                        .chain(s.chars())
+                        .collect();
+
+                    // `s` has length 8, so `bytes` has length 4
+                    let bytes: &[u8] = &hex::decode(s).unwrap();
+                    let c = u32::from_be_bytes(bytes.try_into().unwrap());
+                    let c = char::try_from(c).unwrap();
                     std::iter::once(c).collect()
                 }
             }
