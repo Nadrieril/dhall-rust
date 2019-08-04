@@ -724,6 +724,9 @@ make_parser! {
         [merge(()), expression(x), expression(y), expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
         },
+        [List(()), expression(x)] => {
+            spanned(span, EmptyListLit(x))
+        },
         [expression(e)] => e,
     ));
 
@@ -737,21 +740,6 @@ make_parser! {
 
     token_rule!(List<()>);
     token_rule!(Optional<()>);
-
-    rule!(empty_collection<ParsedSubExpr> as expression; span; children!(
-        [List(_), expression(t)] => {
-            spanned(span, EmptyListLit(t))
-        },
-        [Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(None, t))
-        },
-    ));
-
-    rule!(non_empty_optional<ParsedSubExpr> as expression; span; children!(
-        [expression(x), Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(Some(x), t))
-        }
-    ));
 
     rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,

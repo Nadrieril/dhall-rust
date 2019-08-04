@@ -115,18 +115,22 @@ fn cbor_value_to_dhall(
                     .collect::<Result<Vec<_>, _>>()?;
                 NEListLit(rest)
             }
-            [U64(5), t] => {
-                let t = cbor_value_to_dhall(&t)?;
-                OldOptionalLit(None, t)
-            }
             [U64(5), Null, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 SomeLit(x)
             }
+            // Old-style optional literals
+            [U64(5), t] => {
+                let t = cbor_value_to_dhall(&t)?;
+                App(rc(ExprF::Builtin(Builtin::OptionalNone)), t)
+            }
             [U64(5), t, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let t = cbor_value_to_dhall(&t)?;
-                OldOptionalLit(Some(x), t)
+                Annot(
+                    rc(SomeLit(x)),
+                    rc(App(rc(ExprF::Builtin(Builtin::Optional)), t)),
+                )
             }
             [U64(6), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
@@ -460,8 +464,6 @@ where
             )
         }
         Annot(x, y) => ser_seq!(ser; tag(26), expr(x), expr(y)),
-        OldOptionalLit(None, t) => ser_seq!(ser; tag(5), expr(t)),
-        OldOptionalLit(Some(x), t) => ser_seq!(ser; tag(5), expr(t), expr(x)),
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
         EmptyListLit(x) => ser_seq!(ser; tag(4), expr(x)),
         NEListLit(xs) => ser.collect_seq(

@@ -137,10 +137,6 @@ where
             ),
             EmptyListLit(t) => EmptyListLit(v.visit_subexpr(t)?),
             NEListLit(es) => NEListLit(vec(es, |e| v.visit_subexpr(e))?),
-            OldOptionalLit(x, t) => OldOptionalLit(
-                opt(x, |e| v.visit_subexpr(e))?,
-                v.visit_subexpr(t)?,
-            ),
             SomeLit(e) => SomeLit(v.visit_subexpr(e)?),
             RecordType(kts) => RecordType(dupmap(kts, v)?),
             RecordLit(kvs) => RecordLit(dupmap(kvs, v)?),

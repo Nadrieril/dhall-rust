@@ -134,8 +134,6 @@ import
 expression
 annotated_expression
 let_binding
-empty_collection
-non_empty_optional
 # operator_expression
 import_alt_expression
 or_expression

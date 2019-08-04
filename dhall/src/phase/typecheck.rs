@@ -329,9 +329,7 @@ fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<Span, Normalized>,
 ) -> Result<Typed, TypeError> {
-    use dhall_syntax::ExprF::{
-        Annot, App, Embed, Lam, Let, OldOptionalLit, Pi, SomeLit, Var,
-    };
+    use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
     use Ret::*;
     Ok(match e.as_ref() {
@@ -363,18 +361,6 @@ fn type_with(
 
             let v = type_with(ctx, v)?;
             return type_with(&ctx.insert_value(x, v.clone())?, e.clone());
-        }
-        OldOptionalLit(None, t) => {
-            let none = SubExpr::from_builtin(Builtin::OptionalNone);
-            let e = e.rewrap(App(none, t.clone()));
-            return type_with(ctx, e);
-        }
-        OldOptionalLit(Some(x), t) => {
-            let optional = SubExpr::from_builtin(Builtin::Optional);
-            let x = x.rewrap(SomeLit(x.clone()));
-            let t = t.rewrap(App(optional, t.clone()));
-            let e = e.rewrap(Annot(x, t));
-            return type_with(ctx, e);
         }
         Embed(p) => p.clone().into_typed(),
         Var(var) => match ctx.lookup(&var) {
@@ -423,12 +409,9 @@ fn type_last_layer(
     let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
 
     match e {
-        Lam(_, _, _)
-        | Pi(_, _, _)
-        | Let(_, _, _, _)
-        | OldOptionalLit(_, _)
-        | Embed(_)
-        | Var(_) => unreachable!(),
+        Lam(_, _, _) | Pi(_, _, _) | Let(_, _, _, _) | Embed(_) | Var(_) => {
+            unreachable!()
+        }
         App(f, a) => {
             let tf = f.get_type()?;
             let (x, tx, tb) = match &tf.to_value() {
@@ -1296,8 +1279,6 @@ mod spec_tests {
     ti_success!(ti_success_unit_NaturalShow, "unit/NaturalShow");
     ti_success!(ti_success_unit_NaturalToInteger, "unit/NaturalToInteger");
     ti_success!(ti_success_unit_None, "unit/None");
-    ti_success!(ti_success_unit_OldOptionalNone, "unit/OldOptionalNone");
-    ti_success!(ti_success_unit_OldOptionalTrue, "unit/OldOptionalTrue");
     ti_success!(ti_success_unit_OperatorAnd, "unit/OperatorAnd");
     ti_success!(ti_success_unit_OperatorAndNormalizeArguments, "unit/OperatorAndNormalizeArguments");
     ti_success!(ti_success_unit_OperatorEqual, "unit/OperatorEqual");

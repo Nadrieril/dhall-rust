@@ -32,12 +32,6 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
             NEListLit(es) => {
                 fmt_list("[", ", ", "]", es, f, Display::fmt)?;
             }
-            OldOptionalLit(None, t) => {
-                write!(f, "[] : Optional {}", t)?;
-            }
-            OldOptionalLit(Some(x), t) => {
-                write!(f, "[{}] : Optional {}", x, t)?;
-            }
             SomeLit(e) => {
                 write!(f, "Some {}", e)?;
             }
@@ -154,7 +148,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             | Let(_, _, _, _)
             | EmptyListLit(_)
             | NEListLit(_)
-            | OldOptionalLit(_, _)
             | SomeLit(_)
             | Merge(_, _, _)
             | Annot(_, _)
@@ -190,7 +183,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
                 b.phase(PrintPhase::BinOp(op)),
             ),
             EmptyListLit(t) => EmptyListLit(t.phase(Import)),
-            OldOptionalLit(x, t) => OldOptionalLit(x, t.phase(Import)),
             SomeLit(e) => SomeLit(e.phase(Import)),
             ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),

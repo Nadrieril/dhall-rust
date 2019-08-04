@@ -86,6 +86,8 @@ success/
 failure/
     ProjectionByExpressionNeedsParens r.{ x: T }
 
+binary decoding:
+decode old-style optional literals ?
 
 import:
 success/
@@ -104,6 +106,7 @@ variables across import boundaries
 
 typecheck:
 something that involves destructuring a recordtype after merge
+failure on old-style optional literal
 success/
     MergeEmptyAlternative merge { x = 1 } < x >.x
     MergeTrickyShadowing let _ = Bool in merge {_ = \(x: _) -> x} (<_: Bool>._ True)

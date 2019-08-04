@@ -194,10 +194,6 @@ pub enum ExprF<SubExpr, Embed> {
     EmptyListLit(SubExpr),
     ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),
-    /// Deprecated Optional literal form
-    ///  `[] : Optional a`
-    ///  `[x] : Optional a`
-    OldOptionalLit(Option<SubExpr>, SubExpr),
     ///  `Some e`
     SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`

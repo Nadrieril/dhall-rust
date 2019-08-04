@@ -611,9 +611,9 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
 
 pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
     use Value::{
-        BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam,
-        NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
-        TextLit, UnionConstructor, UnionLit, UnionType,
+        BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam, NEListLit,
+        NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType, TextLit,
+        UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -639,10 +639,6 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::NaturalLit(n) => Ret::Value(NaturalLit(n)),
         ExprF::IntegerLit(n) => Ret::Value(IntegerLit(n)),
         ExprF::DoubleLit(n) => Ret::Value(DoubleLit(n)),
-        ExprF::OldOptionalLit(None, t) => {
-            Ret::Value(EmptyOptionalLit(TypeThunk::from_thunk(t)))
-        }
-        ExprF::OldOptionalLit(Some(e), _) => Ret::Value(NEOptionalLit(e)),
         ExprF::SomeLit(e) => Ret::Value(NEOptionalLit(e)),
         ExprF::EmptyListLit(t) => {
             Ret::Value(EmptyListLit(TypeThunk::from_thunk(t)))
