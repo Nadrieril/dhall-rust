@@ -307,6 +307,35 @@ impl<N, E> Expr<N, E> {
     {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
+
+    pub fn traverse_resolve<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<Expr<N, E2>, Err>
+    where
+        N: Clone,
+    {
+        self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
+            visit_embed,
+        ))
+    }
+
+    pub(crate) fn traverse_resolve_with_visitor<E2, Err, F1>(
+        &self,
+        visitor: &mut visitor::ResolveVisitor<F1>,
+    ) -> Result<Expr<N, E2>, Err>
+    where
+        N: Clone,
+        F1: FnMut(&E) -> Result<E2, Err>,
+    {
+        match self {
+            ExprF::BinOp(BinOp::ImportAlt, l, r) => l
+                .as_ref()
+                .traverse_resolve_with_visitor(visitor)
+                .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
+            _ => self.visit(visitor),
+        }
+    }
 }
 
 impl Expr<X, X> {
@@ -382,6 +411,16 @@ impl<N, E> SubExpr<N, E> {
                 |_| unreachable!(),
             )),
         }
+    }
+
+    pub fn traverse_resolve<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<SubExpr<N, E2>, Err>
+    where
+        N: Clone,
+    {
+        Ok(self.rewrap(self.as_ref().traverse_resolve(visit_embed)?))
     }
 }
 

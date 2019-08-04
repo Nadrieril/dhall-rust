@@ -86,7 +86,7 @@ fn do_resolve_expr(
             }
         }
     };
-    let expr = expr.traverse_embed(resolve)?;
+    let expr = expr.traverse_resolve(resolve)?;
     Ok(Resolved(expr))
 }
 
@@ -100,7 +100,7 @@ pub fn skip_resolve_expr(
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {
         Err(ImportError::UnexpectedImport(import.clone()))
     };
-    let expr = expr.traverse_embed(resolve)?;
+    let expr = expr.traverse_resolve(resolve)?;
     Ok(Resolved(expr))
 }
 

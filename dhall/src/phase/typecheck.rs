@@ -823,7 +823,7 @@ fn type_last_layer(
                 RightBiasedRecordMerge => unreachable!(),
                 RecursiveRecordMerge => unreachable!(),
                 RecursiveRecordTypeMerge => unreachable!(),
-                _ => return Err(mkerr(Unimplemented)),
+                ImportAlt => unreachable!("There should remain no import alternatives in a resolved expression"),
             })?;
 
             ensure_equal!(
