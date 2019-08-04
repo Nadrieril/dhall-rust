@@ -232,7 +232,8 @@ fn cbor_value_to_dhall(
                             //     }
                             // }
                             _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers is unimplemented".to_owned(),
+                                "import/remote/headers is unimplemented"
+                                    .to_owned(),
                             ))?,
                         };
                         let authority = match rest.next() {
@@ -567,12 +568,14 @@ where
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => ser_seq.serialize_element(
-                    &self::Serialize::Expr(&SubExpr::from_expr_no_note(ExprF::Embed(Import {
-                        mode: ImportMode::Code,
-                        location_hashed: location_hashed.as_ref().clone(),
-                    }))),
-                )?,
+                Some(location_hashed) => {
+                    ser_seq.serialize_element(&self::Serialize::Expr(
+                        &SubExpr::from_expr_no_note(ExprF::Embed(Import {
+                            mode: ImportMode::Code,
+                            location_hashed: location_hashed.as_ref().clone(),
+                        })),
+                    ))?
+                }
             };
             ser_seq.serialize_element(&url.authority)?;
             for p in &url.path {
