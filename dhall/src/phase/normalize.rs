@@ -72,6 +72,16 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
         (TextShow, [v, r..]) => match &*v.as_value() {
             TextLit(elts) => {
                 match elts.as_slice() {
+                    // Empty string literal.
+                    [] => {
+                        // Printing InterpolatedText takes care of all the escaping
+                        let txt: InterpolatedText<X> = std::iter::empty().collect();
+                        let s = txt.to_string();
+                        Ok((
+                            r,
+                            TextLit(vec![InterpolatedTextContents::Text(s)]),
+                        ))
+                    }
                     // If there are no interpolations (invariants ensure that when there are no
                     // interpolations, there is a single Text item) in the literal.
                     [InterpolatedTextContents::Text(s)] => {

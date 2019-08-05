@@ -90,6 +90,10 @@ fn main() -> std::io::Result<()> {
             // TODO: Inline headers are not implemented
             || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
+            // TODO: projection by expression
+            || path == "success/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpressionEmpty"
         },
     )?;
 
@@ -105,6 +109,10 @@ fn main() -> std::io::Result<()> {
             || path == "success/largeExpression"
             // TODO: Inline headers are not implemented
             || path == "success/unit/import/inlineUsing"
+            // TODO: projection by expression
+            || path == "success/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpressionEmpty"
         },
     )?;
 
@@ -124,8 +132,11 @@ fn main() -> std::io::Result<()> {
             // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
             // TODO: Inline headers are not implemented
-            || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
+            // TODO: projection by expression
+            || path == "success/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpression"
+            || path == "success/unit/recordProjectionByExpressionEmpty"
         },
     )?;
 
@@ -139,9 +150,14 @@ fn main() -> std::io::Result<()> {
             path == "success/simple/integerToDouble"
             // Too slow
             || path == "success/remoteSystems"
-            // TODO: selection by expression
+            // TODO: projection by expression
             || path == "success/unit/RecordProjectionTypeEmpty"
             || path == "success/unit/RecordProjectionTypeNonEmpty"
+            || path == "success/unit/RecordProjectionTypeNormalizeProjection"
+            // TODO: fix Double/show
+            || path == "success/prelude/JSON/number/1"
+            // the test is wrong
+            || path == "success/prelude/JSON/Type/0"
         },
     )?;
 
