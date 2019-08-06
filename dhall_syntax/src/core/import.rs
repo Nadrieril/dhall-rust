@@ -41,6 +41,7 @@ pub enum Scheme {
 pub enum ImportMode {
     Code,
     RawText,
+    Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

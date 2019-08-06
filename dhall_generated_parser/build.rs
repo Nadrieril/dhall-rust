@@ -27,6 +27,7 @@ fn main() -> std::io::Result<()> {
         }
     }
     rules.remove("http");
+    rules.remove("url_path");
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
 
@@ -52,6 +53,11 @@ fn main() -> std::io::Result<()> {
                 ~ whsp1
                 ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
     }}"
+    )?;
+    // TODO: this is a cheat; properly support RFC3986 URLs instead
+    writeln!(
+        &mut file,
+        "url_path = _{{ path }}"
     )?;
     writeln!(
         &mut file,

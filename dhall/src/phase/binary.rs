@@ -195,8 +195,13 @@ fn cbor_value_to_dhall(
             }
             [U64(24), hash, U64(mode), U64(scheme), rest..] => {
                 let mode = match mode {
+                    0 => ImportMode::Code,
                     1 => ImportMode::RawText,
-                    _ => ImportMode::Code,
+                    2 => ImportMode::Location,
+                    _ => Err(DecodeError::WrongFormatError(format!(
+                        "import/mode/unknown_mode: {:?}",
+                        mode
+                    )))?,
                 };
                 let hash = match hash {
                     Null => None,
@@ -545,6 +550,7 @@ where
     let mode = match import.mode {
         ImportMode::Code => 0,
         ImportMode::RawText => 1,
+        ImportMode::Location => 2,
     };
     ser_seq.serialize_element(&U64(mode))?;
 

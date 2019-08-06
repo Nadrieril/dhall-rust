@@ -435,6 +435,7 @@ impl Display for Import {
         match self.mode {
             Code => {}
             RawText => write!(f, " as Text")?,
+            Location => write!(f, " as Location")?,
         }
         Ok(())
     }

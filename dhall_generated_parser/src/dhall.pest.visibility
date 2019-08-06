@@ -48,6 +48,7 @@ builtin
 Optional
 Text
 List
+Location
 # Bool
 # True
 # False

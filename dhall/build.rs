@@ -94,6 +94,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpressionEmpty"
+            // TODO: RFC3986 URLs
+            || path == "success/unit/import/urls/emptyPath0"
+            || path == "success/unit/import/urls/emptyPath1"
+            || path == "success/unit/import/urls/emptyPathSegment"
+            // Test is broken
+            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -113,6 +119,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpressionEmpty"
+            // TODO: RFC3986 URLs
+            || path == "success/unit/import/urls/emptyPath0"
+            || path == "success/unit/import/urls/emptyPath1"
+            || path == "success/unit/import/urls/emptyPathSegment"
+            // Test is broken
+            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -137,6 +149,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpression"
             || path == "success/unit/recordProjectionByExpressionEmpty"
+            // TODO: RFC3986 URLs
+            || path == "success/unit/import/urls/emptyPath0"
+            || path == "success/unit/import/urls/emptyPath1"
+            || path == "success/unit/import/urls/emptyPathSegment"
+            // Test is broken
+            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -156,8 +174,6 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecordProjectionTypeNormalizeProjection"
             // TODO: fix Double/show
             || path == "success/prelude/JSON/number/1"
-            // the test is wrong
-            || path == "success/prelude/JSON/Type/0"
         },
     )?;
 

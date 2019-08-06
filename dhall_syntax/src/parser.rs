@@ -697,6 +697,7 @@ make_parser! {
     ));
 
     token_rule!(Text<()>);
+    token_rule!(Location<()>);
 
     rule!(import<ParsedSubExpr> as expression; span; children!(
         [import_hashed(location_hashed)] => {
@@ -708,6 +709,12 @@ make_parser! {
         [import_hashed(location_hashed), Text(_)] => {
             spanned(span, Embed(Import {
                 mode: ImportMode::RawText,
+                location_hashed
+            }))
+        },
+        [import_hashed(location_hashed), Location(_)] => {
+            spanned(span, Embed(Import {
+                mode: ImportMode::Location,
                 location_hashed
             }))
         },
