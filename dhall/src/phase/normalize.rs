@@ -75,7 +75,8 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                     // Empty string literal.
                     [] => {
                         // Printing InterpolatedText takes care of all the escaping
-                        let txt: InterpolatedText<X> = std::iter::empty().collect();
+                        let txt: InterpolatedText<X> =
+                            std::iter::empty().collect();
                         let s = txt.to_string();
                         Ok((
                             r,

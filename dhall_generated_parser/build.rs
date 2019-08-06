@@ -55,10 +55,7 @@ fn main() -> std::io::Result<()> {
     }}"
     )?;
     // TODO: this is a cheat; properly support RFC3986 URLs instead
-    writeln!(
-        &mut file,
-        "url_path = _{{ path }}"
-    )?;
+    writeln!(&mut file, "url_path = _{{ path }}")?;
     writeln!(
         &mut file,
         "nonreserved_label = _{{
