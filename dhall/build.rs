@@ -103,6 +103,8 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/potPourri"
             // TODO: toMap
             || path == "success/toMap"
+            // Not a failure anymore
+            || path == "failure/unit/ListLitEmptyPrecedence"
         },
     )?;
 

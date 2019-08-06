@@ -190,7 +190,7 @@ pub enum ExprF<SubExpr, Embed> {
     DoubleLit(Double),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
-    ///  `[] : List t`
+    ///  `[] : t`
     EmptyListLit(SubExpr),
     ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),

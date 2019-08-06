@@ -727,6 +727,12 @@ make_parser! {
     token_rule!(if_<()>);
     token_rule!(in_<()>);
 
+    rule!(empty_list_literal<ParsedSubExpr> as expression; span; children!(
+        [expression(e)] => {
+            spanned(span, EmptyListLit(e))
+        },
+    ));
+
     rule!(expression<ParsedSubExpr> as expression; span; children!(
         [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
@@ -750,10 +756,6 @@ make_parser! {
         },
         [merge(()), expression(x), expression(y), expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
-        },
-        [List(()), expression(x)] => {
-            let list = unspanned(Builtin(crate::Builtin::List));
-            spanned(span, EmptyListLit(unspanned(App(list, x))))
         },
         [expression(e)] => e,
     ));

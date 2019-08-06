@@ -31,6 +31,7 @@ fn main() -> std::io::Result<()> {
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
     rules.remove("first_application_expression");
+    rules.remove("expression");
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
@@ -64,6 +65,27 @@ fn main() -> std::io::Result<()> {
             | toMap ~ whsp1 ~ import_expression
             | import_expression
     }}"
+    )?;
+    // TODO: hack; we'll need to upstream a change to the grammar
+    writeln!(
+        &mut file,
+        r#"expression = {{
+          lambda ~ whsp ~ ^"(" ~ whsp ~ nonreserved_label ~ whsp ~ ^":" ~ whsp1 ~ expression ~ whsp ~ ^")" ~ whsp ~ arrow ~ whsp ~ expression
+          | if_ ~ whsp1 ~ expression ~ whsp ~ then ~ whsp1 ~ expression ~ whsp ~ else_ ~ whsp1 ~ expression
+          | let_binding+ ~ in_ ~ whsp1 ~ expression
+          | forall ~ whsp ~ ^"(" ~ whsp ~ nonreserved_label ~ whsp ~ ^":" ~ whsp1 ~ expression ~ whsp ~ ^")" ~ whsp ~ arrow ~ whsp ~ expression
+          | operator_expression ~ whsp ~ arrow ~ whsp ~ expression
+          | merge ~ whsp1 ~ import_expression ~ whsp1 ~ import_expression ~ whsp ~ ^":" ~ whsp1 ~ application_expression
+          | empty_list_literal
+          | toMap ~ whsp1 ~ import_expression ~ whsp ~ ^":" ~ whsp1 ~ application_expression
+          | annotated_expression
+    }}"#
+    )?;
+    writeln!(
+        &mut file,
+        r#"empty_list_literal = {{
+          ^"[" ~ whsp ~ ^"]" ~ whsp ~ ^":" ~ whsp1 ~ application_expression
+    }}"#
     )?;
     // TODO: this is a cheat; properly support RFC3986 URLs instead
     writeln!(&mut file, "url_path = _{{ path }}")?;

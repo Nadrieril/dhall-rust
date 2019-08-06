@@ -341,6 +341,10 @@ fn cbor_value_to_dhall(
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
+            [U64(27), x] => {
+                let x = cbor_value_to_dhall(&x)?;
+                EmptyListLit(x)
+            }
             _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
         },
         _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
@@ -475,9 +479,9 @@ where
         EmptyListLit(x) => match x.as_ref() {
             App(f, a) => match f.as_ref() {
                 ExprF::Builtin(Builtin::List) => ser_seq!(ser; tag(4), expr(a)),
-                _ => unreachable!(),
+                _ => ser_seq!(ser; tag(27), expr(x)),
             },
-            _ => unreachable!(),
+            _ => ser_seq!(ser; tag(27), expr(x)),
         },
         NEListLit(xs) => ser.collect_seq(
             once(tag(4)).chain(once(null())).chain(xs.iter().map(expr)),
