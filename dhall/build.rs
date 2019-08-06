@@ -100,6 +100,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
+            || path == "success/unit/import/urls/potPourri"
         },
     )?;
 

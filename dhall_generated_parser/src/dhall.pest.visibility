@@ -10,6 +10,7 @@
 # whsp1
 # ALPHA
 # DIGIT
+# ALPHANUM
 # HEXDIG
 # simple_label_first_char
 # simple_label_next_char
@@ -118,7 +119,8 @@ authority
 # ls32
 # IPv4address
 # dec_octet
-# reg_name
+# domain
+# domainlabel
 # pchar
 query
 # pct_encoded
