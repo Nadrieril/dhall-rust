@@ -1195,6 +1195,8 @@ mod spec_tests {
     tc_failure!(tc_failure_unit_RecordProjectionEmpty, "unit/RecordProjectionEmpty");
     tc_failure!(tc_failure_unit_RecordProjectionNotPresent, "unit/RecordProjectionNotPresent");
     tc_failure!(tc_failure_unit_RecordProjectionNotRecord, "unit/RecordProjectionNotRecord");
+    // tc_failure!(tc_failure_unit_RecordProjectionByTypeFieldTypeMismatch, "unit/RecordProjectionByTypeFieldTypeMismatch");
+    // tc_failure!(tc_failure_unit_RecordProjectionByTypeNotPresent, "unit/RecordProjectionByTypeNotPresent");
     tc_failure!(tc_failure_unit_RecordSelectionEmpty, "unit/RecordSelectionEmpty");
     tc_failure!(tc_failure_unit_RecordSelectionNotPresent, "unit/RecordSelectionNotPresent");
     tc_failure!(tc_failure_unit_RecordSelectionNotRecord, "unit/RecordSelectionNotRecord");
@@ -1220,6 +1222,7 @@ mod spec_tests {
     tc_failure!(tc_failure_unit_TextLiteralInterpolateNotText, "unit/TextLiteralInterpolateNotText");
     tc_failure!(tc_failure_unit_TypeAnnotationWrong, "unit/TypeAnnotationWrong");
     tc_failure!(tc_failure_unit_UnionConstructorFieldNotPresent, "unit/UnionConstructorFieldNotPresent");
+    tc_failure!(tc_failure_unit_UnionDeprecatedConstructorsKeyword, "unit/UnionDeprecatedConstructorsKeyword");
     tc_failure!(tc_failure_unit_UnionTypeMixedKinds, "unit/UnionTypeMixedKinds");
     tc_failure!(tc_failure_unit_UnionTypeMixedKinds2, "unit/UnionTypeMixedKinds2");
     tc_failure!(tc_failure_unit_UnionTypeMixedKinds3, "unit/UnionTypeMixedKinds3");
@@ -1310,6 +1313,8 @@ mod spec_tests {
     ti_success!(ti_success_unit_RecordProjectionKind, "unit/RecordProjectionKind");
     ti_success!(ti_success_unit_RecordProjectionType, "unit/RecordProjectionType");
     ti_success!(ti_success_unit_RecordProjectionValue, "unit/RecordProjectionValue");
+    // ti_success!(ti_success_unit_RecordProjectionByTypeEmpty, "unit/RecordProjectionByTypeEmpty");
+    // ti_success!(ti_success_unit_RecordProjectionByTypeJudgmentalEquality, "unit/RecordProjectionByTypeJudgmentalEquality");
     ti_success!(ti_success_unit_RecordSelectionKind, "unit/RecordSelectionKind");
     ti_success!(ti_success_unit_RecordSelectionType, "unit/RecordSelectionType");
     ti_success!(ti_success_unit_RecordSelectionValue, "unit/RecordSelectionValue");

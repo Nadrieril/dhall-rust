@@ -92,14 +92,14 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpressionEmpty"
+            || path == "success/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByTypeEmpty"
+            || path == "success/unit/RecordProjectFields"
             // TODO: RFC3986 URLs
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
-            // Test is broken
-            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -117,14 +117,13 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpressionEmpty"
+            || path == "success/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByTypeEmpty"
             // TODO: RFC3986 URLs
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
-            // Test is broken
-            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -147,14 +146,13 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpression"
-            || path == "success/unit/recordProjectionByExpressionEmpty"
+            || path == "success/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByTypeEmpty"
             // TODO: RFC3986 URLs
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
-            // Test is broken
-            || path == "success/unit/import/asLocation"
         },
     )?;
 
@@ -169,9 +167,9 @@ fn main() -> std::io::Result<()> {
             // Too slow
             || path == "success/remoteSystems"
             // TODO: projection by expression
-            || path == "success/unit/RecordProjectionTypeEmpty"
-            || path == "success/unit/RecordProjectionTypeNonEmpty"
-            || path == "success/unit/RecordProjectionTypeNormalizeProjection"
+            || path == "success/unit/RecordProjectionByTypeEmpty"
+            || path == "success/unit/RecordProjectionByTypeNonEmpty"
+            || path == "success/unit/RecordProjectionByTypeNormalizeProjection"
             // TODO: fix Double/show
             || path == "success/prelude/JSON/number/1"
         },
