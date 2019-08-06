@@ -164,37 +164,6 @@ fn tck_union_type(
     ))
 }
 
-fn tck_list_type(ctx: &TypecheckContext, t: Type) -> Result<Typed, TypeError> {
-    use crate::error::TypeMessage::*;
-    ensure_simple_type!(
-        t,
-        TypeError::new(ctx, InvalidListType(t.to_normalized())),
-    );
-    Ok(Typed::from_thunk_and_type(
-        Value::from_builtin(Builtin::List)
-            .app(t.to_value())
-            .into_thunk(),
-        Type::from_const(Const::Type),
-    ))
-}
-
-fn tck_optional_type(
-    ctx: &TypecheckContext,
-    t: Type,
-) -> Result<Typed, TypeError> {
-    use crate::error::TypeMessage::*;
-    ensure_simple_type!(
-        t,
-        TypeError::new(ctx, InvalidOptionalType(t.to_normalized())),
-    );
-    Ok(Typed::from_thunk_and_type(
-        Value::from_builtin(Builtin::Optional)
-            .app(t.to_value())
-            .into_thunk(),
-        Type::from_const(Const::Type),
-    ))
-}
-
 fn function_check(a: Const, b: Const) -> Result<Const, ()> {
     use dhall_syntax::Const::*;
     match (a, b) {
@@ -460,7 +429,17 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let t = t.to_type();
-            Ok(RetTypeOnly(tck_list_type(ctx, t)?.to_type()))
+            match &t.to_value() {
+                Value::AppliedBuiltin(dhall_syntax::Builtin::List, args)
+                    if args.len() == 1 => {}
+                _ => {
+                    return Err(TypeError::new(
+                        ctx,
+                        InvalidListType(t.to_normalized()),
+                    ))
+                }
+            }
+            Ok(RetTypeOnly(t))
         }
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
@@ -476,12 +455,38 @@ fn type_last_layer(
                     ))
                 );
             }
-            let t = x.get_type()?.into_owned();
-            Ok(RetTypeOnly(tck_list_type(ctx, t)?.to_type()))
+            let t = x.get_type()?;
+            ensure_simple_type!(
+                t,
+                TypeError::new(ctx, InvalidListType(t.to_normalized())),
+            );
+
+            Ok(RetTypeOnly(
+                Typed::from_thunk_and_type(
+                    Value::from_builtin(dhall_syntax::Builtin::List)
+                        .app(t.to_value())
+                        .into_thunk(),
+                    Type::from_const(dhall_syntax::Const::Type),
+                )
+                .to_type(),
+            ))
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
-            Ok(RetTypeOnly(tck_optional_type(ctx, t)?.to_type()))
+            ensure_simple_type!(
+                t,
+                TypeError::new(ctx, InvalidOptionalType(t.to_normalized())),
+            );
+
+            Ok(RetTypeOnly(
+                Typed::from_thunk_and_type(
+                    Value::from_builtin(dhall_syntax::Builtin::Optional)
+                        .app(t.to_value())
+                        .into_thunk(),
+                    Type::from_const(dhall_syntax::Const::Type),
+                )
+                .to_type(),
+            ))
         }
         RecordType(kts) => Ok(RetWhole(tck_record_type(
             ctx,

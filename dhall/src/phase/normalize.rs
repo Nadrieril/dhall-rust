@@ -622,9 +622,9 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
 
 pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
     use Value::{
-        BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam, NEListLit,
-        NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType, TextLit,
-        UnionConstructor, UnionLit, UnionType,
+        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
+        NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
+        TextLit, UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -651,8 +651,20 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::IntegerLit(n) => Ret::Value(IntegerLit(n)),
         ExprF::DoubleLit(n) => Ret::Value(DoubleLit(n)),
         ExprF::SomeLit(e) => Ret::Value(NEOptionalLit(e)),
-        ExprF::EmptyListLit(t) => {
-            Ret::Value(EmptyListLit(TypeThunk::from_thunk(t)))
+        ExprF::EmptyListLit(ref t) => {
+            // Check if the type is of the form `List x`
+            let t_borrow = t.as_value();
+            match &*t_borrow {
+                AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
+                    Ret::Value(EmptyListLit(TypeThunk::from_thunk(
+                        args[0].clone(),
+                    )))
+                }
+                _ => {
+                    drop(t_borrow);
+                    Ret::Expr(expr)
+                }
+            }
         }
         ExprF::NEListLit(elts) => {
             Ret::Value(NEListLit(elts.into_iter().collect()))

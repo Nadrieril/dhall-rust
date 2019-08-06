@@ -106,7 +106,7 @@ fn cbor_value_to_dhall(
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                EmptyListLit(t)
+                EmptyListLit(rc(App(rc(ExprF::Builtin(Builtin::List)), t)))
             }
             [U64(4), Null, rest..] => {
                 let rest = rest
@@ -413,6 +413,7 @@ where
     S: serde::ser::Serializer,
 {
     use cbor::Value::{String, I64, U64};
+    use dhall_syntax::Builtin;
     use dhall_syntax::ExprF::*;
     use std::iter::once;
 
@@ -471,7 +472,13 @@ where
         }
         Annot(x, y) => ser_seq!(ser; tag(26), expr(x), expr(y)),
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
-        EmptyListLit(x) => ser_seq!(ser; tag(4), expr(x)),
+        EmptyListLit(x) => match x.as_ref() {
+            App(f, a) => match f.as_ref() {
+                ExprF::Builtin(Builtin::List) => ser_seq!(ser; tag(4), expr(a)),
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        },
         NEListLit(xs) => ser.collect_seq(
             once(tag(4)).chain(once(null())).chain(xs.iter().map(expr)),
         ),

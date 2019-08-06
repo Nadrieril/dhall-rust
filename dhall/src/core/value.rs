@@ -47,6 +47,7 @@ pub enum Value {
     DoubleLit(NaiveDouble),
     EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
+    // EmptyListLit(t) means `[] : List t`
     EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(HashMap<Label, Thunk>),
@@ -128,9 +129,10 @@ impl Value {
             Value::NEOptionalLit(n) => {
                 rc(ExprF::SomeLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
-            Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.normalize_to_expr_maybe_alpha(alpha)))
-            }
+            Value::EmptyListLit(n) => rc(ExprF::EmptyListLit(rc(ExprF::App(
+                rc(ExprF::Builtin(Builtin::List)),
+                n.normalize_to_expr_maybe_alpha(alpha),
+            )))),
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
                 elts.iter()
                     .map(|n| n.normalize_to_expr_maybe_alpha(alpha))

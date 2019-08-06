@@ -752,7 +752,8 @@ make_parser! {
             spanned(span, Merge(x, y, Some(z)))
         },
         [List(()), expression(x)] => {
-            spanned(span, EmptyListLit(x))
+            let list = unspanned(Builtin(crate::Builtin::List));
+            spanned(span, EmptyListLit(unspanned(App(list, x))))
         },
         [expression(e)] => e,
     ));
