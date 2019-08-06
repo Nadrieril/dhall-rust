@@ -30,6 +30,7 @@ fn main() -> std::io::Result<()> {
     rules.remove("url_path");
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
+    rules.remove("first_application_expression");
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
@@ -52,6 +53,16 @@ fn main() -> std::io::Result<()> {
                 ~ using
                 ~ whsp1
                 ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
+    }}"
+    )?;
+    // TODO: hack while waiting to catch up on commit e7fdf9d of the spec
+    writeln!(
+        &mut file,
+        "first_application_expression = {{
+            merge ~ whsp1 ~ import_expression ~ whsp1 ~ import_expression
+            | Some_ ~ whsp1 ~ import_expression
+            | toMap ~ whsp1 ~ import_expression
+            | import_expression
     }}"
     )?;
     // TODO: this is a cheat; properly support RFC3986 URLs instead
