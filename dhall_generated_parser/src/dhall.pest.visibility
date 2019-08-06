@@ -44,6 +44,7 @@ missing
 # Infinity
 NaN
 Some_
+toMap
 # keyword
 builtin
 Optional

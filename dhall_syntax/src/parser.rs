@@ -861,6 +861,7 @@ make_parser! {
     ));
 
     token_rule!(Some_<()>);
+    token_rule!(toMap<()>);
 
     rule!(application_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,

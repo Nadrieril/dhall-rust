@@ -101,6 +101,8 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
             || path == "success/unit/import/urls/potPourri"
+            // TODO: toMap
+            || path == "success/toMap"
         },
     )?;
 
@@ -125,6 +127,8 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
+            // TODO: toMap
+            || path == "success/toMap"
         },
     )?;
 
@@ -154,6 +158,9 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
+            || path == "success/unit/import/urls/potPourri"
+            // TODO: toMap
+            || path == "success/toMap"
         },
     )?;
 
@@ -173,6 +180,10 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecordProjectionByTypeNormalizeProjection"
             // TODO: fix Double/show
             || path == "success/prelude/JSON/number/1"
+            // TODO: toMap
+            || path == "success/unit/EmptyToMap"
+            || path == "success/unit/ToMap"
+            || path == "success/unit/ToMapWithType"
         },
     )?;
 
@@ -197,6 +208,14 @@ fn main() -> std::io::Result<()> {
             // TODO: projection by expression
             || path == "failure/unit/RecordProjectionByTypeFieldTypeMismatch"
             || path == "failure/unit/RecordProjectionByTypeNotPresent"
+            // TODO: toMap
+            || path == "failure/unit/EmptyToMap"
+            || path == "failure/unit/HeterogenousToMap"
+            || path == "failure/unit/MistypedToMap1"
+            || path == "failure/unit/MistypedToMap2"
+            || path == "failure/unit/MistypedToMap3"
+            || path == "failure/unit/MistypedToMap4"
+            || path == "failure/unit/NonRecordToMap"
         },
     )?;
 
@@ -211,6 +230,8 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecordProjectionByType"
             || path == "success/unit/RecordProjectionByTypeEmpty"
             || path == "success/unit/RecordProjectionByTypeJudgmentalEquality"
+            // TODO: toMap
+            || path == "success/unit/ToMap"
         },
     )?;
 
