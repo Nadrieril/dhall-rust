@@ -87,7 +87,7 @@ fn main() -> std::io::Result<()> {
         |path| {
             // Too slow in debug mode
             path == "success/largeExpression"
-            // TODO: Inline headers are not implemented
+            // TODO: Inline headers
             || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
@@ -114,7 +114,7 @@ fn main() -> std::io::Result<()> {
             path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
-            // TODO: Inline headers are not implemented
+            // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
@@ -143,7 +143,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/multilet"
             // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
-            // TODO: Inline headers are not implemented
+            // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
@@ -182,6 +182,36 @@ fn main() -> std::io::Result<()> {
         &tests_dir.join("alpha-normalization/"),
         "AlphaNormalization",
         |_| false,
+    )?;
+
+    make_test_module(
+        &mut file,
+        "typecheck",
+        &tests_dir.join("typecheck/"),
+        "Typecheck",
+        |path| {
+            false
+            || path == "failure/importBoundary"
+            // TODO: Inline headers
+            || path == "failure/customHeadersUsingBoundVariable"
+            // TODO: projection by expression
+            || path == "failure/unit/RecordProjectionByTypeFieldTypeMismatch"
+            || path == "failure/unit/RecordProjectionByTypeNotPresent"
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        "type_inference",
+        &tests_dir.join("type-inference/"),
+        "TypeInference",
+        |path| {
+            false
+            // TODO: projection by expression
+            || path == "success/unit/RecordProjectionByType"
+            || path == "success/unit/RecordProjectionByTypeEmpty"
+            || path == "success/unit/RecordProjectionByTypeJudgmentalEquality"
+        },
     )?;
 
     Ok(())
