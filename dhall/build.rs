@@ -196,6 +196,18 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/EmptyToMap"
             || path == "success/unit/ToMap"
             || path == "success/unit/ToMapWithType"
+            // Normalize field selection further by inspecting the argument
+            || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
+            || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
+            || path == "success/simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
+            || path == "success/unit/RecordProjectionByTypeWithinFieldSelection"
+            || path == "success/unit/RecordProjectionWithinFieldSelection"
+            || path == "success/unit/RecursiveRecordMergeWithinFieldSelection0"
+            || path == "success/unit/RecursiveRecordMergeWithinFieldSelection1"
+            || path == "success/unit/RecursiveRecordMergeWithinFieldSelection2"
+            || path == "success/unit/RightBiasedMergeWithinFieldSelection0"
+            || path == "success/unit/RightBiasedMergeWithinFieldSelection1"
+            || path == "success/unit/RightBiasedMergeWithinFieldSelection2"
         },
     )?;
 
