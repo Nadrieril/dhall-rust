@@ -212,6 +212,7 @@ fn type_of_builtin(b: Builtin) -> Expr<X, X> {
         ),
         NaturalToInteger => dhall::expr!(Natural -> Integer),
         NaturalShow => dhall::expr!(Natural -> Text),
+        NaturalSubtract => dhall::expr!(Natural -> Natural -> Natural),
 
         IntegerToDouble => dhall::expr!(Integer -> Double),
         IntegerShow => dhall::expr!(Integer -> Text),

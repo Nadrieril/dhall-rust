@@ -119,6 +119,7 @@ pub enum Builtin {
     NaturalOdd,
     NaturalToInteger,
     NaturalShow,
+    NaturalSubtract,
     IntegerToDouble,
     IntegerShow,
     DoubleShow,

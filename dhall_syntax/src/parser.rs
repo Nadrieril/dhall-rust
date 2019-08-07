@@ -80,6 +80,7 @@ impl crate::Builtin {
             "Natural/odd" => Some(NaturalOdd),
             "Natural/toInteger" => Some(NaturalToInteger),
             "Natural/show" => Some(NaturalShow),
+            "Natural/subtract" => Some(NaturalSubtract),
             "Integer/toDouble" => Some(IntegerToDouble),
             "Integer/show" => Some(IntegerShow),
             "Double/show" => Some(DoubleShow),

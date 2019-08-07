@@ -71,6 +71,7 @@ Location
 # Natural_show
 # Integer_toDouble
 # Integer_show
+# Natural_subtract
 # Double_show
 # List_build
 # List_fold

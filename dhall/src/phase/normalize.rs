@@ -47,6 +47,16 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
             )),
             _ => Err(()),
         },
+        (NaturalSubtract, [a, b, r..]) => {
+            match (&*a.as_value(), &*b.as_value()) {
+                (NaturalLit(a), NaturalLit(b)) => {
+                    Ok((r, NaturalLit(if b > a { b - a } else { 0 })))
+                }
+                (NaturalLit(0), b) => Ok((r, b.clone())),
+                (_, NaturalLit(0)) => Ok((r, NaturalLit(0))),
+                _ => Err(()),
+            }
+        }
         (IntegerShow, [n, r..]) => match &*n.as_value() {
             IntegerLit(n) => {
                 let s = if *n < 0 {

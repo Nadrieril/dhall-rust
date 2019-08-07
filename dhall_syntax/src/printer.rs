@@ -449,6 +449,7 @@ impl Display for Builtin {
             NaturalOdd => "Natural/odd",
             NaturalToInteger => "Natural/toInteger",
             NaturalShow => "Natural/show",
+            NaturalSubtract => "Natural/subtract",
             IntegerToDouble => "Integer/toDouble",
             IntegerShow => "Integer/show",
             DoubleShow => "Double/show",
