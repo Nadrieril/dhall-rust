@@ -195,6 +195,8 @@ pub fn run_test(
                     let err = parse_file_str(&file_path).unwrap_err();
                     match err {
                         Error::Parse(_) => {}
+                        Error::IO(e)
+                            if e.kind() == std::io::ErrorKind::InvalidData => {}
                         e => panic!("Expected parse error, got: {:?}", e),
                     }
                 }

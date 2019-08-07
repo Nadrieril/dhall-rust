@@ -425,8 +425,27 @@ make_parser! {
 
                     // `s` has length 8, so `bytes` has length 4
                     let bytes: &[u8] = &hex::decode(s).unwrap();
-                    let c = u32::from_be_bytes(bytes.try_into().unwrap());
-                    let c = char::try_from(c).unwrap();
+                    let i = u32::from_be_bytes(bytes.try_into().unwrap());
+                    let c = char::try_from(i).unwrap();
+                    match i {
+                        0xD800..=0xDFFF => {
+                            let c_ecapsed = c.escape_unicode();
+                            Err(format!("Escape sequences can't contain surrogate pairs: \"{}\"", c_ecapsed))?
+                        },
+                        0x0FFFE..=0x0FFFF | 0x1FFFE..=0x1FFFF |
+                        0x2FFFE..=0x2FFFF | 0x3FFFE..=0x3FFFF |
+                        0x4FFFE..=0x4FFFF | 0x5FFFE..=0x5FFFF |
+                        0x6FFFE..=0x6FFFF | 0x7FFFE..=0x7FFFF |
+                        0x8FFFE..=0x8FFFF | 0x9FFFE..=0x9FFFF |
+                        0xAFFFE..=0xAFFFF | 0xBFFFE..=0xBFFFF |
+                        0xCFFFE..=0xCFFFF | 0xDFFFE..=0xDFFFF |
+                        0xEFFFE..=0xEFFFF | 0xFFFFE..=0xFFFFF |
+                        0x10FFFE..=0x10FFFF => {
+                            let c_ecapsed = c.escape_unicode();
+                            Err(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed))?
+                        },
+                        _ => {}
+                    }
                     std::iter::once(c).collect()
                 }
             }
