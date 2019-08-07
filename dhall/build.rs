@@ -41,29 +41,37 @@ fn dhall_files_in_dir<'a>(
 fn make_test_module(
     w: &mut impl Write, // Where to output the generated code
     mod_name: &str, // Name of the module, used in the output of `cargo test`
-    dir: &Path,     // Directory containing the tests files
+    subdir: &str,   // Directory containing the tests files
     feature: &str,  // Relevant variant of `dhall::tests::Feature`
     mut exclude: impl FnMut(&str) -> bool, // Given a file name, whether to exclude it
 ) -> std::io::Result<()> {
+    let all_tests_dir = Path::new("../dhall-lang/tests/");
+    let tests_dir = all_tests_dir.join(subdir);
     writeln!(w, "mod {} {{", mod_name)?;
-    for (name, path) in dhall_files_in_dir(&dir.join("success/"), true) {
+    for (name, path) in dhall_files_in_dir(&tests_dir.join("success/"), true) {
         if exclude(&("success/".to_owned() + &path)) {
             continue;
         }
         writeln!(
             w,
-            r#"make_spec_test!({}, Success, success_{}, "success/{}");"#,
-            feature, name, path
+            r#"make_spec_test!({}, Success, success_{}, "{}/success/{}");"#,
+            feature,
+            name,
+            tests_dir.to_string_lossy(),
+            path
         )?;
     }
-    for (name, path) in dhall_files_in_dir(&dir.join("failure/"), false) {
+    for (name, path) in dhall_files_in_dir(&tests_dir.join("failure/"), false) {
         if exclude(&("failure/".to_owned() + &path)) {
             continue;
         }
         writeln!(
             w,
-            r#"make_spec_test!({}, Failure, failure_{}, "failure/{}");"#,
-            feature, name, path
+            r#"make_spec_test!({}, Failure, failure_{}, "{}/failure/{}");"#,
+            feature,
+            name,
+            tests_dir.to_string_lossy(),
+            path
         )?;
     }
     writeln!(w, "}}")?;
@@ -71,26 +79,20 @@ fn make_test_module(
 }
 
 fn main() -> std::io::Result<()> {
-    // Tries to detect when the submodule gets updated; doesn't really work.
+    // Tries to detect when the submodule gets updated.
     // To force regeneration of the test list, just `touch dhall-lang/.git`
     println!("cargo:rerun-if-changed=../dhall-lang/.git");
     println!(
         "cargo:rerun-if-changed=../.git/modules/dhall-lang/refs/heads/master"
     );
     let out_dir = env::var("OUT_DIR").unwrap();
-    let tests_dir = Path::new("../dhall-lang/tests/");
 
     let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
     let mut file = File::create(parser_tests_path)?;
 
-    make_test_module(
-        &mut file,
-        "parse",
-        &tests_dir.join("parser/"),
-        "Parser",
-        |path| {
-            // Too slow in debug mode
-            path == "success/largeExpression"
+    make_test_module(&mut file, "parse", "parser/", "Parser", |path| {
+        // Too slow in debug mode
+        path == "success/largeExpression"
             // TODO: Inline headers
             || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
@@ -106,17 +108,11 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPathSegment"
             // TODO: toMap
             || path == "success/toMap"
-        },
-    )?;
+    })?;
 
-    make_test_module(
-        &mut file,
-        "printer",
-        &tests_dir.join("parser/"),
-        "Printer",
-        |path| {
-            // Failure tests are only for the parser
-            path.starts_with("failure/")
+    make_test_module(&mut file, "printer", "parser/", "Printer", |path| {
+        // Failure tests are only for the parser
+        path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
             // TODO: Inline headers
@@ -132,13 +128,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPathSegment"
             // TODO: toMap
             || path == "success/toMap"
-        },
-    )?;
+    })?;
 
     make_test_module(
         &mut file,
         "binary_encoding",
-        &tests_dir.join("parser/"),
+        "parser/",
         "BinaryEncoding",
         |path| {
             // Failure tests are only for the parser
@@ -169,7 +164,7 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         "binary_decoding",
-        &tests_dir.join("binary-decode/"),
+        "binary-decode/",
         "BinaryDecoding",
         |path| {
             false
@@ -184,7 +179,7 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         "beta_normalize",
-        &tests_dir.join("normalization/"),
+        "normalization/",
         "Normalization",
         |path| {
             // We don't support bignums
@@ -207,7 +202,7 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         "alpha_normalize",
-        &tests_dir.join("alpha-normalization/"),
+        "alpha-normalization/",
         "AlphaNormalization",
         |_| false,
     )?;
@@ -215,7 +210,7 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         "typecheck",
-        &tests_dir.join("typecheck/"),
+        "typecheck/",
         "Typecheck",
         |path| {
             false
@@ -239,7 +234,7 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         "type_inference",
-        &tests_dir.join("type-inference/"),
+        "type-inference/",
         "TypeInference",
         |path| {
             false

@@ -81,19 +81,7 @@ pub fn run_test(
 ) -> Result<()> {
     use self::Feature::*;
     use self::Status::*;
-    let feature_prefix = match feature {
-        Parser => "parser/",
-        Printer => "parser/",
-        BinaryEncoding => "parser/",
-        BinaryDecoding => "binary-decode/",
-        Import => "import/",
-        Normalization => "normalization/",
-        AlphaNormalization => "alpha-normalization/",
-        Typecheck => "typecheck/",
-        TypeInference => "type-inference/",
-    };
-    let base_path =
-        "../dhall-lang/tests/".to_owned() + feature_prefix + base_path;
+    let base_path = base_path.to_owned();
     match status {
         Success => {
             match feature {
