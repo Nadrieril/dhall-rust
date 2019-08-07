@@ -677,13 +677,6 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
                 .map(|(k, t)| (k, TypeThunk::from_thunk(t)))
                 .collect(),
         )),
-        ExprF::UnionLit(l, x, kts) => Ret::Value(UnionLit(
-            l,
-            x,
-            kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypeThunk::from_thunk(t))))
-                .collect(),
-        )),
         ExprF::UnionType(kts) => Ret::Value(UnionType(
             kts.into_iter()
                 .map(|(k, t)| (k, t.map(|t| TypeThunk::from_thunk(t))))

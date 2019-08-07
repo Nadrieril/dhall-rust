@@ -141,9 +141,6 @@ where
             RecordType(kts) => RecordType(dupmap(kts, v)?),
             RecordLit(kvs) => RecordLit(dupmap(kvs, v)?),
             UnionType(kts) => UnionType(optdupmap(kts, v)?),
-            UnionLit(k, x, kts) => {
-                UnionLit(k.clone(), v.visit_subexpr(x)?, optdupmap(kts, v)?)
-            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,

@@ -202,8 +202,6 @@ pub enum ExprF<SubExpr, Embed> {
     RecordLit(DupTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
     UnionType(DupTreeMap<Label, Option<SubExpr>>),
-    ///  `< k1 = t1, k2 : t2, k3 >`
-    UnionLit(Label, SubExpr, DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`

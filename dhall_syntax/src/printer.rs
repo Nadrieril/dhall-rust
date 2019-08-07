@@ -85,16 +85,6 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 }
                 Ok(())
             })?,
-            UnionLit(a, b, c) => {
-                write!(f, "< {} = {}", a, b)?;
-                for (k, v) in c {
-                    write!(f, " | {}", k)?;
-                    if let Some(v) = v {
-                        write!(f, ": {}", v)?;
-                    }
-                }
-                f.write_str(" >")?
-            }
             Embed(a) => a.fmt(f)?,
         }
         Ok(())

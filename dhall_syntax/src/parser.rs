@@ -976,65 +976,20 @@ make_parser! {
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type_or_literal<ParsedSubExpr> as expression; span; children!(
+    rule!(union_type<ParsedSubExpr> as expression; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(Default::default()))
         },
-        [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
-            spanned(span, UnionLit(l, e, entries))
-        },
-        [non_empty_union_type_or_literal((None, entries))] => {
-            spanned(span, UnionType(entries))
+        [union_type_entry(entries)..] => {
+            spanned(span, UnionType(entries.collect()))
         },
     ));
 
     token_rule!(empty_union_type<()>);
 
-    rule!(non_empty_union_type_or_literal
-          <(Option<(Label, ParsedSubExpr)>,
-            DupTreeMap<Label, Option<ParsedSubExpr>>)>;
-            children!(
-        [label(l), union_literal_variant_value((e, entries))] => {
-            (Some((l, e)), entries)
-        },
-        [label(l), union_type_or_literal_variant_type((e, rest))] => {
-            let (x, mut entries) = rest;
-            entries.insert(l, e);
-            (x, entries)
-        },
-    ));
-
-    rule!(union_literal_variant_value
-          <(ParsedSubExpr, DupTreeMap<Label, Option<ParsedSubExpr>>)>;
-            children!(
-        [expression(e), union_type_entry(entries)..] => {
-            (e, entries.collect())
-        },
-    ));
-
     rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
-    ));
-
-    // TODO: unary union variants
-    rule!(union_type_or_literal_variant_type
-          <(Option<ParsedSubExpr>,
-            (Option<(Label, ParsedSubExpr)>,
-             DupTreeMap<Label, Option<ParsedSubExpr>>))>;
-                children!(
-        [expression(e), non_empty_union_type_or_literal(rest)] => {
-            (Some(e), rest)
-        },
-        [expression(e)] => {
-            (Some(e), (None, Default::default()))
-        },
-        [non_empty_union_type_or_literal(rest)] => {
-            (None, rest)
-        },
-        [] => {
-            (None, (None, Default::default()))
-        },
     ));
 
     rule!(non_empty_list_literal<ParsedSubExpr> as expression; span;

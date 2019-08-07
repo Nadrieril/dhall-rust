@@ -178,19 +178,10 @@ impl Value {
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
             }
-            Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
-                l.clone(),
+            Value::UnionLit(l, v, kts) => rc(ExprF::App(
+                Value::UnionConstructor(l.clone(), kts.clone())
+                    .normalize_to_expr_maybe_alpha(alpha),
                 v.normalize_to_expr_maybe_alpha(alpha),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref().map(|v| {
-                                v.normalize_to_expr_maybe_alpha(alpha)
-                            }),
-                        )
-                    })
-                    .collect(),
             )),
             Value::TextLit(elts) => {
                 use InterpolatedTextContents::{Expr, Text};

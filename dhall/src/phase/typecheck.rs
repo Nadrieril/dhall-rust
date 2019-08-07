@@ -505,15 +505,6 @@ fn type_last_layer(
             )?
             .into_type(),
         )),
-        UnionLit(x, v, kvs) => {
-            use std::iter::once;
-            let kts = kvs
-                .iter()
-                .map(|(x, v)| Ok((x.clone(), v.as_ref().map(|v| v.to_type()))));
-            let t = v.get_type()?.into_owned();
-            let kts = kts.chain(once(Ok((x.clone(), Some(t)))));
-            Ok(RetTypeOnly(tck_union_type(ctx, kts)?.to_type()))
-        }
         Field(r, x) => {
             match &r.get_type()?.to_value() {
                 Value::RecordType(kts) => match kts.get(&x) {

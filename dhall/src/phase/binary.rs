@@ -160,12 +160,9 @@ fn cbor_value_to_dhall(
                 let map = cbor_map_to_dhall_opt_map(map)?;
                 UnionType(map)
             }
-            [U64(12), String(l), x, Object(map)] => {
-                let map = cbor_map_to_dhall_opt_map(map)?;
-                let x = cbor_value_to_dhall(&x)?;
-                let l = Label::from(l.as_str());
-                UnionLit(l, x, map)
-            }
+            [U64(12), ..] => Err(DecodeError::WrongFormatError(
+                "Union literals are not supported anymore".to_owned(),
+            ))?,
             [U64(14), x, y, z] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
@@ -496,9 +493,6 @@ where
         RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
         RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
-        UnionLit(l, x, map) => {
-            ser_seq!(ser; tag(12), label(l), expr(x), UnionMap(map))
-        }
         Field(x, l) => ser_seq!(ser; tag(9), expr(x), label(l)),
         BinOp(op, x, y) => {
             use dhall_syntax::BinOp::*;

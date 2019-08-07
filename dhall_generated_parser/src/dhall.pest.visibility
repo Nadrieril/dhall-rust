@@ -169,11 +169,9 @@ non_empty_record_type
 record_type_entry
 non_empty_record_literal
 record_literal_entry
-union_type_or_literal
+union_type
 empty_union_type
-non_empty_union_type_or_literal
-union_literal_variant_value
+# non_empty_union_type
 union_type_entry
-union_type_or_literal_variant_type
 non_empty_list_literal
 # complete_expression
