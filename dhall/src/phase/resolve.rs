@@ -125,12 +125,15 @@ mod spec_tests {
     // import_success!(success_alternativeHashMismatch, "alternativeHashMismatch");
     // import_success!(success_alternativeNatural, "alternativeNatural");
     // import_success!(success_alternativeParseError, "alternativeParseError");
+    // import_success!(success_alternativeTypeError, "alternativeTypeError");
+    // import_success!(success_asLocation, "asLocation");
     // import_success!(success_asText, "asText");
     // import_success!(success_customHeaders, "customHeaders");
     import_success!(success_fieldOrder, "fieldOrder");
     // note: this one needs special setup with env variables
     // import_success!(success_hashFromCache, "hashFromCache");
     // import_success!(success_headerForwarding, "headerForwarding");
+    // import_success!(success_nestedHash, "nestedHash");
     // import_success!(success_noHeaderForwarding, "noHeaderForwarding");
     // import_failure!(failure_alternativeEnv, "alternativeEnv");
     // import_failure!(failure_alternativeEnvMissing, "alternativeEnvMissing");

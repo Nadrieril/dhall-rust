@@ -259,6 +259,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecordProjectionByTypeJudgmentalEquality"
             // TODO: toMap
             || path == "success/unit/ToMap"
+            || path == "success/unit/ToMapAnnotated"
         },
     )?;
 
