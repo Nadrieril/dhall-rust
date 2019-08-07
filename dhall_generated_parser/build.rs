@@ -30,7 +30,6 @@ fn main() -> std::io::Result<()> {
     rules.remove("url_path");
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
-    rules.remove("first_application_expression");
     rules.remove("expression");
 
     let mut file = File::create(pest_path)?;
@@ -54,16 +53,6 @@ fn main() -> std::io::Result<()> {
                 ~ using
                 ~ whsp1
                 ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
-    }}"
-    )?;
-    // TODO: hack while waiting to catch up on commit e7fdf9d of the spec
-    writeln!(
-        &mut file,
-        "first_application_expression = {{
-            merge ~ whsp1 ~ import_expression ~ whsp1 ~ import_expression
-            | Some_ ~ whsp1 ~ import_expression
-            | toMap ~ whsp1 ~ import_expression
-            | import_expression
     }}"
     )?;
     // TODO: hack; we'll need to upstream a change to the grammar

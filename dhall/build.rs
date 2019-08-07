@@ -100,11 +100,8 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
-            || path == "success/unit/import/urls/potPourri"
             // TODO: toMap
             || path == "success/toMap"
-            // Not a failure anymore
-            || path == "failure/unit/ListLitEmptyPrecedence"
         },
     )?;
 
@@ -160,7 +157,6 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPath0"
             || path == "success/unit/import/urls/emptyPath1"
             || path == "success/unit/import/urls/emptyPathSegment"
-            || path == "success/unit/import/urls/potPourri"
             // TODO: toMap
             || path == "success/toMap"
         },
