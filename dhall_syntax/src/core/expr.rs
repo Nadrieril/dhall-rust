@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::map::DupTreeMap;
+use crate::map::{DupTreeMap, DupTreeSet};
 use crate::visitor;
 use crate::*;
 
@@ -209,7 +209,7 @@ pub enum ExprF<SubExpr, Embed> {
     ///  `e.x`
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
-    Projection(SubExpr, Vec<Label>),
+    Projection(SubExpr, DupTreeSet<Label>),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }

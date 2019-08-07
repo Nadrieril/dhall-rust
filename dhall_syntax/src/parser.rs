@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
 
-use crate::map::DupTreeMap;
+use crate::map::{DupTreeMap, DupTreeSet};
 use crate::ExprF::*;
 use crate::*;
 
@@ -894,13 +894,13 @@ make_parser! {
         }
     ));
 
-    rule!(selector<Either<Label, Vec<Label>>>; children!(
+    rule!(selector<Either<Label, DupTreeSet<Label>>>; children!(
         [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
         [expression(e)] => unimplemented!("selection by expression"), // TODO
     ));
 
-    rule!(labels<Vec<Label>>; children!(
+    rule!(labels<DupTreeSet<Label>>; children!(
         [label(ls)..] => ls.collect(),
     ));
 
