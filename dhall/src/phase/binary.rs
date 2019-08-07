@@ -48,10 +48,21 @@ fn cbor_value_to_dhall(
         Bool(b) => BoolLit(*b),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let l = Label::from(l.as_str());
                 Var(V(l, *n as usize))
             }
             [U64(0), f, args..] => {
+                if args.is_empty() {
+                    Err(DecodeError::WrongFormatError(
+                        "Function application must have at least one argument"
+                            .to_owned(),
+                    ))?
+                }
                 let mut f = cbor_value_to_dhall(&f)?;
                 for a in args {
                     let a = cbor_value_to_dhall(&a)?;
@@ -65,6 +76,11 @@ fn cbor_value_to_dhall(
                 Lam(Label::from("_"), x, y)
             }
             [U64(1), String(l), x, y] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());
@@ -76,6 +92,11 @@ fn cbor_value_to_dhall(
                 Pi(Label::from("_"), x, y)
             }
             [U64(2), String(l), x, y] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());

@@ -15,11 +15,15 @@ fn dhall_files_in_dir<'a>(
         .filter_map(move |path| {
             let path = path.path();
             let path = path.strip_prefix(dir).unwrap();
-            if path.extension() != Some(&OsString::from("dhall")) {
+            let ext = path.extension();
+            if ext != Some(&OsString::from("dhall"))
+                && ext != Some(&OsString::from("dhallb"))
+            {
                 return None;
             }
+            let ext = ext.unwrap();
             let path = path.to_string_lossy();
-            let path = &path[..path.len() - 6];
+            let path = &path[..path.len() - 1 - ext.len()];
             let path = if take_a_suffix {
                 if &path[path.len() - 1..] != "A" {
                     return None;
@@ -159,6 +163,21 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/import/urls/emptyPathSegment"
             // TODO: toMap
             || path == "success/toMap"
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        "binary_decoding",
+        &tests_dir.join("binary-decode/"),
+        "BinaryDecoding",
+        |path| {
+            false
+            // TODO: projection by expression
+            || path == "success/unit/RecordProjectFields"
+            || path == "success/unit/recordProjectionByExpression"
+            // TODO: test is wrong
+            || path == "success/unit/BuiltinNaturalSubtract"
         },
     )?;
 
