@@ -173,6 +173,9 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/recordProjectionByExpression"
             // TODO: test is wrong
             || path == "success/unit/BuiltinNaturalSubtract"
+            // TODO: toMap
+            || path == "success/unit/ToMap"
+            || path == "success/unit/ToMapAnnotated"
         },
     )?;
 

@@ -477,12 +477,23 @@ where
             ser_seq!(ser; tag(2), expr(x), expr(y))
         }
         Pi(l, x, y) => ser_seq!(ser; tag(2), label(l), expr(x), expr(y)),
-        // TODO: multilet
-        Let(l, None, x, y) => {
-            ser_seq!(ser; tag(25), label(l), null(), expr(x), expr(y))
-        }
-        Let(l, Some(t), x, y) => {
-            ser_seq!(ser; tag(25), label(l), expr(t), expr(x), expr(y))
+        Let(_, _, _, _) => {
+            let (bound_e, bindings) = collect_nested_lets(e);
+            let count = 1 + 3 * bindings.len() + 1;
+
+            use serde::ser::SerializeSeq;
+            let mut ser_seq = ser.serialize_seq(Some(count))?;
+            ser_seq.serialize_element(&tag(25))?;
+            for (l, t, v) in bindings {
+                ser_seq.serialize_element(&label(l))?;
+                match t {
+                    Some(t) => ser_seq.serialize_element(&expr(t))?,
+                    None => ser_seq.serialize_element(&null())?,
+                }
+                ser_seq.serialize_element(&expr(v))?;
+            }
+            ser_seq.serialize_element(&expr(bound_e))?;
+            ser_seq.end()
         }
         App(_, _) => {
             let (f, args) = collect_nested_applications(e);
@@ -669,6 +680,29 @@ fn collect_nested_applications<'a, N, E>(
             ExprF::App(f, a) => {
                 vec.push(a);
                 go(f, vec)
+            }
+            _ => e,
+        }
+    }
+    let mut vec = vec![];
+    let e = go(e, &mut vec);
+    (e, vec)
+}
+
+type LetBinding<'a, N, E> =
+    (&'a Label, &'a Option<SubExpr<N, E>>, &'a SubExpr<N, E>);
+
+fn collect_nested_lets<'a, N, E>(
+    e: &'a SubExpr<N, E>,
+) -> (&'a SubExpr<N, E>, Vec<LetBinding<'a, N, E>>) {
+    fn go<'a, N, E>(
+        e: &'a SubExpr<N, E>,
+        vec: &mut Vec<LetBinding<'a, N, E>>,
+    ) -> &'a SubExpr<N, E> {
+        match e.as_ref() {
+            ExprF::Let(l, t, v, e) => {
+                vec.push((l, t, v));
+                go(e, vec)
             }
             _ => e,
         }
