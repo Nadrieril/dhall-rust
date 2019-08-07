@@ -137,17 +137,10 @@ where
             ),
             EmptyListLit(t) => EmptyListLit(v.visit_subexpr(t)?),
             NEListLit(es) => NEListLit(vec(es, |e| v.visit_subexpr(e))?),
-            OldOptionalLit(x, t) => OldOptionalLit(
-                opt(x, |e| v.visit_subexpr(e))?,
-                v.visit_subexpr(t)?,
-            ),
             SomeLit(e) => SomeLit(v.visit_subexpr(e)?),
             RecordType(kts) => RecordType(dupmap(kts, v)?),
             RecordLit(kvs) => RecordLit(dupmap(kvs, v)?),
             UnionType(kts) => UnionType(optdupmap(kts, v)?),
-            UnionLit(k, x, kts) => {
-                UnionLit(k.clone(), v.visit_subexpr(x)?, optdupmap(kts, v)?)
-            }
             Merge(x, y, t) => Merge(
                 v.visit_subexpr(x)?,
                 v.visit_subexpr(y)?,
@@ -362,6 +355,31 @@ where
     }
 }
 
+pub struct ResolveVisitor<F1>(pub F1);
+
+impl<'a, 'b, N, E, E2, Err, F1>
+    ExprFFallibleVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, E, E2>
+    for &'b mut ResolveVisitor<F1>
+where
+    N: Clone + 'a,
+    F1: FnMut(&E) -> Result<E2, Err>,
+{
+    type Error = Err;
+
+    fn visit_subexpr(
+        &mut self,
+        subexpr: &'a SubExpr<N, E>,
+    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        Ok(subexpr.rewrap(
+            subexpr
+                .as_ref()
+                .traverse_resolve_with_visitor(&mut **self)?,
+        ))
+    }
+    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
+        (self.0)(embed)
+    }
+}
 pub struct NoteAbsurdVisitor;
 
 impl<'a, 'b, N, E>

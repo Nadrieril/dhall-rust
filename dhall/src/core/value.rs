@@ -47,6 +47,7 @@ pub enum Value {
     DoubleLit(NaiveDouble),
     EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
+    // EmptyListLit(t) means `[] : List t`
     EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(HashMap<Label, Thunk>),
@@ -128,9 +129,10 @@ impl Value {
             Value::NEOptionalLit(n) => {
                 rc(ExprF::SomeLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
-            Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.normalize_to_expr_maybe_alpha(alpha)))
-            }
+            Value::EmptyListLit(n) => rc(ExprF::EmptyListLit(rc(ExprF::App(
+                rc(ExprF::Builtin(Builtin::List)),
+                n.normalize_to_expr_maybe_alpha(alpha),
+            )))),
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
                 elts.iter()
                     .map(|n| n.normalize_to_expr_maybe_alpha(alpha))
@@ -176,19 +178,10 @@ impl Value {
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
             }
-            Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
-                l.clone(),
+            Value::UnionLit(l, v, kts) => rc(ExprF::App(
+                Value::UnionConstructor(l.clone(), kts.clone())
+                    .normalize_to_expr_maybe_alpha(alpha),
                 v.normalize_to_expr_maybe_alpha(alpha),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref().map(|v| {
-                                v.normalize_to_expr_maybe_alpha(alpha)
-                            }),
-                        )
-                    })
-                    .collect(),
             )),
             Value::TextLit(elts) => {
                 use InterpolatedTextContents::{Expr, Text};

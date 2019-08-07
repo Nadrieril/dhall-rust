@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::map::DupTreeMap;
+use crate::map::{DupTreeMap, DupTreeSet};
 use crate::visitor;
 use crate::*;
 
@@ -119,6 +119,7 @@ pub enum Builtin {
     NaturalOdd,
     NaturalToInteger,
     NaturalShow,
+    NaturalSubtract,
     IntegerToDouble,
     IntegerShow,
     DoubleShow,
@@ -190,14 +191,10 @@ pub enum ExprF<SubExpr, Embed> {
     DoubleLit(Double),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
-    ///  `[] : List t`
+    ///  `[] : t`
     EmptyListLit(SubExpr),
     ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),
-    /// Deprecated Optional literal form
-    ///  `[] : Optional a`
-    ///  `[x] : Optional a`
-    OldOptionalLit(Option<SubExpr>, SubExpr),
     ///  `Some e`
     SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
@@ -206,14 +203,12 @@ pub enum ExprF<SubExpr, Embed> {
     RecordLit(DupTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
     UnionType(DupTreeMap<Label, Option<SubExpr>>),
-    ///  `< k1 = t1, k2 : t2, k3 >`
-    UnionLit(Label, SubExpr, DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
     ///  `e.x`
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
-    Projection(SubExpr, Vec<Label>),
+    Projection(SubExpr, DupTreeSet<Label>),
     /// Embeds an import or the result of resolving the import
     Embed(Embed),
 }
@@ -311,6 +306,35 @@ impl<N, E> Expr<N, E> {
     {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
+
+    pub fn traverse_resolve<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<Expr<N, E2>, Err>
+    where
+        N: Clone,
+    {
+        self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
+            visit_embed,
+        ))
+    }
+
+    pub(crate) fn traverse_resolve_with_visitor<E2, Err, F1>(
+        &self,
+        visitor: &mut visitor::ResolveVisitor<F1>,
+    ) -> Result<Expr<N, E2>, Err>
+    where
+        N: Clone,
+        F1: FnMut(&E) -> Result<E2, Err>,
+    {
+        match self {
+            ExprF::BinOp(BinOp::ImportAlt, l, r) => l
+                .as_ref()
+                .traverse_resolve_with_visitor(visitor)
+                .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
+            _ => self.visit(visitor),
+        }
+    }
 }
 
 impl Expr<X, X> {
@@ -386,6 +410,16 @@ impl<N, E> SubExpr<N, E> {
                 |_| unreachable!(),
             )),
         }
+    }
+
+    pub fn traverse_resolve<E2, Err>(
+        &self,
+        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+    ) -> Result<SubExpr<N, E2>, Err>
+    where
+        N: Clone,
+    {
+        Ok(self.rewrap(self.as_ref().traverse_resolve(visit_embed)?))
     }
 }
 

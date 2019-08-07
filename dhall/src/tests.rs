@@ -45,6 +45,7 @@ pub enum Feature {
     Parser,
     Printer,
     BinaryEncoding,
+    BinaryDecoding,
     Import,
     Normalization,
     AlphaNormalization,
@@ -80,20 +81,27 @@ pub fn run_test(
 ) -> Result<()> {
     use self::Feature::*;
     use self::Status::*;
-    let feature_prefix = match feature {
-        Parser => "parser/",
-        Printer => "parser/",
-        BinaryEncoding => "parser/",
-        Import => "import/",
-        Normalization => "normalization/",
-        AlphaNormalization => "alpha-normalization/",
-        Typecheck => "typecheck/",
-        TypeInference => "type-inference/",
-    };
-    let base_path =
-        "../dhall-lang/tests/".to_owned() + feature_prefix + base_path;
+    let base_path = base_path.to_owned();
     match status {
         Success => {
+            match feature {
+                BinaryDecoding => {
+                    let expr_file_path = base_path.clone() + "A.dhallb";
+                    let expr_file_path = PathBuf::from(&expr_file_path);
+                    let mut expr_data = Vec::new();
+                    {
+                        File::open(&expr_file_path)?
+                            .read_to_end(&mut expr_data)?;
+                    }
+                    let expr = Parsed::parse_binary(&expr_data)?;
+                    let expected_file_path = base_path + "B.dhall";
+                    let expected = parse_file_str(&expected_file_path)?;
+                    assert_eq_pretty!(expr, expected);
+
+                    return Ok(());
+                }
+                _ => {}
+            }
             let expr_file_path = base_path.clone() + "A.dhall";
             let expr = parse_file_str(&expr_file_path)?;
 
@@ -164,7 +172,9 @@ pub fn run_test(
                 .normalize();
 
             match feature {
-                Parser | Printer | BinaryEncoding => unreachable!(),
+                Parser | Printer | BinaryEncoding | BinaryDecoding => {
+                    unreachable!()
+                }
                 Import => {
                     let expr = expr.skip_typecheck().normalize();
                     assert_eq_display!(expr, expected);
@@ -195,10 +205,21 @@ pub fn run_test(
                     let err = parse_file_str(&file_path).unwrap_err();
                     match err {
                         Error::Parse(_) => {}
+                        Error::IO(e)
+                            if e.kind() == std::io::ErrorKind::InvalidData => {}
                         e => panic!("Expected parse error, got: {:?}", e),
                     }
                 }
                 Printer | BinaryEncoding => unreachable!(),
+                BinaryDecoding => {
+                    let expr_file_path = file_path + "b";
+                    let mut expr_data = Vec::new();
+                    {
+                        File::open(&PathBuf::from(&expr_file_path))?
+                            .read_to_end(&mut expr_data)?;
+                    }
+                    Parsed::parse_binary(&expr_data).unwrap_err();
+                }
                 Import => {
                     parse_file_str(&file_path)?.resolve().unwrap_err();
                 }

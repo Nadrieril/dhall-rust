@@ -6,6 +6,7 @@ remove `double`
 remove imports/parenthesizeUsing
 remove multilet
 selection by expression unit tests
+split aslocation test into actual unit tests
 success/
     imports/
         Missing missing
@@ -86,6 +87,8 @@ success/
 failure/
     ProjectionByExpressionNeedsParens r.{ x: T }
 
+binary decoding:
+decode old-style optional literals ?
 
 import:
 success/
@@ -96,6 +99,8 @@ failure/
 
 normalization:
 variables across import boundaries
+Text/show ""
+Double/show -1.5e-10
     TextLitNested1 "${""}${x}"
     TextLitNested2 "${"${x}"}"
     TextLitNested3 "${"${""}"}${x}"
@@ -104,6 +109,8 @@ variables across import boundaries
 
 typecheck:
 something that involves destructuring a recordtype after merge
+add some of the more complicated Prelude tests back, like List/enumerate
+failure on old-style optional literal
 success/
     MergeEmptyAlternative merge { x = 1 } < x >.x
     MergeTrickyShadowing let _ = Bool in merge {_ = \(x: _) -> x} (<_: Bool>._ True)

@@ -1,5 +1,6 @@
 /// A sorted map that allows multiple values for each key.
 pub use dup_tree_map::DupTreeMap;
+pub use dup_tree_set::DupTreeSet;
 
 mod one_or_more {
     use either::Either;
@@ -231,4 +232,98 @@ mod dup_tree_map {
     }
 
     // unsafe impl<K, V> iter::TrustedLen for IntoIter<K, V> {}
+}
+
+mod dup_tree_set {
+    use super::DupTreeMap;
+    use std::iter;
+
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct DupTreeSet<K> {
+        map: DupTreeMap<K, ()>,
+    }
+
+    pub type Iter<'a, K> = iter::Map<
+        super::dup_tree_map::Iter<'a, K, ()>,
+        for<'b> fn((&'b K, &'b ())) -> &'b K,
+    >;
+    pub type IntoIter<K> =
+        iter::Map<super::dup_tree_map::IntoIter<K, ()>, fn((K, ())) -> K>;
+
+    impl<K> DupTreeSet<K> {
+        pub fn new() -> Self
+        where
+            K: Ord,
+        {
+            DupTreeSet {
+                map: DupTreeMap::new(),
+            }
+        }
+
+        pub fn len(&self) -> usize {
+            self.map.len()
+        }
+        pub fn is_empty(&self) -> bool {
+            self.map.is_empty()
+        }
+
+        pub fn iter(&self) -> Iter<'_, K>
+        where
+            K: Ord,
+        {
+            fn foo<'a, K>((k, ()): (&'a K, &'a ())) -> &'a K {
+                k
+            }
+            self.map.iter().map(foo)
+        }
+    }
+
+    impl<K> Default for DupTreeSet<K>
+    where
+        K: Ord,
+    {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl<K> IntoIterator for DupTreeSet<K>
+    where
+        K: Ord + Clone,
+    {
+        type Item = K;
+        type IntoIter = IntoIter<K>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            fn foo<K>((k, ()): (K, ())) -> K {
+                k
+            }
+            self.map.into_iter().map(foo)
+        }
+    }
+
+    impl<'a, K> IntoIterator for &'a DupTreeSet<K>
+    where
+        K: Ord,
+    {
+        type Item = &'a K;
+        type IntoIter = Iter<'a, K>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            self.iter()
+        }
+    }
+
+    impl<K> iter::FromIterator<K> for DupTreeSet<K>
+    where
+        K: Ord,
+    {
+        fn from_iter<T>(iter: T) -> Self
+        where
+            T: IntoIterator<Item = K>,
+        {
+            let map = iter.into_iter().map(|k| (k, ())).collect();
+            DupTreeSet { map }
+        }
+    }
 }

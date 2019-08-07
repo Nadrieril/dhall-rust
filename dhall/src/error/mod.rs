@@ -86,7 +86,7 @@ pub(crate) enum TypeMessage {
     RecordTypeMergeRequiresRecordType(Type),
     RecordTypeMismatch(Type, Type, Type, Type),
     UnionTypeDuplicateField,
-    Unimplemented,
+    // Unimplemented,
 }
 
 impl TypeError {
