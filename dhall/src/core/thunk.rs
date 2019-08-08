@@ -111,10 +111,6 @@ impl Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
 
-    pub fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
-        Thunk::new(NormalizationContext::new(), e.absurd())
-    }
-
     pub fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }

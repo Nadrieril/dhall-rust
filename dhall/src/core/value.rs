@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use dhall_proc_macros as dhall;
 use dhall_syntax::{
     rc, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, X,
@@ -75,6 +74,47 @@ impl Value {
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+        // Ad-hoc macro to help construct the unapplied closures
+        macro_rules! make_expr {
+            (Natural) => { rc(ExprF::Builtin(Builtin::Natural)) };
+            (var($var:ident)) => {
+                rc(ExprF::Var(dhall_syntax::V(stringify!($var).into(), 0)))
+            };
+            ($var:ident) => { $var };
+            (List $($rest:tt)*) => {
+                rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::List)),
+                    make_expr!($($rest)*)
+                ))
+            };
+            (Some $($rest:tt)*) => {
+                rc(ExprF::SomeLit(
+                    make_expr!($($rest)*)
+                ))
+            };
+            (1 + $($rest:tt)*) => {
+                rc(ExprF::BinOp(
+                    dhall_syntax::BinOp::NaturalPlus,
+                    rc(ExprF::NaturalLit(1)),
+                    make_expr!($($rest)*)
+                ))
+            };
+            ([ $($head:tt)* ] # $($tail:tt)*) => {
+                rc(ExprF::BinOp(
+                    dhall_syntax::BinOp::ListAppend,
+                    rc(ExprF::NEListLit(vec![make_expr!($($head)*)])),
+                    make_expr!($($tail)*)
+                ))
+            };
+            (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
+                rc(ExprF::Pi(
+                    stringify!($var).into(),
+                    make_expr!($($ty)*),
+                    make_expr!($($rest)*)
+                ))
+            };
+        }
+
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -93,24 +133,24 @@ impl Value {
             }
             Value::OptionalSomeClosure(n) => {
                 let a = n.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(x: a) -> Some x)
+                make_expr!(λ(x: a) -> Some var(x))
             }
             Value::ListConsClosure(a, None) => {
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.under_binder(Label::from("x"));
                 let a1 = a1.normalize_to_expr_maybe_alpha(alpha);
                 let a = a.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
+                make_expr!(λ(x : a) -> λ(xs : List a1) -> [ var(x) ] # var(xs))
             }
             Value::ListConsClosure(n, Some(v)) => {
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.under_binder(Label::from("xs"));
                 let v = v.normalize_to_expr_maybe_alpha(alpha);
                 let a = n.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
+                make_expr!(λ(xs : List a) -> [ v ] # var(xs))
             }
             Value::NaturalSuccClosure => {
-                dhall::subexpr!(λ(x : Natural) -> x + 1)
+                make_expr!(λ(x : Natural) -> 1 + var(x))
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
                 x.to_label_maybe_alpha(alpha),

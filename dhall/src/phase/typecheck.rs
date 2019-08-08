@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use dhall_proc_macros as dhall;
 use dhall_syntax::{
     rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, Span,
     SubExpr, X,
@@ -173,41 +172,97 @@ pub fn type_of_const(c: Const) -> Result<Type, TypeError> {
     }
 }
 
+// Ad-hoc macro to help construct the types of builtins
+macro_rules! make_type {
+    (Type) => { ExprF::Const(Const::Type) };
+    (Bool) => { ExprF::Builtin(Builtin::Bool) };
+    (Natural) => { ExprF::Builtin(Builtin::Natural) };
+    (Integer) => { ExprF::Builtin(Builtin::Integer) };
+    (Double) => { ExprF::Builtin(Builtin::Double) };
+    (Text) => { ExprF::Builtin(Builtin::Text) };
+    ($var:ident) => {
+        ExprF::Var(dhall_syntax::V(stringify!($var).into(), 0))
+    };
+    (Optional $ty:ident) => {
+        ExprF::App(
+            rc(ExprF::Builtin(Builtin::Optional)),
+            rc(make_type!($ty))
+        )
+    };
+    (List $($rest:tt)*) => {
+        ExprF::App(
+            rc(ExprF::Builtin(Builtin::List)),
+            rc(make_type!($($rest)*))
+        )
+    };
+    ({ $($label:ident : $ty:ident),* }) => {{
+        let mut kts = dhall_syntax::map::DupTreeMap::new();
+        $(
+            kts.insert(
+                Label::from(stringify!($label)),
+                rc(make_type!($ty)),
+            );
+        )*
+        ExprF::RecordType(kts)
+    }};
+    ($ty:ident -> $($rest:tt)*) => {
+        ExprF::Pi(
+            "_".into(),
+            rc(make_type!($ty)),
+            rc(make_type!($($rest)*))
+        )
+    };
+    (($($arg:tt)*) -> $($rest:tt)*) => {
+        ExprF::Pi(
+            "_".into(),
+            rc(make_type!($($arg)*)),
+            rc(make_type!($($rest)*))
+        )
+    };
+    (forall ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
+        ExprF::Pi(
+            stringify!($var).into(),
+            rc(make_type!($($ty)*)),
+            rc(make_type!($($rest)*))
+        )
+    };
+}
+
 fn type_of_builtin(b: Builtin) -> Expr<X, X> {
     use dhall_syntax::Builtin::*;
     match b {
-        Bool | Natural | Integer | Double | Text => dhall::expr!(Type),
-        List | Optional => dhall::expr!(
+        Bool | Natural | Integer | Double | Text => make_type!(Type),
+        List | Optional => make_type!(
             Type -> Type
         ),
 
-        NaturalFold => dhall::expr!(
+        NaturalFold => make_type!(
             Natural ->
             forall (natural: Type) ->
             forall (succ: natural -> natural) ->
             forall (zero: natural) ->
             natural
         ),
-        NaturalBuild => dhall::expr!(
+        NaturalBuild => make_type!(
             (forall (natural: Type) ->
                 forall (succ: natural -> natural) ->
                 forall (zero: natural) ->
                 natural) ->
             Natural
         ),
-        NaturalIsZero | NaturalEven | NaturalOdd => dhall::expr!(
+        NaturalIsZero | NaturalEven | NaturalOdd => make_type!(
             Natural -> Bool
         ),
-        NaturalToInteger => dhall::expr!(Natural -> Integer),
-        NaturalShow => dhall::expr!(Natural -> Text),
-        NaturalSubtract => dhall::expr!(Natural -> Natural -> Natural),
+        NaturalToInteger => make_type!(Natural -> Integer),
+        NaturalShow => make_type!(Natural -> Text),
+        NaturalSubtract => make_type!(Natural -> Natural -> Natural),
 
-        IntegerToDouble => dhall::expr!(Integer -> Double),
-        IntegerShow => dhall::expr!(Integer -> Text),
-        DoubleShow => dhall::expr!(Double -> Text),
-        TextShow => dhall::expr!(Text -> Text),
+        IntegerToDouble => make_type!(Integer -> Double),
+        IntegerShow => make_type!(Integer -> Text),
+        DoubleShow => make_type!(Double -> Text),
+        TextShow => make_type!(Text -> Text),
 
-        ListBuild => dhall::expr!(
+        ListBuild => make_type!(
             forall (a: Type) ->
             (forall (list: Type) ->
                 forall (cons: a -> list -> list) ->
@@ -215,28 +270,28 @@ fn type_of_builtin(b: Builtin) -> Expr<X, X> {
                 list) ->
             List a
         ),
-        ListFold => dhall::expr!(
+        ListFold => make_type!(
             forall (a: Type) ->
-            List a ->
+            (List a) ->
             forall (list: Type) ->
             forall (cons: a -> list -> list) ->
             forall (nil: list) ->
             list
         ),
-        ListLength => dhall::expr!(forall (a: Type) -> List a -> Natural),
+        ListLength => make_type!(forall (a: Type) -> (List a) -> Natural),
         ListHead | ListLast => {
-            dhall::expr!(forall (a: Type) -> List a -> Optional a)
+            make_type!(forall (a: Type) -> (List a) -> Optional a)
         }
-        ListIndexed => dhall::expr!(
+        ListIndexed => make_type!(
             forall (a: Type) ->
-            List a ->
+            (List a) ->
             List { index: Natural, value: a }
         ),
-        ListReverse => dhall::expr!(
-            forall (a: Type) -> List a -> List a
+        ListReverse => make_type!(
+            forall (a: Type) -> (List a) -> List a
         ),
 
-        OptionalBuild => dhall::expr!(
+        OptionalBuild => make_type!(
             forall (a: Type) ->
             (forall (optional: Type) ->
                 forall (just: a -> optional) ->
@@ -244,15 +299,15 @@ fn type_of_builtin(b: Builtin) -> Expr<X, X> {
                 optional) ->
             Optional a
         ),
-        OptionalFold => dhall::expr!(
+        OptionalFold => make_type!(
             forall (a: Type) ->
-            Optional a ->
+            (Optional a) ->
             forall (optional: Type) ->
             forall (just: a -> optional) ->
             forall (nothing: optional) ->
             optional
         ),
-        OptionalNone => dhall::expr!(
+        OptionalNone => make_type!(
             forall (a: Type) -> Optional a
         ),
     }

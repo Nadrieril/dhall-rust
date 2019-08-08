@@ -1,23 +1,18 @@
 #![feature(proc_macro_hygiene)]
-use dhall::de::{StaticType, Type};
-use dhall_proc_macros::subexpr;
-use dhall_syntax::{SubExpr, X};
+use dhall::de::{from_str, StaticType, Type};
 
 #[test]
 fn test_static_type() {
-    fn mktype(x: SubExpr<X, X>) -> Type {
-        Type::from_normalized_expr(x)
+    fn parse(s: &str) -> Type {
+        from_str(s, None).unwrap()
     }
 
-    assert_eq!(bool::static_type(), mktype(subexpr!(Bool)));
-    assert_eq!(String::static_type(), mktype(subexpr!(Text)));
-    assert_eq!(
-        <Option<bool>>::static_type(),
-        mktype(subexpr!(Optional Bool))
-    );
+    assert_eq!(bool::static_type(), parse("Bool"));
+    assert_eq!(String::static_type(), parse("Text"));
+    assert_eq!(<Option<bool>>::static_type(), parse("Optional Bool"));
     assert_eq!(
         <(bool, Vec<String>)>::static_type(),
-        mktype(subexpr!({ _1: Bool, _2: List Text }))
+        parse("{ _1: Bool, _2: List Text }")
     );
 
     #[derive(dhall::de::StaticType)]
@@ -28,7 +23,7 @@ fn test_static_type() {
     }
     assert_eq!(
         <A as dhall::de::StaticType>::static_type(),
-        mktype(subexpr!({ field1: Bool, field2: Optional Bool }))
+        parse("{ field1: Bool, field2: Optional Bool }")
     );
 
     #[derive(StaticType)]
@@ -52,7 +47,7 @@ fn test_static_type() {
     struct D();
     assert_eq!(
         <C<D>>::static_type(),
-        mktype(subexpr!({ _1: {}, _2: Optional Text }))
+        parse("{ _1: {}, _2: Optional Text }")
     );
 
     #[derive(StaticType)]
@@ -61,10 +56,7 @@ fn test_static_type() {
         A(T),
         B(String),
     };
-    assert_eq!(
-        <E<bool>>::static_type(),
-        mktype(subexpr!(< A: Bool | B: Text >))
-    );
+    assert_eq!(<E<bool>>::static_type(), parse("< A: Bool | B: Text >"));
 
     #[derive(StaticType)]
     #[allow(dead_code)]
@@ -72,5 +64,5 @@ fn test_static_type() {
         A,
         B(bool),
     };
-    assert_eq!(F::static_type(), mktype(subexpr!(< A | B: Bool >)));
+    assert_eq!(F::static_type(), parse("< A | B: Bool >"));
 }

@@ -66,10 +66,6 @@ mod typ {
             ))
         }
         #[doc(hidden)]
-        pub fn from_normalized_expr(e: NormalizedSubExpr) -> Self {
-            Type(Typed::from_normalized_expr_untyped(e))
-        }
-        #[doc(hidden)]
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Type)>,
         ) -> Self {
