@@ -67,6 +67,7 @@ fn main() -> std::io::Result<()> {
           | merge ~ whsp1 ~ import_expression ~ whsp1 ~ import_expression ~ whsp ~ ^":" ~ whsp1 ~ application_expression
           | empty_list_literal
           | toMap ~ whsp1 ~ import_expression ~ whsp ~ ^":" ~ whsp1 ~ application_expression
+          | assert ~ whsp ~ ^":" ~ whsp1 ~ expression
           | annotated_expression
     }}"#
     )?;

@@ -221,6 +221,10 @@ impl TypeThunk {
         self.0.to_type()
     }
 
+    pub fn to_typed(&self) -> Typed {
+        self.0.clone()
+    }
+
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }

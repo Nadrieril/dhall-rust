@@ -46,6 +46,7 @@ missing
 NaN
 Some_
 toMap
+assert
 # keyword
 builtin
 Optional
@@ -85,6 +86,7 @@ Location
 # Text_show
 # combine
 # combine_types
+# equivalent
 # prefer
 lambda
 forall
@@ -154,6 +156,7 @@ combine_types_expression
 times_expression
 equal_expression
 not_equal_expression
+equivalent_expression
 application_expression
 first_application_expression
 # import_expression

@@ -47,7 +47,7 @@ pub enum Value {
     DoubleLit(NaiveDouble),
     EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
-    // EmptyListLit(t) means `[] : List t`
+    // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(HashMap<Label, Thunk>),
@@ -58,6 +58,7 @@ pub enum Value {
     // Invariant: this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
+    Equivalence(TypeThunk, TypeThunk),
     // Invariant: this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Thunk, X>),
 }
@@ -196,6 +197,11 @@ impl Value {
                         .collect(),
                 ))
             }
+            Value::Equivalence(x, y) => rc(ExprF::BinOp(
+                dhall_syntax::BinOp::Equivalence,
+                x.normalize_to_expr_maybe_alpha(alpha),
+                y.normalize_to_expr_maybe_alpha(alpha),
+            )),
             Value::PartialExpr(e) => {
                 rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
             }
@@ -281,6 +287,10 @@ impl Value {
                         Text(_) => {}
                     }
                 }
+            }
+            Value::Equivalence(x, y) => {
+                x.normalize_mut();
+                y.normalize_mut();
             }
             Value::PartialExpr(e) => {
                 // TODO: need map_mut_simple
@@ -418,6 +428,9 @@ impl Shift for Value {
                     })
                     .collect::<Result<_, _>>()?,
             ),
+            Value::Equivalence(x, y) => {
+                Value::Equivalence(x.shift(delta, var)?, y.shift(delta, var)?)
+            }
             Value::PartialExpr(e) => Value::PartialExpr(
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
@@ -532,6 +545,10 @@ impl Subst<Typed> for Value {
                         (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
                     })
                     .collect(),
+            ),
+            Value::Equivalence(x, y) => Value::Equivalence(
+                x.subst_shift(var, val),
+                y.subst_shift(var, val),
             ),
         }
     }

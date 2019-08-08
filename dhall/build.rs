@@ -199,7 +199,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/EmptyToMap"
             || path == "success/unit/ToMap"
             || path == "success/unit/ToMapWithType"
-            // Normalize field selection further by inspecting the argument
+            // TODO: Normalize field selection further by inspecting the argument
             || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
             || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
             || path == "success/simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
@@ -229,7 +229,10 @@ fn main() -> std::io::Result<()> {
         "Typecheck",
         |path| {
             false
+            // TODO: Enable imports in typecheck tests
             || path == "failure/importBoundary"
+            // Too slow
+            || path == "success/prelude"
             // TODO: Inline headers
             || path == "failure/customHeadersUsingBoundVariable"
             // TODO: projection by expression

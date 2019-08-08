@@ -107,6 +107,7 @@ pub fn run_test(
 
             match feature {
                 Parser => {
+                    // This exercices both parsing and binary decoding
                     // Compare parse/decoded
                     let expected_file_path = base_path + "B.dhallb";
                     let expected_file_path = PathBuf::from(&expected_file_path);

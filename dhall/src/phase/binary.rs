@@ -119,6 +119,7 @@ fn cbor_value_to_dhall(
                     9 => RightBiasedRecordMerge,
                     10 => RecursiveRecordTypeMerge,
                     11 => ImportAlt,
+                    12 => Equivalence,
                     _ => {
                         Err(DecodeError::WrongFormatError("binop".to_owned()))?
                     }
@@ -210,6 +211,10 @@ fn cbor_value_to_dhall(
                         })
                         .collect::<Result<_, _>>()?,
                 )))
+            }
+            [U64(19), t] => {
+                let t = cbor_value_to_dhall(&t)?;
+                Assert(t)
             }
             [U64(24), hash, U64(mode), U64(scheme), rest..] => {
                 let mode = match mode {
@@ -504,6 +509,7 @@ where
             )
         }
         Annot(x, y) => ser_seq!(ser; tag(26), expr(x), expr(y)),
+        Assert(x) => ser_seq!(ser; tag(19), expr(x)),
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
         EmptyListLit(x) => match x.as_ref() {
             App(f, a) => match f.as_ref() {
@@ -541,6 +547,7 @@ where
                 RightBiasedRecordMerge => 9,
                 RecursiveRecordTypeMerge => 10,
                 ImportAlt => 11,
+                Equivalence => 12,
             };
             ser_seq!(ser; tag(3), U64(op), expr(x), expr(y))
         }
