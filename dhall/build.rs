@@ -208,9 +208,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection0"
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection1"
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection2"
+            || path == "success/unit/RecursiveRecordMergeWithinFieldSelection3"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection0"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection1"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection2"
+            || path == "success/unit/RightBiasedMergeWithinFieldSelection3"
+            || path == "success/unit/RightBiasedMergeEquivalentArguments"
         },
     )?;
 

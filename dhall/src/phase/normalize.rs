@@ -54,6 +54,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                 }
                 (NaturalLit(0), b) => Ok((r, b.clone())),
                 (_, NaturalLit(0)) => Ok((r, NaturalLit(0))),
+                _ if a == b => Ok((r, NaturalLit(0))),
                 _ => Err(()),
             }
         }
