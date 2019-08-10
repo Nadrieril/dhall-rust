@@ -311,6 +311,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
         | times_expression
         | equal_expression
         | not_equal_expression
+        | equivalent_expression
         | application_expression
         | first_application_expression
         | selector_expression
@@ -744,6 +745,7 @@ make_parser! {
     token_rule!(forall<()>);
     token_rule!(arrow<()>);
     token_rule!(merge<()>);
+    token_rule!(assert<()>);
     token_rule!(if_<()>);
     token_rule!(in_<()>);
 
@@ -776,6 +778,9 @@ make_parser! {
         },
         [merge(()), expression(x), expression(y), expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
+        },
+        [assert(()), expression(x)] => {
+            spanned(span, Assert(x))
         },
         [expression(e)] => e,
     ));
@@ -872,6 +877,13 @@ make_parser! {
         [expression(e)] => e,
         [expression(first), expression(rest)..] => {
             let o = crate::BinOp::BoolNE;
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
+        },
+    ));
+    rule!(equivalent_expression<ParsedSubExpr> as expression; children!(
+        [expression(e)] => e,
+        [expression(first), expression(rest)..] => {
+            let o = crate::BinOp::Equivalence;
             rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));

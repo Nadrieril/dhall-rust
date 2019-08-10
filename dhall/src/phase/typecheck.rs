@@ -60,18 +60,7 @@ fn tck_pi_type(
         }
     };
 
-    let k = match function_check(ka, kb) {
-        Ok(k) => k,
-        Err(()) => {
-            return Err(TypeError::new(
-                ctx,
-                NoDependentTypes(
-                    tx.to_normalized(),
-                    te.get_type()?.to_normalized(),
-                ),
-            ))
-        }
-    };
+    let k = function_check(ka, kb);
 
     Ok(Typed::from_thunk_and_type(
         Value::Pi(x.into(), TypeThunk::from_type(tx), TypeThunk::from_type(te))
@@ -164,14 +153,13 @@ fn tck_union_type(
     ))
 }
 
-fn function_check(a: Const, b: Const) -> Result<Const, ()> {
-    use dhall_syntax::Const::*;
-    match (a, b) {
-        (_, Type) => Ok(Type),
-        (Kind, Kind) => Ok(Kind),
-        (Sort, Sort) => Ok(Sort),
-        (Sort, Kind) => Ok(Sort),
-        _ => Err(()),
+fn function_check(a: Const, b: Const) -> Const {
+    use dhall_syntax::Const::Type;
+    use std::cmp::max;
+    if b == Type {
+        Type
+    } else {
+        max(a, b)
     }
 }
 
@@ -402,6 +390,19 @@ fn type_last_layer(
                 mkerr(AnnotMismatch(x.clone(), t.to_normalized()))
             );
             Ok(RetTypeOnly(x.get_type()?.into_owned()))
+        }
+        Assert(t) => {
+            match t.to_value() {
+                Value::Equivalence(x, y) if x == y => {}
+                Value::Equivalence(x, y) => {
+                    return Err(mkerr(AssertMismatch(
+                        x.to_typed(),
+                        y.to_typed(),
+                    )))
+                }
+                _ => return Err(mkerr(AssertMustTakeEquivalence)),
+            }
+            Ok(RetTypeOnly(t.to_type()))
         }
         BoolIf(x, y, z) => {
             ensure_equal!(
@@ -807,6 +808,24 @@ fn type_last_layer(
 
             Ok(RetTypeOnly(l.get_type()?.into_owned()))
         }
+        BinOp(Equivalence, l, r) => {
+            ensure_simple_type!(
+                l.get_type()?,
+                mkerr(EquivalenceArgumentMustBeTerm(true, l.clone())),
+            );
+            ensure_simple_type!(
+                r.get_type()?,
+                mkerr(EquivalenceArgumentMustBeTerm(false, r.clone())),
+            );
+
+            ensure_equal!(
+                l.get_type()?,
+                r.get_type()?,
+                mkerr(EquivalenceTypeMismatch(r.clone(), l.clone()))
+            );
+
+            Ok(RetTypeOnly(Type::from_const(dhall_syntax::Const::Type)))
+        }
         BinOp(o, l, r) => {
             let t = builtin_to_type(match o {
                 BoolAnd => Bool,
@@ -821,6 +840,7 @@ fn type_last_layer(
                 RecursiveRecordMerge => unreachable!(),
                 RecursiveRecordTypeMerge => unreachable!(),
                 ImportAlt => unreachable!("There should remain no import alternatives in a resolved expression"),
+                Equivalence => unreachable!(),
             })?;
 
             ensure_equal!(

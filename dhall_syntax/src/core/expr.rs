@@ -44,7 +44,7 @@ impl From<NaiveDouble> for f64 {
 }
 
 /// Constants for a pure type system
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Const {
     Type,
     Kind,
@@ -99,6 +99,8 @@ pub enum BinOp {
     BoolEQ,
     /// `x != y`
     BoolNE,
+    /// x === y
+    Equivalence,
 }
 
 /// Built-ins
@@ -175,6 +177,8 @@ pub enum ExprF<SubExpr, Embed> {
     Let(Label, Option<SubExpr>, SubExpr, SubExpr),
     ///  `x : t`
     Annot(SubExpr, SubExpr),
+    ///  `assert : t`
+    Assert(SubExpr),
     /// Built-in values
     Builtin(Builtin),
     // Binary operations

@@ -94,8 +94,12 @@ fn main() -> std::io::Result<()> {
         // Too slow in debug mode
         path == "success/largeExpression"
             // TODO: Inline headers
-            || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
+            || path == "success/unit/import/HeadersDoubleHash"
+            || path == "success/unit/import/HeadersDoubleHashPrecedence"
+            || path == "success/unit/import/HeadersHashPrecedence"
+            || path == "success/unit/import/HeadersInteriorHash"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -117,6 +121,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/largeExpression"
             // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -140,13 +145,13 @@ fn main() -> std::io::Result<()> {
             path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
-            // Too much of a pain to implement; shouldn't make a difference
-            // since lets disappear on normalization.
-            || path == "success/multilet"
             // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
+            || path == "success/unit/DoubleLitExponentNoDot"
+            || path == "success/unit/DoubleLitSecretelyInt"
             // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -199,7 +204,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/EmptyToMap"
             || path == "success/unit/ToMap"
             || path == "success/unit/ToMapWithType"
-            // Normalize field selection further by inspecting the argument
+            // TODO: Normalize field selection further by inspecting the argument
             || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
             || path == "success/simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
             || path == "success/simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
@@ -208,9 +213,12 @@ fn main() -> std::io::Result<()> {
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection0"
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection1"
             || path == "success/unit/RecursiveRecordMergeWithinFieldSelection2"
+            || path == "success/unit/RecursiveRecordMergeWithinFieldSelection3"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection0"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection1"
             || path == "success/unit/RightBiasedMergeWithinFieldSelection2"
+            || path == "success/unit/RightBiasedMergeWithinFieldSelection3"
+            || path == "success/unit/RightBiasedMergeEquivalentArguments"
         },
     )?;
 
@@ -229,7 +237,10 @@ fn main() -> std::io::Result<()> {
         "Typecheck",
         |path| {
             false
+            // TODO: Enable imports in typecheck tests
             || path == "failure/importBoundary"
+            // Too slow
+            || path == "success/prelude"
             // TODO: Inline headers
             || path == "failure/customHeadersUsingBoundVariable"
             // TODO: projection by expression

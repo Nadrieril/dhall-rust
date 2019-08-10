@@ -44,6 +44,9 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
             Annot(a, b) => {
                 write!(f, "{} : {}", a, b)?;
             }
+            Assert(a) => {
+                write!(f, "assert : {}", a)?;
+            }
             ExprF::BinOp(op, a, b) => {
                 write!(f, "{} {} {}", a, op, b)?;
             }
@@ -286,6 +289,7 @@ impl Display for BinOp {
             ImportAlt => "?",
             RightBiasedRecordMerge => "⫽",
             ListAppend => "#",
+            Equivalence => "≡",
         })
     }
 }

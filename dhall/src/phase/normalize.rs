@@ -54,6 +54,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                 }
                 (NaturalLit(0), b) => Ok((r, b.clone())),
                 (_, NaturalLit(0)) => Ok((r, NaturalLit(0))),
+                _ if a == b => Ok((r, NaturalLit(0))),
                 _ => Err(()),
             }
         }
@@ -508,9 +509,9 @@ where
 
 fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     use BinOp::{
-        BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus, NaturalTimes,
-        RecursiveRecordMerge, RecursiveRecordTypeMerge, RightBiasedRecordMerge,
-        TextAppend,
+        BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
+        NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
+        RightBiasedRecordMerge, TextAppend,
     };
     use Value::{
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
@@ -626,6 +627,11 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
             Ret::Value(RecordType(kvs))
         }
 
+        (Equivalence, _, _) => Ret::Value(Value::Equivalence(
+            TypeThunk::from_thunk(x.clone()),
+            TypeThunk::from_thunk(y.clone()),
+        )),
+
         _ => return None,
     })
 }
@@ -641,6 +647,7 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => Ret::Thunk(x),
+        ExprF::Assert(_) => Ret::Expr(expr),
         ExprF::Lam(x, t, e) => {
             Ret::Value(Lam(x.into(), TypeThunk::from_thunk(t), e))
         }

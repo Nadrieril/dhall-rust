@@ -148,6 +148,7 @@ where
             ),
             Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
             Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
+            Assert(e) => Assert(v.visit_subexpr(e)?),
             Embed(a) => return v.visit_embed_squash(a),
         })
     }
