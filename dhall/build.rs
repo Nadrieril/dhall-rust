@@ -94,8 +94,12 @@ fn main() -> std::io::Result<()> {
         // Too slow in debug mode
         path == "success/largeExpression"
             // TODO: Inline headers
-            || path == "success/unit/import/parenthesizeUsing"
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
+            || path == "success/unit/import/HeadersDoubleHash"
+            || path == "success/unit/import/HeadersDoubleHashPrecedence"
+            || path == "success/unit/import/HeadersHashPrecedence"
+            || path == "success/unit/import/HeadersInteriorHash"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -117,6 +121,7 @@ fn main() -> std::io::Result<()> {
             || path == "success/largeExpression"
             // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -140,13 +145,13 @@ fn main() -> std::io::Result<()> {
             path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
-            // Too much of a pain to implement; shouldn't make a difference
-            // since lets disappear on normalization.
-            || path == "success/multilet"
             // See https://github.com/pyfisch/cbor/issues/109
             || path == "success/double"
+            || path == "success/unit/DoubleLitExponentNoDot"
+            || path == "success/unit/DoubleLitSecretelyInt"
             // TODO: Inline headers
             || path == "success/unit/import/inlineUsing"
+            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"

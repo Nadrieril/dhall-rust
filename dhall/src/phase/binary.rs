@@ -178,6 +178,19 @@ fn cbor_value_to_dhall(
                 let l = Label::from(l.as_str());
                 Field(x, l)
             }
+            [U64(10), x, rest..] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let labels = rest
+                    .iter()
+                    .map(|s| match s {
+                        String(s) => Ok(Label::from(s.as_str())),
+                        _ => Err(DecodeError::WrongFormatError(
+                            "projection".to_owned(),
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                Projection(x, labels)
+            }
             [U64(11), Object(map)] => {
                 let map = cbor_map_to_dhall_opt_map(map)?;
                 UnionType(map)

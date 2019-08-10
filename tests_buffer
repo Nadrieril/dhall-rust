@@ -7,6 +7,8 @@ success/
     operators/
         PrecedenceAll1 a ? b || c + d ++ e # f && g ∧ h ⫽ i ⩓ j * k == l != m n.o
         PrecedenceAll2 a b != c == d * e ⩓ f ⫽ g ∧ h && i # j ++ k + l || m ? n
+    LetNoAnnot let x = y in e
+    LetAnnot let x: T = y in e
 failure/
     AssertNoAnnotation assert
 
@@ -23,7 +25,6 @@ failure/
 normalization:
 variables across import boundaries
     Text/show ""
-    Double/show -1.5e-10
     TextLitNested1 "${""}${x}"
     TextLitNested2 "${"${x}"}"
     TextLitNested3 "${"${""}"}${x}"
