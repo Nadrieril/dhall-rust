@@ -1,1 +1,6 @@
 comment: off
+coverage:
+  precision: 1
+  status:
+    project: no
+    patch: no
