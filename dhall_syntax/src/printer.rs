@@ -380,17 +380,19 @@ impl Display for ImportHashed {
                     Absolute => "",
                 };
                 write!(f, "{}/", prefix)?;
-                let path: String = path
-                    .iter()
+                let full_path: String = path
+                    .clone()
+                    .into_iter()
                     .map(|c| fmt_local_path_component(c.as_ref()))
                     .join("/");
-                f.write_str(&path)?;
+                f.write_str(&full_path)?;
             }
             Remote(url) => {
                 write!(f, "{}://{}/", url.scheme, url.authority,)?;
                 let path: String = url
                     .path
-                    .iter()
+                    .clone()
+                    .into_iter()
                     .map(|c| fmt_remote_path_component(c.as_ref()))
                     .join("/");
                 f.write_str(&path)?;

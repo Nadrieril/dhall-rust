@@ -16,6 +16,7 @@ type ImportCache = HashMap<Import, Normalized>;
 
 pub type ImportStack = Vec<Import>;
 
+
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,
@@ -30,14 +31,14 @@ fn resolve_import(
     };
     match &import.location_hashed.location {
         Local(prefix, path) => {
-            let path: PathBuf = path.iter().cloned().collect();
-            let path = match prefix {
+            let path_buf: PathBuf = path.clone().into_iter().collect();
+            let path_buf = match prefix {
                 // TODO: fail gracefully
-                Parent => cwd.parent().unwrap().join(path),
-                Here => cwd.join(path),
+                Parent => cwd.parent().unwrap().join(path_buf),
+                Here => cwd.join(path_buf),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(&path, import_cache, import_stack).map_err(|e| {
+            Ok(load_import(&path_buf, import_cache, import_stack).map_err(|e| {
                 ImportError::Recursive(import.clone(), Box::new(e))
             })?)
         }

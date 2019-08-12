@@ -1,12 +1,13 @@
 use itertools::Itertools;
 use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
+use std::vec;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
     rc, ExprF, FilePrefix, Hash, Import, ImportHashed, ImportLocation,
     ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, SubExpr,
-    URL, V,
+    URL, V, Directory, File,
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -243,7 +244,7 @@ fn cbor_value_to_dhall(
                                 "import/remote/query".to_owned(),
                             ))?,
                         };
-                        let path = rest
+                        let mut components: Vec<_> = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -251,6 +252,11 @@ fn cbor_value_to_dhall(
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
+                        let file = components.pop().ok_or(
+                                DecodeError::WrongFormatError(
+                                    "import/remote/path".to_owned(),
+                                ))?;
+                        let path = File { directory: Directory { components: components }, file: file };
                         ImportLocation::Remote(URL {
                             scheme,
                             authority,
@@ -269,7 +275,7 @@ fn cbor_value_to_dhall(
                                 "import/local/prefix".to_owned(),
                             ))?,
                         };
-                        let path = rest
+                        let mut components: Vec<_> = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -277,6 +283,11 @@ fn cbor_value_to_dhall(
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
+                        let file = components.pop().ok_or(
+                                DecodeError::WrongFormatError(
+                                    "import/remote/path".to_owned(),
+                                ))?;
+                        let path = File { directory: Directory { components: components }, file: file };
                         ImportLocation::Local(prefix, path)
                     }
                     6 => {
@@ -520,8 +531,8 @@ where
     use serde::ser::SerializeSeq;
 
     let count = 4 + match &import.location_hashed.location {
-        ImportLocation::Remote(url) => 3 + url.path.len(),
-        ImportLocation::Local(_, path) => path.len(),
+        ImportLocation::Remote(url) => 3 + url.path.clone().into_iter().len(),
+        ImportLocation::Local(_, path) => path.clone().into_iter().len(),
         ImportLocation::Env(_) => 1,
         ImportLocation::Missing => 0,
     };
@@ -573,8 +584,8 @@ where
                 )?,
             };
             ser_seq.serialize_element(&url.authority)?;
-            for p in &url.path {
-                ser_seq.serialize_element(p)?;
+            for p in url.path.clone().into_iter() {
+                ser_seq.serialize_element(&p)?;
             }
             match &url.query {
                 None => ser_seq.serialize_element(&Null)?,
@@ -582,8 +593,8 @@ where
             };
         }
         ImportLocation::Local(_, path) => {
-            for p in path {
-                ser_seq.serialize_element(p)?;
+            for p in path.clone().into_iter() {
+                ser_seq.serialize_element(&p)?;
             }
         }
         ImportLocation::Env(env) => {
