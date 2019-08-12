@@ -143,6 +143,7 @@ import
 expression
 annotated_expression
 let_binding
+empty_list_literal
 # operator_expression
 import_alt_expression
 or_expression
