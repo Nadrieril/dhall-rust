@@ -12,24 +12,6 @@ use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::{Normalized, Resolved, Type, Typed};
 
-macro_rules! ensure_equal {
-    ($x:expr, $y:expr, $err:expr $(,)*) => {
-        if $x.to_value() != $y.to_value() {
-            return Err($err);
-        }
-    };
-}
-
-// Ensure the provided type has type `Type`
-macro_rules! ensure_simple_type {
-    ($x:expr, $err:expr $(,)*) => {{
-        match $x.get_type()?.as_const() {
-            Some(dhall_syntax::Const::Type) => {}
-            _ => return Err($err),
-        }
-    }};
-}
-
 fn tck_pi_type(
     ctx: &TypecheckContext,
     x: Label,
@@ -417,6 +399,7 @@ fn type_last_layer(
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
+    use dhall_syntax::Const::Type;
     use dhall_syntax::ExprF::*;
     use Ret::*;
     let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
@@ -431,19 +414,21 @@ fn type_last_layer(
                 Value::Pi(x, tx, tb) => (x.clone(), tx.to_type(), tb.to_type()),
                 _ => return Err(mkerr(NotAFunction(f.clone()))),
             };
-            ensure_equal!(a.get_type()?, &tx, {
-                mkerr(TypeMismatch(f.clone(), tx.to_normalized(), a.clone()))
-            });
+            if a.get_type()?.as_ref() != &tx {
+                return Err(mkerr(TypeMismatch(
+                    f.clone(),
+                    tx.to_normalized(),
+                    a.clone(),
+                )));
+            }
 
             Ok(RetTypeOnly(tb.subst_shift(&x.into(), &a)))
         }
         Annot(x, t) => {
             let t = t.to_type();
-            ensure_equal!(
-                &t,
-                x.get_type()?,
-                mkerr(AnnotMismatch(x.clone(), t.to_normalized()))
-            );
+            if &t != x.get_type()?.as_ref() {
+                return Err(mkerr(AnnotMismatch(x.clone(), t.to_normalized())));
+            }
             Ok(RetTypeOnly(x.get_type()?.into_owned()))
         }
         Assert(t) => {
@@ -460,27 +445,21 @@ fn type_last_layer(
             Ok(RetTypeOnly(t.to_type()))
         }
         BoolIf(x, y, z) => {
-            ensure_equal!(
-                x.get_type()?,
-                &builtin_to_type(Bool)?,
-                mkerr(InvalidPredicate(x.clone())),
-            );
+            if x.get_type()?.as_ref() != &builtin_to_type(Bool)? {
+                return Err(mkerr(InvalidPredicate(x.clone())));
+            }
 
-            ensure_simple_type!(
-                y.get_type()?,
-                mkerr(IfBranchMustBeTerm(true, y.clone())),
-            );
+            if y.get_type()?.get_type()?.as_const() != Some(Type) {
+                return Err(mkerr(IfBranchMustBeTerm(true, y.clone())));
+            }
 
-            ensure_simple_type!(
-                z.get_type()?,
-                mkerr(IfBranchMustBeTerm(false, z.clone())),
-            );
+            if z.get_type()?.get_type()?.as_const() != Some(Type) {
+                return Err(mkerr(IfBranchMustBeTerm(false, z.clone())));
+            }
 
-            ensure_equal!(
-                y.get_type()?,
-                z.get_type()?,
-                mkerr(IfBranchMismatch(y.clone(), z.clone()))
-            );
+            if y.get_type()? != z.get_type()? {
+                return Err(mkerr(IfBranchMismatch(y.clone(), z.clone())));
+            }
 
             Ok(RetTypeOnly(y.get_type()?.into_owned()))
         }
@@ -502,45 +481,47 @@ fn type_last_layer(
             let mut iter = xs.iter().enumerate();
             let (_, x) = iter.next().unwrap();
             for (i, y) in iter {
-                ensure_equal!(
-                    x.get_type()?,
-                    y.get_type()?,
-                    mkerr(InvalidListElement(
+                if x.get_type()? != y.get_type()? {
+                    return Err(mkerr(InvalidListElement(
                         i,
                         x.get_type()?.to_normalized(),
-                        y.clone()
-                    ))
-                );
+                        y.clone(),
+                    )));
+                }
             }
             let t = x.get_type()?;
-            ensure_simple_type!(
-                t,
-                TypeError::new(ctx, InvalidListType(t.to_normalized())),
-            );
+            if t.get_type()?.as_const() != Some(Type) {
+                return Err(TypeError::new(
+                    ctx,
+                    InvalidListType(t.to_normalized()),
+                ));
+            }
 
             Ok(RetTypeOnly(
                 Typed::from_thunk_and_type(
                     Value::from_builtin(dhall_syntax::Builtin::List)
                         .app(t.to_value())
                         .into_thunk(),
-                    Type::from_const(dhall_syntax::Const::Type),
+                    Typed::from_const(Type),
                 )
                 .to_type(),
             ))
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
-            ensure_simple_type!(
-                t,
-                TypeError::new(ctx, InvalidOptionalType(t.to_normalized())),
-            );
+            if t.get_type()?.as_const() != Some(Type) {
+                return Err(TypeError::new(
+                    ctx,
+                    InvalidOptionalType(t.to_normalized()),
+                ));
+            }
 
             Ok(RetTypeOnly(
                 Typed::from_thunk_and_type(
                     Value::from_builtin(dhall_syntax::Builtin::Optional)
                         .app(t.to_value())
                         .into_thunk(),
-                    Type::from_const(dhall_syntax::Const::Type),
+                    Typed::from_const(Type).into_type(),
                 )
                 .to_type(),
             ))
@@ -625,11 +606,9 @@ fn type_last_layer(
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
-                    ensure_equal!(
-                        x.get_type()?,
-                        &text_type,
-                        mkerr(InvalidTextInterpolation(x.clone())),
-                    );
+                    if x.get_type()?.as_ref() != &text_type {
+                        return Err(mkerr(InvalidTextInterpolation(x.clone())));
+                    }
                 }
             }
             Ok(RetTypeOnly(text_type))
@@ -645,11 +624,9 @@ fn type_last_layer(
             // Check the equality of kinds.
             // This is to disallow expression such as:
             // "{ x = Text } // { y = 1 }"
-            ensure_equal!(
-                l_kind,
-                r_kind,
-                mkerr(RecordMismatch(l.clone(), r.clone())),
-            );
+            if l_kind != r_kind {
+                return Err(mkerr(RecordMismatch(l.clone(), r.clone())));
+            }
 
             // Extract the LHS record type
             let kts_x = match l_type.to_value() {
@@ -729,11 +706,9 @@ fn type_last_layer(
             // Check the equality of kinds.
             // This is to disallow expression such as:
             // "{ x = Text } // { y = 1 }"
-            ensure_equal!(
-                l_kind,
-                r_kind,
-                mkerr(RecordMismatch(l.clone(), r.clone())),
-            );
+            if l_kind != r_kind {
+                return Err(mkerr(RecordMismatch(l.clone(), r.clone())));
+            }
 
             // Extract the LHS record type
             let kts_x = match l_type.to_value() {
@@ -855,31 +830,34 @@ fn type_last_layer(
                 _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone()))),
             }
 
-            ensure_equal!(
-                l.get_type()?,
-                r.get_type()?,
-                mkerr(BinOpTypeMismatch(*o, r.clone()))
-            );
+            if l.get_type()? != r.get_type()? {
+                return Err(mkerr(BinOpTypeMismatch(*o, r.clone())));
+            }
 
             Ok(RetTypeOnly(l.get_type()?.into_owned()))
         }
         BinOp(Equivalence, l, r) => {
-            ensure_simple_type!(
-                l.get_type()?,
-                mkerr(EquivalenceArgumentMustBeTerm(true, l.clone())),
-            );
-            ensure_simple_type!(
-                r.get_type()?,
-                mkerr(EquivalenceArgumentMustBeTerm(false, r.clone())),
-            );
+            if l.get_type()?.get_type()?.as_const() != Some(Type) {
+                return Err(mkerr(EquivalenceArgumentMustBeTerm(
+                    true,
+                    l.clone(),
+                )));
+            }
+            if r.get_type()?.get_type()?.as_const() != Some(Type) {
+                return Err(mkerr(EquivalenceArgumentMustBeTerm(
+                    false,
+                    r.clone(),
+                )));
+            }
 
-            ensure_equal!(
-                l.get_type()?,
-                r.get_type()?,
-                mkerr(EquivalenceTypeMismatch(r.clone(), l.clone()))
-            );
+            if l.get_type()? != r.get_type()? {
+                return Err(mkerr(EquivalenceTypeMismatch(
+                    r.clone(),
+                    l.clone(),
+                )));
+            }
 
-            Ok(RetTypeOnly(Type::from_const(dhall_syntax::Const::Type)))
+            Ok(RetTypeOnly(Typed::from_const(Type).into_type()))
         }
         BinOp(o, l, r) => {
             let t = builtin_to_type(match o {
@@ -898,17 +876,13 @@ fn type_last_layer(
                 Equivalence => unreachable!(),
             })?;
 
-            ensure_equal!(
-                l.get_type()?,
-                &t,
-                mkerr(BinOpTypeMismatch(*o, l.clone()))
-            );
+            if l.get_type()?.as_ref() != &t {
+                return Err(mkerr(BinOpTypeMismatch(*o, l.clone())));
+            }
 
-            ensure_equal!(
-                r.get_type()?,
-                &t,
-                mkerr(BinOpTypeMismatch(*o, r.clone()))
-            );
+            if r.get_type()?.as_ref() != &t {
+                return Err(mkerr(BinOpTypeMismatch(*o, r.clone())));
+            }
 
             Ok(RetTypeOnly(t))
         }
@@ -937,13 +911,13 @@ fn type_last_layer(
                             _ => return Err(mkerr(NotAFunction(handler_type))),
                         };
 
-                        ensure_equal!(&variant_type, &tx, {
-                            mkerr(TypeMismatch(
+                        if &variant_type != &tx {
+                            return Err(mkerr(TypeMismatch(
                                 handler_type,
                                 tx.to_normalized(),
                                 variant_type,
-                            ))
-                        });
+                            )));
+                        }
 
                         // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
                         match tb.over_binder(x) {
@@ -966,11 +940,9 @@ fn type_last_layer(
                 match &inferred_type {
                     None => inferred_type = Some(handler_return_type),
                     Some(t) => {
-                        ensure_equal!(
-                            t,
-                            &handler_return_type,
-                            mkerr(MergeHandlerTypeMismatch)
-                        );
+                        if t != &handler_return_type {
+                            return Err(mkerr(MergeHandlerTypeMismatch));
+                        }
                     }
                 }
             }
@@ -983,7 +955,9 @@ fn type_last_layer(
             match (inferred_type, type_annot) {
                 (Some(ref t1), Some(t2)) => {
                     let t2 = t2.to_type();
-                    ensure_equal!(t1, &t2, mkerr(MergeAnnotMismatch));
+                    if t1 != &t2 {
+                        return Err(mkerr(MergeAnnotMismatch));
+                    }
                     Ok(RetTypeOnly(t2))
                 }
                 (Some(t), None) => Ok(RetTypeOnly(t)),
