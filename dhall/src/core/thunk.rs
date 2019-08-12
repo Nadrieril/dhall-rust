@@ -111,10 +111,6 @@ impl Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
 
-    pub fn from_normalized_expr(e: OutputSubExpr) -> Thunk {
-        Thunk::new(NormalizationContext::new(), e.absurd())
-    }
-
     pub fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }
@@ -219,6 +215,10 @@ impl TypeThunk {
 
     pub fn to_type(&self) -> Type {
         self.0.to_type()
+    }
+
+    pub fn to_typed(&self) -> Typed {
+        self.0.clone()
     }
 
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {

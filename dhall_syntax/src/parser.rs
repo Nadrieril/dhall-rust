@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
 
-use crate::map::DupTreeMap;
+use crate::map::{DupTreeMap, DupTreeSet};
 use crate::ExprF::*;
 use crate::*;
 
@@ -80,6 +80,7 @@ impl crate::Builtin {
             "Natural/odd" => Some(NaturalOdd),
             "Natural/toInteger" => Some(NaturalToInteger),
             "Natural/show" => Some(NaturalShow),
+            "Natural/subtract" => Some(NaturalSubtract),
             "Integer/toDouble" => Some(IntegerToDouble),
             "Integer/show" => Some(IntegerShow),
             "Double/show" => Some(DoubleShow),
@@ -318,6 +319,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
         | times_expression
         | equal_expression
         | not_equal_expression
+        | equivalent_expression
         | application_expression
         | first_application_expression
         | selector_expression
@@ -410,11 +412,50 @@ make_parser! {
                 "n" => "\n".to_owned(),
                 "r" => "\r".to_owned(),
                 "t" => "\t".to_owned(),
+                // "uXXXX" or "u{XXXXX}"
                 _ => {
-                    // "uXXXX"
-                    use std::convert::TryFrom;
-                    let c = u16::from_str_radix(&s[1..5], 16).unwrap();
-                    let c = char::try_from(u32::from(c)).unwrap();
+                    use std::convert::{TryFrom, TryInto};
+
+                    let s = &s[1..];
+                    let s = if &s[0..1] == "{" {
+                        &s[1..s.len()-1]
+                    } else {
+                        &s[0..s.len()]
+                    };
+
+                    if s.len() > 8 {
+                        Err(format!("Escape sequences can't have more than 8 chars: \"{}\"", s))?
+                    }
+
+                    // pad with zeroes
+                    let s: String = std::iter::repeat('0')
+                        .take(8 - s.len())
+                        .chain(s.chars())
+                        .collect();
+
+                    // `s` has length 8, so `bytes` has length 4
+                    let bytes: &[u8] = &hex::decode(s).unwrap();
+                    let i = u32::from_be_bytes(bytes.try_into().unwrap());
+                    let c = char::try_from(i).unwrap();
+                    match i {
+                        0xD800..=0xDFFF => {
+                            let c_ecapsed = c.escape_unicode();
+                            Err(format!("Escape sequences can't contain surrogate pairs: \"{}\"", c_ecapsed))?
+                        },
+                        0x0FFFE..=0x0FFFF | 0x1FFFE..=0x1FFFF |
+                        0x2FFFE..=0x2FFFF | 0x3FFFE..=0x3FFFF |
+                        0x4FFFE..=0x4FFFF | 0x5FFFE..=0x5FFFF |
+                        0x6FFFE..=0x6FFFF | 0x7FFFE..=0x7FFFF |
+                        0x8FFFE..=0x8FFFF | 0x9FFFE..=0x9FFFF |
+                        0xAFFFE..=0xAFFFF | 0xBFFFE..=0xBFFFF |
+                        0xCFFFE..=0xCFFFF | 0xDFFFE..=0xDFFFF |
+                        0xEFFFE..=0xEFFFF | 0xFFFFE..=0xFFFFF |
+                        0x10FFFE..=0x10FFFF => {
+                            let c_ecapsed = c.escape_unicode();
+                            Err(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed))?
+                        },
+                        _ => {}
+                    }
                     std::iter::once(c).collect()
                 }
             }
@@ -692,6 +733,7 @@ make_parser! {
     ));
 
     token_rule!(Text<()>);
+    token_rule!(Location<()>);
 
     rule!(import<ParsedSubExpr> as expression; span; children!(
         [import_hashed(location_hashed)] => {
@@ -706,14 +748,27 @@ make_parser! {
                 location_hashed
             }))
         },
+        [import_hashed(location_hashed), Location(_)] => {
+            spanned(span, Embed(Import {
+                mode: ImportMode::Location,
+                location_hashed
+            }))
+        },
     ));
 
     token_rule!(lambda<()>);
     token_rule!(forall<()>);
     token_rule!(arrow<()>);
     token_rule!(merge<()>);
+    token_rule!(assert<()>);
     token_rule!(if_<()>);
     token_rule!(in_<()>);
+
+    rule!(empty_list_literal<ParsedSubExpr> as expression; span; children!(
+        [expression(e)] => {
+            spanned(span, EmptyListLit(e))
+        },
+    ));
 
     rule!(expression<ParsedSubExpr> as expression; span; children!(
         [lambda(()), label(l), expression(typ),
@@ -739,6 +794,9 @@ make_parser! {
         [merge(()), expression(x), expression(y), expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
         },
+        [assert(()), expression(x)] => {
+            spanned(span, Assert(x))
+        },
         [expression(e)] => e,
     ));
 
@@ -752,21 +810,6 @@ make_parser! {
 
     token_rule!(List<()>);
     token_rule!(Optional<()>);
-
-    rule!(empty_collection<ParsedSubExpr> as expression; span; children!(
-        [List(_), expression(t)] => {
-            spanned(span, EmptyListLit(t))
-        },
-        [Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(None, t))
-        },
-    ));
-
-    rule!(non_empty_optional<ParsedSubExpr> as expression; span; children!(
-        [expression(x), Optional(_), expression(t)] => {
-            spanned(span, OldOptionalLit(Some(x), t))
-        }
-    ));
 
     rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
@@ -852,6 +895,13 @@ make_parser! {
             rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
         },
     ));
+    rule!(equivalent_expression<ParsedSubExpr> as expression; children!(
+        [expression(e)] => e,
+        [expression(first), expression(rest)..] => {
+            let o = crate::BinOp::Equivalence;
+            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
+        },
+    ));
 
     rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
         [expression(e)] => e,
@@ -861,6 +911,7 @@ make_parser! {
     ));
 
     token_rule!(Some_<()>);
+    token_rule!(toMap<()>);
 
     rule!(application_expression<ParsedSubExpr> as expression; children!(
         [expression(e)] => e,
@@ -890,13 +941,13 @@ make_parser! {
         }
     ));
 
-    rule!(selector<Either<Label, Vec<Label>>>; children!(
+    rule!(selector<Either<Label, DupTreeSet<Label>>>; children!(
         [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
         [expression(e)] => unimplemented!("selection by expression"), // TODO
     ));
 
-    rule!(labels<Vec<Label>>; children!(
+    rule!(labels<DupTreeSet<Label>>; children!(
         [label(ls)..] => ls.collect(),
     ));
 
@@ -953,65 +1004,20 @@ make_parser! {
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type_or_literal<ParsedSubExpr> as expression; span; children!(
+    rule!(union_type<ParsedSubExpr> as expression; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(Default::default()))
         },
-        [non_empty_union_type_or_literal((Some((l, e)), entries))] => {
-            spanned(span, UnionLit(l, e, entries))
-        },
-        [non_empty_union_type_or_literal((None, entries))] => {
-            spanned(span, UnionType(entries))
+        [union_type_entry(entries)..] => {
+            spanned(span, UnionType(entries.collect()))
         },
     ));
 
     token_rule!(empty_union_type<()>);
 
-    rule!(non_empty_union_type_or_literal
-          <(Option<(Label, ParsedSubExpr)>,
-            DupTreeMap<Label, Option<ParsedSubExpr>>)>;
-            children!(
-        [label(l), union_literal_variant_value((e, entries))] => {
-            (Some((l, e)), entries)
-        },
-        [label(l), union_type_or_literal_variant_type((e, rest))] => {
-            let (x, mut entries) = rest;
-            entries.insert(l, e);
-            (x, entries)
-        },
-    ));
-
-    rule!(union_literal_variant_value
-          <(ParsedSubExpr, DupTreeMap<Label, Option<ParsedSubExpr>>)>;
-            children!(
-        [expression(e), union_type_entry(entries)..] => {
-            (e, entries.collect())
-        },
-    ));
-
     rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
-    ));
-
-    // TODO: unary union variants
-    rule!(union_type_or_literal_variant_type
-          <(Option<ParsedSubExpr>,
-            (Option<(Label, ParsedSubExpr)>,
-             DupTreeMap<Label, Option<ParsedSubExpr>>))>;
-                children!(
-        [expression(e), non_empty_union_type_or_literal(rest)] => {
-            (Some(e), rest)
-        },
-        [expression(e)] => {
-            (Some(e), (None, Default::default()))
-        },
-        [non_empty_union_type_or_literal(rest)] => {
-            (None, rest)
-        },
-        [] => {
-            (None, (None, Default::default()))
-        },
     ));
 
     rule!(non_empty_list_literal<ParsedSubExpr> as expression; span;

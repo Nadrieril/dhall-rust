@@ -127,9 +127,6 @@ impl Typed {
     pub fn from_value_untyped(v: Value) -> Self {
         Typed::from_thunk_untyped(Thunk::from_value(v))
     }
-    pub fn from_normalized_expr_untyped(e: NormalizedSubExpr) -> Self {
-        Typed::from_thunk_untyped(Thunk::from_normalized_expr(e))
-    }
 
     // TODO: Avoid cloning if possible
     pub fn to_value(&self) -> Value {

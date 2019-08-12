@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use dhall_proc_macros as dhall;
 use dhall_syntax::{
     rc, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, X,
@@ -47,6 +46,7 @@ pub enum Value {
     DoubleLit(NaiveDouble),
     EmptyOptionalLit(TypeThunk),
     NEOptionalLit(Thunk),
+    // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(TypeThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(HashMap<Label, Thunk>),
@@ -57,6 +57,7 @@ pub enum Value {
     // Invariant: this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
+    Equivalence(TypeThunk, TypeThunk),
     // Invariant: this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Thunk, X>),
 }
@@ -73,6 +74,47 @@ impl Value {
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+        // Ad-hoc macro to help construct the unapplied closures
+        macro_rules! make_expr {
+            (Natural) => { rc(ExprF::Builtin(Builtin::Natural)) };
+            (var($var:ident)) => {
+                rc(ExprF::Var(dhall_syntax::V(stringify!($var).into(), 0)))
+            };
+            ($var:ident) => { $var };
+            (List $($rest:tt)*) => {
+                rc(ExprF::App(
+                    rc(ExprF::Builtin(Builtin::List)),
+                    make_expr!($($rest)*)
+                ))
+            };
+            (Some $($rest:tt)*) => {
+                rc(ExprF::SomeLit(
+                    make_expr!($($rest)*)
+                ))
+            };
+            (1 + $($rest:tt)*) => {
+                rc(ExprF::BinOp(
+                    dhall_syntax::BinOp::NaturalPlus,
+                    rc(ExprF::NaturalLit(1)),
+                    make_expr!($($rest)*)
+                ))
+            };
+            ([ $($head:tt)* ] # $($tail:tt)*) => {
+                rc(ExprF::BinOp(
+                    dhall_syntax::BinOp::ListAppend,
+                    rc(ExprF::NEListLit(vec![make_expr!($($head)*)])),
+                    make_expr!($($tail)*)
+                ))
+            };
+            (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
+                rc(ExprF::Pi(
+                    stringify!($var).into(),
+                    make_expr!($($ty)*),
+                    make_expr!($($rest)*)
+                ))
+            };
+        }
+
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -91,24 +133,24 @@ impl Value {
             }
             Value::OptionalSomeClosure(n) => {
                 let a = n.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(x: a) -> Some x)
+                make_expr!(λ(x: a) -> Some var(x))
             }
             Value::ListConsClosure(a, None) => {
                 // Avoid accidental capture of the new `x` variable
                 let a1 = a.under_binder(Label::from("x"));
                 let a1 = a1.normalize_to_expr_maybe_alpha(alpha);
                 let a = a.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(x : a) -> λ(xs : List a1) -> [ x ] # xs)
+                make_expr!(λ(x : a) -> λ(xs : List a1) -> [ var(x) ] # var(xs))
             }
             Value::ListConsClosure(n, Some(v)) => {
                 // Avoid accidental capture of the new `xs` variable
                 let v = v.under_binder(Label::from("xs"));
                 let v = v.normalize_to_expr_maybe_alpha(alpha);
                 let a = n.normalize_to_expr_maybe_alpha(alpha);
-                dhall::subexpr!(λ(xs : List a) -> [ v ] # xs)
+                make_expr!(λ(xs : List a) -> [ v ] # var(xs))
             }
             Value::NaturalSuccClosure => {
-                dhall::subexpr!(λ(x : Natural) -> x + 1)
+                make_expr!(λ(x : Natural) -> 1 + var(x))
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
                 x.to_label_maybe_alpha(alpha),
@@ -128,9 +170,10 @@ impl Value {
             Value::NEOptionalLit(n) => {
                 rc(ExprF::SomeLit(n.normalize_to_expr_maybe_alpha(alpha)))
             }
-            Value::EmptyListLit(n) => {
-                rc(ExprF::EmptyListLit(n.normalize_to_expr_maybe_alpha(alpha)))
-            }
+            Value::EmptyListLit(n) => rc(ExprF::EmptyListLit(rc(ExprF::App(
+                rc(ExprF::Builtin(Builtin::List)),
+                n.normalize_to_expr_maybe_alpha(alpha),
+            )))),
             Value::NEListLit(elts) => rc(ExprF::NEListLit(
                 elts.iter()
                     .map(|n| n.normalize_to_expr_maybe_alpha(alpha))
@@ -176,19 +219,10 @@ impl Value {
                     .collect();
                 rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
             }
-            Value::UnionLit(l, v, kts) => rc(ExprF::UnionLit(
-                l.clone(),
+            Value::UnionLit(l, v, kts) => rc(ExprF::App(
+                Value::UnionConstructor(l.clone(), kts.clone())
+                    .normalize_to_expr_maybe_alpha(alpha),
                 v.normalize_to_expr_maybe_alpha(alpha),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref().map(|v| {
-                                v.normalize_to_expr_maybe_alpha(alpha)
-                            }),
-                        )
-                    })
-                    .collect(),
             )),
             Value::TextLit(elts) => {
                 use InterpolatedTextContents::{Expr, Text};
@@ -203,6 +237,11 @@ impl Value {
                         .collect(),
                 ))
             }
+            Value::Equivalence(x, y) => rc(ExprF::BinOp(
+                dhall_syntax::BinOp::Equivalence,
+                x.normalize_to_expr_maybe_alpha(alpha),
+                y.normalize_to_expr_maybe_alpha(alpha),
+            )),
             Value::PartialExpr(e) => {
                 rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
             }
@@ -288,6 +327,10 @@ impl Value {
                         Text(_) => {}
                     }
                 }
+            }
+            Value::Equivalence(x, y) => {
+                x.normalize_mut();
+                y.normalize_mut();
             }
             Value::PartialExpr(e) => {
                 // TODO: need map_mut_simple
@@ -425,6 +468,9 @@ impl Shift for Value {
                     })
                     .collect::<Result<_, _>>()?,
             ),
+            Value::Equivalence(x, y) => {
+                Value::Equivalence(x.shift(delta, var)?, y.shift(delta, var)?)
+            }
             Value::PartialExpr(e) => Value::PartialExpr(
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
@@ -539,6 +585,10 @@ impl Subst<Typed> for Value {
                         (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
                     })
                     .collect(),
+            ),
+            Value::Equivalence(x, y) => Value::Equivalence(
+                x.subst_shift(var, val),
+                y.subst_shift(var, val),
             ),
         }
     }

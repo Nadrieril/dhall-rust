@@ -57,6 +57,7 @@ pub struct URL {
     pub authority: String,
     pub path: File,
     pub query: Option<String>,
+    // TODO: implement inline headers
     pub headers: Option<Box<ImportHashed>>,
 }
 
@@ -71,6 +72,7 @@ pub enum Scheme {
 pub enum ImportMode {
     Code,
     RawText,
+    Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

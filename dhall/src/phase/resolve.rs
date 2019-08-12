@@ -87,7 +87,7 @@ fn do_resolve_expr(
             }
         }
     };
-    let expr = expr.traverse_embed(resolve)?;
+    let expr = expr.traverse_resolve(resolve)?;
     Ok(Resolved(expr))
 }
 
@@ -101,7 +101,7 @@ pub fn skip_resolve_expr(
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {
         Err(ImportError::UnexpectedImport(import.clone()))
     };
-    let expr = expr.traverse_embed(resolve)?;
+    let expr = expr.traverse_resolve(resolve)?;
     Ok(Resolved(expr))
 }
 
@@ -111,24 +111,35 @@ mod spec_tests {
 
     macro_rules! import_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Import, Success, $name, &("success/".to_owned() + $path));
+            make_spec_test!(Import, Success, $name, &("../dhall-lang/tests/import/success/".to_owned() + $path));
         };
     }
 
     // macro_rules! import_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(Import, Failure, $name, &("failure/".to_owned() + $path));
+    //         make_spec_test!(Import, Failure, $name, &("../dhall-lang/tests/import/failure/".to_owned() + $path));
     //     };
     // }
 
     // import_success!(success_alternativeEnvNatural, "alternativeEnvNatural");
     // import_success!(success_alternativeEnvSimple, "alternativeEnvSimple");
+    // import_success!(success_alternativeHashMismatch, "alternativeHashMismatch");
     // import_success!(success_alternativeNatural, "alternativeNatural");
+    // import_success!(success_alternativeParseError, "alternativeParseError");
+    // import_success!(success_alternativeTypeError, "alternativeTypeError");
+    // import_success!(success_asLocation, "asLocation");
     // import_success!(success_asText, "asText");
+    // import_success!(success_customHeaders, "customHeaders");
     import_success!(success_fieldOrder, "fieldOrder");
+    // note: this one needs special setup with env variables
+    // import_success!(success_hashFromCache, "hashFromCache");
+    // import_success!(success_headerForwarding, "headerForwarding");
+    // import_success!(success_nestedHash, "nestedHash");
+    // import_success!(success_noHeaderForwarding, "noHeaderForwarding");
     // import_failure!(failure_alternativeEnv, "alternativeEnv");
     // import_failure!(failure_alternativeEnvMissing, "alternativeEnvMissing");
     // import_failure!(failure_cycle, "cycle");
+    // import_failure!(failure_hashMismatch, "hashMismatch");
     // import_failure!(failure_missing, "missing");
     // import_failure!(failure_referentiallyInsane, "referentiallyInsane");
 }

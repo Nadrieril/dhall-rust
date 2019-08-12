@@ -26,6 +26,8 @@ fn main() -> std::io::Result<()> {
             rules.get_mut(&line[2..]).map(|x| x.silent = true);
         }
     }
+    rules.remove("http");
+    rules.remove("url_path");
     rules.remove("simple_label");
     rules.remove("nonreserved_label");
 
@@ -41,6 +43,19 @@ fn main() -> std::io::Result<()> {
             | !keyword ~ simple_label_first_char ~ simple_label_next_char*
     }}"
     )?;
+    // TODO: this is a cheat; actually implement inline headers instead
+    writeln!(
+        &mut file,
+        "http = {{
+            http_raw
+            ~ (whsp
+                ~ using
+                ~ whsp1
+                ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
+    }}"
+    )?;
+    // TODO: this is a cheat; properly support RFC3986 URLs instead
+    writeln!(&mut file, "url_path = _{{ path }}")?;
     writeln!(
         &mut file,
         "nonreserved_label = _{{

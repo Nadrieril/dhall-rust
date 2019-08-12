@@ -68,7 +68,6 @@ pub(crate) enum TypeMessage {
     MissingRecordField(Label, Typed),
     MissingUnionField(Label, Normalized),
     BinOpTypeMismatch(BinOp, Typed),
-    NoDependentTypes(Normalized, Normalized),
     InvalidTextInterpolation(Typed),
     Merge1ArgMustBeRecord(Typed),
     Merge2ArgMustBeUnion(Typed),
@@ -86,7 +85,10 @@ pub(crate) enum TypeMessage {
     RecordTypeMergeRequiresRecordType(Type),
     RecordTypeMismatch(Type, Type, Type, Type),
     UnionTypeDuplicateField,
-    Unimplemented,
+    EquivalenceArgumentMustBeTerm(bool, Typed),
+    EquivalenceTypeMismatch(Typed, Typed),
+    AssertMismatch(Typed, Typed),
+    AssertMustTakeEquivalence,
 }
 
 impl TypeError {

@@ -49,10 +49,21 @@ fn cbor_value_to_dhall(
         Bool(b) => BoolLit(*b),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let l = Label::from(l.as_str());
                 Var(V(l, *n as usize))
             }
             [U64(0), f, args..] => {
+                if args.is_empty() {
+                    Err(DecodeError::WrongFormatError(
+                        "Function application must have at least one argument"
+                            .to_owned(),
+                    ))?
+                }
                 let mut f = cbor_value_to_dhall(&f)?;
                 for a in args {
                     let a = cbor_value_to_dhall(&a)?;
@@ -66,6 +77,11 @@ fn cbor_value_to_dhall(
                 Lam(Label::from("_"), x, y)
             }
             [U64(1), String(l), x, y] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());
@@ -77,6 +93,11 @@ fn cbor_value_to_dhall(
                 Pi(Label::from("_"), x, y)
             }
             [U64(2), String(l), x, y] => {
+                if l.as_str() == "_" {
+                    Err(DecodeError::WrongFormatError(
+                        "`_` variable was encoded incorrectly".to_owned(),
+                    ))?
+                }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let l = Label::from(l.as_str());
@@ -99,6 +120,7 @@ fn cbor_value_to_dhall(
                     9 => RightBiasedRecordMerge,
                     10 => RecursiveRecordTypeMerge,
                     11 => ImportAlt,
+                    12 => Equivalence,
                     _ => {
                         Err(DecodeError::WrongFormatError("binop".to_owned()))?
                     }
@@ -107,7 +129,7 @@ fn cbor_value_to_dhall(
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                EmptyListLit(t)
+                EmptyListLit(rc(App(rc(ExprF::Builtin(Builtin::List)), t)))
             }
             [U64(4), Null, rest..] => {
                 let rest = rest
@@ -116,18 +138,22 @@ fn cbor_value_to_dhall(
                     .collect::<Result<Vec<_>, _>>()?;
                 NEListLit(rest)
             }
-            [U64(5), t] => {
-                let t = cbor_value_to_dhall(&t)?;
-                OldOptionalLit(None, t)
-            }
             [U64(5), Null, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 SomeLit(x)
             }
+            // Old-style optional literals
+            [U64(5), t] => {
+                let t = cbor_value_to_dhall(&t)?;
+                App(rc(ExprF::Builtin(Builtin::OptionalNone)), t)
+            }
             [U64(5), t, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let t = cbor_value_to_dhall(&t)?;
-                OldOptionalLit(Some(x), t)
+                Annot(
+                    rc(SomeLit(x)),
+                    rc(App(rc(ExprF::Builtin(Builtin::Optional)), t)),
+                )
             }
             [U64(6), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
@@ -153,16 +179,26 @@ fn cbor_value_to_dhall(
                 let l = Label::from(l.as_str());
                 Field(x, l)
             }
+            [U64(10), x, rest..] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let labels = rest
+                    .iter()
+                    .map(|s| match s {
+                        String(s) => Ok(Label::from(s.as_str())),
+                        _ => Err(DecodeError::WrongFormatError(
+                            "projection".to_owned(),
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                Projection(x, labels)
+            }
             [U64(11), Object(map)] => {
                 let map = cbor_map_to_dhall_opt_map(map)?;
                 UnionType(map)
             }
-            [U64(12), String(l), x, Object(map)] => {
-                let map = cbor_map_to_dhall_opt_map(map)?;
-                let x = cbor_value_to_dhall(&x)?;
-                let l = Label::from(l.as_str());
-                UnionLit(l, x, map)
-            }
+            [U64(12), ..] => Err(DecodeError::WrongFormatError(
+                "Union literals are not supported anymore".to_owned(),
+            ))?,
             [U64(14), x, y, z] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
@@ -190,10 +226,19 @@ fn cbor_value_to_dhall(
                         .collect::<Result<_, _>>()?,
                 )))
             }
+            [U64(19), t] => {
+                let t = cbor_value_to_dhall(&t)?;
+                Assert(t)
+            }
             [U64(24), hash, U64(mode), U64(scheme), rest..] => {
                 let mode = match mode {
+                    0 => ImportMode::Code,
                     1 => ImportMode::RawText,
-                    _ => ImportMode::Code,
+                    2 => ImportMode::Location,
+                    _ => Err(DecodeError::WrongFormatError(format!(
+                        "import/mode/unknown_mode: {:?}",
+                        mode
+                    )))?,
                 };
                 let hash = match hash {
                     Null => None,
@@ -217,18 +262,20 @@ fn cbor_value_to_dhall(
                         };
                         let headers = match rest.next() {
                             Some(Null) => None,
-                            Some(x) => {
-                                match cbor_value_to_dhall(&x)?.as_ref() {
-                                    Embed(import) => Some(Box::new(
-                                        import.location_hashed.clone(),
-                                    )),
-                                    _ => Err(DecodeError::WrongFormatError(
-                                        "import/remote/headers".to_owned(),
-                                    ))?,
-                                }
-                            }
+                            // TODO
+                            // Some(x) => {
+                            //     match cbor_value_to_dhall(&x)?.as_ref() {
+                            //         Embed(import) => Some(Box::new(
+                            //             import.location_hashed.clone(),
+                            //         )),
+                            //         _ => Err(DecodeError::WrongFormatError(
+                            //             "import/remote/headers".to_owned(),
+                            //         ))?,
+                            //     }
+                            // }
                             _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers".to_owned(),
+                                "import/remote/headers is unimplemented"
+                                    .to_owned(),
                             ))?,
                         };
                         let authority = match rest.next() {
@@ -341,6 +388,10 @@ fn cbor_value_to_dhall(
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
+            [U64(28), x] => {
+                let x = cbor_value_to_dhall(&x)?;
+                EmptyListLit(x)
+            }
             _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
         },
         _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
@@ -389,7 +440,6 @@ enum Serialize<'a> {
     CBOR(cbor::Value),
     RecordMap(&'a DupTreeMap<Label, ParsedSubExpr>),
     UnionMap(&'a DupTreeMap<Label, Option<ParsedSubExpr>>),
-    Import(&'a Import),
 }
 
 macro_rules! count {
@@ -414,6 +464,7 @@ where
     S: serde::ser::Serializer,
 {
     use cbor::Value::{String, I64, U64};
+    use dhall_syntax::Builtin;
     use dhall_syntax::ExprF::*;
     use std::iter::once;
 
@@ -455,12 +506,23 @@ where
             ser_seq!(ser; tag(2), expr(x), expr(y))
         }
         Pi(l, x, y) => ser_seq!(ser; tag(2), label(l), expr(x), expr(y)),
-        // TODO: multilet
-        Let(l, None, x, y) => {
-            ser_seq!(ser; tag(25), label(l), null(), expr(x), expr(y))
-        }
-        Let(l, Some(t), x, y) => {
-            ser_seq!(ser; tag(25), label(l), expr(t), expr(x), expr(y))
+        Let(_, _, _, _) => {
+            let (bound_e, bindings) = collect_nested_lets(e);
+            let count = 1 + 3 * bindings.len() + 1;
+
+            use serde::ser::SerializeSeq;
+            let mut ser_seq = ser.serialize_seq(Some(count))?;
+            ser_seq.serialize_element(&tag(25))?;
+            for (l, t, v) in bindings {
+                ser_seq.serialize_element(&label(l))?;
+                match t {
+                    Some(t) => ser_seq.serialize_element(&expr(t))?,
+                    None => ser_seq.serialize_element(&null())?,
+                }
+                ser_seq.serialize_element(&expr(v))?;
+            }
+            ser_seq.serialize_element(&expr(bound_e))?;
+            ser_seq.end()
         }
         App(_, _) => {
             let (f, args) = collect_nested_applications(e);
@@ -471,10 +533,15 @@ where
             )
         }
         Annot(x, y) => ser_seq!(ser; tag(26), expr(x), expr(y)),
-        OldOptionalLit(None, t) => ser_seq!(ser; tag(5), expr(t)),
-        OldOptionalLit(Some(x), t) => ser_seq!(ser; tag(5), expr(t), expr(x)),
+        Assert(x) => ser_seq!(ser; tag(19), expr(x)),
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
-        EmptyListLit(x) => ser_seq!(ser; tag(4), expr(x)),
+        EmptyListLit(x) => match x.as_ref() {
+            App(f, a) => match f.as_ref() {
+                ExprF::Builtin(Builtin::List) => ser_seq!(ser; tag(4), expr(a)),
+                _ => ser_seq!(ser; tag(28), expr(x)),
+            },
+            _ => ser_seq!(ser; tag(28), expr(x)),
+        },
         NEListLit(xs) => ser.collect_seq(
             once(tag(4)).chain(once(null())).chain(xs.iter().map(expr)),
         ),
@@ -488,9 +555,6 @@ where
         RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
         RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
-        UnionLit(l, x, map) => {
-            ser_seq!(ser; tag(12), label(l), expr(x), UnionMap(map))
-        }
         Field(x, l) => ser_seq!(ser; tag(9), expr(x), label(l)),
         BinOp(op, x, y) => {
             use dhall_syntax::BinOp::*;
@@ -507,6 +571,7 @@ where
                 RightBiasedRecordMerge => 9,
                 RecursiveRecordTypeMerge => 10,
                 ImportAlt => 11,
+                Equivalence => 12,
             };
             ser_seq!(ser; tag(3), U64(op), expr(x), expr(y))
         }
@@ -553,6 +618,7 @@ where
     let mode = match import.mode {
         ImportMode::Code => 0,
         ImportMode::RawText => 1,
+        ImportMode::Location => 2,
     };
     ser_seq.serialize_element(&U64(mode))?;
 
@@ -576,12 +642,14 @@ where
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => ser_seq.serialize_element(
-                    &self::Serialize::Import(&Import {
-                        mode: ImportMode::Code,
-                        location_hashed: location_hashed.as_ref().clone(),
-                    }),
-                )?,
+                Some(location_hashed) => {
+                    ser_seq.serialize_element(&self::Serialize::Expr(
+                        &SubExpr::from_expr_no_note(ExprF::Embed(Import {
+                            mode: ImportMode::Code,
+                            location_hashed: location_hashed.as_ref().clone(),
+                        })),
+                    ))?
+                }
             };
             ser_seq.serialize_element(&url.authority)?;
             for p in url.path.clone().into_iter() {
@@ -628,7 +696,6 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
                     (cbor::Value::String(k.into()), v)
                 }))
             }
-            Serialize::Import(import) => serialize_import(ser, import),
         }
     }
 }
@@ -644,6 +711,29 @@ fn collect_nested_applications<'a, N, E>(
             ExprF::App(f, a) => {
                 vec.push(a);
                 go(f, vec)
+            }
+            _ => e,
+        }
+    }
+    let mut vec = vec![];
+    let e = go(e, &mut vec);
+    (e, vec)
+}
+
+type LetBinding<'a, N, E> =
+    (&'a Label, &'a Option<SubExpr<N, E>>, &'a SubExpr<N, E>);
+
+fn collect_nested_lets<'a, N, E>(
+    e: &'a SubExpr<N, E>,
+) -> (&'a SubExpr<N, E>, Vec<LetBinding<'a, N, E>>) {
+    fn go<'a, N, E>(
+        e: &'a SubExpr<N, E>,
+        vec: &mut Vec<LetBinding<'a, N, E>>,
+    ) -> &'a SubExpr<N, E> {
+        match e.as_ref() {
+            ExprF::Let(l, t, v, e) => {
+                vec.push((l, t, v));
+                go(e, vec)
             }
             _ => e,
         }

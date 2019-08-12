@@ -47,6 +47,17 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
             )),
             _ => Err(()),
         },
+        (NaturalSubtract, [a, b, r..]) => {
+            match (&*a.as_value(), &*b.as_value()) {
+                (NaturalLit(a), NaturalLit(b)) => {
+                    Ok((r, NaturalLit(if b > a { b - a } else { 0 })))
+                }
+                (NaturalLit(0), b) => Ok((r, b.clone())),
+                (_, NaturalLit(0)) => Ok((r, NaturalLit(0))),
+                _ if a == b => Ok((r, NaturalLit(0))),
+                _ => Err(()),
+            }
+        }
         (IntegerShow, [n, r..]) => match &*n.as_value() {
             IntegerLit(n) => {
                 let s = if *n < 0 {
@@ -72,6 +83,17 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
         (TextShow, [v, r..]) => match &*v.as_value() {
             TextLit(elts) => {
                 match elts.as_slice() {
+                    // Empty string literal.
+                    [] => {
+                        // Printing InterpolatedText takes care of all the escaping
+                        let txt: InterpolatedText<X> =
+                            std::iter::empty().collect();
+                        let s = txt.to_string();
+                        Ok((
+                            r,
+                            TextLit(vec![InterpolatedTextContents::Text(s)]),
+                        ))
+                    }
                     // If there are no interpolations (invariants ensure that when there are no
                     // interpolations, there is a single Text item) in the literal.
                     [InterpolatedTextContents::Text(s)] => {
@@ -487,9 +509,9 @@ where
 
 fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     use BinOp::{
-        BoolAnd, BoolEQ, BoolNE, BoolOr, ListAppend, NaturalPlus, NaturalTimes,
-        RecursiveRecordMerge, RecursiveRecordTypeMerge, RightBiasedRecordMerge,
-        TextAppend,
+        BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
+        NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
+        RightBiasedRecordMerge, TextAppend,
     };
     use Value::{
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
@@ -605,13 +627,18 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
             Ret::Value(RecordType(kvs))
         }
 
+        (Equivalence, _, _) => Ret::Value(Value::Equivalence(
+            TypeThunk::from_thunk(x.clone()),
+            TypeThunk::from_thunk(y.clone()),
+        )),
+
         _ => return None,
     })
 }
 
 pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
     use Value::{
-        BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit, Lam,
+        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
         NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
         TextLit, UnionConstructor, UnionLit, UnionType,
     };
@@ -620,6 +647,7 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => Ret::Thunk(x),
+        ExprF::Assert(_) => Ret::Expr(expr),
         ExprF::Lam(x, t, e) => {
             Ret::Value(Lam(x.into(), TypeThunk::from_thunk(t), e))
         }
@@ -639,13 +667,21 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::NaturalLit(n) => Ret::Value(NaturalLit(n)),
         ExprF::IntegerLit(n) => Ret::Value(IntegerLit(n)),
         ExprF::DoubleLit(n) => Ret::Value(DoubleLit(n)),
-        ExprF::OldOptionalLit(None, t) => {
-            Ret::Value(EmptyOptionalLit(TypeThunk::from_thunk(t)))
-        }
-        ExprF::OldOptionalLit(Some(e), _) => Ret::Value(NEOptionalLit(e)),
         ExprF::SomeLit(e) => Ret::Value(NEOptionalLit(e)),
-        ExprF::EmptyListLit(t) => {
-            Ret::Value(EmptyListLit(TypeThunk::from_thunk(t)))
+        ExprF::EmptyListLit(ref t) => {
+            // Check if the type is of the form `List x`
+            let t_borrow = t.as_value();
+            match &*t_borrow {
+                AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
+                    Ret::Value(EmptyListLit(TypeThunk::from_thunk(
+                        args[0].clone(),
+                    )))
+                }
+                _ => {
+                    drop(t_borrow);
+                    Ret::Expr(expr)
+                }
+            }
         }
         ExprF::NEListLit(elts) => {
             Ret::Value(NEListLit(elts.into_iter().collect()))
@@ -656,13 +692,6 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
         ExprF::RecordType(kts) => Ret::Value(RecordType(
             kts.into_iter()
                 .map(|(k, t)| (k, TypeThunk::from_thunk(t)))
-                .collect(),
-        )),
-        ExprF::UnionLit(l, x, kts) => Ret::Value(UnionLit(
-            l,
-            x,
-            kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypeThunk::from_thunk(t))))
                 .collect(),
         )),
         ExprF::UnionType(kts) => Ret::Value(UnionType(

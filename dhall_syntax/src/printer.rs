@@ -27,16 +27,10 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 write!(f, " = {} in {}", c, d)?;
             }
             EmptyListLit(t) => {
-                write!(f, "[] : List {}", t)?;
+                write!(f, "[] : {}", t)?;
             }
             NEListLit(es) => {
                 fmt_list("[", ", ", "]", es, f, Display::fmt)?;
-            }
-            OldOptionalLit(None, t) => {
-                write!(f, "[] : Optional {}", t)?;
-            }
-            OldOptionalLit(Some(x), t) => {
-                write!(f, "[{}] : Optional {}", x, t)?;
             }
             SomeLit(e) => {
                 write!(f, "Some {}", e)?;
@@ -49,6 +43,9 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
             }
             Annot(a, b) => {
                 write!(f, "{} : {}", a, b)?;
+            }
+            Assert(a) => {
+                write!(f, "assert : {}", a)?;
             }
             ExprF::BinOp(op, a, b) => {
                 write!(f, "{} {} {}", a, op, b)?;
@@ -91,16 +88,6 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 }
                 Ok(())
             })?,
-            UnionLit(a, b, c) => {
-                write!(f, "< {} = {}", a, b)?;
-                for (k, v) in c {
-                    write!(f, " | {}", k)?;
-                    if let Some(v) = v {
-                        write!(f, ": {}", v)?;
-                    }
-                }
-                f.write_str(" >")?
-            }
             Embed(a) => a.fmt(f)?,
         }
         Ok(())
@@ -154,7 +141,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             | Let(_, _, _, _)
             | EmptyListLit(_)
             | NEListLit(_)
-            | OldOptionalLit(_, _)
             | SomeLit(_)
             | Merge(_, _, _)
             | Annot(_, _)
@@ -189,8 +175,6 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
                 a.phase(PrintPhase::BinOp(op)),
                 b.phase(PrintPhase::BinOp(op)),
             ),
-            EmptyListLit(t) => EmptyListLit(t.phase(Import)),
-            OldOptionalLit(x, t) => OldOptionalLit(x, t.phase(Import)),
             SomeLit(e) => SomeLit(e.phase(Import)),
             ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
             Field(a, b) => Field(a.phase(Primitive), b),
@@ -305,6 +289,7 @@ impl Display for BinOp {
             ImportAlt => "?",
             RightBiasedRecordMerge => "⫽",
             ListAppend => "#",
+            Equivalence => "≡",
         })
     }
 }
@@ -445,6 +430,7 @@ impl Display for Import {
         match self.mode {
             Code => {}
             RawText => write!(f, " as Text")?,
+            Location => write!(f, " as Location")?,
         }
         Ok(())
     }
@@ -469,6 +455,7 @@ impl Display for Builtin {
             NaturalOdd => "Natural/odd",
             NaturalToInteger => "Natural/toInteger",
             NaturalShow => "Natural/show",
+            NaturalSubtract => "Natural/subtract",
             IntegerToDouble => "Integer/toDouble",
             IntegerShow => "Integer/show",
             DoubleShow => "Double/show",
