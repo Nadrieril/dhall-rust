@@ -1,5 +1,5 @@
-use crate::api::de::{Deserialize, Value};
-use crate::error::{Error, Result};
+use crate::de::{Deserialize, Value};
+use dhall::error::{Error, Result};
 use dhall_syntax::{ExprF, SubExpr, X};
 use std::borrow::Cow;
 
@@ -14,14 +14,14 @@ where
 
 struct Deserializer<'a>(Cow<'a, SubExpr<X, X>>);
 
-impl serde::de::Error for Error {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Error::Deserialize(msg.to_string())
-    }
-}
+// impl serde::de::Error for Error {
+//     fn custom<T>(msg: T) -> Self
+//     where
+//         T: std::fmt::Display,
+//     {
+//         Error::Deserialize(msg.to_string())
+//     }
+// }
 
 impl<'de: 'a, 'a> serde::de::IntoDeserializer<'de, Error> for Deserializer<'a> {
     type Deserializer = Deserializer<'a>;

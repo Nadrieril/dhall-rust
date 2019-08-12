@@ -69,7 +69,6 @@ name = "dhall"
 version = "0.1.0"
 dependencies = [
  "bytecount 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "dhall_proc_macros 0.1.0",
  "dhall_syntax 0.1.0",
  "improved_slice_patterns 2.0.0",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -313,6 +312,16 @@ dependencies = [
  "proc-macro2 0.4.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.31 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "serde_dhall"
+version = "0.1.0"
+dependencies = [
+ "dhall 0.1.0",
+ "dhall_proc_macros 0.1.0",
+ "dhall_syntax 0.1.0",
+ "serde 1.0.90 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

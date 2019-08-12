@@ -18,7 +18,7 @@ where
     T: quote::ToTokens,
 {
     quote!(
-        <#ty as ::dhall::de::StaticType>::static_type()
+        <#ty as ::serde_dhall::de::StaticType>::static_type()
     )
 }
 
@@ -53,7 +53,7 @@ fn derive_for_struct(
         let ty = static_type(ty);
         quote!( (#name.to_owned(), #ty) )
     });
-    Ok(quote! { ::dhall::de::Type::make_record_type(
+    Ok(quote! { ::serde_dhall::de::Type::make_record_type(
         vec![ #(#entries),* ].into_iter()
     ) })
 }
@@ -90,7 +90,7 @@ fn derive_for_enum(
         })
         .collect::<Result<_, Error>>()?;
 
-    Ok(quote! { ::dhall::de::Type::make_union_type(
+    Ok(quote! { ::serde_dhall::de::Type::make_union_type(
         vec![ #(#entries),* ].into_iter()
     ) })
 }
@@ -134,7 +134,7 @@ pub fn derive_static_type_inner(
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: ::dhall::de::StaticType));
+            .push(parse_quote!(#ty: ::serde_dhall::de::StaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -156,16 +156,16 @@ pub fn derive_static_type_inner(
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: ::dhall::de::StaticType));
+            .push(parse_quote!(#ty: ::serde_dhall::de::StaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
-        impl #impl_generics ::dhall::de::StaticType
+        impl #impl_generics ::serde_dhall::de::StaticType
                 for #ident #ty_generics
                 #where_clause {
             fn static_type() ->
-                    ::dhall::de::Type {
+                    ::serde_dhall::de::Type {
                 #(#assertions)*
                 #get_type
             }

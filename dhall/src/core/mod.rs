@@ -1,4 +1,4 @@
-pub(crate) mod context;
-pub(crate) mod thunk;
-pub(crate) mod value;
-pub(crate) mod var;
+pub mod context;
+pub mod thunk;
+pub mod value;
+pub mod var;

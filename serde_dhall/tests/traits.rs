@@ -1,5 +1,5 @@
 #![feature(proc_macro_hygiene)]
-use dhall::de::{from_str, StaticType, Type};
+use serde_dhall::de::{from_str, StaticType, Type};
 
 #[test]
 fn test_static_type() {
@@ -15,14 +15,14 @@ fn test_static_type() {
         parse("{ _1: Bool, _2: List Text }")
     );
 
-    #[derive(dhall::de::StaticType)]
+    #[derive(serde_dhall::de::StaticType)]
     #[allow(dead_code)]
     struct A {
         field1: bool,
         field2: Option<bool>,
     }
     assert_eq!(
-        <A as dhall::de::StaticType>::static_type(),
+        <A as serde_dhall::de::StaticType>::static_type(),
         parse("{ field1: Bool, field2: Optional Bool }")
     );
 

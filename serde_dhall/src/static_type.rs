@@ -1,6 +1,6 @@
 use dhall_syntax::{Builtin, Integer, Natural};
 
-use crate::api::Type;
+use crate::Type;
 
 /// A Rust type that can be represented as a Dhall type.
 ///

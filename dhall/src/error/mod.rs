@@ -192,3 +192,13 @@ impl From<TypeError> for Error {
         Error::Typecheck(err)
     }
 }
+
+impl serde::de::Error for Error {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        Error::Deserialize(msg.to_string())
+    }
+}
+
