@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use dhall_syntax::Import;
-
 use crate::error::{Error, ImportError};
-use crate::phase::{Normalized, Parsed, Resolved};
+use crate::phase::{Normalized, NormalizedSubExpr, Parsed, Resolved};
+
+type Import = dhall_syntax::Import<NormalizedSubExpr>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,7 @@ fn resolve_import(
     let cwd = match root {
         LocalDir(cwd) => cwd,
     };
-    match &import.location_hashed.location {
+    match &import.location {
         Local(prefix, path) => {
             let path: PathBuf = path.iter().cloned().collect();
             let path = match prefix {

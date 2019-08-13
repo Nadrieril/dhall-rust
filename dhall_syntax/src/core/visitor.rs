@@ -153,7 +153,7 @@ where
             Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
             Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
             Assert(e) => Assert(v.visit_subexpr(e)?),
-            Import(a) => Import(a.clone()),
+            Import(i) => Import(i.visit_subexpr(|e| v.visit_subexpr(e))?),
             Embed(a) => Embed(v.visit_embed(a)?),
         })
     }
@@ -251,7 +251,7 @@ impl<'a, 'b, E, E2, Err, F1>
     ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
     for &'b mut ResolveVisitor<F1>
 where
-    F1: FnMut(&Import) -> Result<E2, Err>,
+    F1: FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
 {
     type Error = Err;
 

@@ -93,13 +93,6 @@ fn main() -> std::io::Result<()> {
     make_test_module(&mut file, "parse", "parser/", "Parser", |path| {
         // Too slow in debug mode
         path == "success/largeExpression"
-            // TODO: Inline headers
-            || path == "success/unit/import/inlineUsing"
-            || path == "success/unit/import/Headers"
-            || path == "success/unit/import/HeadersDoubleHash"
-            || path == "success/unit/import/HeadersDoubleHashPrecedence"
-            || path == "success/unit/import/HeadersHashPrecedence"
-            || path == "success/unit/import/HeadersInteriorHash"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -119,9 +112,6 @@ fn main() -> std::io::Result<()> {
         path.starts_with("failure/")
             // Too slow in debug mode
             || path == "success/largeExpression"
-            // TODO: Inline headers
-            || path == "success/unit/import/inlineUsing"
-            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -149,9 +139,6 @@ fn main() -> std::io::Result<()> {
             || path == "success/double"
             || path == "success/unit/DoubleLitExponentNoDot"
             || path == "success/unit/DoubleLitSecretelyInt"
-            // TODO: Inline headers
-            || path == "success/unit/import/inlineUsing"
-            || path == "success/unit/import/Headers"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"
@@ -237,10 +224,9 @@ fn main() -> std::io::Result<()> {
             false
             // TODO: Enable imports in typecheck tests
             || path == "failure/importBoundary"
+            || path == "failure/customHeadersUsingBoundVariable"
             // Too slow
             || path == "success/prelude"
-            // TODO: Inline headers
-            || path == "failure/customHeadersUsingBoundVariable"
             // TODO: projection by expression
             || path == "failure/unit/RecordProjectionByTypeFieldTypeMismatch"
             || path == "failure/unit/RecordProjectionByTypeNotPresent"

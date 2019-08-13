@@ -258,7 +258,7 @@ pub enum ExprF<SubExpr, Embed> {
     ///  `e.{ x, y, z }`
     Projection(SubExpr, DupTreeSet<Label>),
     /// `./some/path`
-    Import(Import),
+    Import(Import<SubExpr>),
     /// Embeds the result of resolving an import
     Embed(Embed),
 }
@@ -323,7 +323,7 @@ impl<SE, E> ExprF<SE, E> {
 impl<E> Expr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_import: impl FnMut(&Import) -> Result<E2, Err>,
+        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     ) -> Result<Expr<E2>, Err> {
         self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
             visit_import,
@@ -335,15 +335,20 @@ impl<E> Expr<E> {
         visitor: &mut visitor::ResolveVisitor<F1>,
     ) -> Result<Expr<E2>, Err>
     where
-        F1: FnMut(&Import) -> Result<E2, Err>,
+        F1: FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     {
         match self {
             ExprF::BinOp(BinOp::ImportAlt, l, r) => l
                 .as_ref()
                 .traverse_resolve_with_visitor(visitor)
                 .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
-            ExprF::Import(import) => Ok(ExprF::Embed((visitor.0)(import)?)),
-            _ => self.visit(visitor),
+            _ => {
+                let e = self.visit(&mut *visitor)?;
+                Ok(match &e {
+                    ExprF::Import(import) => ExprF::Embed((visitor.0)(import)?),
+                    _ => e,
+                })
+            }
         }
     }
 }
@@ -373,7 +378,7 @@ impl<E> SubExpr<E> {
 impl<E> SubExpr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_import: impl FnMut(&Import) -> Result<E2, Err>,
+        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     ) -> Result<SubExpr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
     }

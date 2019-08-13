@@ -598,7 +598,7 @@ make_parser! {
         _ => unreachable!(),
     });
 
-    rule!(http_raw<URL>; children!(
+    rule!(http_raw<URL<ParsedSubExpr>>; children!(
         [scheme(sch), authority(auth), path(p)] => URL {
             scheme: sch,
             authority: auth,
@@ -619,10 +619,10 @@ make_parser! {
 
     rule!(query<String>; captured_str!(s) => s.to_owned());
 
-    rule!(http<URL>; children!(
+    rule!(http<URL<ParsedSubExpr>>; children!(
         [http_raw(url)] => url,
-        [http_raw(url), import_hashed(ih)] =>
-            URL { headers: Some(Box::new(ih)), ..url },
+        [http_raw(url), expression(e)] =>
+            URL { headers: Some(e), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -654,7 +654,7 @@ make_parser! {
 
     token_rule!(missing<()>);
 
-    rule!(import_type<ImportLocation>; children!(
+    rule!(import_type<ImportLocation<ParsedSubExpr>>; children!(
         [missing(_)] => {
             ImportLocation::Missing
         },
@@ -679,33 +679,33 @@ make_parser! {
         Hash::SHA256(hex::decode(hash).unwrap())
     });
 
-    rule!(import_hashed<ImportHashed>; children!(
+    rule!(import_hashed<crate::Import<ParsedSubExpr>>; children!(
         [import_type(location)] =>
-            ImportHashed { location, hash: None },
+            crate::Import {mode: ImportMode::Code, location, hash: None },
         [import_type(location), hash(h)] =>
-            ImportHashed { location, hash: Some(h) },
+            crate::Import {mode: ImportMode::Code, location, hash: Some(h) },
     ));
 
     token_rule!(Text<()>);
     token_rule!(Location<()>);
 
     rule!(import<ParsedSubExpr> as expression; span; children!(
-        [import_hashed(location_hashed)] => {
+        [import_hashed(imp)] => {
             spanned(span, Import(crate::Import {
                 mode: ImportMode::Code,
-                location_hashed
+                ..imp
             }))
         },
-        [import_hashed(location_hashed), Text(_)] => {
+        [import_hashed(imp), Text(_)] => {
             spanned(span, Import(crate::Import {
                 mode: ImportMode::RawText,
-                location_hashed
+                ..imp
             }))
         },
-        [import_hashed(location_hashed), Location(_)] => {
+        [import_hashed(imp), Location(_)] => {
             spanned(span, Import(crate::Import {
                 mode: ImportMode::Location,
-                location_hashed
+                ..imp
             }))
         },
     ));

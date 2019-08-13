@@ -4,9 +4,8 @@ use std::iter::FromIterator;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
-    rc, ExprF, FilePrefix, Hash, Import, ImportHashed, ImportLocation,
-    ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, SubExpr,
-    URL, V,
+    rc, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode, Integer,
+    InterpolatedText, Label, Natural, Scheme, SubExpr, URL, V,
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -260,20 +259,12 @@ fn cbor_value_to_dhall(
                         };
                         let headers = match rest.next() {
                             Some(Null) => None,
-                            // TODO
-                            // Some(x) => {
-                            //     match cbor_value_to_dhall(&x)?.as_ref() {
-                            //         Import(import) => Some(Box::new(
-                            //             import.location_hashed.clone(),
-                            //         )),
-                            //         _ => Err(DecodeError::WrongFormatError(
-                            //             "import/remote/headers".to_owned(),
-                            //         ))?,
-                            //     }
-                            // }
+                            Some(x) => {
+                                let x = cbor_value_to_dhall(&x)?;
+                                Some(x)
+                            }
                             _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers is unimplemented"
-                                    .to_owned(),
+                                "import/remote/headers".to_owned(),
                             ))?,
                         };
                         let authority = match rest.next() {
@@ -341,7 +332,8 @@ fn cbor_value_to_dhall(
                 };
                 Import(dhall_syntax::Import {
                     mode,
-                    location_hashed: ImportHashed { hash, location },
+                    hash,
+                    location,
                 })
             }
             [U64(25), bindings..] => {
@@ -572,14 +564,17 @@ where
     }
 }
 
-fn serialize_import<S>(ser: S, import: &Import) -> Result<S::Ok, S::Error>
+fn serialize_import<S, E>(
+    ser: S,
+    import: &Import<SubExpr<E>>,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
     use cbor::Value::{Bytes, Null, U64};
     use serde::ser::SerializeSeq;
 
-    let count = 4 + match &import.location_hashed.location {
+    let count = 4 + match &import.location {
         ImportLocation::Remote(url) => 3 + url.path.len(),
         ImportLocation::Local(_, path) => path.len(),
         ImportLocation::Env(_) => 1,
@@ -589,7 +584,7 @@ where
 
     ser_seq.serialize_element(&U64(24))?;
 
-    let hash = match &import.location_hashed.hash {
+    let hash = match &import.hash {
         None => Null,
         Some(Hash::SHA256(h)) => {
             let mut bytes = vec![18, 32];
@@ -606,7 +601,7 @@ where
     };
     ser_seq.serialize_element(&U64(mode))?;
 
-    let scheme = match &import.location_hashed.location {
+    let scheme = match &import.location {
         ImportLocation::Remote(url) => match url.scheme {
             Scheme::HTTP => 0,
             Scheme::HTTPS => 1,
@@ -622,19 +617,12 @@ where
     };
     ser_seq.serialize_element(&U64(scheme))?;
 
-    match &import.location_hashed.location {
+    match &import.location {
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => {
-                    let e = rc(
-                        ExprF::Import(dhall_syntax::Import {
-                            mode: ImportMode::Code,
-                            location_hashed: location_hashed.as_ref().clone(),
-                        }),
-                    );
-                    let s: Serialize<'_, ()> = self::Serialize::Expr(&e);
-                    ser_seq.serialize_element(&s)?
+                Some(e) => {
+                    ser_seq.serialize_element(&self::Serialize::Expr(e))?
                 }
             };
             ser_seq.serialize_element(&url.authority)?;

@@ -4,7 +4,7 @@ use dhall_syntax::{BinOp, Import, Label, ParseError, V};
 
 use crate::core::context::TypecheckContext;
 use crate::phase::resolve::ImportStack;
-use crate::phase::{Normalized, Type, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -21,9 +21,9 @@ pub enum Error {
 
 #[derive(Debug)]
 pub enum ImportError {
-    Recursive(Import, Box<Error>),
-    UnexpectedImport(Import),
-    ImportCycle(ImportStack, Import),
+    Recursive(Import<NormalizedSubExpr>, Box<Error>),
+    UnexpectedImport(Import<NormalizedSubExpr>),
+    ImportCycle(ImportStack, Import<NormalizedSubExpr>),
 }
 
 #[derive(Debug)]

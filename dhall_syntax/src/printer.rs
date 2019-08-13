@@ -230,7 +230,7 @@ where
     f.write_str(close)
 }
 
-impl<SubExpr: Display + Clone> Display for InterpolatedText<SubExpr> {
+impl<SubExpr: Display> Display for InterpolatedText<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         f.write_str("\"")?;
         for x in self.iter() {
@@ -344,10 +344,11 @@ impl Display for Hash {
         }
     }
 }
-impl Display for ImportHashed {
+impl<SubExpr: Display> Display for Import<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use FilePrefix::*;
         use ImportLocation::*;
+        use ImportMode::*;
         let fmt_remote_path_component = |s: &str| -> String {
             use percent_encoding::{
                 utf8_percent_encode, PATH_SEGMENT_ENCODE_SET,
@@ -423,14 +424,6 @@ impl Display for ImportHashed {
             write!(f, " ")?;
             hash.fmt(f)?;
         }
-        Ok(())
-    }
-}
-
-impl Display for Import {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.location_hashed.fmt(f)?;
-        use ImportMode::*;
         match self.mode {
             Code => {}
             RawText => write!(f, " as Text")?,
