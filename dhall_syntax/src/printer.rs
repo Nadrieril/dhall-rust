@@ -88,6 +88,7 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 }
                 Ok(())
             })?,
+            Import(a) => a.fmt(f)?,
             Embed(a) => a.fmt(f)?,
         }
         Ok(())
@@ -151,7 +152,9 @@ impl<A: Display + Clone> Expr<A> {
             // Precedence is magically handled by the ordering of BinOps.
             ExprF::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
             ExprF::App(_, _) if phase > PrintPhase::App => true,
-            Field(_, _) | Projection(_, _) if phase > Import => true,
+            Field(_, _) | Projection(_, _) if phase > PrintPhase::Import => {
+                true
+            }
             _ => false,
         };
 
@@ -165,8 +168,8 @@ impl<A: Display + Clone> Expr<A> {
                 }
             }
             Merge(a, b, c) => Merge(
-                a.phase(Import),
-                b.phase(Import),
+                a.phase(PrintPhase::Import),
+                b.phase(PrintPhase::Import),
                 c.map(|x| x.phase(PrintPhase::App)),
             ),
             Annot(a, b) => Annot(a.phase(Operator), b),
@@ -175,8 +178,11 @@ impl<A: Display + Clone> Expr<A> {
                 a.phase(PrintPhase::BinOp(op)),
                 b.phase(PrintPhase::BinOp(op)),
             ),
-            SomeLit(e) => SomeLit(e.phase(Import)),
-            ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
+            SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
+            ExprF::App(f, a) => ExprF::App(
+                f.phase(PrintPhase::Import),
+                a.phase(PrintPhase::Import),
+            ),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             e => e,

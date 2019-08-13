@@ -15,10 +15,10 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-pub(crate) type ParsedExpr = Expr<Import>;
-pub(crate) type ParsedSubExpr = SubExpr<Import>;
-type ParsedText = InterpolatedText<SubExpr<Import>>;
-type ParsedTextContents = InterpolatedTextContents<SubExpr<Import>>;
+pub(crate) type ParsedExpr = Expr<Void>;
+pub(crate) type ParsedSubExpr = SubExpr<Void>;
+type ParsedText = InterpolatedText<ParsedSubExpr>;
+type ParsedTextContents = InterpolatedTextContents<ParsedSubExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
@@ -691,19 +691,19 @@ make_parser! {
 
     rule!(import<ParsedSubExpr> as expression; span; children!(
         [import_hashed(location_hashed)] => {
-            spanned(span, Embed(Import {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::Code,
                 location_hashed
             }))
         },
         [import_hashed(location_hashed), Text(_)] => {
-            spanned(span, Embed(Import {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::RawText,
                 location_hashed
             }))
         },
         [import_hashed(location_hashed), Location(_)] => {
-            spanned(span, Embed(Import {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::Location,
                 location_hashed
             }))

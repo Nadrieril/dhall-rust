@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Const, Import, SubExpr};
+use dhall_syntax::{Const, SubExpr, Void};
 
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
@@ -17,8 +17,8 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedSubExpr = SubExpr<Import>;
-pub type DecodedSubExpr = SubExpr<Import>;
+pub type ParsedSubExpr = SubExpr<Void>;
+pub type DecodedSubExpr = SubExpr<Void>;
 pub type ResolvedSubExpr = SubExpr<Normalized>;
 pub type NormalizedSubExpr = SubExpr<Normalized>;
 
@@ -26,6 +26,8 @@ pub type NormalizedSubExpr = SubExpr<Normalized>;
 pub struct Parsed(ParsedSubExpr, ImportRoot);
 
 /// An expression where all imports have been resolved
+///
+/// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
 pub struct Resolved(ResolvedSubExpr);
 

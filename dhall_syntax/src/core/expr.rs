@@ -12,6 +12,12 @@ pub type Double = NaiveDouble;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Void {}
 
+impl std::fmt::Display for Void {
+    fn fmt(&self, _f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match *self {}
+    }
+}
+
 pub fn trivial_result<T>(x: Result<T, Void>) -> T {
     match x {
         Ok(x) => x,
@@ -233,7 +239,9 @@ pub enum ExprF<SubExpr, Embed> {
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
     Projection(SubExpr, DupTreeSet<Label>),
-    /// Embeds an import or the result of resolving the import
+    /// `./some/path`
+    Import(Import),
+    /// Embeds the result of resolving an import
     Embed(Embed),
 }
 
@@ -294,7 +302,7 @@ impl<SE, E> ExprF<SE, E> {
     }
 }
 
-impl Expr<Import> {
+impl<E> Expr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
         visit_import: impl FnMut(&Import) -> Result<E2, Err>,
@@ -316,6 +324,7 @@ impl Expr<Import> {
                 .as_ref()
                 .traverse_resolve_with_visitor(visitor)
                 .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
+            ExprF::Import(import) => Ok(ExprF::Embed((visitor.0)(import)?)),
             _ => self.visit(visitor),
         }
     }
@@ -343,7 +352,7 @@ impl<E> SubExpr<E> {
     }
 }
 
-impl SubExpr<Import> {
+impl<E> SubExpr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
         visit_import: impl FnMut(&Import) -> Result<E2, Err>,

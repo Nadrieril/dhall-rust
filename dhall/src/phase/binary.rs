@@ -19,7 +19,6 @@ pub fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
     }
 }
 
-//TODO: encode normalized expression too
 pub fn encode(expr: &ParsedSubExpr) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
@@ -264,7 +263,7 @@ fn cbor_value_to_dhall(
                             // TODO
                             // Some(x) => {
                             //     match cbor_value_to_dhall(&x)?.as_ref() {
-                            //         Embed(import) => Some(Box::new(
+                            //         Import(import) => Some(Box::new(
                             //             import.location_hashed.clone(),
                             //         )),
                             //         _ => Err(DecodeError::WrongFormatError(
@@ -340,7 +339,7 @@ fn cbor_value_to_dhall(
                         "import/type".to_owned(),
                     ))?,
                 };
-                Embed(Import {
+                Import(dhall_syntax::Import {
                     mode,
                     location_hashed: ImportHashed { hash, location },
                 })
@@ -573,7 +572,10 @@ where
                 .chain(once(expr(x)))
                 .chain(ls.iter().map(label)),
         ),
-        Embed(import) => serialize_import(ser, import),
+        Import(import) => serialize_import(ser, import),
+        Embed(_) => unimplemented!(
+            "An expression with resolved imports cannot be binary-encoded"
+        ),
     }
 }
 
@@ -631,12 +633,14 @@ where
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => ser_seq.serialize_element(
-                    &self::Serialize::Expr(&rc(ExprF::Embed(Import {
-                        mode: ImportMode::Code,
-                        location_hashed: location_hashed.as_ref().clone(),
-                    }))),
-                )?,
+                Some(location_hashed) => {
+                    ser_seq.serialize_element(&self::Serialize::Expr(&rc(
+                        ExprF::Import(dhall_syntax::Import {
+                            mode: ImportMode::Code,
+                            location_hashed: location_hashed.as_ref().clone(),
+                        }),
+                    )))?
+                }
             };
             ser_seq.serialize_element(&url.authority)?;
             for p in &url.path {

@@ -153,6 +153,7 @@ where
             Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
             Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
             Assert(e) => Assert(v.visit_subexpr(e)?),
+            Import(a) => Import(a.clone()),
             Embed(a) => Embed(v.visit_embed(a)?),
         })
     }
@@ -246,8 +247,8 @@ where
 
 pub struct ResolveVisitor<F1>(pub F1);
 
-impl<'a, 'b, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<Import>, SubExpr<E2>, Import, E2>
+impl<'a, 'b, E, E2, Err, F1>
+    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
     for &'b mut ResolveVisitor<F1>
 where
     F1: FnMut(&Import) -> Result<E2, Err>,
@@ -256,7 +257,7 @@ where
 
     fn visit_subexpr(
         &mut self,
-        subexpr: &'a SubExpr<Import>,
+        subexpr: &'a SubExpr<E>,
     ) -> Result<SubExpr<E2>, Self::Error> {
         Ok(subexpr.rewrap(
             subexpr
@@ -264,7 +265,7 @@ where
                 .traverse_resolve_with_visitor(&mut **self)?,
         ))
     }
-    fn visit_embed(self, embed: &'a Import) -> Result<E2, Self::Error> {
-        (self.0)(embed)
+    fn visit_embed(self, _embed: &'a E) -> Result<E2, Self::Error> {
+        unimplemented!()
     }
 }

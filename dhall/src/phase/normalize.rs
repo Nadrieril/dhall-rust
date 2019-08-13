@@ -644,6 +644,9 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
     };
 
     let ret = match expr {
+        ExprF::Import(_) => unreachable!(
+            "There should remain no imports in a resolved expression"
+        ),
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => Ret::Thunk(x),

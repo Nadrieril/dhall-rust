@@ -407,6 +407,9 @@ fn type_last_layer(
     let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
 
     match e {
+        Import(_) => unreachable!(
+            "There should remain no imports in a resolved expression"
+        ),
         Lam(_, _, _) | Pi(_, _, _) | Let(_, _, _, _) | Embed(_) | Var(_) => {
             unreachable!()
         }
