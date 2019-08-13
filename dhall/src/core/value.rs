@@ -243,7 +243,7 @@ impl Value {
                 y.normalize_to_expr_maybe_alpha(alpha),
             )),
             Value::PartialExpr(e) => {
-                rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
+                rc(e.map_ref(|v| v.normalize_to_expr_maybe_alpha(alpha)))
             }
         }
     }
@@ -333,8 +333,8 @@ impl Value {
                 y.normalize_mut();
             }
             Value::PartialExpr(e) => {
-                // TODO: need map_mut_simple
-                e.map_ref_simple(|v| {
+                // TODO: need map_mut
+                e.map_ref(|v| {
                     v.normalize_nf();
                 });
             }
@@ -475,7 +475,6 @@ impl Shift for Value {
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                    |x| Ok(Normalized::clone(x)),
                 )?,
             ),
         })
@@ -500,7 +499,6 @@ impl Subst<Typed> for Value {
                             &val.under_binder(x),
                         )
                     },
-                    Normalized::clone,
                 ))
             }
             // Retry normalizing since substituting may allow progress

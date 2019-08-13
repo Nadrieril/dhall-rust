@@ -278,21 +278,18 @@ where
     }
 }
 
-pub struct TraverseRefWithBindersVisitor<F1, F2, F4> {
+pub struct TraverseRefWithBindersVisitor<F1, F2> {
     pub visit_subexpr: F1,
     pub visit_under_binder: F2,
-    pub visit_embed: F4,
 }
 
-impl<'a, SE, E, SE2, E2, Err, F1, F2, F4>
-    ExprFFallibleVisitor<'a, SE, SE2, E, E2>
-    for TraverseRefWithBindersVisitor<F1, F2, F4>
+impl<'a, SE, E, SE2, Err, F1, F2> ExprFFallibleVisitor<'a, SE, SE2, E, E>
+    for TraverseRefWithBindersVisitor<F1, F2>
 where
     SE: 'a,
-    E: 'a,
+    E: 'a + Clone,
     F1: FnMut(&'a SE) -> Result<SE2, Err>,
     F2: FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
-    F4: FnOnce(&'a E) -> Result<E2, Err>,
 {
     type Error = Err;
 
@@ -306,68 +303,45 @@ where
     ) -> Result<SE2, Self::Error> {
         (self.visit_under_binder)(label, subexpr)
     }
-    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
-        (self.visit_embed)(embed)
+    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
+        Ok(embed.clone())
     }
 }
 
-pub struct TraverseRefVisitor<F1, F3> {
+pub struct TraverseRefVisitor<F1> {
     pub visit_subexpr: F1,
-    pub visit_embed: F3,
 }
 
-impl<'a, SE, E, SE2, E2, Err, F1, F3> ExprFFallibleVisitor<'a, SE, SE2, E, E2>
-    for TraverseRefVisitor<F1, F3>
+impl<'a, SE, E, SE2, Err, F1> ExprFFallibleVisitor<'a, SE, SE2, E, E>
+    for TraverseRefVisitor<F1>
 where
     SE: 'a,
-    E: 'a,
+    E: 'a + Clone,
     F1: FnMut(&'a SE) -> Result<SE2, Err>,
-    F3: FnOnce(&'a E) -> Result<E2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE) -> Result<SE2, Self::Error> {
         (self.visit_subexpr)(subexpr)
     }
-    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
-        (self.visit_embed)(embed)
-    }
-}
-
-pub struct TraverseEmbedVisitor<F1>(pub F1);
-
-impl<'a, 'b, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
-    for &'b mut TraverseEmbedVisitor<F1>
-where
-    F1: FnMut(&E) -> Result<E2, Err>,
-{
-    type Error = Err;
-
-    fn visit_subexpr(
-        &mut self,
-        subexpr: &'a SubExpr<E>,
-    ) -> Result<SubExpr<E2>, Self::Error> {
-        Ok(subexpr.rewrap(subexpr.as_ref().visit(&mut **self)?))
-    }
-    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
-        (self.0)(embed)
+    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
+        Ok(embed.clone())
     }
 }
 
 pub struct ResolveVisitor<F1>(pub F1);
 
-impl<'a, 'b, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
+impl<'a, 'b, E2, Err, F1>
+    ExprFFallibleVisitor<'a, SubExpr<Import>, SubExpr<E2>, Import, E2>
     for &'b mut ResolveVisitor<F1>
 where
-    F1: FnMut(&E) -> Result<E2, Err>,
+    F1: FnMut(&Import) -> Result<E2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(
         &mut self,
-        subexpr: &'a SubExpr<E>,
+        subexpr: &'a SubExpr<Import>,
     ) -> Result<SubExpr<E2>, Self::Error> {
         Ok(subexpr.rewrap(
             subexpr
@@ -375,7 +349,7 @@ where
                 .traverse_resolve_with_visitor(&mut **self)?,
         ))
     }
-    fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
+    fn visit_embed(self, embed: &'a Import) -> Result<E2, Self::Error> {
         (self.0)(embed)
     }
 }

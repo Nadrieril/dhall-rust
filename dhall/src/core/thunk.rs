@@ -309,7 +309,6 @@ impl Shift for ThunkInternal {
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                    |x| Ok(Normalized::clone(x)),
                 )?,
             ),
             ThunkInternal::Value(m, v) => {
@@ -356,7 +355,6 @@ impl Subst<Typed> for ThunkInternal {
                             &val.under_binder(x),
                         )
                     },
-                    Normalized::clone,
                 ),
             ),
             ThunkInternal::Value(_, v) => {

@@ -156,7 +156,7 @@ impl<A: Display + Clone> Expr<A> {
         };
 
         // Annotate subexpressions with the appropriate phase, defaulting to Base
-        let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
+        let phased_self = match self.map_ref(|e| PhasedExpr(e, Base)) {
             Pi(a, b, c) => {
                 if &String::from(&a) == "_" {
                     Pi(a, b.phase(Operator), c)

@@ -381,7 +381,6 @@ pub fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
         expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| Thunk::new(ctx.clone(), e.clone()),
             |x, e| Thunk::new(ctx.skip(x), e.clone()),
-            |_| unreachable!(),
         );
 
     normalize_one_layer(expr)

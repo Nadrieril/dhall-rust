@@ -376,12 +376,11 @@ fn type_with(
                 e.as_ref().traverse_ref_with_special_handling_of_binders(
                     |e| type_with(ctx, e.clone()),
                     |_, _| unreachable!(),
-                    |_| unreachable!(),
                 )?;
             let ret = type_last_layer(ctx, &expr)?;
             match ret {
                 RetTypeOnly(typ) => {
-                    let expr = expr.map_ref_simple(|typed| typed.to_thunk());
+                    let expr = expr.map_ref(|typed| typed.to_thunk());
                     Typed::from_thunk_and_type(
                         Thunk::from_partial_expr(expr),
                         typ,
