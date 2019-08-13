@@ -1,15 +1,18 @@
+use std::borrow::Cow;
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
-use dhall_syntax::{ExprF, X};
+use dhall_syntax::{Const, ExprF, X};
 
-use crate::core::context::NormalizationContext;
+use crate::core::context::{NormalizationContext, TypecheckContext};
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
+use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{
     apply_any, normalize_one_layer, normalize_whnf, InputSubExpr, OutputSubExpr,
 };
-use crate::phase::{Type, Typed};
+use crate::phase::typecheck::type_of_const;
+use crate::phase::{NormalizedSubExpr, Type, Typed};
 
 #[derive(Debug, Clone, Copy)]
 enum Marker {
@@ -42,7 +45,16 @@ pub struct Thunk(Rc<RefCell<ThunkInternal>>);
 /// A thunk in type position. Can optionally store a Type from the typechecking phase to preserve
 /// type information through the normalization phase.
 #[derive(Debug, Clone)]
-pub struct TypeThunk(Typed);
+pub enum TypeThunk {
+    // Any value, along with (optionally) its type
+    Untyped(Thunk),
+    Typed(Thunk, Box<Type>),
+    // One of the base higher-kinded typed.
+    // Used to avoid storing the same tower ot Type->Kind->Sort
+    // over and over again. Also enables having Sort as a type
+    // even though it doesn't itself have a type.
+    Const(Const),
+}
 
 impl ThunkInternal {
     fn into_thunk(self) -> Thunk {
@@ -190,39 +202,94 @@ impl TypeThunk {
     }
 
     pub fn from_thunk(th: Thunk) -> TypeThunk {
-        TypeThunk(Typed::from_thunk_untyped(th))
+        TypeThunk::from_thunk_untyped(th)
     }
 
     pub fn from_type(t: Type) -> TypeThunk {
-        TypeThunk(t)
-    }
-
-    pub fn normalize_mut(&mut self) {
-        self.0.normalize_mut()
+        t.into_typethunk()
     }
 
     pub fn normalize_nf(&self) -> Value {
-        self.0.to_value().normalize()
-    }
-
-    pub fn to_value(&self) -> Value {
-        self.0.to_value()
-    }
-
-    pub fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
-    }
-
-    pub fn to_type(&self) -> Type {
-        self.0.to_type()
+        match self {
+            TypeThunk::Const(c) => Value::Const(*c),
+            TypeThunk::Untyped(thunk) | TypeThunk::Typed(thunk, _) => {
+                thunk.normalize_nf().clone()
+            }
+        }
     }
 
     pub fn to_typed(&self) -> Typed {
-        self.0.clone()
+        self.clone().into_typed()
     }
 
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
+    }
+
+    pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+        TypeThunk::Typed(th, Box::new(t))
+    }
+    pub fn from_thunk_untyped(th: Thunk) -> Self {
+        TypeThunk::Untyped(th)
+    }
+    pub fn from_const(c: Const) -> Self {
+        TypeThunk::Const(c)
+    }
+    pub fn from_value_untyped(v: Value) -> Self {
+        TypeThunk::from_thunk_untyped(Thunk::from_value(v))
+    }
+
+    // TODO: Avoid cloning if possible
+    pub fn to_value(&self) -> Value {
+        match self {
+            TypeThunk::Untyped(th) | TypeThunk::Typed(th, _) => th.to_value(),
+            TypeThunk::Const(c) => Value::Const(*c),
+        }
+    }
+    pub fn to_expr(&self) -> NormalizedSubExpr {
+        self.to_value().normalize_to_expr()
+    }
+    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
+        self.to_value().normalize_to_expr_maybe_alpha(true)
+    }
+    pub fn to_thunk(&self) -> Thunk {
+        match self {
+            TypeThunk::Untyped(th) | TypeThunk::Typed(th, _) => th.clone(),
+            TypeThunk::Const(c) => Thunk::from_value(Value::Const(*c)),
+        }
+    }
+    pub fn to_type(&self) -> Type {
+        self.clone().into_typed().into_type()
+    }
+    pub fn into_typed(self) -> Typed {
+        Typed::from_typethunk(self)
+    }
+    pub fn as_const(&self) -> Option<Const> {
+        // TODO: avoid clone
+        match &self.to_value() {
+            Value::Const(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn normalize_mut(&mut self) {
+        match self {
+            TypeThunk::Untyped(th) | TypeThunk::Typed(th, _) => {
+                th.normalize_mut()
+            }
+            TypeThunk::Const(_) => {}
+        }
+    }
+
+    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+        match self {
+            TypeThunk::Untyped(_) => Err(TypeError::new(
+                &TypecheckContext::new(),
+                TypeMessage::Untyped,
+            )),
+            TypeThunk::Typed(_, t) => Ok(Cow::Borrowed(t)),
+            TypeThunk::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
+        }
     }
 }
 
@@ -254,7 +321,14 @@ impl Shift for ThunkInternal {
 
 impl Shift for TypeThunk {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(TypeThunk(self.0.shift(delta, var)?))
+        Some(match self {
+            TypeThunk::Untyped(th) => TypeThunk::Untyped(th.shift(delta, var)?),
+            TypeThunk::Typed(th, t) => TypeThunk::Typed(
+                th.shift(delta, var)?,
+                Box::new(t.shift(delta, var)?),
+            ),
+            TypeThunk::Const(c) => TypeThunk::Const(*c),
+        })
     }
 }
 
@@ -293,7 +367,16 @@ impl Subst<Typed> for ThunkInternal {
 
 impl Subst<Typed> for TypeThunk {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        TypeThunk(self.0.subst_shift(var, val))
+        match self {
+            TypeThunk::Untyped(th) => {
+                TypeThunk::Untyped(th.subst_shift(var, val))
+            }
+            TypeThunk::Typed(th, t) => TypeThunk::Typed(
+                th.subst_shift(var, val),
+                Box::new(t.subst_shift(var, val)),
+            ),
+            TypeThunk::Const(c) => TypeThunk::Const(*c),
+        }
     }
 }
 

@@ -4,14 +4,12 @@ use std::path::Path;
 
 use dhall_syntax::{Const, Import, Span, SubExpr, X};
 
-use crate::core::context::TypecheckContext;
-use crate::core::thunk::Thunk;
+use crate::core::thunk::{Thunk, TypeThunk};
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::{EncodeError, Error, ImportError, TypeError, TypeMessage};
+use crate::error::{EncodeError, Error, ImportError, TypeError};
 
 use resolve::ImportRoot;
-use typecheck::type_of_const;
 
 pub(crate) mod binary;
 pub(crate) mod normalize;
@@ -33,16 +31,7 @@ pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub enum Typed {
-    // Any value, along with (optionally) its type
-    Untyped(Thunk),
-    Typed(Thunk, Box<Type>),
-    // One of the base higher-kinded typed.
-    // Used to avoid storing the same tower ot Type->Kind->Sort
-    // over and over again. Also enables having Sort as a type
-    // even though it doesn't itself have a type.
-    Const(Const),
-}
+pub struct Typed(TypeThunk);
 
 /// A normalized expression.
 ///
@@ -105,83 +94,63 @@ impl Typed {
     ///
     /// However, `normalize` will not fail if the expression is ill-typed and will
     /// leave ill-typed sub-expressions unevaluated.
-    pub fn normalize(self) -> Normalized {
-        match &self {
-            Typed::Const(_) => {}
-            Typed::Untyped(thunk) | Typed::Typed(thunk, _) => {
-                thunk.normalize_nf();
-            }
-        }
+    pub fn normalize(mut self) -> Normalized {
+        self.normalize_mut();
         Normalized(self)
     }
 
     pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed::Typed(th, Box::new(t))
+        Typed(TypeThunk::from_thunk_and_type(th, t))
     }
     pub fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed::Untyped(th)
+        Typed(TypeThunk::from_thunk_untyped(th))
     }
     pub fn from_const(c: Const) -> Self {
-        Typed::Const(c)
+        Typed(TypeThunk::from_const(c))
     }
     pub fn from_value_untyped(v: Value) -> Self {
-        Typed::from_thunk_untyped(Thunk::from_value(v))
+        Typed(TypeThunk::from_value_untyped(v))
+    }
+    pub fn from_typethunk(th: TypeThunk) -> Self {
+        Typed(th)
     }
 
-    // TODO: Avoid cloning if possible
     pub fn to_value(&self) -> Value {
-        match self {
-            Typed::Untyped(th) | Typed::Typed(th, _) => th.to_value(),
-            Typed::Const(c) => Value::Const(*c),
-        }
+        self.0.to_value()
     }
     pub fn to_expr(&self) -> NormalizedSubExpr {
-        self.to_value().normalize_to_expr()
+        self.0.to_expr()
     }
     pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
-        self.to_value().normalize_to_expr_maybe_alpha(true)
+        self.0.to_expr_alpha()
     }
     pub fn to_thunk(&self) -> Thunk {
-        match self {
-            Typed::Untyped(th) | Typed::Typed(th, _) => th.clone(),
-            Typed::Const(c) => Thunk::from_value(Value::Const(*c)),
-        }
+        self.0.to_thunk()
     }
     // Deprecated
     pub fn to_type(&self) -> Type {
-        self.clone().into_type()
+        self.clone()
     }
     // Deprecated
     pub fn into_type(self) -> Type {
         self
     }
+    pub fn into_typethunk(self) -> TypeThunk {
+        self.0
+    }
     pub fn to_normalized(&self) -> Normalized {
         self.clone().normalize()
     }
     pub fn as_const(&self) -> Option<Const> {
-        // TODO: avoid clone
-        match &self.to_value() {
-            Value::Const(c) => Some(*c),
-            _ => None,
-        }
+        self.0.as_const()
     }
 
     pub fn normalize_mut(&mut self) {
-        match self {
-            Typed::Untyped(th) | Typed::Typed(th, _) => th.normalize_mut(),
-            Typed::Const(_) => {}
-        }
+        self.0.normalize_mut()
     }
 
     pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        match self {
-            Typed::Untyped(_) => Err(TypeError::new(
-                &TypecheckContext::new(),
-                TypeMessage::Untyped,
-            )),
-            Typed::Typed(_, t) => Ok(Cow::Borrowed(t)),
-            Typed::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
-        }
+        self.0.get_type()
     }
 }
 
@@ -208,14 +177,7 @@ impl Normalized {
 
 impl Shift for Typed {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            Typed::Untyped(th) => Typed::Untyped(th.shift(delta, var)?),
-            Typed::Typed(th, t) => Typed::Typed(
-                th.shift(delta, var)?,
-                Box::new(t.shift(delta, var)?),
-            ),
-            Typed::Const(c) => Typed::Const(*c),
-        })
+        Some(Typed(self.0.shift(delta, var)?))
     }
 }
 
@@ -227,14 +189,7 @@ impl Shift for Normalized {
 
 impl Subst<Typed> for Typed {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        match self {
-            Typed::Untyped(th) => Typed::Untyped(th.subst_shift(var, val)),
-            Typed::Typed(th, t) => Typed::Typed(
-                th.subst_shift(var, val),
-                Box::new(t.subst_shift(var, val)),
-            ),
-            Typed::Const(c) => Typed::Const(*c),
-        }
+        Typed(self.0.subst_shift(var, val))
     }
 }
 
