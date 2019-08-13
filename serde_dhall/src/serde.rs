@@ -1,4 +1,5 @@
-use crate::de::{Deserialize, Error, Result, Value};
+use crate::de::{Deserialize, Error, Result};
+use crate::Value;
 use dhall_syntax::{ExprF, SubExpr, X};
 use std::borrow::Cow;
 

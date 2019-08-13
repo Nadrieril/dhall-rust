@@ -5,28 +5,27 @@
 //!
 //! You can think of Dhall as: JSON + types + imports + functions
 //!
-//! For a description of the dhall language, examples, tutorials, and more, see the [language
+//! For a description of the Dhall language, examples, tutorials, and more, see the [language
 //! website][dhall].
 //!
-//! This crate provides support for consuming dhall files the same way you would consume JSON or
-//! YAML. It uses the [Serde][serde] serialization library to provide drop-in support for dhall
+//! This crate provides support for consuming Dhall files the same way you would consume JSON or
+//! YAML. It uses the [Serde][serde] serialization library to provide drop-in support for Dhall
 //! for any datatype that supports serde (and that's a lot of them !).
 //!
-//! This library is limited to deserializing (reading) dhall values; serializing (writing)
-//! values to dhall is not supported for now.
+//! This library is limited to deserializing (reading) Dhall values; serializing (writing)
+//! values to Dhall is not supported for now.
 //!
 //! # Examples
 //!
 //! ### Custom datatype
 //!
 //! If you have a custom datatype for which you derived [serde::Deserialize], chances are
-//! you will be able to derive [StaticType][de::StaticType] for it as well.
-//! This gives you access to a dhall representation of your datatype that can be outputted
-//! to users, and allows easy type-safe deserializing.
+//! you will be able to derive [StaticType] for it as well.
+//! This allows easy type-safe deserializing.
 //!
 //! ```edition2018
 //! use serde::Deserialize;
-//! use serde_dhall::de::StaticType;
+//! use serde_dhall::{de::Error, StaticType};
 //!
 //! #[derive(Debug, Deserialize, StaticType)]
 //! struct Point {
@@ -34,71 +33,78 @@
 //!     y: u64,
 //! }
 //!
-//! fn main() {
-//!     // Some dhall data
+//! fn main() -> Result<(), Error> {
+//!     // Some Dhall data
 //!     let data = "{ x = 1, y = 1 + 1 }";
 //!
-//!     // Convert the dhall string to a Point.
-//!     let point: Point =
-//!             serde_dhall::de::from_str_auto_type(&data)
-//!                 .expect("An error ocurred !");
+//!     // Convert the Dhall string to a Point.
+//!     let point: Point = serde_dhall::from_str_auto_type(data)?;
+//!     assert_eq!(point.x, 1);
+//!     assert_eq!(point.y, 2);
 //!
-//!     // Prints "point = Point { x: 1, y: 2 }"
-//!     println!("point = {:?}", point);
+//!     // Invalid data fails the type validation
+//!     let invalid_data = "{ x = 1, z = 0.3 }";
+//!     assert!(serde_dhall::from_str_auto_type::<Point>(invalid_data).is_err());
+//!
+//!     Ok(())
 //! }
 //! ```
 //!
 //! ### Loosely typed
 //!
 //! If you used to consume JSON or YAML in a loosely typed way, you can continue to do so
-//! with dhall. You only need to replace [serde_json::from_str] or [serde_yaml::from_str]
-//! with [serde_dhall::de::from_str][de::from_str].
-//! More generally, if the [StaticType][de::StaticType] derive doesn't suit your
-//! needs, you can still deserialize any valid dhall file that serde can handle.
+//! with Dhall. You only need to replace [serde_json::from_str] or [serde_yaml::from_str]
+//! with [serde_dhall::from_str][from_str].
+//! More generally, if the [StaticType] derive doesn't suit your
+//! needs, you can still deserialize any valid Dhall file that serde can handle.
 //!
 //! [serde_json::from_str]: https://docs.serde.rs/serde_json/de/fn.from_str.html
 //! [serde_yaml::from_str]: https://docs.serde.rs/serde_yaml/fn.from_str.html
 //!
 //! ```edition2018
+//! # fn main() -> serde_dhall::de::Result<()> {
 //! use std::collections::BTreeMap;
 //!
-//! let mut map = BTreeMap::new();
-//! map.insert("x".to_string(), 1);
-//! map.insert("y".to_string(), 2);
-//!
-//! // Some dhall data
+//! // Some Dhall data
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Deserialize it to a Rust type.
-//! let deserialized_map: BTreeMap<String, usize> =
-//!         serde_dhall::de::from_str(&data, None)
-//!             .expect("Failed reading the data !");
-//! assert_eq!(map, deserialized_map);
+//! let deserialized_map: BTreeMap<String, usize> = serde_dhall::from_str(data)?;
+//!
+//! let mut expected_map = BTreeMap::new();
+//! expected_map.insert("x".to_string(), 1);
+//! expected_map.insert("y".to_string(), 2);
+//!
+//! assert_eq!(deserialized_map, expected_map);
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! You can of course specify a dhall type that the input should match.
+//! You can alternatively specify a Dhall type that the input should match.
 //!
 //! ```edition2018
+//! # fn main() -> serde_dhall::de::Result<()> {
 //! use std::collections::BTreeMap;
 //!
-//! let mut map = BTreeMap::new();
-//! map.insert("x".to_string(), 1);
-//! map.insert("y".to_string(), 2);
+//! // Parse a Dhall type
+//! let point_type_str = "{ x: Natural, y: Natural }";
+//! let point_type = serde_dhall::from_str(point_type_str)?;
 //!
-//! // Some dhall data
+//! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
-//! let point_type_data = "{ x: Natural, y: Natural }";
 //!
-//! // Construct a type
-//! let point_type =
-//!         serde_dhall::de::from_str(point_type_data, None)
-//!             .expect("Could not parse the Point type");
-//!
-//! // Deserialize it to a Rust type.
+//! // Deserialize the data to a Rust type. This ensures that
+//! // the data matches the point type.
 //! let deserialized_map: BTreeMap<String, usize> =
-//!         serde_dhall::de::from_str(&point_data, Some(&point_type))
-//!             .expect("Failed reading the data !");
-//! assert_eq!(map, deserialized_map);
+//!         serde_dhall::from_str_check_type(point_data, &point_type)?;
+//!
+//! let mut expected_map = BTreeMap::new();
+//! expected_map.insert("x".to_string(), 1);
+//! expected_map.insert("y".to_string(), 2);
+//!
+//! assert_eq!(deserialized_map, expected_map);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! [dhall]: https://dhall-lang.org/
@@ -108,9 +114,16 @@
 mod serde;
 mod static_type;
 
+#[doc(inline)]
+pub use de::{from_str, from_str_auto_type, from_str_check_type};
+#[doc(hidden)]
+pub use dhall_proc_macros::StaticType;
+pub use static_type::StaticType;
+#[doc(inline)]
 pub use value::Value;
 
-mod value {
+// A Dhall value.
+pub mod value {
     use dhall::core::thunk::{Thunk, TypeThunk};
     use dhall::core::value::Value as DhallValue;
     use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
@@ -197,47 +210,44 @@ mod value {
     }
 }
 
-mod error {
-    use dhall::error::Error as DhallError;
+/// Deserialize Dhall data to a Rust data structure.
+pub mod de {
+    use super::StaticType;
+    use super::Value;
+    pub use error::{Error, Result};
 
-    pub type Result<T> = std::result::Result<T, Error>;
+    mod error {
+        use dhall::error::Error as DhallError;
 
-    #[derive(Debug)]
-    #[non_exhaustive]
-    pub enum Error {
-        Dhall(DhallError),
-        Deserialize(String),
-    }
+        pub type Result<T> = std::result::Result<T, Error>;
 
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            match self {
-                Error::Dhall(err) => write!(f, "{}", err),
-                Error::Deserialize(err) => write!(f, "{}", err),
+        #[derive(Debug)]
+        #[non_exhaustive]
+        pub enum Error {
+            Dhall(DhallError),
+            Deserialize(String),
+        }
+
+        impl std::fmt::Display for Error {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                match self {
+                    Error::Dhall(err) => write!(f, "{}", err),
+                    Error::Deserialize(err) => write!(f, "{}", err),
+                }
+            }
+        }
+
+        impl std::error::Error for Error {}
+
+        impl serde::de::Error for Error {
+            fn custom<T>(msg: T) -> Self
+            where
+                T: std::fmt::Display,
+            {
+                Error::Deserialize(msg.to_string())
             }
         }
     }
-
-    impl std::error::Error for Error {}
-
-    impl serde::de::Error for Error {
-        fn custom<T>(msg: T) -> Self
-        where
-            T: std::fmt::Display,
-        {
-            Error::Deserialize(msg.to_string())
-        }
-    }
-}
-
-/// Deserialization of Dhall expressions into Rust
-pub mod de {
-    #[doc(hidden)]
-    pub use dhall_proc_macros::StaticType;
-
-    pub use super::error::{Error, Result};
-    pub use super::static_type::StaticType;
-    pub use super::Value;
 
     /// A data structure that can be deserialized from a Dhall expression
     ///
@@ -247,37 +257,45 @@ pub mod de {
     /// This trait cannot be implemented manually.
     // TODO: seal trait
     pub trait Deserialize: Sized {
-        /// See [dhall::de::from_str][crate::de::from_str]
+        /// See [serde_dhall::from_str][crate::from_str]
         fn from_dhall(v: &Value) -> Result<Self>;
     }
 
-    /// Deserialize an instance of type T from a string of Dhall text.
+    /// Deserialize an instance of type `T` from a string of Dhall text.
     ///
     /// This will recursively resolve all imports in the expression, and
     /// typecheck it before deserialization. Relative imports will be resolved relative to the
     /// provided file. More control over this process is not yet available
     /// but will be in a coming version of this crate.
-    ///
-    /// If a type is provided, this additionally checks that the provided
-    /// expression has that type.
-    pub fn from_str<T>(s: &str, ty: Option<&Value>) -> Result<T>
+    pub fn from_str<T>(s: &str) -> Result<T>
     where
         T: Deserialize,
     {
-        T::from_dhall(&Value::from_str(s, ty)?)
+        T::from_dhall(&Value::from_str(s, None)?)
     }
 
-    /// Deserialize an instance of type T from a string of Dhall text,
-    /// additionally checking that it matches the type of T.
+    /// Deserialize an instance of type `T` from a string of Dhall text,
+    /// additionally checking that it matches the supplied type.
     ///
-    /// This will recursively resolve all imports in the expression, and
-    /// typecheck it before deserialization. Relative imports will be resolved relative to the
-    /// provided file. More control over this process is not yet available
-    /// but will be in a coming version of this crate.
+    /// Like [from_str], but this additionally checks that
+    /// the type of the provided expression matches the supplied type.
+    pub fn from_str_check_type<T>(s: &str, ty: &Value) -> Result<T>
+    where
+        T: Deserialize,
+    {
+        T::from_dhall(&Value::from_str(s, Some(ty))?)
+    }
+
+    /// Deserialize an instance of type `T` from a string of Dhall text,
+    /// additionally checking that it matches the type of `T`.
+    ///
+    /// Like [from_str], but this additionally checks that
+    /// the type of the provided expression matches the output type `T`. The [StaticType] trait
+    /// captures Rust types that are valid Dhall types.
     pub fn from_str_auto_type<T>(s: &str) -> Result<T>
     where
         T: Deserialize + StaticType,
     {
-        from_str(s, Some(&<T as StaticType>::static_type()))
+        from_str_check_type(s, &<T as StaticType>::static_type())
     }
 }
