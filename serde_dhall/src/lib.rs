@@ -106,25 +106,29 @@
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html
 
 mod serde;
-pub(crate) mod static_type;
+mod static_type;
 
 pub use value::Value;
 
 mod value {
-    use super::de::{Error, Result};
-    use super::Type;
-    use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
+    use dhall::core::thunk::{Thunk, TypeThunk};
+    use dhall::core::value::Value as DhallValue;
+    use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
+    use dhall_syntax::Builtin;
 
-    // A Dhall value
+    use super::de::{Error, Result};
+
+    /// A Dhall value
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Value(Typed);
 
     impl Value {
-        pub fn from_str(s: &str, ty: Option<&Type>) -> Result<Self> {
+        pub fn from_str(s: &str, ty: Option<&Value>) -> Result<Self> {
             Value::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
         }
         fn from_str_using_dhall_error_type(
             s: &str,
-            ty: Option<&Type>,
+            ty: Option<&Value>,
         ) -> dhall::error::Result<Self> {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
@@ -136,53 +140,37 @@ mod value {
         pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
             self.0.to_expr()
         }
-        pub(crate) fn to_typed(&self) -> Typed {
-            self.0.clone()
+        pub(crate) fn to_thunk(&self) -> Thunk {
+            self.0.to_thunk()
         }
-    }
-}
+        pub(crate) fn to_type(&self) -> Type {
+            self.0.to_type()
+        }
 
-pub use typ::Type;
-
-mod typ {
-    use dhall::core::thunk::{Thunk, TypeThunk};
-    use dhall::core::value::Value;
-    use dhall::phase::{NormalizedSubExpr, Typed};
-    use dhall_syntax::Builtin;
-
-    use super::de::Result;
-
-    /// A Dhall expression representing a type.
-    ///
-    /// This captures what is usually simply called a "type", like
-    /// `Bool`, `{ x: Integer }` or `Natural -> Text`.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Type(Typed);
-
-    impl Type {
-        pub(crate) fn from_value(v: Value) -> Self {
-            Type(Typed::from_value_untyped(v))
+        pub(crate) fn from_dhall_value(v: DhallValue) -> Self {
+            Value(Typed::from_value_untyped(v))
         }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Self::from_value(Value::from_builtin(b))
+            Self::from_dhall_value(DhallValue::from_builtin(b))
         }
-        pub(crate) fn make_optional_type(t: Type) -> Self {
-            Self::from_value(Value::AppliedBuiltin(
+        pub(crate) fn make_optional_type(t: Value) -> Self {
+            Self::from_dhall_value(DhallValue::AppliedBuiltin(
                 Builtin::Optional,
                 vec![t.to_thunk()],
             ))
         }
-        pub(crate) fn make_list_type(t: Type) -> Self {
-            Self::from_value(Value::AppliedBuiltin(
+        pub(crate) fn make_list_type(t: Value) -> Self {
+            Self::from_dhall_value(DhallValue::AppliedBuiltin(
                 Builtin::List,
                 vec![t.to_thunk()],
             ))
         }
+        // Made public for the StaticType derive macro
         #[doc(hidden)]
         pub fn make_record_type(
-            kts: impl Iterator<Item = (String, Type)>,
+            kts: impl Iterator<Item = (String, Value)>,
         ) -> Self {
-            Self::from_value(Value::RecordType(
+            Self::from_dhall_value(DhallValue::RecordType(
                 kts.map(|(k, t)| {
                     (k.into(), TypeThunk::from_thunk(t.to_thunk()))
                 })
@@ -191,31 +179,20 @@ mod typ {
         }
         #[doc(hidden)]
         pub fn make_union_type(
-            kts: impl Iterator<Item = (String, Option<Type>)>,
+            kts: impl Iterator<Item = (String, Option<Value>)>,
         ) -> Self {
-            Self::from_value(Value::UnionType(
+            Self::from_dhall_value(DhallValue::UnionType(
                 kts.map(|(k, t)| {
                     (k.into(), t.map(|t| TypeThunk::from_thunk(t.to_thunk())))
                 })
                 .collect(),
             ))
         }
-
-        pub(crate) fn to_thunk(&self) -> Thunk {
-            self.0.to_thunk()
-        }
-        #[allow(dead_code)]
-        pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-            self.0.to_expr()
-        }
-        pub(crate) fn to_type(&self) -> dhall::phase::Type {
-            self.0.to_type()
-        }
     }
 
-    impl super::de::Deserialize for Type {
-        fn from_dhall(v: &super::Value) -> Result<Self> {
-            Ok(Type(v.to_typed()))
+    impl super::de::Deserialize for Value {
+        fn from_dhall(v: &Value) -> Result<Self> {
+            Ok(v.clone())
         }
     }
 }
@@ -260,7 +237,7 @@ pub mod de {
 
     pub use super::error::{Error, Result};
     pub use super::static_type::StaticType;
-    pub use super::{Type, Value};
+    pub use super::Value;
 
     /// A data structure that can be deserialized from a Dhall expression
     ///
@@ -283,7 +260,7 @@ pub mod de {
     ///
     /// If a type is provided, this additionally checks that the provided
     /// expression has that type.
-    pub fn from_str<T>(s: &str, ty: Option<&Type>) -> Result<T>
+    pub fn from_str<T>(s: &str, ty: Option<&Value>) -> Result<T>
     where
         T: Deserialize,
     {

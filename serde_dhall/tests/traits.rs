@@ -1,9 +1,9 @@
 #![feature(proc_macro_hygiene)]
-use serde_dhall::de::{from_str, StaticType, Type};
+use serde_dhall::de::{from_str, StaticType, Value};
 
 #[test]
 fn test_static_type() {
-    fn parse(s: &str) -> Type {
+    fn parse(s: &str) -> Value {
         from_str(s, None).unwrap()
     }
 
