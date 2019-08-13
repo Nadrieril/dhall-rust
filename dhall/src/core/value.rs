@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural, X,
 };
 
-use crate::core::thunk::{Thunk, TypeThunk};
+use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::normalize::{
     apply_builtin, normalize_one_layer, squash_textlit, OutputSubExpr,
@@ -26,15 +26,15 @@ use crate::phase::Typed;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     /// Closures
-    Lam(AlphaLabel, TypeThunk, Thunk),
-    Pi(AlphaLabel, TypeThunk, TypeThunk),
+    Lam(AlphaLabel, TypedThunk, Thunk),
+    Pi(AlphaLabel, TypedThunk, TypedThunk),
     // Invariant: the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Thunk>),
     /// `λ(x: a) -> Some x`
-    OptionalSomeClosure(TypeThunk),
+    OptionalSomeClosure(TypedThunk),
     /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
     /// `λ(xs : List a) -> [ x ] # xs`
-    ListConsClosure(TypeThunk, Option<Thunk>),
+    ListConsClosure(TypedThunk, Option<Thunk>),
     /// `λ(x : Natural) -> x + 1`
     NaturalSuccClosure,
 
@@ -44,20 +44,20 @@ pub enum Value {
     NaturalLit(Natural),
     IntegerLit(Integer),
     DoubleLit(NaiveDouble),
-    EmptyOptionalLit(TypeThunk),
+    EmptyOptionalLit(TypedThunk),
     NEOptionalLit(Thunk),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
-    EmptyListLit(TypeThunk),
+    EmptyListLit(TypedThunk),
     NEListLit(Vec<Thunk>),
     RecordLit(HashMap<Label, Thunk>),
-    RecordType(HashMap<Label, TypeThunk>),
-    UnionType(HashMap<Label, Option<TypeThunk>>),
-    UnionConstructor(Label, HashMap<Label, Option<TypeThunk>>),
-    UnionLit(Label, Thunk, HashMap<Label, Option<TypeThunk>>),
+    RecordType(HashMap<Label, TypedThunk>),
+    UnionType(HashMap<Label, Option<TypedThunk>>),
+    UnionConstructor(Label, HashMap<Label, Option<TypedThunk>>),
+    UnionLit(Label, Thunk, HashMap<Label, Option<TypedThunk>>),
     // Invariant: this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
-    Equivalence(TypeThunk, TypeThunk),
+    Equivalence(TypedThunk, TypedThunk),
     // Invariant: this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Thunk, X>),
 }

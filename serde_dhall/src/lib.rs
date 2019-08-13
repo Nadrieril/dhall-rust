@@ -124,7 +124,7 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::core::thunk::{Thunk, TypeThunk};
+    use dhall::core::thunk::{Thunk, TypedThunk};
     use dhall::core::value::Value as DhallValue;
     use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
     use dhall_syntax::Builtin;
@@ -185,7 +185,7 @@ pub mod value {
         ) -> Self {
             Self::from_dhall_value(DhallValue::RecordType(
                 kts.map(|(k, t)| {
-                    (k.into(), TypeThunk::from_thunk(t.to_thunk()))
+                    (k.into(), TypedThunk::from_thunk(t.to_thunk()))
                 })
                 .collect(),
             ))
@@ -196,7 +196,7 @@ pub mod value {
         ) -> Self {
             Self::from_dhall_value(DhallValue::UnionType(
                 kts.map(|(k, t)| {
-                    (k.into(), t.map(|t| TypeThunk::from_thunk(t.to_thunk())))
+                    (k.into(), t.map(|t| TypedThunk::from_thunk(t.to_thunk())))
                 })
                 .collect(),
             ))

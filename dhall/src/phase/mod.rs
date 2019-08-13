@@ -4,7 +4,7 @@ use std::path::Path;
 
 use dhall_syntax::{Const, Import, Span, SubExpr, X};
 
-use crate::core::thunk::{Thunk, TypeThunk};
+use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
@@ -31,7 +31,7 @@ pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TypeThunk);
+pub struct Typed(TypedThunk);
 
 /// A normalized expression.
 ///
@@ -100,18 +100,18 @@ impl Typed {
     }
 
     pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed(TypeThunk::from_thunk_and_type(th, t))
+        Typed(TypedThunk::from_thunk_and_type(th, t))
     }
     pub fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed(TypeThunk::from_thunk_untyped(th))
+        Typed(TypedThunk::from_thunk_untyped(th))
     }
     pub fn from_const(c: Const) -> Self {
-        Typed(TypeThunk::from_const(c))
+        Typed(TypedThunk::from_const(c))
     }
     pub fn from_value_untyped(v: Value) -> Self {
-        Typed(TypeThunk::from_value_untyped(v))
+        Typed(TypedThunk::from_value_untyped(v))
     }
-    pub fn from_typethunk(th: TypeThunk) -> Self {
+    pub fn from_typethunk(th: TypedThunk) -> Self {
         Typed(th)
     }
 
@@ -135,7 +135,7 @@ impl Typed {
     pub fn into_type(self) -> Type {
         self
     }
-    pub fn into_typethunk(self) -> TypeThunk {
+    pub fn into_typethunk(self) -> TypedThunk {
         self.0
     }
     pub fn to_normalized(&self) -> Normalized {
