@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use dhall_syntax::{
     rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, SubExpr,
-    X,
 };
 
 use crate::core::context::{NormalizationContext, TypecheckContext};
@@ -214,7 +213,7 @@ macro_rules! make_type {
     };
 }
 
-fn type_of_builtin(b: Builtin) -> Expr<X> {
+fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
     use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -377,12 +376,11 @@ fn type_with(
                 e.as_ref().traverse_ref_with_special_handling_of_binders(
                     |e| type_with(ctx, e.clone()),
                     |_, _| unreachable!(),
-                    |_| unreachable!(),
                 )?;
             let ret = type_last_layer(ctx, &expr)?;
             match ret {
                 RetTypeOnly(typ) => {
-                    let expr = expr.map_ref_simple(|typed| typed.to_thunk());
+                    let expr = expr.map_ref(|typed| typed.to_thunk());
                     Typed::from_thunk_and_type(
                         Thunk::from_partial_expr(expr),
                         typ,
@@ -398,7 +396,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: &ExprF<Typed, X>,
+    e: &ExprF<Typed, Normalized>,
 ) -> Result<Ret, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
@@ -409,6 +407,9 @@ fn type_last_layer(
     let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
 
     match e {
+        Import(_) => unreachable!(
+            "There should remain no imports in a resolved expression"
+        ),
         Lam(_, _, _) | Pi(_, _, _) | Let(_, _, _, _) | Embed(_) | Var(_) => {
             unreachable!()
         }
@@ -598,9 +599,7 @@ fn type_last_layer(
             }
         }
         Const(c) => Ok(RetWhole(Typed::from_const(*c))),
-        Builtin(b) => {
-            Ok(RetTypeOnly(mktype(ctx, rc(type_of_builtin(*b)).absurd())?))
-        }
+        Builtin(b) => Ok(RetTypeOnly(mktype(ctx, rc(type_of_builtin(*b)))?)),
         BoolLit(_) => Ok(RetTypeOnly(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetTypeOnly(builtin_to_type(Natural)?)),
         IntegerLit(_) => Ok(RetTypeOnly(builtin_to_type(Integer)?)),
@@ -1016,7 +1015,7 @@ pub fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
 
 pub fn typecheck_with(e: Resolved, ty: &Type) -> Result<Typed, TypeError> {
     let expr: SubExpr<_> = e.0;
-    let ty: SubExpr<_> = ty.to_expr().absurd();
+    let ty: SubExpr<_> = ty.to_expr();
     type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }
 pub fn skip_typecheck(e: Resolved) -> Typed {

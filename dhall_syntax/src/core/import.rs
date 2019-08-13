@@ -13,21 +13,20 @@ pub enum FilePrefix {
 
 /// The location of import (i.e. local vs. remote vs. environment)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ImportLocation {
+pub enum ImportLocation<SubExpr> {
     Local(FilePrefix, Vec<String>),
-    Remote(URL),
+    Remote(URL<SubExpr>),
     Env(String),
     Missing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct URL {
+pub struct URL<SubExpr> {
     pub scheme: Scheme,
     pub authority: String,
     pub path: Vec<String>,
     pub query: Option<String>,
-    // TODO: implement inline headers
-    pub headers: Option<Box<ImportHashed>>,
+    pub headers: Option<SubExpr>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -49,15 +48,54 @@ pub enum Hash {
     SHA256(Vec<u8>),
 }
 
+/// Reference to an external resource
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ImportHashed {
-    pub location: ImportLocation,
+pub struct Import<SubExpr> {
+    pub mode: ImportMode,
+    pub location: ImportLocation<SubExpr>,
     pub hash: Option<Hash>,
 }
 
-/// Reference to an external resource
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Import {
-    pub mode: ImportMode,
-    pub location_hashed: ImportHashed,
+impl<SE> URL<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<URL<SE2>, Err> {
+        let headers = self.headers.as_ref().map(f).transpose()?;
+        Ok(URL {
+            scheme: self.scheme,
+            authority: self.authority.clone(),
+            path: self.path.clone(),
+            query: self.query.clone(),
+            headers,
+        })
+    }
+}
+
+impl<SE> ImportLocation<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<ImportLocation<SE2>, Err> {
+        use ImportLocation::*;
+        Ok(match self {
+            Local(prefix, path) => Local(prefix.clone(), path.clone()),
+            Remote(url) => Remote(url.visit_subexpr(f)?),
+            Env(env) => Env(env.clone()),
+            Missing => Missing,
+        })
+    }
+}
+
+impl<SE> Import<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<Import<SE2>, Err> {
+        Ok(Import {
+            mode: self.mode,
+            location: self.location.visit_subexpr(f)?,
+            hash: self.hash.clone(),
+        })
+    }
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use dhall_syntax::{
     rc, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
-    NaiveDouble, Natural, X,
+    NaiveDouble, Natural,
 };
 
 use crate::core::thunk::{Thunk, TypedThunk};
@@ -10,7 +10,7 @@ use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::normalize::{
     apply_builtin, normalize_one_layer, squash_textlit, OutputSubExpr,
 };
-use crate::phase::Typed;
+use crate::phase::{Normalized, Typed};
 
 /// A semantic value. The invariants ensure this value represents a Weak-Head
 /// Normal Form (WHNF). This means that this first constructor is the first constructor of the
@@ -59,7 +59,7 @@ pub enum Value {
     TextLit(Vec<InterpolatedTextContents<Thunk>>),
     Equivalence(TypedThunk, TypedThunk),
     // Invariant: this must not contain a value captured by one of the variants above.
-    PartialExpr(ExprF<Thunk, X>),
+    PartialExpr(ExprF<Thunk, Normalized>),
 }
 
 impl Value {
@@ -243,7 +243,7 @@ impl Value {
                 y.normalize_to_expr_maybe_alpha(alpha),
             )),
             Value::PartialExpr(e) => {
-                rc(e.map_ref_simple(|v| v.normalize_to_expr_maybe_alpha(alpha)))
+                rc(e.map_ref(|v| v.normalize_to_expr_maybe_alpha(alpha)))
             }
         }
     }
@@ -333,8 +333,8 @@ impl Value {
                 y.normalize_mut();
             }
             Value::PartialExpr(e) => {
-                // TODO: need map_mut_simple
-                e.map_ref_simple(|v| {
+                // TODO: need map_mut
+                e.map_ref(|v| {
                     v.normalize_nf();
                 });
             }
@@ -475,7 +475,6 @@ impl Shift for Value {
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                    |x| Ok(X::clone(x)),
                 )?,
             ),
         })
@@ -500,7 +499,6 @@ impl Subst<Typed> for Value {
                             &val.under_binder(x),
                         )
                     },
-                    X::clone,
                 ))
             }
             // Retry normalizing since substituting may allow progress

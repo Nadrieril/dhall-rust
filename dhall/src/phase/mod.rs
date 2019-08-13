@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Const, Import, SubExpr, X};
+use dhall_syntax::{Const, SubExpr, Void};
 
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
@@ -17,15 +17,17 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedSubExpr = SubExpr<Import>;
-pub type DecodedSubExpr = SubExpr<Import>;
+pub type ParsedSubExpr = SubExpr<Void>;
+pub type DecodedSubExpr = SubExpr<Void>;
 pub type ResolvedSubExpr = SubExpr<Normalized>;
-pub type NormalizedSubExpr = SubExpr<X>;
+pub type NormalizedSubExpr = SubExpr<Normalized>;
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedSubExpr, ImportRoot);
 
 /// An expression where all imports have been resolved
+///
+/// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
 pub struct Resolved(ResolvedSubExpr);
 
@@ -155,6 +157,10 @@ impl Typed {
 }
 
 impl Normalized {
+    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
+        crate::phase::binary::encode(&self.to_expr())
+    }
+
     #[allow(dead_code)]
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
@@ -217,6 +223,18 @@ macro_rules! derive_traits_for_wrapper_struct {
 derive_traits_for_wrapper_struct!(Parsed);
 derive_traits_for_wrapper_struct!(Resolved);
 derive_traits_for_wrapper_struct!(Normalized);
+
+impl std::hash::Hash for Normalized {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        match self.encode() {
+            Ok(vec) => vec.hash(state),
+            Err(_) => {}
+        }
+    }
+}
 
 impl Eq for Typed {}
 impl PartialEq for Typed {

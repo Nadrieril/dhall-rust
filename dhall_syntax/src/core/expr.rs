@@ -10,9 +10,15 @@ pub type Double = NaiveDouble;
 
 /// An empty type
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum X {}
+pub enum Void {}
 
-pub fn trivial_result<T>(x: Result<T, X>) -> T {
+impl std::fmt::Display for Void {
+    fn fmt(&self, _f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match *self {}
+    }
+}
+
+pub fn trivial_result<T>(x: Result<T, Void>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => match e {},
@@ -55,6 +61,15 @@ impl PartialEq for NaiveDouble {
 
 impl Eq for NaiveDouble {}
 
+impl std::hash::Hash for NaiveDouble {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.0.to_bits().hash(state)
+    }
+}
+
 impl From<f64> for NaiveDouble {
     fn from(x: f64) -> Self {
         NaiveDouble(x)
@@ -68,7 +83,7 @@ impl From<NaiveDouble> for f64 {
 }
 
 /// Constants for a pure type system
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Const {
     Type,
     Kind,
@@ -80,7 +95,7 @@ pub enum Const {
 /// The `Label` field is the variable's name (i.e. \"`x`\").
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V<Label>(pub Label, pub usize);
 
 // This is only for the specific `Label` type, not generic
@@ -97,7 +112,7 @@ impl<'a> From<&'a Label> for V<Label> {
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
     /// `x ? y`
     ImportAlt,
@@ -128,7 +143,7 @@ pub enum BinOp {
 }
 
 /// Built-ins
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Builtin {
     Bool,
     Natural,
@@ -162,8 +177,8 @@ pub enum Builtin {
 }
 
 // Each node carries an annotation. In practice it's either X (no annotation) or a Span.
-#[derive(Debug)]
-pub struct SubExpr<Embed>(Rc<(Expr<Embed>, Option<Span>)>);
+#[derive(Debug, Clone)]
+pub struct SubExpr<Embed>(Box<(Expr<Embed>, Option<Span>)>);
 
 impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
     fn eq(&self, other: &Self) -> bool {
@@ -173,13 +188,22 @@ impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
 
 impl<Embed: Eq> std::cmp::Eq for SubExpr<Embed> {}
 
+impl<Embed: std::hash::Hash> std::hash::Hash for SubExpr<Embed> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        (self.0).0.hash(state)
+    }
+}
+
 pub type Expr<Embed> = ExprF<SubExpr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprF<SubExpr, Embed> {
     Const(Const),
     ///  `x`
@@ -233,7 +257,9 @@ pub enum ExprF<SubExpr, Embed> {
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
     Projection(SubExpr, DupTreeSet<Label>),
-    /// Embeds an import or the result of resolving the import
+    /// `./some/path`
+    Import(Import<SubExpr>),
+    /// Embeds the result of resolving an import
     Embed(Embed),
 }
 
@@ -245,92 +271,62 @@ impl<SE, E> ExprF<SE, E> {
         v.visit(self)
     }
 
-    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, E2, Err>(
+    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
-        visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
-    ) -> Result<ExprF<SE2, E2>, Err> {
+    ) -> Result<ExprF<SE2, E>, Err>
+    where
+        E: Clone,
+    {
         self.visit(visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
-            visit_embed,
         })
     }
 
-    fn traverse_ref<'a, SE2, E2, Err>(
-        &'a self,
-        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-        visit_embed: impl FnOnce(&'a E) -> Result<E2, Err>,
-    ) -> Result<ExprF<SE2, E2>, Err> {
-        self.visit(visitor::TraverseRefVisitor {
-            visit_subexpr,
-            visit_embed,
-        })
-    }
-
-    pub fn map_ref_with_special_handling_of_binders<'a, SE2, E2>(
-        &'a self,
-        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-        mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
-        map_embed: impl FnOnce(&'a E) -> E2,
-    ) -> ExprF<SE2, E2> {
-        trivial_result(self.traverse_ref_with_special_handling_of_binders(
-            |x| Ok(map_subexpr(x)),
-            |l, x| Ok(map_under_binder(l, x)),
-            |x| Ok(map_embed(x)),
-        ))
-    }
-
-    pub fn map_ref<'a, SE2, E2>(
-        &'a self,
-        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-        map_embed: impl FnOnce(&'a E) -> E2,
-    ) -> ExprF<SE2, E2> {
-        trivial_result(
-            self.traverse_ref(|x| Ok(map_subexpr(x)), |x| Ok(map_embed(x))),
-        )
-    }
-
-    pub fn traverse_ref_simple<'a, SE2, Err>(
+    fn traverse_ref<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprF<SE2, E>, Err>
     where
         E: Clone,
     {
-        self.traverse_ref(visit_subexpr, |x| Ok(E::clone(x)))
+        self.visit(visitor::TraverseRefVisitor { visit_subexpr })
     }
 
-    pub fn map_ref_simple<'a, SE2>(
+    pub fn map_ref_with_special_handling_of_binders<'a, SE2>(
         &'a self,
-        map_subexpr: impl Fn(&'a SE) -> SE2,
+        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
+        mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
     ) -> ExprF<SE2, E>
     where
         E: Clone,
     {
-        self.map_ref(map_subexpr, E::clone)
+        trivial_result(self.traverse_ref_with_special_handling_of_binders(
+            |x| Ok(map_subexpr(x)),
+            |l, x| Ok(map_under_binder(l, x)),
+        ))
+    }
+
+    pub fn map_ref<'a, SE2>(
+        &'a self,
+        mut map_subexpr: impl FnMut(&'a SE) -> SE2,
+    ) -> ExprF<SE2, E>
+    where
+        E: Clone,
+    {
+        trivial_result(self.traverse_ref(|x| Ok(map_subexpr(x))))
     }
 }
 
 impl<E> Expr<E> {
-    fn traverse_embed<E2, Err>(
-        &self,
-        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<Expr<E2>, Err> {
-        self.visit(&mut visitor::TraverseEmbedVisitor(visit_embed))
-    }
-
-    fn map_embed<E2>(&self, mut map_embed: impl FnMut(&E) -> E2) -> Expr<E2> {
-        trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
-    }
-
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     ) -> Result<Expr<E2>, Err> {
         self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
-            visit_embed,
+            visit_import,
         ))
     }
 
@@ -339,21 +335,21 @@ impl<E> Expr<E> {
         visitor: &mut visitor::ResolveVisitor<F1>,
     ) -> Result<Expr<E2>, Err>
     where
-        F1: FnMut(&E) -> Result<E2, Err>,
+        F1: FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     {
         match self {
             ExprF::BinOp(BinOp::ImportAlt, l, r) => l
                 .as_ref()
                 .traverse_resolve_with_visitor(visitor)
                 .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
-            _ => self.visit(visitor),
+            _ => {
+                let e = self.visit(&mut *visitor)?;
+                Ok(match &e {
+                    ExprF::Import(import) => ExprF::Embed((visitor.0)(import)?),
+                    _ => e,
+                })
+            }
         }
-    }
-}
-
-impl Expr<X> {
-    pub fn absurd<E>(&self) -> Expr<E> {
-        self.visit(&mut visitor::AbsurdVisitor)
     }
 }
 
@@ -363,11 +359,11 @@ impl<E> SubExpr<E> {
     }
 
     pub fn new(x: Expr<E>, n: Span) -> Self {
-        SubExpr(Rc::new((x, Some(n))))
+        SubExpr(Box::new((x, Some(n))))
     }
 
     pub fn from_expr_no_span(x: Expr<E>) -> Self {
-        SubExpr(Rc::new((x, None)))
+        SubExpr(Box::new((x, None)))
     }
 
     pub fn from_builtin(b: Builtin) -> Self {
@@ -375,56 +371,16 @@ impl<E> SubExpr<E> {
     }
 
     pub fn rewrap<E2>(&self, x: Expr<E2>) -> SubExpr<E2> {
-        SubExpr(Rc::new((x, (self.0).1.clone())))
+        SubExpr(Box::new((x, (self.0).1.clone())))
     }
+}
 
-    pub fn traverse_embed<E2, Err>(
-        &self,
-        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<SubExpr<E2>, Err> {
-        Ok(self.rewrap(self.as_ref().traverse_embed(visit_embed)?))
-    }
-
-    pub fn map_embed<E2>(
-        &self,
-        map_embed: impl FnMut(&E) -> E2,
-    ) -> SubExpr<E2> {
-        self.rewrap(self.as_ref().map_embed(map_embed))
-    }
-
-    pub fn map_subexprs_with_special_handling_of_binders<'a>(
-        &'a self,
-        map_expr: impl FnMut(&'a Self) -> Self,
-        map_under_binder: impl FnMut(&'a Label, &'a Self) -> Self,
-    ) -> Self {
-        match self.as_ref() {
-            ExprF::Embed(_) => SubExpr::clone(self),
-            // This calls ExprF::map_ref
-            e => self.rewrap(e.map_ref_with_special_handling_of_binders(
-                map_expr,
-                map_under_binder,
-                |_| unreachable!(),
-            )),
-        }
-    }
-
+impl<E> SubExpr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_embed: impl FnMut(&E) -> Result<E2, Err>,
+        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
     ) -> Result<SubExpr<E2>, Err> {
-        Ok(self.rewrap(self.as_ref().traverse_resolve(visit_embed)?))
-    }
-}
-
-impl SubExpr<X> {
-    pub fn absurd<T>(&self) -> SubExpr<T> {
-        SubExpr::from_expr_no_span(self.as_ref().absurd())
-    }
-}
-
-impl<E> Clone for SubExpr<E> {
-    fn clone(&self) -> Self {
-        SubExpr(Rc::clone(&self.0))
+        Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
     }
 }
 

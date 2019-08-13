@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 /// A `(Context a)` associates `Text` labels with values of type `a`
 ///
-/// The `Context` is used for type-checking when `(a = Expr X)`
+/// The `Context` is used for type-checking when `(a = Expr)`
 ///
 /// * You create a `Context` using `empty` and `insert`
 /// * You transform a `Context` using `fmap`

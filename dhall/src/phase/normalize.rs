@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use dhall_syntax::{
     BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents,
-    NaiveDouble, X,
+    NaiveDouble,
 };
 
 use crate::core::context::NormalizationContext;
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
 use crate::core::var::Subst;
-use crate::phase::{NormalizedSubExpr, ResolvedSubExpr, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr, ResolvedSubExpr, Typed};
 
 pub type InputSubExpr = ResolvedSubExpr;
 pub type OutputSubExpr = NormalizedSubExpr;
@@ -86,7 +86,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                     // Empty string literal.
                     [] => {
                         // Printing InterpolatedText takes care of all the escaping
-                        let txt: InterpolatedText<X> =
+                        let txt: InterpolatedText<Normalized> =
                             std::iter::empty().collect();
                         let s = txt.to_string();
                         Ok((
@@ -98,10 +98,11 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                     // interpolations, there is a single Text item) in the literal.
                     [InterpolatedTextContents::Text(s)] => {
                         // Printing InterpolatedText takes care of all the escaping
-                        let txt: InterpolatedText<X> = std::iter::once(
-                            InterpolatedTextContents::Text(s.clone()),
-                        )
-                        .collect();
+                        let txt: InterpolatedText<Normalized> =
+                            std::iter::once(InterpolatedTextContents::Text(
+                                s.clone(),
+                            ))
+                            .collect();
                         let s = txt.to_string();
                         Ok((
                             r,
@@ -376,11 +377,10 @@ pub fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     }
 
     // Thunk subexpressions
-    let expr: ExprF<Thunk, X> =
+    let expr: ExprF<Thunk, Normalized> =
         expr.as_ref().map_ref_with_special_handling_of_binders(
             |e| Thunk::new(ctx.clone(), e.clone()),
             |x, e| Thunk::new(ctx.skip(x), e.clone()),
-            |_| unreachable!(),
         );
 
     normalize_one_layer(expr)
@@ -391,7 +391,7 @@ enum Ret<'a> {
     Value(Value),
     Thunk(Thunk),
     ThunkRef(&'a Thunk),
-    Expr(ExprF<Thunk, X>),
+    Expr(ExprF<Thunk, Normalized>),
 }
 
 /// Performs an intersection of two HashMaps.
@@ -636,7 +636,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     })
 }
 
-pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
+pub fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
     use Value::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
         NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
@@ -644,6 +644,9 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, X>) -> Value {
     };
 
     let ret = match expr {
+        ExprF::Import(_) => unreachable!(
+            "There should remain no imports in a resolved expression"
+        ),
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => Ret::Thunk(x),

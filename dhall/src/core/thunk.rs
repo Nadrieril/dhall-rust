@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
-use dhall_syntax::{Const, ExprF, X};
+use dhall_syntax::{Const, ExprF};
 
 use crate::core::context::{NormalizationContext, TypecheckContext};
 use crate::core::value::Value;
@@ -12,7 +12,7 @@ use crate::phase::normalize::{
     apply_any, normalize_one_layer, normalize_whnf, InputSubExpr, OutputSubExpr,
 };
 use crate::phase::typecheck::type_of_const;
-use crate::phase::{NormalizedSubExpr, Type, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
 
 #[derive(Debug, Clone, Copy)]
 enum Marker {
@@ -30,7 +30,7 @@ enum ThunkInternal {
     /// Partially normalized value whose subexpressions have been thunked (this is returned from
     /// typechecking). Note that this is different from `Value::PartialExpr` because there is no
     /// requirement of WHNF here.
-    PartialExpr(ExprF<Thunk, X>),
+    PartialExpr(ExprF<Thunk, Normalized>),
     /// Partially normalized value.
     /// Invariant: if the marker is `NF`, the value must be fully normalized
     Value(Marker, Value),
@@ -123,7 +123,7 @@ impl Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
 
-    pub fn from_partial_expr(e: ExprF<Thunk, X>) -> Thunk {
+    pub fn from_partial_expr(e: ExprF<Thunk, Normalized>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }
 
@@ -309,7 +309,6 @@ impl Shift for ThunkInternal {
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                    |x| Ok(X::clone(x)),
                 )?,
             ),
             ThunkInternal::Value(m, v) => {
@@ -356,7 +355,6 @@ impl Subst<Typed> for ThunkInternal {
                             &val.under_binder(x),
                         )
                     },
-                    X::clone,
                 ),
             ),
             ThunkInternal::Value(_, v) => {
