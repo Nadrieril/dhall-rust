@@ -631,14 +631,12 @@ where
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => {
-                    ser_seq.serialize_element(&self::Serialize::Expr(
-                        &SubExpr::from_expr_no_note(ExprF::Embed(Import {
-                            mode: ImportMode::Code,
-                            location_hashed: location_hashed.as_ref().clone(),
-                        })),
-                    ))?
-                }
+                Some(location_hashed) => ser_seq.serialize_element(
+                    &self::Serialize::Expr(&rc(ExprF::Embed(Import {
+                        mode: ImportMode::Code,
+                        location_hashed: location_hashed.as_ref().clone(),
+                    }))),
+                )?,
             };
             ser_seq.serialize_element(&url.authority)?;
             for p in &url.path {
@@ -689,13 +687,13 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
     }
 }
 
-fn collect_nested_applications<'a, N, E>(
-    e: &'a SubExpr<N, E>,
-) -> (&'a SubExpr<N, E>, Vec<&'a SubExpr<N, E>>) {
-    fn go<'a, N, E>(
-        e: &'a SubExpr<N, E>,
-        vec: &mut Vec<&'a SubExpr<N, E>>,
-    ) -> &'a SubExpr<N, E> {
+fn collect_nested_applications<'a, E>(
+    e: &'a SubExpr<E>,
+) -> (&'a SubExpr<E>, Vec<&'a SubExpr<E>>) {
+    fn go<'a, E>(
+        e: &'a SubExpr<E>,
+        vec: &mut Vec<&'a SubExpr<E>>,
+    ) -> &'a SubExpr<E> {
         match e.as_ref() {
             ExprF::App(f, a) => {
                 vec.push(a);
@@ -709,16 +707,15 @@ fn collect_nested_applications<'a, N, E>(
     (e, vec)
 }
 
-type LetBinding<'a, N, E> =
-    (&'a Label, &'a Option<SubExpr<N, E>>, &'a SubExpr<N, E>);
+type LetBinding<'a, E> = (&'a Label, &'a Option<SubExpr<E>>, &'a SubExpr<E>);
 
-fn collect_nested_lets<'a, N, E>(
-    e: &'a SubExpr<N, E>,
-) -> (&'a SubExpr<N, E>, Vec<LetBinding<'a, N, E>>) {
-    fn go<'a, N, E>(
-        e: &'a SubExpr<N, E>,
-        vec: &mut Vec<LetBinding<'a, N, E>>,
-    ) -> &'a SubExpr<N, E> {
+fn collect_nested_lets<'a, E>(
+    e: &'a SubExpr<E>,
+) -> (&'a SubExpr<E>, Vec<LetBinding<'a, E>>) {
+    fn go<'a, E>(
+        e: &'a SubExpr<E>,
+        vec: &mut Vec<LetBinding<'a, E>>,
+    ) -> &'a SubExpr<E> {
         match e.as_ref() {
             ExprF::Let(l, t, v, e) => {
                 vec.push((l, t, v));

@@ -111,21 +111,21 @@ enum PrintPhase {
 // Wraps an Expr with a phase, so that phase selsction can be done
 // separate from the actual printing
 #[derive(Clone)]
-struct PhasedExpr<'a, S, A>(&'a SubExpr<S, A>, PrintPhase);
+struct PhasedExpr<'a, A>(&'a SubExpr<A>, PrintPhase);
 
-impl<'a, S: Clone, A: Display + Clone> Display for PhasedExpr<'a, S, A> {
+impl<'a, A: Display + Clone> Display for PhasedExpr<'a, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.as_ref().fmt_phase(f, self.1)
     }
 }
 
-impl<'a, S: Clone, A: Display + Clone> PhasedExpr<'a, S, A> {
-    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, S, A> {
+impl<'a, A: Display + Clone> PhasedExpr<'a, A> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, A> {
         PhasedExpr(self.0, phase)
     }
 }
 
-impl<S: Clone, A: Display + Clone> Expr<S, A> {
+impl<A: Display + Clone> Expr<A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
@@ -196,7 +196,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
     }
 }
 
-impl<S: Clone, A: Display + Clone> Display for SubExpr<S, A> {
+impl<A: Display + Clone> Display for SubExpr<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }

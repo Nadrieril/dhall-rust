@@ -1,7 +1,10 @@
+use std::borrow::Cow;
+
+use dhall::phase::NormalizedSubExpr;
+use dhall_syntax::ExprF;
+
 use crate::de::{Deserialize, Error, Result};
 use crate::Value;
-use dhall_syntax::{ExprF, SubExpr, X};
-use std::borrow::Cow;
 
 impl<'a, T> Deserialize for T
 where
@@ -12,7 +15,7 @@ where
     }
 }
 
-struct Deserializer<'a>(Cow<'a, SubExpr<X, X>>);
+struct Deserializer<'a>(Cow<'a, NormalizedSubExpr>);
 
 impl<'de: 'a, 'a> serde::de::IntoDeserializer<'de, Error> for Deserializer<'a> {
     type Deserializer = Deserializer<'a>;

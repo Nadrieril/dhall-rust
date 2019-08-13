@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, Span,
-    SubExpr, X,
+    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, SubExpr,
+    X,
 };
 
 use crate::core::context::{NormalizationContext, TypecheckContext};
@@ -214,7 +214,7 @@ macro_rules! make_type {
     };
 }
 
-fn type_of_builtin(b: Builtin) -> Expr<X, X> {
+fn type_of_builtin(b: Builtin) -> Expr<X> {
     use dhall_syntax::Builtin::*;
     match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -303,7 +303,7 @@ fn type_of_builtin(b: Builtin) -> Expr<X, X> {
 /// and turn it into a type, typechecking it along the way.
 pub fn mktype(
     ctx: &TypecheckContext,
-    e: SubExpr<Span, Normalized>,
+    e: SubExpr<Normalized>,
 ) -> Result<Type, TypeError> {
     Ok(type_with(ctx, e)?.to_type())
 }
@@ -326,7 +326,7 @@ enum Ret {
 /// normalized as well.
 fn type_with(
     ctx: &TypecheckContext,
-    e: SubExpr<Span, Normalized>,
+    e: SubExpr<Normalized>,
 ) -> Result<Typed, TypeError> {
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
@@ -1002,7 +1002,7 @@ fn type_last_layer(
 /// `typeOf` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-fn type_of(e: SubExpr<Span, Normalized>) -> Result<Typed, TypeError> {
+fn type_of(e: SubExpr<Normalized>) -> Result<Typed, TypeError> {
     let ctx = TypecheckContext::new();
     let e = type_with(&ctx, e)?;
     // Ensure `e` has a type (i.e. `e` is not `Sort`)
@@ -1015,8 +1015,8 @@ pub fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
 }
 
 pub fn typecheck_with(e: Resolved, ty: &Type) -> Result<Typed, TypeError> {
-    let expr: SubExpr<_, _> = e.0;
-    let ty: SubExpr<_, _> = ty.to_expr().absurd();
+    let expr: SubExpr<_> = e.0;
+    let ty: SubExpr<_> = ty.to_expr().absurd();
     type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }
 pub fn skip_typecheck(e: Resolved) -> Typed {

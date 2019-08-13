@@ -15,45 +15,14 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-type ParsedExpr = Expr<Span, Import>;
-type ParsedSubExpr = SubExpr<Span, Import>;
-type ParsedText = InterpolatedText<SubExpr<Span, Import>>;
-type ParsedTextContents = InterpolatedTextContents<SubExpr<Span, Import>>;
+pub(crate) type ParsedExpr = Expr<Import>;
+pub(crate) type ParsedSubExpr = SubExpr<Import>;
+type ParsedText = InterpolatedText<SubExpr<Import>>;
+type ParsedTextContents = InterpolatedTextContents<SubExpr<Import>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
-
-fn unspanned(x: ParsedExpr) -> ParsedSubExpr {
-    SubExpr::from_expr_no_note(x)
-}
-
-#[derive(Debug, Clone)]
-pub struct Span {
-    input: Rc<str>,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    start: usize,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    end: usize,
-}
-
-impl Span {
-    fn make(input: Rc<str>, sp: pest::Span) -> Self {
-        Span {
-            input,
-            start: sp.start(),
-            end: sp.end(),
-        }
-    }
-}
-
-fn spanned(span: Span, x: ParsedExpr) -> ParsedSubExpr {
-    SubExpr::new(x, span)
-}
 
 #[derive(Debug)]
 enum Either<A, B> {

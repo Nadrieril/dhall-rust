@@ -336,19 +336,18 @@ where
 
 pub struct TraverseEmbedVisitor<F1>(pub F1);
 
-impl<'a, 'b, N, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, E, E2>
+impl<'a, 'b, E, E2, Err, F1>
+    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
     for &'b mut TraverseEmbedVisitor<F1>
 where
-    N: Clone + 'a,
     F1: FnMut(&E) -> Result<E2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(
         &mut self,
-        subexpr: &'a SubExpr<N, E>,
-    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        subexpr: &'a SubExpr<E>,
+    ) -> Result<SubExpr<E2>, Self::Error> {
         Ok(subexpr.rewrap(subexpr.as_ref().visit(&mut **self)?))
     }
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
@@ -358,19 +357,18 @@ where
 
 pub struct ResolveVisitor<F1>(pub F1);
 
-impl<'a, 'b, N, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<N, E>, SubExpr<N, E2>, E, E2>
+impl<'a, 'b, E, E2, Err, F1>
+    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
     for &'b mut ResolveVisitor<F1>
 where
-    N: Clone + 'a,
     F1: FnMut(&E) -> Result<E2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(
         &mut self,
-        subexpr: &'a SubExpr<N, E>,
-    ) -> Result<SubExpr<N, E2>, Self::Error> {
+        subexpr: &'a SubExpr<E>,
+    ) -> Result<SubExpr<E2>, Self::Error> {
         Ok(subexpr.rewrap(
             subexpr
                 .as_ref()
@@ -381,30 +379,14 @@ where
         (self.0)(embed)
     }
 }
-pub struct NoteAbsurdVisitor;
-
-impl<'a, 'b, N, E>
-    ExprFInFallibleVisitor<'a, SubExpr<X, E>, SubExpr<N, E>, E, E>
-    for &'b mut NoteAbsurdVisitor
-where
-    E: Clone + 'a,
-{
-    fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X, E>) -> SubExpr<N, E> {
-        SubExpr::from_expr_no_note(subexpr.as_ref().visit(&mut **self))
-    }
-    fn visit_embed(self, embed: &'a E) -> E {
-        E::clone(embed)
-    }
-}
 
 pub struct AbsurdVisitor;
 
-impl<'a, 'b, N, E>
-    ExprFInFallibleVisitor<'a, SubExpr<X, X>, SubExpr<N, E>, X, E>
+impl<'a, 'b, E> ExprFInFallibleVisitor<'a, SubExpr<X>, SubExpr<E>, X, E>
     for &'b mut AbsurdVisitor
 {
-    fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X, X>) -> SubExpr<N, E> {
-        SubExpr::from_expr_no_note(subexpr.as_ref().visit(&mut **self))
+    fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X>) -> SubExpr<E> {
+        SubExpr::from_expr_no_span(subexpr.as_ref().visit(&mut **self))
     }
     fn visit_embed(self, embed: &'a X) -> E {
         match *embed {}

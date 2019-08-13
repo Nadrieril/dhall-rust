@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Const, Import, Span, SubExpr, X};
+use dhall_syntax::{Const, Import, SubExpr, X};
 
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
@@ -17,10 +17,10 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedSubExpr = SubExpr<Span, Import>;
-pub type DecodedSubExpr = SubExpr<X, Import>;
-pub type ResolvedSubExpr = SubExpr<Span, Normalized>;
-pub type NormalizedSubExpr = SubExpr<X, X>;
+pub type ParsedSubExpr = SubExpr<Import>;
+pub type DecodedSubExpr = SubExpr<Import>;
+pub type ResolvedSubExpr = SubExpr<Normalized>;
+pub type NormalizedSubExpr = SubExpr<X>;
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedSubExpr, ImportRoot);

@@ -19,6 +19,30 @@ pub fn trivial_result<T>(x: Result<T, X>) -> T {
     }
 }
 
+/// A location in the source text
+#[derive(Debug, Clone)]
+pub struct Span {
+    input: Rc<str>,
+    /// # Safety
+    ///
+    /// Must be a valid character boundary index into `input`.
+    start: usize,
+    /// # Safety
+    ///
+    /// Must be a valid character boundary index into `input`.
+    end: usize,
+}
+
+impl Span {
+    pub(crate) fn make(input: Rc<str>, sp: pest::Span) -> Self {
+        Span {
+            input,
+            start: sp.start(),
+            end: sp.end(),
+        }
+    }
+}
+
 /// Double with bitwise equality
 #[derive(Debug, Copy, Clone)]
 pub struct NaiveDouble(f64);
@@ -137,23 +161,19 @@ pub enum Builtin {
     TextShow,
 }
 
-pub type ParsedExpr = SubExpr<X, Import>;
-pub type ResolvedExpr = SubExpr<X, X>;
-pub type DhallExpr = ResolvedExpr;
-
 // Each node carries an annotation. In practice it's either X (no annotation) or a Span.
 #[derive(Debug)]
-pub struct SubExpr<Note, Embed>(Rc<(Expr<Note, Embed>, Option<Note>)>);
+pub struct SubExpr<Embed>(Rc<(Expr<Embed>, Option<Span>)>);
 
-impl<Note, Embed: PartialEq> std::cmp::PartialEq for SubExpr<Note, Embed> {
+impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
     fn eq(&self, other: &Self) -> bool {
         self.0.as_ref().0 == other.0.as_ref().0
     }
 }
 
-impl<Note, Embed: Eq> std::cmp::Eq for SubExpr<Note, Embed> {}
+impl<Embed: Eq> std::cmp::Eq for SubExpr<Embed> {}
 
-pub type Expr<Note, Embed> = ExprF<SubExpr<Note, Embed>, Embed>;
+pub type Expr<Embed> = ExprF<SubExpr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
@@ -293,31 +313,22 @@ impl<SE, E> ExprF<SE, E> {
     }
 }
 
-impl<N, E> Expr<N, E> {
+impl<E> Expr<E> {
     fn traverse_embed<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<Expr<N, E2>, Err>
-    where
-        N: Clone,
-    {
+    ) -> Result<Expr<E2>, Err> {
         self.visit(&mut visitor::TraverseEmbedVisitor(visit_embed))
     }
 
-    fn map_embed<E2>(&self, mut map_embed: impl FnMut(&E) -> E2) -> Expr<N, E2>
-    where
-        N: Clone,
-    {
+    fn map_embed<E2>(&self, mut map_embed: impl FnMut(&E) -> E2) -> Expr<E2> {
         trivial_result(self.traverse_embed(|x| Ok(map_embed(x))))
     }
 
     pub fn traverse_resolve<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<Expr<N, E2>, Err>
-    where
-        N: Clone,
-    {
+    ) -> Result<Expr<E2>, Err> {
         self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
             visit_embed,
         ))
@@ -326,9 +337,8 @@ impl<N, E> Expr<N, E> {
     pub(crate) fn traverse_resolve_with_visitor<E2, Err, F1>(
         &self,
         visitor: &mut visitor::ResolveVisitor<F1>,
-    ) -> Result<Expr<N, E2>, Err>
+    ) -> Result<Expr<E2>, Err>
     where
-        N: Clone,
         F1: FnMut(&E) -> Result<E2, Err>,
     {
         match self {
@@ -341,59 +351,44 @@ impl<N, E> Expr<N, E> {
     }
 }
 
-impl Expr<X, X> {
-    pub fn absurd<N, E>(&self) -> Expr<N, E> {
+impl Expr<X> {
+    pub fn absurd<E>(&self) -> Expr<E> {
         self.visit(&mut visitor::AbsurdVisitor)
     }
 }
 
-impl<E: Clone> Expr<X, E> {
-    pub fn note_absurd<N>(&self) -> Expr<N, E> {
-        self.visit(&mut visitor::NoteAbsurdVisitor)
-    }
-}
-
-impl<N, E> SubExpr<N, E> {
-    pub fn as_ref(&self) -> &Expr<N, E> {
+impl<E> SubExpr<E> {
+    pub fn as_ref(&self) -> &Expr<E> {
         &self.0.as_ref().0
     }
 
-    pub fn new(x: Expr<N, E>, n: N) -> Self {
+    pub fn new(x: Expr<E>, n: Span) -> Self {
         SubExpr(Rc::new((x, Some(n))))
     }
 
-    pub fn from_expr_no_note(x: Expr<N, E>) -> Self {
+    pub fn from_expr_no_span(x: Expr<E>) -> Self {
         SubExpr(Rc::new((x, None)))
     }
 
     pub fn from_builtin(b: Builtin) -> Self {
-        SubExpr::from_expr_no_note(ExprF::Builtin(b))
+        SubExpr::from_expr_no_span(ExprF::Builtin(b))
     }
 
-    pub fn rewrap<E2>(&self, x: Expr<N, E2>) -> SubExpr<N, E2>
-    where
-        N: Clone,
-    {
+    pub fn rewrap<E2>(&self, x: Expr<E2>) -> SubExpr<E2> {
         SubExpr(Rc::new((x, (self.0).1.clone())))
     }
 
     pub fn traverse_embed<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<SubExpr<N, E2>, Err>
-    where
-        N: Clone,
-    {
+    ) -> Result<SubExpr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_embed(visit_embed)?))
     }
 
     pub fn map_embed<E2>(
         &self,
         map_embed: impl FnMut(&E) -> E2,
-    ) -> SubExpr<N, E2>
-    where
-        N: Clone,
-    {
+    ) -> SubExpr<E2> {
         self.rewrap(self.as_ref().map_embed(map_embed))
     }
 
@@ -401,10 +396,7 @@ impl<N, E> SubExpr<N, E> {
         &'a self,
         map_expr: impl FnMut(&'a Self) -> Self,
         map_under_binder: impl FnMut(&'a Label, &'a Self) -> Self,
-    ) -> Self
-    where
-        N: Clone,
-    {
+    ) -> Self {
         match self.as_ref() {
             ExprF::Embed(_) => SubExpr::clone(self),
             // This calls ExprF::map_ref
@@ -419,35 +411,38 @@ impl<N, E> SubExpr<N, E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
-    ) -> Result<SubExpr<N, E2>, Err>
-    where
-        N: Clone,
-    {
+    ) -> Result<SubExpr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_embed)?))
     }
 }
 
-impl SubExpr<X, X> {
-    pub fn absurd<N: Clone, T>(&self) -> SubExpr<N, T> {
-        SubExpr::from_expr_no_note(self.as_ref().absurd())
+impl SubExpr<X> {
+    pub fn absurd<T>(&self) -> SubExpr<T> {
+        SubExpr::from_expr_no_span(self.as_ref().absurd())
     }
 }
 
-impl<E: Clone> SubExpr<X, E> {
-    pub fn note_absurd<N>(&self) -> SubExpr<N, E> {
-        SubExpr::from_expr_no_note(self.as_ref().note_absurd())
-    }
-}
-
-impl<N, E> Clone for SubExpr<N, E> {
+impl<E> Clone for SubExpr<E> {
     fn clone(&self) -> Self {
         SubExpr(Rc::clone(&self.0))
     }
 }
 
 // Should probably rename this
-pub fn rc<E>(x: Expr<X, E>) -> SubExpr<X, E> {
-    SubExpr::from_expr_no_note(x)
+pub fn rc<E>(x: Expr<E>) -> SubExpr<E> {
+    SubExpr::from_expr_no_span(x)
+}
+
+pub(crate) fn spanned(
+    span: Span,
+    x: crate::parser::ParsedExpr,
+) -> crate::parser::ParsedSubExpr {
+    SubExpr::new(x, span)
+}
+pub(crate) fn unspanned(
+    x: crate::parser::ParsedExpr,
+) -> crate::parser::ParsedSubExpr {
+    SubExpr::from_expr_no_span(x)
 }
 
 /// Add an isize to an usize
