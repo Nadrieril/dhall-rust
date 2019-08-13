@@ -17,7 +17,6 @@ pub enum Error {
     Encode(EncodeError),
     Resolve(ImportError),
     Typecheck(TypeError),
-    Deserialize(String),
 }
 
 #[derive(Debug)]
@@ -156,7 +155,6 @@ impl std::fmt::Display for Error {
             Error::Encode(err) => write!(f, "{:?}", err),
             Error::Resolve(err) => write!(f, "{:?}", err),
             Error::Typecheck(err) => write!(f, "{:?}", err),
-            Error::Deserialize(err) => write!(f, "{}", err),
         }
     }
 }
@@ -192,13 +190,3 @@ impl From<TypeError> for Error {
         Error::Typecheck(err)
     }
 }
-
-impl serde::de::Error for Error {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Error::Deserialize(msg.to_string())
-    }
-}
-

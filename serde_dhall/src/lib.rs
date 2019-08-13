@@ -1,3 +1,5 @@
+#![feature(non_exhaustive)]
+
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!
@@ -109,8 +111,8 @@ pub(crate) mod static_type;
 pub use value::Value;
 
 mod value {
+    use super::de::{Error, Result};
     use super::Type;
-    use dhall::error::Result;
     use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
 
     // A Dhall value
@@ -118,6 +120,12 @@ mod value {
 
     impl Value {
         pub fn from_str(s: &str, ty: Option<&Type>) -> Result<Self> {
+            Value::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
+        }
+        fn from_str_using_dhall_error_type(
+            s: &str,
+            ty: Option<&Type>,
+        ) -> dhall::error::Result<Self> {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
@@ -137,12 +145,12 @@ mod value {
 pub use typ::Type;
 
 mod typ {
-    use dhall_syntax::Builtin;
-
     use dhall::core::thunk::{Thunk, TypeThunk};
     use dhall::core::value::Value;
-    use dhall::error::Result;
     use dhall::phase::{NormalizedSubExpr, Typed};
+    use dhall_syntax::Builtin;
+
+    use super::de::Result;
 
     /// A Dhall expression representing a type.
     ///
@@ -205,20 +213,54 @@ mod typ {
         }
     }
 
-    impl crate::de::Deserialize for Type {
+    impl super::de::Deserialize for Type {
         fn from_dhall(v: &super::Value) -> Result<Self> {
             Ok(Type(v.to_typed()))
         }
     }
 }
 
+mod error {
+    use dhall::error::Error as DhallError;
+
+    pub type Result<T> = std::result::Result<T, Error>;
+
+    #[derive(Debug)]
+    #[non_exhaustive]
+    pub enum Error {
+        Dhall(DhallError),
+        Deserialize(String),
+    }
+
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            match self {
+                Error::Dhall(err) => write!(f, "{}", err),
+                Error::Deserialize(err) => write!(f, "{}", err),
+            }
+        }
+    }
+
+    impl std::error::Error for Error {}
+
+    impl serde::de::Error for Error {
+        fn custom<T>(msg: T) -> Self
+        where
+            T: std::fmt::Display,
+        {
+            Error::Deserialize(msg.to_string())
+        }
+    }
+}
+
 /// Deserialization of Dhall expressions into Rust
 pub mod de {
-    pub use super::static_type::StaticType;
-    pub use super::{Type, Value};
-    use dhall::error::Result;
     #[doc(hidden)]
     pub use dhall_proc_macros::StaticType;
+
+    pub use super::error::{Error, Result};
+    pub use super::static_type::StaticType;
+    pub use super::{Type, Value};
 
     /// A data structure that can be deserialized from a Dhall expression
     ///
