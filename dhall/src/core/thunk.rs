@@ -49,9 +49,9 @@ pub enum TypedThunk {
     // Any value, along with (optionally) its type
     Untyped(Thunk),
     Typed(Thunk, Box<Type>),
-    // One of the base higher-kinded typed.
+    // One of the base higher-kinded types.
     // Used to avoid storing the same tower ot Type->Kind->Sort
-    // over and over again. Also enables having Sort as a type
+    // over and over again. Also enables having Sort as a value
     // even though it doesn't itself have a type.
     Const(Const),
 }
