@@ -10,7 +10,7 @@ use dhall_syntax::{
 };
 
 use crate::error::{DecodeError, EncodeError};
-use crate::phase::{DecodedSubExpr, ParsedSubExpr};
+use crate::phase::DecodedSubExpr;
 
 pub fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {
@@ -19,7 +19,7 @@ pub fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
     }
 }
 
-pub fn encode(expr: &ParsedSubExpr) -> Result<Vec<u8>, EncodeError> {
+pub fn encode<E>(expr: &SubExpr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
 }
@@ -423,11 +423,11 @@ where
         .collect::<Result<_, _>>()
 }
 
-enum Serialize<'a> {
-    Expr(&'a ParsedSubExpr),
+enum Serialize<'a, E> {
+    Expr(&'a SubExpr<E>),
     CBOR(cbor::Value),
-    RecordMap(&'a DupTreeMap<Label, ParsedSubExpr>),
-    UnionMap(&'a DupTreeMap<Label, Option<ParsedSubExpr>>),
+    RecordMap(&'a DupTreeMap<Label, SubExpr<E>>),
+    UnionMap(&'a DupTreeMap<Label, Option<SubExpr<E>>>),
 }
 
 macro_rules! count {
@@ -447,7 +447,7 @@ macro_rules! ser_seq {
     }};
 }
 
-fn serialize_subexpr<S>(ser: S, e: &ParsedSubExpr) -> Result<S::Ok, S::Error>
+fn serialize_subexpr<S, E>(ser: S, e: &SubExpr<E>) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -457,21 +457,14 @@ where
     use std::iter::once;
 
     use self::Serialize::{RecordMap, UnionMap};
-    fn expr(x: &ParsedSubExpr) -> self::Serialize<'_> {
+    fn expr<E>(x: &SubExpr<E>) -> self::Serialize<'_, E> {
         self::Serialize::Expr(x)
     }
-    fn cbor<'a>(v: cbor::Value) -> self::Serialize<'a> {
-        self::Serialize::CBOR(v)
-    }
-    fn tag<'a>(x: u64) -> self::Serialize<'a> {
-        cbor(U64(x))
-    }
-    fn null<'a>() -> self::Serialize<'a> {
-        cbor(cbor::Value::Null)
-    }
-    fn label<'a>(l: &Label) -> self::Serialize<'a> {
-        cbor(cbor::Value::String(l.into()))
-    }
+    let cbor =
+        |v: cbor::Value| -> self::Serialize<'_, E> { self::Serialize::CBOR(v) };
+    let tag = |x: u64| cbor(U64(x));
+    let null = || cbor(cbor::Value::Null);
+    let label = |l: &Label| cbor(cbor::Value::String(l.into()));
 
     match e.as_ref() {
         Const(c) => ser.serialize_str(&c.to_string()),
@@ -634,12 +627,14 @@ where
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
                 Some(location_hashed) => {
-                    ser_seq.serialize_element(&self::Serialize::Expr(&rc(
+                    let e = rc(
                         ExprF::Import(dhall_syntax::Import {
                             mode: ImportMode::Code,
                             location_hashed: location_hashed.as_ref().clone(),
                         }),
-                    )))?
+                    );
+                    let s: Serialize<'_, ()> = self::Serialize::Expr(&e);
+                    ser_seq.serialize_element(&s)?
                 }
             };
             ser_seq.serialize_element(&url.authority)?;
@@ -665,7 +660,7 @@ where
     ser_seq.end()
 }
 
-impl<'a> serde::ser::Serialize for Serialize<'a> {
+impl<'a, E> serde::ser::Serialize for Serialize<'a, E> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::ser::Serializer,

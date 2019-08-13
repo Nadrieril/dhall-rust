@@ -61,6 +61,15 @@ impl PartialEq for NaiveDouble {
 
 impl Eq for NaiveDouble {}
 
+impl std::hash::Hash for NaiveDouble {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.0.to_bits().hash(state)
+    }
+}
+
 impl From<f64> for NaiveDouble {
     fn from(x: f64) -> Self {
         NaiveDouble(x)
@@ -74,7 +83,7 @@ impl From<NaiveDouble> for f64 {
 }
 
 /// Constants for a pure type system
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Const {
     Type,
     Kind,
@@ -86,7 +95,7 @@ pub enum Const {
 /// The `Label` field is the variable's name (i.e. \"`x`\").
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V<Label>(pub Label, pub usize);
 
 // This is only for the specific `Label` type, not generic
@@ -103,7 +112,7 @@ impl<'a> From<&'a Label> for V<Label> {
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
     /// `x ? y`
     ImportAlt,
@@ -134,7 +143,7 @@ pub enum BinOp {
 }
 
 /// Built-ins
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Builtin {
     Bool,
     Natural,
@@ -179,13 +188,22 @@ impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
 
 impl<Embed: Eq> std::cmp::Eq for SubExpr<Embed> {}
 
+impl<Embed: std::hash::Hash> std::hash::Hash for SubExpr<Embed> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        (self.0).0.hash(state)
+    }
+}
+
 pub type Expr<Embed> = ExprF<SubExpr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprF<SubExpr, Embed> {
     Const(Const),
     ///  `x`

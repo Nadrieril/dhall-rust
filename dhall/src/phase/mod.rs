@@ -157,6 +157,10 @@ impl Typed {
 }
 
 impl Normalized {
+    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
+        crate::phase::binary::encode(&self.to_expr())
+    }
+
     #[allow(dead_code)]
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
@@ -219,6 +223,18 @@ macro_rules! derive_traits_for_wrapper_struct {
 derive_traits_for_wrapper_struct!(Parsed);
 derive_traits_for_wrapper_struct!(Resolved);
 derive_traits_for_wrapper_struct!(Normalized);
+
+impl std::hash::Hash for Normalized {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        match self.encode() {
+            Ok(vec) => vec.hash(state),
+            Err(_) => {}
+        }
+    }
+}
 
 impl Eq for Typed {}
 impl PartialEq for Typed {
