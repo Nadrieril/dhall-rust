@@ -1,0 +1,12 @@
+[package]
+name = "serde_dhall"
+version = "0.1.0"
+authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
+license = "BSD-2-Clause"
+edition = "2018"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+dhall = { path = "../dhall" }
+dhall_syntax = { path = "../dhall_syntax" }
+dhall_proc_macros = { path = "../dhall_proc_macros" }

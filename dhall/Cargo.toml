@@ -10,11 +10,10 @@ build = "build.rs"
 bytecount = "0.5.1"
 itertools = "0.8.0"
 term-painter = "0.2.3"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0" }
 serde_cbor = "0.9.0"
 improved_slice_patterns = { version = "2.0.0", path = "../improved_slice_patterns" }
 dhall_syntax = { path = "../dhall_syntax" }
-dhall_proc_macros = { path = "../dhall_proc_macros" }
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
