@@ -491,9 +491,3 @@ impl<Label: Display> Display for V<Label> {
         Ok(())
     }
 }
-
-impl Display for X {
-    fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {}
-    }
-}

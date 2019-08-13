@@ -243,7 +243,7 @@ impl<'a, T, SE1, SE2, E1, E2> ExprFFallibleVisitor<'a, SE1, SE2, E1, E2>
 where
     T: ExprFInFallibleVisitor<'a, SE1, SE2, E1, E2>,
 {
-    type Error = X;
+    type Error = Void;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error> {
         Ok(self.0.visit_subexpr(subexpr))
@@ -377,18 +377,5 @@ where
     }
     fn visit_embed(self, embed: &'a E) -> Result<E2, Self::Error> {
         (self.0)(embed)
-    }
-}
-
-pub struct AbsurdVisitor;
-
-impl<'a, 'b, E> ExprFInFallibleVisitor<'a, SubExpr<X>, SubExpr<E>, X, E>
-    for &'b mut AbsurdVisitor
-{
-    fn visit_subexpr(&mut self, subexpr: &'a SubExpr<X>) -> SubExpr<E> {
-        SubExpr::from_expr_no_span(subexpr.as_ref().visit(&mut **self))
-    }
-    fn visit_embed(self, embed: &'a X) -> E {
-        match *embed {}
     }
 }

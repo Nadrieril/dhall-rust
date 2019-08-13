@@ -10,9 +10,9 @@ pub type Double = NaiveDouble;
 
 /// An empty type
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum X {}
+pub enum Void {}
 
-pub fn trivial_result<T>(x: Result<T, X>) -> T {
+pub fn trivial_result<T>(x: Result<T, Void>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => match e {},
@@ -351,12 +351,6 @@ impl<E> Expr<E> {
     }
 }
 
-impl Expr<X> {
-    pub fn absurd<E>(&self) -> Expr<E> {
-        self.visit(&mut visitor::AbsurdVisitor)
-    }
-}
-
 impl<E> SubExpr<E> {
     pub fn as_ref(&self) -> &Expr<E> {
         &self.0.as_ref().0
@@ -413,12 +407,6 @@ impl<E> SubExpr<E> {
         visit_embed: impl FnMut(&E) -> Result<E2, Err>,
     ) -> Result<SubExpr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_embed)?))
-    }
-}
-
-impl SubExpr<X> {
-    pub fn absurd<T>(&self) -> SubExpr<T> {
-        SubExpr::from_expr_no_span(self.as_ref().absurd())
     }
 }
 
