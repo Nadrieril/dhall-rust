@@ -168,8 +168,8 @@ pub enum Builtin {
 }
 
 // Each node carries an annotation. In practice it's either X (no annotation) or a Span.
-#[derive(Debug)]
-pub struct SubExpr<Embed>(Rc<(Expr<Embed>, Option<Span>)>);
+#[derive(Debug, Clone)]
+pub struct SubExpr<Embed>(Box<(Expr<Embed>, Option<Span>)>);
 
 impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
     fn eq(&self, other: &Self) -> bool {
@@ -336,11 +336,11 @@ impl<E> SubExpr<E> {
     }
 
     pub fn new(x: Expr<E>, n: Span) -> Self {
-        SubExpr(Rc::new((x, Some(n))))
+        SubExpr(Box::new((x, Some(n))))
     }
 
     pub fn from_expr_no_span(x: Expr<E>) -> Self {
-        SubExpr(Rc::new((x, None)))
+        SubExpr(Box::new((x, None)))
     }
 
     pub fn from_builtin(b: Builtin) -> Self {
@@ -348,7 +348,7 @@ impl<E> SubExpr<E> {
     }
 
     pub fn rewrap<E2>(&self, x: Expr<E2>) -> SubExpr<E2> {
-        SubExpr(Rc::new((x, (self.0).1.clone())))
+        SubExpr(Box::new((x, (self.0).1.clone())))
     }
 }
 
@@ -358,12 +358,6 @@ impl<E> SubExpr<E> {
         visit_import: impl FnMut(&Import) -> Result<E2, Err>,
     ) -> Result<SubExpr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
-    }
-}
-
-impl<E> Clone for SubExpr<E> {
-    fn clone(&self) -> Self {
-        SubExpr(Rc::clone(&self.0))
     }
 }
 
