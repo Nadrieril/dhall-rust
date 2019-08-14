@@ -107,7 +107,7 @@ impl Value {
                 ))
             };
             (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
-                rc(ExprF::Pi(
+                rc(ExprF::Lam(
                     stringify!($var).into(),
                     make_expr!($($ty)*),
                     make_expr!($($rest)*)
