@@ -1,8 +1,10 @@
 use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::prec_climber as pcl;
+use pest::prec_climber::PrecClimber;
 use pest::Parser;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -125,6 +127,94 @@ macro_rules! make_parser {
     (@filter, token_rule) => (true);
     (@filter, rule_group) => (false);
 
+    (@construct_climber,
+        ($map:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            prec_climb!( $climber:expr, $($_rest:tt)* )
+        )
+    ) => ({
+        $map.insert(Rule::$name, $climber)
+    });
+    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
+
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            $span:ident;
+            captured_str!($x:pat) => $body:expr
+        )
+    ) => ({
+        let res: Result<_, String> = try {
+            let $span = Span::make($input, $pair.as_span());
+            let $x = $pair.as_str();
+            ParsedValue::$group($body)
+        };
+        res.map_err(|msg| custom_parse_error(&$pair, msg))
+    });
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            $span:ident;
+            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
+        )
+    ) => ({
+        let children: Vec<_> = $pair
+            .clone()
+            .into_inner()
+            .map(|p| parse_any($climbers, $input.clone(), p))
+            .collect::<Result<_, _>>()?;
+
+        #[allow(unreachable_code)]
+        let res: Result<_, String> = try {
+            #[allow(unused_imports)]
+            use ParsedValue::*;
+            let $span = Span::make($input, $pair.as_span());
+
+            improved_slice_patterns::match_vec!(children;
+                $( [$($args)*] => $body, )*
+                [x..] => Err(
+                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
+                )?,
+            ).map_err(|_| -> String { unreachable!() })?
+        };
+
+        let res = res.map_err(|msg| custom_parse_error(&$pair, msg))?;
+        Ok(ParsedValue::$group(res))
+    });
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            prec_climb!( $_climber:expr, $args:pat => $body:expr $(,)* )
+        )
+    ) => ({
+        let climber = $climbers.get(&Rule::$name).unwrap();
+        climber.climb(
+            $pair.clone().into_inner(),
+            |p| parse_any($climbers, $input.clone(), p),
+            |l, op, r| {
+                let (l, r) = (l?, r?);
+                let res: Result<_, String> = try {
+                    #[allow(unused_imports)]
+                    use ParsedValue::*;
+                    match (l, op, r) {
+                        $args => ParsedValue::$group($body),
+                        children => Err(
+                            format!("Unexpected children: {:?}", children)
+                        )?,
+                    }
+                };
+                res.map_err(|msg| custom_parse_error(&$pair, msg))
+            },
+        )
+    });
     (@body,
         ($($things:tt)*),
         rule!( $name:ident<$o:ty>; $($args:tt)* )
@@ -135,51 +225,19 @@ macro_rules! make_parser {
         )
     );
     (@body,
-        ($_input:expr, $pair:expr, $_children:expr),
+        ($($things:tt)*),
         rule!(
             $name:ident<$o:ty>
             as $group:ident;
-            captured_str!($x:pat) => $body:expr
-        )
-    ) => ({
-        let $x = $pair.as_str();
-        let res: $o = $body;
-        Ok(ParsedValue::$group(res))
-    });
-    (@body,
-        ($_input:expr, $_pair:expr, $children:expr),
-        rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
-        )
-    ) => ({
-        #[allow(unused_imports)]
-        use ParsedValue::*;
-        #[allow(unreachable_code)]
-        let res: $o = improved_slice_patterns::match_vec!($children;
-            $( [$($args)*] => $body, )*
-            [x..] => Err(
-                format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-            )?,
-        ).map_err(|_| -> String { unreachable!() })?;
-        Ok(ParsedValue::$group(res))
-    });
-    (@body,
-        ($input:expr, $pair:expr, $children:expr),
-        rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            $span:ident;
             $($args:tt)*
         )
     ) => ({
-        let $span = Span::make($input, $pair.as_span());
         make_parser!(@body,
-            ($input, $pair, $children),
+            ($($things)*),
             rule!(
                 $name<$o>
                 as $group;
+                _span;
                 $($args)*
             )
         )
@@ -201,20 +259,63 @@ macro_rules! make_parser {
             $( $name($o), )*
         }
 
+        fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
+            let mut map = HashMap::new();
+            $(
+                make_parser!(@construct_climber, (map),
+                        $submac!( $name<$o> $($args)* ));
+            )*
+            map
+        }
+
+        struct Parsers;
+
+        impl Parsers {
+            $(
+            #[allow(non_snake_case, unused_variables)]
+            fn $name<'a>(
+                climbers: &HashMap<Rule, PrecClimber<Rule>>,
+                input: Rc<str>,
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<ParsedValue<'a>> {
+                make_parser!(@body, (climbers, input, pair),
+                               $submac!( $name<$o> $($args)* ))
+            }
+            )*
+        }
+
         fn parse_any<'a>(
+            climbers: &HashMap<Rule, PrecClimber<Rule>>,
             input: Rc<str>,
-            pair: Pair<'a, Rule>,
-            children: Vec<ParsedValue<'a>>,
-        ) -> Result<ParsedValue<'a>, String> {
+            mut pair: Pair<'a, Rule>,
+        ) -> ParseResult<ParsedValue<'a>> {
+            // Avoid parsing while the pair has exactly one child that can be returned as-is
+            loop {
+                if can_be_shortcutted(pair.as_rule()) {
+                    let mut i = pair.clone().into_inner();
+                    let first = i.next();
+                    let second = i.next();
+                    match (first, second) {
+                        // If pair has exactly one child, just go on parsing that child
+                        (Some(p), None) => {
+                            pair = p;
+                            continue;
+                        }
+                        // Otherwise parse normally
+                        _ => break,
+                    }
+                }
+                break;
+            }
+
             match pair.as_rule() {
                 $(
                     make_parser!(@pattern, $submac, $name)
                     if make_parser!(@filter, $submac)
-                    => make_parser!(@body, (input, pair, children),
-                                           $submac!( $name<$o> $($args)* ))
+                    => Parsers::$name(climbers, input, pair)
                     ,
                 )*
-                r => Err(format!("Unexpected {:?}", r)),
+                r => Err(custom_parse_error(&pair, format!("Unexpected {:?}", r))),
             }
         }
     );
@@ -222,109 +323,10 @@ macro_rules! make_parser {
 
 fn do_parse<'a>(
     input: Rc<str>,
-    mut pair: Pair<'a, Rule>,
+    pair: Pair<'a, Rule>,
 ) -> ParseResult<ParsedValue<'a>> {
-    // Avoid parsing while the pair has exactly one child that can be returned as-is
-    loop {
-        if can_be_shortcutted(pair.as_rule()) {
-            let mut i = pair.clone().into_inner();
-            let first = i.next();
-            let second = i.next();
-            match (first, second) {
-                // If pair has exactly one child, just go on parsing that child
-                (Some(p), None) => {
-                    pair = p;
-                    continue;
-                }
-                // Otherwise parse normally
-                _ => break,
-            }
-        }
-        break;
-    }
-
-    // Use precedence climbing to parse operator_expression
-    if pair.as_rule() == Rule::operator_expression {
-        let rule_to_binop = {
-            use crate::BinOp::*;
-            use Rule::*;
-            |r| {
-                Some(match r {
-                    import_alt => ImportAlt,
-                    bool_or => BoolOr,
-                    natural_plus => NaturalPlus,
-                    text_append => TextAppend,
-                    list_append => ListAppend,
-                    bool_and => BoolAnd,
-                    combine => RecursiveRecordMerge,
-                    prefer => RightBiasedRecordMerge,
-                    combine_types => RecursiveRecordTypeMerge,
-                    natural_times => NaturalTimes,
-                    bool_eq => BoolEQ,
-                    bool_ne => BoolNE,
-                    equivalent => Equivalence,
-                    _ => return None,
-                })
-            }
-        };
-        let operators = {
-            use Rule::*;
-            // In order of precedence
-            vec![
-                import_alt,
-                bool_or,
-                natural_plus,
-                text_append,
-                list_append,
-                bool_and,
-                combine,
-                prefer,
-                combine_types,
-                natural_times,
-                bool_eq,
-                bool_ne,
-                equivalent,
-            ]
-        };
-        let climber = pcl::PrecClimber::new(
-            operators
-                .into_iter()
-                .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
-                .collect(),
-        );
-
-        climber.climb(
-            pair.clone().into_inner(),
-            |p| do_parse(input.clone(), p),
-            |l, p, r| {
-                let o = match rule_to_binop(p.as_rule()) {
-                    Some(o) => o,
-                    None => Err(custom_parse_error(
-                        &pair,
-                        format!("Rule {:?} isn't an operator", p.as_rule()),
-                    ))?,
-                };
-                use ParsedValue::expression;
-                match (l?, r?) {
-                    (expression(l), expression(r)) => {
-                        Ok(expression(unspanned(BinOp(o, l, r))))
-                    }
-                    (l, r) => Err(custom_parse_error(
-                        &pair,
-                        format!("Unexpected children: {:?}", [l, r]),
-                    ))?,
-                }
-            },
-        )
-    } else {
-        let children = pair
-            .clone()
-            .into_inner()
-            .map(|p| do_parse(input.clone(), p))
-            .collect::<Result<_, _>>()?;
-        parse_any(input.clone(), pair.clone(), children)
-            .map_err(|msg| custom_parse_error(&pair, msg))
-    }
+    let climbers = construct_precclimbers();
+    parse_any(&climbers, input, pair)
 }
 
 // List of rules that can be shortcutted if they have a single child
@@ -822,6 +824,58 @@ make_parser! {
         [expression(e), expression(annot)] => {
             spanned(span, Annot(e, annot))
         },
+    ));
+
+    rule!(operator_expression<ParsedSubExpr> as expression; prec_climb!(
+        {
+            use Rule::*;
+            // In order of precedence
+            let operators = vec![
+                import_alt,
+                bool_or,
+                natural_plus,
+                text_append,
+                list_append,
+                bool_and,
+                combine,
+                prefer,
+                combine_types,
+                natural_times,
+                bool_eq,
+                bool_ne,
+                equivalent,
+            ];
+            PrecClimber::new(
+                operators
+                    .into_iter()
+                    .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+                    .collect(),
+            )
+        },
+        (expression(l), op, expression(r)) => {
+            use crate::BinOp::*;
+            use Rule::*;
+            let op = match op.as_rule() {
+                import_alt => ImportAlt,
+                bool_or => BoolOr,
+                natural_plus => NaturalPlus,
+                text_append => TextAppend,
+                list_append => ListAppend,
+                bool_and => BoolAnd,
+                combine => RecursiveRecordMerge,
+                prefer => RightBiasedRecordMerge,
+                combine_types => RecursiveRecordTypeMerge,
+                natural_times => NaturalTimes,
+                bool_eq => BoolEQ,
+                bool_ne => BoolNE,
+                equivalent => Equivalence,
+                r => Err(
+                    format!("Rule {:?} isn't an operator", r),
+                )?,
+            };
+
+            unspanned(BinOp(op, l, r))
+        }
     ));
 
     token_rule!(Some_<()>);
