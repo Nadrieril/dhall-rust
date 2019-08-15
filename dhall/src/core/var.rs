@@ -5,7 +5,7 @@ use dhall_syntax::{Label, V};
 /// Stores a pair of variables: a normal one and if relevant one
 /// that corresponds to the alpha-normalized version of the first one.
 /// Equality is up to alpha-equivalence.
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq)]
 pub struct AlphaVar {
     normal: V<Label>,
     alpha: Option<V<()>>,
@@ -13,7 +13,7 @@ pub struct AlphaVar {
 
 // Exactly like a Label, but equality returns always true.
 // This is so that Value equality is exactly alpha-equivalence.
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq)]
 pub struct AlphaLabel(Label);
 
 pub trait Shift: Sized {
@@ -122,6 +122,21 @@ impl std::cmp::PartialEq for AlphaVar {
 impl std::cmp::PartialEq for AlphaLabel {
     fn eq(&self, _other: &Self) -> bool {
         true
+    }
+}
+
+impl std::fmt::Debug for AlphaVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.alpha {
+            Some(a) => write!(f, "AlphaVar({}, {})", self.normal, a.1),
+            None => write!(f, "AlphaVar({}, free)", self.normal),
+        }
+    }
+}
+
+impl std::fmt::Debug for AlphaLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AlphaLabel({})", &self.0)
     }
 }
 

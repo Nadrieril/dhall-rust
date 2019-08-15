@@ -39,7 +39,7 @@ enum ThunkInternal {
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
 /// sharing computation automatically.
 /// Uses a RefCell to share computation.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Thunk(Rc<RefCell<ThunkInternal>>);
 
 /// A thunk in type position. Can optionally store a Type from the typechecking phase to preserve
@@ -393,3 +393,22 @@ impl std::cmp::PartialEq for TypedThunk {
     }
 }
 impl std::cmp::Eq for TypedThunk {}
+
+impl std::fmt::Debug for Thunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let b: &ThunkInternal = &self.0.borrow();
+        match b {
+            ThunkInternal::Value(m, v) => {
+                f.debug_tuple(&format!("Thunk@{:?}", m)).field(v).finish()
+            }
+            ThunkInternal::PartialExpr(e) => {
+                f.debug_tuple("Thunk@PartialExpr").field(e).finish()
+            }
+            ThunkInternal::Unnormalized(ctx, e) => f
+                .debug_tuple("Thunk@Unnormalized")
+                .field(ctx)
+                .field(e)
+                .finish(),
+        }
+    }
+}
