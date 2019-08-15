@@ -195,8 +195,7 @@ impl Value {
             | Value::IntegerLit(_)
             | Value::DoubleLit(_) => {}
 
-            Value::EmptyOptionalLit(tth)
-            | Value::EmptyListLit(tth) => {
+            Value::EmptyOptionalLit(tth) | Value::EmptyListLit(tth) => {
                 tth.normalize_mut();
             }
 
