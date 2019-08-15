@@ -436,10 +436,8 @@ impl Subst<Typed> for Value {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
-            Value::Var(v) => match v.shift(-1, var) {
-                None => val.to_value().clone(),
-                Some(newvar) => Value::Var(newvar),
-            },
+            Value::Var(v) if v == var => val.to_value(),
+            Value::Var(v) => Value::Var(v.shift(-1, var).unwrap()),
             Value::Const(c) => Value::Const(*c),
             Value::BoolLit(b) => Value::BoolLit(*b),
             Value::NaturalLit(n) => Value::NaturalLit(*n),
