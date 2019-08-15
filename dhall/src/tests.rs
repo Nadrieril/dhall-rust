@@ -204,7 +204,7 @@ pub fn run_test(
             match feature {
                 Parser => {
                     let err = parse_file_str(&file_path).unwrap_err();
-                    match err {
+                    match &err {
                         Error::Parse(_) => {}
                         Error::IO(e)
                             if e.kind() == std::io::ErrorKind::InvalidData => {}

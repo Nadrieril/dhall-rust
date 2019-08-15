@@ -105,9 +105,8 @@ pub fn skip_resolve_expr(
 }
 
 #[cfg(test)]
+#[rustfmt::skip]
 mod spec_tests {
-    #![rustfmt::skip]
-
     macro_rules! import_success {
         ($name:ident, $path:expr) => {
             make_spec_test!(Import, Success, $name, &("../dhall-lang/tests/import/success/".to_owned() + $path));

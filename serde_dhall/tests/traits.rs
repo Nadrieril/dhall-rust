@@ -1,4 +1,3 @@
-#![feature(proc_macro_hygiene)]
 use serde_dhall::{from_str, StaticType, Value};
 
 #[test]

@@ -438,7 +438,7 @@ fn type_last_layer(
         }
         Assert(t) => {
             match t.to_value() {
-                Value::Equivalence(x, y) if x == y => {}
+                Value::Equivalence(ref x, ref y) if x == y => {}
                 Value::Equivalence(x, y) => {
                     return Err(mkerr(AssertMismatch(
                         x.to_typed(),

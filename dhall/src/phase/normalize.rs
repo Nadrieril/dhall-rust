@@ -752,7 +752,7 @@ pub fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
             None => Ret::Expr(expr),
         },
 
-        ExprF::Projection(_, ls) if ls.is_empty() => {
+        ExprF::Projection(_, ref ls) if ls.is_empty() => {
             Ret::Value(RecordLit(HashMap::new()))
         }
         ExprF::Projection(ref v, ref ls) => {
