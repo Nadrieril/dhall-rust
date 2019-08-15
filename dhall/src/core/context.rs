@@ -97,7 +97,16 @@ impl<T> Context<T> {
     where
         T: Clone + Shift,
     {
-        Some(self.do_with_var(var, |var, i| Ok(i.shift(delta, &var)?))?)
+        if delta < 0 {
+            Some(self.do_with_var(var, |var, i| Ok(i.shift(delta, &var)?))?)
+        } else {
+            Some(Context(Rc::new(
+                self.0
+                    .iter()
+                    .map(|(l, i)| Ok((l.clone(), i.shift(delta, &var)?)))
+                    .collect::<Result<_, _>>()?,
+            )))
+        }
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
     where
