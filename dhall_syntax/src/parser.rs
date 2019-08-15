@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use pest::iterators::Pair;
+use pest::prec_climber as pcl;
 use pest::Parser;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -219,7 +220,7 @@ macro_rules! make_parser {
     );
 }
 
-// Non-recursive implementation to avoid stack overflows
+// (Mostly) non-recursive implementation to avoid stack overflows
 fn do_parse<'a>(
     input: Rc<str>,
     initial_pair: Pair<'a, Rule>,
@@ -232,30 +233,122 @@ fn do_parse<'a>(
     let mut pairs_stack: Vec<StackFrame> =
         vec![Unprocessed(initial_pair.clone())];
     let mut values_stack: Vec<ParsedValue> = vec![];
+
+    let operators = {
+        use Rule::*;
+        // In order of precedence
+        vec![
+            import_alt,
+            bool_or,
+            natural_plus,
+            text_append,
+            list_append,
+            bool_and,
+            combine,
+            prefer,
+            combine_types,
+            natural_times,
+            bool_eq,
+            bool_ne,
+            equivalent,
+        ]
+    };
+    let rule_to_binop = {
+        use crate::BinOp::*;
+        use Rule::*;
+        |r| {
+            Some(match r {
+                import_alt => ImportAlt,
+                bool_or => BoolOr,
+                natural_plus => NaturalPlus,
+                text_append => TextAppend,
+                list_append => ListAppend,
+                bool_and => BoolAnd,
+                combine => RecursiveRecordMerge,
+                prefer => RightBiasedRecordMerge,
+                combine_types => RecursiveRecordTypeMerge,
+                natural_times => NaturalTimes,
+                bool_eq => BoolEQ,
+                bool_ne => BoolNE,
+                equivalent => Equivalence,
+                _ => return None,
+            })
+        }
+    };
+    let climber = pcl::PrecClimber::new(
+        operators
+            .into_iter()
+            .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+            .collect(),
+    );
+
     while let Some(p) = pairs_stack.pop() {
         match p {
             Unprocessed(mut pair) => loop {
-                let mut pairs: Vec<_> = pair.clone().into_inner().collect();
-                let n_children = pairs.len();
-                if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
-                    pair = pairs.pop().unwrap();
-                    continue;
+                if can_be_shortcutted(pair.as_rule()) {
+                    let mut i = pair.clone().into_inner();
+                    let first = i.next();
+                    let second = i.next();
+                    match (first, second) {
+                        // If pair has exactly one child, just go on parsing that child
+                        (Some(p), None) => {
+                            pair = p;
+                            continue;
+                        }
+                        // Otherwise parse normally
+                        _ => {}
+                    }
+                }
+
+                // Use precedence climbing to parse operator_expression
+                if pair.as_rule() == Rule::operator_expression {
+                    let val = climber.climb(
+                        pair.clone().into_inner(),
+                        |p| do_parse(input.clone(), p),
+                        |l, p, r| {
+                            let o = match rule_to_binop(p.as_rule()) {
+                                Some(o) => o,
+                                None => Err(custom_parse_error(
+                                    &pair,
+                                    format!(
+                                        "Rule {:?} isn't an operator",
+                                        p.as_rule()
+                                    ),
+                                ))?,
+                            };
+                            use ParsedValue::expression;
+                            match (l?, r?) {
+                                (expression(l), expression(r)) => {
+                                    Ok(expression(unspanned(BinOp(o, l, r))))
+                                }
+                                (l, r) => Err(custom_parse_error(
+                                    &pair,
+                                    format!(
+                                        "Unexpected children: {:?}",
+                                        [l, r]
+                                    ),
+                                ))?,
+                            }
+                        },
+                    )?;
+                    values_stack.push(val);
+                    break;
                 } else {
-                    pairs_stack.push(Processed(pair, n_children));
-                    pairs_stack
-                        .extend(pairs.into_iter().map(StackFrame::Unprocessed));
+                    let n_children = pair.clone().into_inner().count();
+                    pairs_stack.push(Processed(pair.clone(), n_children));
+                    // Push the unparsed children onto the stack
+                    pairs_stack.extend(pair.into_inner().map(Unprocessed));
                     break;
                 }
             },
             Processed(pair, n) => {
+                // Take as many values from the values stack as that pair had children. This
+                // means we get exactly the children of the pair, but now they are parsed.
                 let mut children: Vec<_> =
                     values_stack.split_off(values_stack.len() - n);
                 children.reverse();
-                let val = match parse_any(input.clone(), pair.clone(), children)
-                {
-                    Ok(v) => v,
-                    Err(msg) => Err(custom_parse_error(&pair, msg))?,
-                };
+                let val = parse_any(input.clone(), pair.clone(), children)
+                    .map_err(|msg| custom_parse_error(&pair, msg))?;
                 values_stack.push(val);
             }
         }
@@ -268,19 +361,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
     use Rule::*;
     match rule {
         expression
-        | import_alt_expression
-        | or_expression
-        | plus_expression
-        | text_append_expression
-        | list_append_expression
-        | and_expression
-        | combine_expression
-        | prefer_expression
-        | combine_types_expression
-        | times_expression
-        | equal_expression
-        | not_equal_expression
-        | equivalent_expression
+        | operator_expression
         | application_expression
         | first_application_expression
         | selector_expression
@@ -764,98 +845,6 @@ make_parser! {
 
     token_rule!(List<()>);
     token_rule!(Optional<()>);
-
-    rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ImportAlt;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(or_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolOr;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(plus_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalPlus;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(text_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::TextAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(list_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ListAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(and_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolAnd;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(prefer_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RightBiasedRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_types_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordTypeMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(times_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalTimes;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolEQ;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(not_equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolNE;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equivalent_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::Equivalence;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
 
     rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
         [expression(e)] => e,

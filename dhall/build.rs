@@ -91,8 +91,9 @@ fn main() -> std::io::Result<()> {
     let mut file = File::create(parser_tests_path)?;
 
     make_test_module(&mut file, "parse", "parser/", "Parser", |path| {
-        // Too slow in debug mode
-        path == "success/largeExpression"
+        false
+            // Too slow in debug mode
+            || path == "success/largeExpression"
             // TODO: projection by expression
             || path == "success/recordProjectionByExpression"
             || path == "success/RecordProjectionByType"

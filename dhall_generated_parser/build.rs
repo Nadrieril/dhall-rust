@@ -51,6 +51,37 @@ fn main() -> std::io::Result<()> {
     }}"
     )?;
 
+    // Setup grammar for precedence climbing
+    rules.remove("operator_expression");
+    writeln!(&mut file, r##"
+        import_alt = {{ "?" ~ whsp1 }}
+        bool_or = {{ "||" }}
+        natural_plus = {{ "+" ~ whsp1 }}
+        text_append = {{ "++" }}
+        list_append = {{ "#" }}
+        bool_and = {{ "&&" }}
+        natural_times = {{ "*" }}
+        bool_eq = {{ "==" }}
+        bool_ne = {{ "!=" }}
+
+        operator = _{{
+            equivalent |
+            bool_ne |
+            bool_eq |
+            natural_times |
+            combine_types |
+            prefer |
+            combine |
+            bool_and |
+            list_append |
+            text_append |
+            natural_plus |
+            bool_or |
+            import_alt
+        }}
+        operator_expression = {{ application_expression ~ (whsp ~ operator ~ whsp ~ application_expression)* }}
+    "##)?;
+
     writeln!(
         &mut file,
         "final_expression = ${{ SOI ~ complete_expression ~ EOI }}"
