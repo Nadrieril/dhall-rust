@@ -84,10 +84,10 @@ Location
 # Optional_fold
 # Optional_build
 # Text_show
-# combine
-# combine_types
-# equivalent
-# prefer
+combine
+combine_types
+equivalent
+prefer
 lambda
 forall
 arrow
@@ -144,7 +144,7 @@ expression
 annotated_expression
 let_binding
 empty_list_literal
-# operator_expression
+operator_expression
 import_alt_expression
 or_expression
 plus_expression

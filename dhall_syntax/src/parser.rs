@@ -1,7 +1,10 @@
 use itertools::Itertools;
 use pest::iterators::Pair;
+use pest::prec_climber as pcl;
+use pest::prec_climber::PrecClimber;
 use pest::Parser;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -124,6 +127,94 @@ macro_rules! make_parser {
     (@filter, token_rule) => (true);
     (@filter, rule_group) => (false);
 
+    (@construct_climber,
+        ($map:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            prec_climb!( $climber:expr, $($_rest:tt)* )
+        )
+    ) => ({
+        $map.insert(Rule::$name, $climber)
+    });
+    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
+
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            $span:ident;
+            captured_str!($x:pat) => $body:expr
+        )
+    ) => ({
+        let res: Result<_, String> = try {
+            let $span = Span::make($input, $pair.as_span());
+            let $x = $pair.as_str();
+            ParsedValue::$group($body)
+        };
+        res.map_err(|msg| custom_parse_error(&$pair, msg))
+    });
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            $span:ident;
+            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
+        )
+    ) => ({
+        let children: Vec<_> = $pair
+            .clone()
+            .into_inner()
+            .map(|p| parse_any($climbers, $input.clone(), p))
+            .collect::<Result<_, _>>()?;
+
+        #[allow(unreachable_code)]
+        let res: Result<_, String> = try {
+            #[allow(unused_imports)]
+            use ParsedValue::*;
+            let $span = Span::make($input, $pair.as_span());
+
+            improved_slice_patterns::match_vec!(children;
+                $( [$($args)*] => $body, )*
+                [x..] => Err(
+                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
+                )?,
+            ).map_err(|_| -> String { unreachable!() })?
+        };
+
+        let res = res.map_err(|msg| custom_parse_error(&$pair, msg))?;
+        Ok(ParsedValue::$group(res))
+    });
+    (@body,
+        ($climbers:expr, $input:expr, $pair:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            prec_climb!( $_climber:expr, $args:pat => $body:expr $(,)* )
+        )
+    ) => ({
+        let climber = $climbers.get(&Rule::$name).unwrap();
+        climber.climb(
+            $pair.clone().into_inner(),
+            |p| parse_any($climbers, $input.clone(), p),
+            |l, op, r| {
+                let (l, r) = (l?, r?);
+                let res: Result<_, String> = try {
+                    #[allow(unused_imports)]
+                    use ParsedValue::*;
+                    match (l, op, r) {
+                        $args => ParsedValue::$group($body),
+                        children => Err(
+                            format!("Unexpected children: {:?}", children)
+                        )?,
+                    }
+                };
+                res.map_err(|msg| custom_parse_error(&$pair, msg))
+            },
+        )
+    });
     (@body,
         ($($things:tt)*),
         rule!( $name:ident<$o:ty>; $($args:tt)* )
@@ -134,51 +225,19 @@ macro_rules! make_parser {
         )
     );
     (@body,
-        ($_input:expr, $pair:expr, $_children:expr),
+        ($($things:tt)*),
         rule!(
             $name:ident<$o:ty>
             as $group:ident;
-            captured_str!($x:pat) => $body:expr
-        )
-    ) => ({
-        let $x = $pair.as_str();
-        let res: $o = $body;
-        Ok(ParsedValue::$group(res))
-    });
-    (@body,
-        ($_input:expr, $_pair:expr, $children:expr),
-        rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
-        )
-    ) => ({
-        #[allow(unused_imports)]
-        use ParsedValue::*;
-        #[allow(unreachable_code)]
-        let res: $o = improved_slice_patterns::match_vec!($children;
-            $( [$($args)*] => $body, )*
-            [x..] => Err(
-                format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-            )?,
-        ).map_err(|_| -> String { unreachable!() })?;
-        Ok(ParsedValue::$group(res))
-    });
-    (@body,
-        ($input:expr, $pair:expr, $children:expr),
-        rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            $span:ident;
             $($args:tt)*
         )
     ) => ({
-        let $span = Span::make($input, $pair.as_span());
         make_parser!(@body,
-            ($input, $pair, $children),
+            ($($things)*),
             rule!(
                 $name<$o>
                 as $group;
+                _span;
                 $($args)*
             )
         )
@@ -200,67 +259,74 @@ macro_rules! make_parser {
             $( $name($o), )*
         }
 
+        fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
+            let mut map = HashMap::new();
+            $(
+                make_parser!(@construct_climber, (map),
+                        $submac!( $name<$o> $($args)* ));
+            )*
+            map
+        }
+
+        struct Parsers;
+
+        impl Parsers {
+            $(
+            #[allow(non_snake_case, unused_variables)]
+            fn $name<'a>(
+                climbers: &HashMap<Rule, PrecClimber<Rule>>,
+                input: Rc<str>,
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<ParsedValue<'a>> {
+                make_parser!(@body, (climbers, input, pair),
+                               $submac!( $name<$o> $($args)* ))
+            }
+            )*
+        }
+
         fn parse_any<'a>(
+            climbers: &HashMap<Rule, PrecClimber<Rule>>,
             input: Rc<str>,
-            pair: Pair<'a, Rule>,
-            children: Vec<ParsedValue<'a>>,
-        ) -> Result<ParsedValue<'a>, String> {
+            mut pair: Pair<'a, Rule>,
+        ) -> ParseResult<ParsedValue<'a>> {
+            // Avoid parsing while the pair has exactly one child that can be returned as-is
+            loop {
+                if can_be_shortcutted(pair.as_rule()) {
+                    let mut i = pair.clone().into_inner();
+                    let first = i.next();
+                    let second = i.next();
+                    match (first, second) {
+                        // If pair has exactly one child, just go on parsing that child
+                        (Some(p), None) => {
+                            pair = p;
+                            continue;
+                        }
+                        // Otherwise parse normally
+                        _ => break,
+                    }
+                }
+                break;
+            }
+
             match pair.as_rule() {
                 $(
                     make_parser!(@pattern, $submac, $name)
                     if make_parser!(@filter, $submac)
-                    => make_parser!(@body, (input, pair, children),
-                                           $submac!( $name<$o> $($args)* ))
+                    => Parsers::$name(climbers, input, pair)
                     ,
                 )*
-                r => Err(format!("Unexpected {:?}", r)),
+                r => Err(custom_parse_error(&pair, format!("Unexpected {:?}", r))),
             }
         }
     );
 }
 
-// Non-recursive implementation to avoid stack overflows
 fn do_parse<'a>(
     input: Rc<str>,
-    initial_pair: Pair<'a, Rule>,
+    pair: Pair<'a, Rule>,
 ) -> ParseResult<ParsedValue<'a>> {
-    enum StackFrame<'a> {
-        Unprocessed(Pair<'a, Rule>),
-        Processed(Pair<'a, Rule>, usize),
-    }
-    use StackFrame::*;
-    let mut pairs_stack: Vec<StackFrame> =
-        vec![Unprocessed(initial_pair.clone())];
-    let mut values_stack: Vec<ParsedValue> = vec![];
-    while let Some(p) = pairs_stack.pop() {
-        match p {
-            Unprocessed(mut pair) => loop {
-                let mut pairs: Vec<_> = pair.clone().into_inner().collect();
-                let n_children = pairs.len();
-                if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
-                    pair = pairs.pop().unwrap();
-                    continue;
-                } else {
-                    pairs_stack.push(Processed(pair, n_children));
-                    pairs_stack
-                        .extend(pairs.into_iter().map(StackFrame::Unprocessed));
-                    break;
-                }
-            },
-            Processed(pair, n) => {
-                let mut children: Vec<_> =
-                    values_stack.split_off(values_stack.len() - n);
-                children.reverse();
-                let val = match parse_any(input.clone(), pair.clone(), children)
-                {
-                    Ok(v) => v,
-                    Err(msg) => Err(custom_parse_error(&pair, msg))?,
-                };
-                values_stack.push(val);
-            }
-        }
-    }
-    Ok(values_stack.pop().unwrap())
+    let climbers = construct_precclimbers();
+    parse_any(&climbers, input, pair)
 }
 
 // List of rules that can be shortcutted if they have a single child
@@ -268,19 +334,7 @@ fn can_be_shortcutted(rule: Rule) -> bool {
     use Rule::*;
     match rule {
         expression
-        | import_alt_expression
-        | or_expression
-        | plus_expression
-        | text_append_expression
-        | list_append_expression
-        | and_expression
-        | combine_expression
-        | prefer_expression
-        | combine_types_expression
-        | times_expression
-        | equal_expression
-        | not_equal_expression
-        | equivalent_expression
+        | operator_expression
         | application_expression
         | first_application_expression
         | selector_expression
@@ -765,103 +819,63 @@ make_parser! {
     token_rule!(List<()>);
     token_rule!(Optional<()>);
 
-    rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ImportAlt;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(or_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolOr;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(plus_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalPlus;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(text_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::TextAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(list_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ListAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(and_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolAnd;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(prefer_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RightBiasedRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_types_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordTypeMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(times_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalTimes;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolEQ;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(not_equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolNE;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equivalent_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::Equivalence;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-
     rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
         [expression(e)] => e,
         [expression(e), expression(annot)] => {
             spanned(span, Annot(e, annot))
         },
+    ));
+
+    rule!(operator_expression<ParsedSubExpr> as expression; prec_climb!(
+        {
+            use Rule::*;
+            // In order of precedence
+            let operators = vec![
+                import_alt,
+                bool_or,
+                natural_plus,
+                text_append,
+                list_append,
+                bool_and,
+                combine,
+                prefer,
+                combine_types,
+                natural_times,
+                bool_eq,
+                bool_ne,
+                equivalent,
+            ];
+            PrecClimber::new(
+                operators
+                    .into_iter()
+                    .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+                    .collect(),
+            )
+        },
+        (expression(l), op, expression(r)) => {
+            use crate::BinOp::*;
+            use Rule::*;
+            let op = match op.as_rule() {
+                import_alt => ImportAlt,
+                bool_or => BoolOr,
+                natural_plus => NaturalPlus,
+                text_append => TextAppend,
+                list_append => ListAppend,
+                bool_and => BoolAnd,
+                combine => RecursiveRecordMerge,
+                prefer => RightBiasedRecordMerge,
+                combine_types => RecursiveRecordTypeMerge,
+                natural_times => NaturalTimes,
+                bool_eq => BoolEQ,
+                bool_ne => BoolNE,
+                equivalent => Equivalence,
+                r => Err(
+                    format!("Rule {:?} isn't an operator", r),
+                )?,
+            };
+
+            unspanned(BinOp(op, l, r))
+        }
     ));
 
     token_rule!(Some_<()>);
@@ -996,21 +1010,4 @@ pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
         ParsedValue::expression(e) => Ok(e),
         _ => unreachable!(),
     }
-    // Ok(BoolLit(false))
-}
-
-#[test]
-fn test_parse() {
-    // let expr = r#"{ x = "foo", y = 4 }.x"#;
-    // let expr = r#"(1 + 2) * 3"#;
-    let expr = r#"(1) + 3 * 5"#;
-    println!("{:?}", parse_expr(expr));
-    match parse_expr(expr) {
-        Err(e) => {
-            println!("{:?}", e);
-            println!("{}", e);
-        }
-        ok => println!("{:?}", ok),
-    };
-    // assert!(false);
 }
