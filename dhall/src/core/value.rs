@@ -30,13 +30,6 @@ pub enum Value {
     Pi(AlphaLabel, TypedThunk, TypedThunk),
     // Invariant: the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Thunk>),
-    /// `λ(x: a) -> Some x`
-    OptionalSomeClosure(TypedThunk),
-    /// `λ(x : a) -> λ(xs : List a) -> [ x ] # xs`
-    /// `λ(xs : List a) -> [ x ] # xs`
-    ListConsClosure(TypedThunk, Option<Thunk>),
-    /// `λ(x : Natural) -> x + 1`
-    NaturalSuccClosure,
 
     Var(AlphaVar),
     Const(Const),
@@ -74,47 +67,6 @@ impl Value {
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
     pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
-        // Ad-hoc macro to help construct the unapplied closures
-        macro_rules! make_expr {
-            (Natural) => { rc(ExprF::Builtin(Builtin::Natural)) };
-            (var($var:ident)) => {
-                rc(ExprF::Var(dhall_syntax::V(stringify!($var).into(), 0)))
-            };
-            ($var:ident) => { $var };
-            (List $($rest:tt)*) => {
-                rc(ExprF::App(
-                    rc(ExprF::Builtin(Builtin::List)),
-                    make_expr!($($rest)*)
-                ))
-            };
-            (Some $($rest:tt)*) => {
-                rc(ExprF::SomeLit(
-                    make_expr!($($rest)*)
-                ))
-            };
-            (1 + $($rest:tt)*) => {
-                rc(ExprF::BinOp(
-                    dhall_syntax::BinOp::NaturalPlus,
-                    rc(ExprF::NaturalLit(1)),
-                    make_expr!($($rest)*)
-                ))
-            };
-            ([ $($head:tt)* ] # $($tail:tt)*) => {
-                rc(ExprF::BinOp(
-                    dhall_syntax::BinOp::ListAppend,
-                    rc(ExprF::NEListLit(vec![make_expr!($($head)*)])),
-                    make_expr!($($tail)*)
-                ))
-            };
-            (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
-                rc(ExprF::Lam(
-                    stringify!($var).into(),
-                    make_expr!($($ty)*),
-                    make_expr!($($rest)*)
-                ))
-            };
-        }
-
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -130,27 +82,6 @@ impl Value {
                     ));
                 }
                 e
-            }
-            Value::OptionalSomeClosure(n) => {
-                let a = n.normalize_to_expr_maybe_alpha(alpha);
-                make_expr!(λ(x: a) -> Some var(x))
-            }
-            Value::ListConsClosure(a, None) => {
-                // Avoid accidental capture of the new `x` variable
-                let a1 = a.under_binder(Label::from("x"));
-                let a1 = a1.normalize_to_expr_maybe_alpha(alpha);
-                let a = a.normalize_to_expr_maybe_alpha(alpha);
-                make_expr!(λ(x : a) -> λ(xs : List a1) -> [ var(x) ] # var(xs))
-            }
-            Value::ListConsClosure(n, Some(v)) => {
-                // Avoid accidental capture of the new `xs` variable
-                let v = v.under_binder(Label::from("xs"));
-                let v = v.normalize_to_expr_maybe_alpha(alpha);
-                let a = n.normalize_to_expr_maybe_alpha(alpha);
-                make_expr!(λ(xs : List a) -> [ v ] # var(xs))
-            }
-            Value::NaturalSuccClosure => {
-                make_expr!(λ(x : Natural) -> 1 + var(x))
             }
             Value::Pi(x, t, e) => rc(ExprF::Pi(
                 x.to_label_maybe_alpha(alpha),
@@ -257,8 +188,7 @@ impl Value {
 
     pub fn normalize_mut(&mut self) {
         match self {
-            Value::NaturalSuccClosure
-            | Value::Var(_)
+            Value::Var(_)
             | Value::Const(_)
             | Value::BoolLit(_)
             | Value::NaturalLit(_)
@@ -266,7 +196,6 @@ impl Value {
             | Value::DoubleLit(_) => {}
 
             Value::EmptyOptionalLit(tth)
-            | Value::OptionalSomeClosure(tth)
             | Value::EmptyListLit(tth) => {
                 tth.normalize_mut();
             }
@@ -284,12 +213,6 @@ impl Value {
             }
             Value::AppliedBuiltin(_, args) => {
                 for x in args.iter_mut() {
-                    x.normalize_mut();
-                }
-            }
-            Value::ListConsClosure(t, v) => {
-                t.normalize_mut();
-                for x in v.iter_mut() {
                     x.normalize_mut();
                 }
             }
@@ -374,14 +297,6 @@ impl Shift for Value {
                 args.iter()
                     .map(|v| Ok(v.shift(delta, var)?))
                     .collect::<Result<_, _>>()?,
-            ),
-            Value::NaturalSuccClosure => Value::NaturalSuccClosure,
-            Value::OptionalSomeClosure(tth) => {
-                Value::OptionalSomeClosure(tth.shift(delta, var)?)
-            }
-            Value::ListConsClosure(t, v) => Value::ListConsClosure(
-                t.shift(delta, var)?,
-                v.as_ref().map(|v| Ok(v.shift(delta, var)?)).transpose()?,
             ),
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),
@@ -515,14 +430,6 @@ impl Subst<Typed> for Value {
                 x.clone(),
                 t.subst_shift(var, val),
                 e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
-            ),
-            Value::NaturalSuccClosure => Value::NaturalSuccClosure,
-            Value::OptionalSomeClosure(tth) => {
-                Value::OptionalSomeClosure(tth.subst_shift(var, val))
-            }
-            Value::ListConsClosure(t, v) => Value::ListConsClosure(
-                t.subst_shift(var, val),
-                v.as_ref().map(|v| v.subst_shift(var, val)),
             ),
             Value::Pi(x, t, e) => Value::Pi(
                 x.clone(),

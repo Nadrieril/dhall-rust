@@ -1,18 +1,60 @@
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents,
+    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble,
 };
 
 use crate::core::context::NormalizationContext;
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
-use crate::core::var::Subst;
+use crate::core::var::{Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr, ResolvedSubExpr, Typed};
 
 pub type InputSubExpr = ResolvedSubExpr;
 pub type OutputSubExpr = NormalizedSubExpr;
+
+// Ad-hoc macro to help construct closures
+macro_rules! make_closure {
+    (#$var:ident) => { $var.clone() };
+    (var($var:ident, $n:expr)) => {{
+        let var = crate::core::var::AlphaVar::from_var_and_alpha(
+            Label::from(stringify!($var)).into(),
+            $n
+        );
+        Value::Var(var).into_thunk()
+    }};
+    (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
+        Value::Lam(
+            Label::from(stringify!($var)).into(),
+            TypedThunk::from_thunk_untyped(make_closure!($($ty)*)),
+            make_closure!($($rest)*),
+        ).into_thunk()
+    };
+    (Natural) => { Value::from_builtin(Builtin::Natural).into_thunk() };
+    (List $($rest:tt)*) => {
+        Value::from_builtin(Builtin::List)
+            .app_thunk(make_closure!($($rest)*))
+            .into_thunk()
+    };
+    (Some $($rest:tt)*) => {
+        Value::NEOptionalLit(make_closure!($($rest)*)).into_thunk()
+    };
+    (1 + $($rest:tt)*) => {
+        Value::PartialExpr(ExprF::BinOp(
+            dhall_syntax::BinOp::NaturalPlus,
+            make_closure!($($rest)*),
+            Thunk::from_value(Value::NaturalLit(1)),
+        )).into_thunk()
+    };
+    ([ $($head:tt)* ] # $($tail:tt)*) => {
+        Value::PartialExpr(ExprF::BinOp(
+            dhall_syntax::BinOp::ListAppend,
+            Value::NEListLit(vec![make_closure!($($head)*)]).into_thunk(),
+            make_closure!($($tail)*),
+        )).into_thunk()
+    };
+}
 
 #[allow(clippy::cognitive_complexity)]
 pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
@@ -179,10 +221,15 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
             _ => Ok((
                 r,
                 f.app_val(Value::from_builtin(List).app_thunk(t.clone()))
-                    .app_val(ListConsClosure(
-                        TypedThunk::from_thunk(t.clone()),
-                        None,
-                    ))
+                    .app_thunk({
+                        // Move `t` under new `x` variable
+                        let t1 = t.under_binder(Label::from("x"));
+                        make_closure!(
+                            λ(x : #t) ->
+                            λ(xs : List #t1) ->
+                            [ var(x, 1) ] # var(xs, 0)
+                        )
+                    })
                     .app_val(EmptyListLit(TypedThunk::from_thunk(t.clone()))),
             )),
         },
@@ -214,9 +261,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
             _ => Ok((
                 r,
                 f.app_val(Value::from_builtin(Optional).app_thunk(t.clone()))
-                    .app_val(OptionalSomeClosure(TypedThunk::from_thunk(
-                        t.clone(),
-                    )))
+                    .app_thunk(make_closure!(λ(x: #t) -> Some var(x, 0)))
                     .app_val(EmptyOptionalLit(TypedThunk::from_thunk(
                         t.clone(),
                     ))),
@@ -240,7 +285,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
             _ => Ok((
                 r,
                 f.app_val(Value::from_builtin(Natural))
-                    .app_val(NaturalSuccClosure)
+                    .app_thunk(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
                     .app_val(NaturalLit(0)),
             )),
         },
@@ -283,38 +328,6 @@ pub fn apply_any(f: Thunk, a: Thunk) -> Value {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
             apply_builtin(*b, args)
-        }
-        Value::OptionalSomeClosure(_) => Value::NEOptionalLit(a),
-        Value::ListConsClosure(t, None) => {
-            Value::ListConsClosure(t.clone(), Some(a))
-        }
-        Value::ListConsClosure(_, Some(x)) => {
-            let a_borrow = a.as_value();
-            match &*a_borrow {
-                Value::EmptyListLit(_) => Value::NEListLit(vec![x.clone()]),
-                Value::NEListLit(xs) => {
-                    use std::iter::once;
-                    let xs =
-                        once(x.clone()).chain(xs.iter().cloned()).collect();
-                    Value::NEListLit(xs)
-                }
-                _ => {
-                    drop(f_borrow);
-                    drop(a_borrow);
-                    fallback(f, a)
-                }
-            }
-        }
-        Value::NaturalSuccClosure => {
-            let a_borrow = a.as_value();
-            match &*a_borrow {
-                Value::NaturalLit(n) => Value::NaturalLit(n + 1),
-                _ => {
-                    drop(f_borrow);
-                    drop(a_borrow);
-                    fallback(f, a)
-                }
-            }
         }
         Value::UnionConstructor(l, kts) => {
             Value::UnionLit(l.clone(), a, kts.clone())

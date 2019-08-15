@@ -67,6 +67,12 @@ impl AlphaVar {
             alpha: None,
         }
     }
+    pub fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
+        AlphaVar {
+            normal,
+            alpha: Some(V((), alpha)),
+        }
+    }
 }
 
 impl AlphaLabel {
