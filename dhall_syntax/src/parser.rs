@@ -220,140 +220,111 @@ macro_rules! make_parser {
     );
 }
 
-// (Mostly) non-recursive implementation to avoid stack overflows
 fn do_parse<'a>(
     input: Rc<str>,
-    initial_pair: Pair<'a, Rule>,
+    mut pair: Pair<'a, Rule>,
 ) -> ParseResult<ParsedValue<'a>> {
-    enum StackFrame<'a> {
-        Unprocessed(Pair<'a, Rule>),
-        Processed(Pair<'a, Rule>, usize),
-    }
-    use StackFrame::*;
-    let mut pairs_stack: Vec<StackFrame> =
-        vec![Unprocessed(initial_pair.clone())];
-    let mut values_stack: Vec<ParsedValue> = vec![];
-
-    let operators = {
-        use Rule::*;
-        // In order of precedence
-        vec![
-            import_alt,
-            bool_or,
-            natural_plus,
-            text_append,
-            list_append,
-            bool_and,
-            combine,
-            prefer,
-            combine_types,
-            natural_times,
-            bool_eq,
-            bool_ne,
-            equivalent,
-        ]
-    };
-    let rule_to_binop = {
-        use crate::BinOp::*;
-        use Rule::*;
-        |r| {
-            Some(match r {
-                import_alt => ImportAlt,
-                bool_or => BoolOr,
-                natural_plus => NaturalPlus,
-                text_append => TextAppend,
-                list_append => ListAppend,
-                bool_and => BoolAnd,
-                combine => RecursiveRecordMerge,
-                prefer => RightBiasedRecordMerge,
-                combine_types => RecursiveRecordTypeMerge,
-                natural_times => NaturalTimes,
-                bool_eq => BoolEQ,
-                bool_ne => BoolNE,
-                equivalent => Equivalence,
-                _ => return None,
-            })
-        }
-    };
-    let climber = pcl::PrecClimber::new(
-        operators
-            .into_iter()
-            .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
-            .collect(),
-    );
-
-    while let Some(p) = pairs_stack.pop() {
-        match p {
-            Unprocessed(mut pair) => loop {
-                if can_be_shortcutted(pair.as_rule()) {
-                    let mut i = pair.clone().into_inner();
-                    let first = i.next();
-                    let second = i.next();
-                    match (first, second) {
-                        // If pair has exactly one child, just go on parsing that child
-                        (Some(p), None) => {
-                            pair = p;
-                            continue;
-                        }
-                        // Otherwise parse normally
-                        _ => {}
-                    }
+    // Avoid parsing while the pair has exactly one child that can be returned as-is
+    loop {
+        if can_be_shortcutted(pair.as_rule()) {
+            let mut i = pair.clone().into_inner();
+            let first = i.next();
+            let second = i.next();
+            match (first, second) {
+                // If pair has exactly one child, just go on parsing that child
+                (Some(p), None) => {
+                    pair = p;
+                    continue;
                 }
-
-                // Use precedence climbing to parse operator_expression
-                if pair.as_rule() == Rule::operator_expression {
-                    let val = climber.climb(
-                        pair.clone().into_inner(),
-                        |p| do_parse(input.clone(), p),
-                        |l, p, r| {
-                            let o = match rule_to_binop(p.as_rule()) {
-                                Some(o) => o,
-                                None => Err(custom_parse_error(
-                                    &pair,
-                                    format!(
-                                        "Rule {:?} isn't an operator",
-                                        p.as_rule()
-                                    ),
-                                ))?,
-                            };
-                            use ParsedValue::expression;
-                            match (l?, r?) {
-                                (expression(l), expression(r)) => {
-                                    Ok(expression(unspanned(BinOp(o, l, r))))
-                                }
-                                (l, r) => Err(custom_parse_error(
-                                    &pair,
-                                    format!(
-                                        "Unexpected children: {:?}",
-                                        [l, r]
-                                    ),
-                                ))?,
-                            }
-                        },
-                    )?;
-                    values_stack.push(val);
-                    break;
-                } else {
-                    let n_children = pair.clone().into_inner().count();
-                    pairs_stack.push(Processed(pair.clone(), n_children));
-                    // Push the unparsed children onto the stack
-                    pairs_stack.extend(pair.into_inner().map(Unprocessed));
-                    break;
-                }
-            },
-            Processed(pair, n) => {
-                // Take as many values from the values stack as that pair had children. This
-                // means we get exactly the children of the pair, but now they are parsed.
-                let mut children: Vec<_> =
-                    values_stack.split_off(values_stack.len() - n);
-                children.reverse();
-                let val = parse_any(input.clone(), pair.clone(), children)
-                    .map_err(|msg| custom_parse_error(&pair, msg))?;
-                values_stack.push(val);
+                // Otherwise parse normally
+                _ => break,
             }
         }
+        break;
     }
-    Ok(values_stack.pop().unwrap())
+
+    // Use precedence climbing to parse operator_expression
+    if pair.as_rule() == Rule::operator_expression {
+        let rule_to_binop = {
+            use crate::BinOp::*;
+            use Rule::*;
+            |r| {
+                Some(match r {
+                    import_alt => ImportAlt,
+                    bool_or => BoolOr,
+                    natural_plus => NaturalPlus,
+                    text_append => TextAppend,
+                    list_append => ListAppend,
+                    bool_and => BoolAnd,
+                    combine => RecursiveRecordMerge,
+                    prefer => RightBiasedRecordMerge,
+                    combine_types => RecursiveRecordTypeMerge,
+                    natural_times => NaturalTimes,
+                    bool_eq => BoolEQ,
+                    bool_ne => BoolNE,
+                    equivalent => Equivalence,
+                    _ => return None,
+                })
+            }
+        };
+        let operators = {
+            use Rule::*;
+            // In order of precedence
+            vec![
+                import_alt,
+                bool_or,
+                natural_plus,
+                text_append,
+                list_append,
+                bool_and,
+                combine,
+                prefer,
+                combine_types,
+                natural_times,
+                bool_eq,
+                bool_ne,
+                equivalent,
+            ]
+        };
+        let climber = pcl::PrecClimber::new(
+            operators
+                .into_iter()
+                .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+                .collect(),
+        );
+
+        climber.climb(
+            pair.clone().into_inner(),
+            |p| do_parse(input.clone(), p),
+            |l, p, r| {
+                let o = match rule_to_binop(p.as_rule()) {
+                    Some(o) => o,
+                    None => Err(custom_parse_error(
+                        &pair,
+                        format!("Rule {:?} isn't an operator", p.as_rule()),
+                    ))?,
+                };
+                use ParsedValue::expression;
+                match (l?, r?) {
+                    (expression(l), expression(r)) => {
+                        Ok(expression(unspanned(BinOp(o, l, r))))
+                    }
+                    (l, r) => Err(custom_parse_error(
+                        &pair,
+                        format!("Unexpected children: {:?}", [l, r]),
+                    ))?,
+                }
+            },
+        )
+    } else {
+        let children = pair
+            .clone()
+            .into_inner()
+            .map(|p| do_parse(input.clone(), p))
+            .collect::<Result<_, _>>()?;
+        parse_any(input.clone(), pair.clone(), children)
+            .map_err(|msg| custom_parse_error(&pair, msg))
+    }
 }
 
 // List of rules that can be shortcutted if they have a single child
@@ -985,21 +956,4 @@ pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
         ParsedValue::expression(e) => Ok(e),
         _ => unreachable!(),
     }
-    // Ok(BoolLit(false))
-}
-
-#[test]
-fn test_parse() {
-    // let expr = r#"{ x = "foo", y = 4 }.x"#;
-    // let expr = r#"(1 + 2) * 3"#;
-    let expr = r#"(1) + 3 * 5"#;
-    println!("{:?}", parse_expr(expr));
-    match parse_expr(expr) {
-        Err(e) => {
-            println!("{:?}", e);
-            println!("{}", e);
-        }
-        ok => println!("{:?}", ok),
-    };
-    // assert!(false);
 }
