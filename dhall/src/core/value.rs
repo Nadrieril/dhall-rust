@@ -287,12 +287,9 @@ impl Shift for ValueF {
                 t.shift(delta, var)?,
                 e.shift(delta, &var.under_binder(x))?,
             ),
-            ValueF::AppliedBuiltin(b, args) => ValueF::AppliedBuiltin(
-                *b,
-                args.iter()
-                    .map(|v| Ok(v.shift(delta, var)?))
-                    .collect::<Result<_, _>>()?,
-            ),
+            ValueF::AppliedBuiltin(b, args) => {
+                ValueF::AppliedBuiltin(*b, args.shift(delta, var)?)
+            }
             ValueF::Pi(x, t, e) => ValueF::Pi(
                 x.clone(),
                 t.shift(delta, var)?,
@@ -313,80 +310,27 @@ impl Shift for ValueF {
             ValueF::EmptyListLit(tth) => {
                 ValueF::EmptyListLit(tth.shift(delta, var)?)
             }
-            ValueF::NEListLit(elts) => ValueF::NEListLit(
-                elts.iter()
-                    .map(|v| Ok(v.shift(delta, var)?))
-                    .collect::<Result<_, _>>()?,
-            ),
-            ValueF::RecordLit(kvs) => ValueF::RecordLit(
-                kvs.iter()
-                    .map(|(k, v)| Ok((k.clone(), v.shift(delta, var)?)))
-                    .collect::<Result<_, _>>()?,
-            ),
-            ValueF::RecordType(kvs) => ValueF::RecordType(
-                kvs.iter()
-                    .map(|(k, v)| Ok((k.clone(), v.shift(delta, var)?)))
-                    .collect::<Result<_, _>>()?,
-            ),
-            ValueF::UnionType(kts) => ValueF::UnionType(
-                kts.iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| Ok(v.shift(delta, var)?))
-                                .transpose()?,
-                        ))
-                    })
-                    .collect::<Result<_, _>>()?,
-            ),
-            ValueF::UnionConstructor(x, kts) => ValueF::UnionConstructor(
-                x.clone(),
-                kts.iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| Ok(v.shift(delta, var)?))
-                                .transpose()?,
-                        ))
-                    })
-                    .collect::<Result<_, _>>()?,
-            ),
+            ValueF::NEListLit(elts) => {
+                ValueF::NEListLit(elts.shift(delta, var)?)
+            }
+            ValueF::RecordLit(kvs) => ValueF::RecordLit(kvs.shift(delta, var)?),
+            ValueF::RecordType(kvs) => {
+                ValueF::RecordType(kvs.shift(delta, var)?)
+            }
+            ValueF::UnionType(kts) => ValueF::UnionType(kts.shift(delta, var)?),
+            ValueF::UnionConstructor(x, kts) => {
+                ValueF::UnionConstructor(x.clone(), kts.shift(delta, var)?)
+            }
             ValueF::UnionLit(x, v, kts) => ValueF::UnionLit(
                 x.clone(),
                 v.shift(delta, var)?,
-                kts.iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k.clone(),
-                            v.as_ref()
-                                .map(|v| Ok(v.shift(delta, var)?))
-                                .transpose()?,
-                        ))
-                    })
-                    .collect::<Result<_, _>>()?,
+                kts.shift(delta, var)?,
             ),
-            ValueF::TextLit(elts) => ValueF::TextLit(
-                elts.iter()
-                    .map(|contents| {
-                        use InterpolatedTextContents::{Expr, Text};
-                        Ok(match contents {
-                            Expr(th) => Expr(th.shift(delta, var)?),
-                            Text(s) => Text(s.clone()),
-                        })
-                    })
-                    .collect::<Result<_, _>>()?,
-            ),
+            ValueF::TextLit(elts) => ValueF::TextLit(elts.shift(delta, var)?),
             ValueF::Equivalence(x, y) => {
                 ValueF::Equivalence(x.shift(delta, var)?, y.shift(delta, var)?)
             }
-            ValueF::PartialExpr(e) => ValueF::PartialExpr(
-                e.traverse_ref_with_special_handling_of_binders(
-                    |v| Ok(v.shift(delta, var)?),
-                    |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                )?,
-            ),
+            ValueF::PartialExpr(e) => ValueF::PartialExpr(e.shift(delta, var)?),
         })
     }
 }
@@ -395,32 +339,17 @@ impl Subst<Typed> for ValueF {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             // Retry normalizing since substituting may allow progress
-            ValueF::AppliedBuiltin(b, args) => apply_builtin(
-                *b,
-                args.iter().map(|v| v.subst_shift(var, val)).collect(),
-            ),
+            ValueF::AppliedBuiltin(b, args) => {
+                apply_builtin(*b, args.subst_shift(var, val))
+            }
             // Retry normalizing since substituting may allow progress
             ValueF::PartialExpr(e) => {
-                normalize_one_layer(e.map_ref_with_special_handling_of_binders(
-                    |v| v.subst_shift(var, val),
-                    |x, v| {
-                        v.subst_shift(
-                            &var.under_binder(x),
-                            &val.under_binder(x),
-                        )
-                    },
-                ))
+                normalize_one_layer(e.subst_shift(var, val))
             }
             // Retry normalizing since substituting may allow progress
-            ValueF::TextLit(elts) => {
-                ValueF::TextLit(squash_textlit(elts.iter().map(|contents| {
-                    use InterpolatedTextContents::{Expr, Text};
-                    match contents {
-                        Expr(th) => Expr(th.subst_shift(var, val)),
-                        Text(s) => Text(s.clone()),
-                    }
-                })))
-            }
+            ValueF::TextLit(elts) => ValueF::TextLit(squash_textlit(
+                elts.iter().map(|contents| contents.subst_shift(var, val)),
+            )),
             ValueF::Lam(x, t, e) => ValueF::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
@@ -447,42 +376,25 @@ impl Subst<Typed> for ValueF {
             ValueF::EmptyListLit(tth) => {
                 ValueF::EmptyListLit(tth.subst_shift(var, val))
             }
-            ValueF::NEListLit(elts) => ValueF::NEListLit(
-                elts.iter().map(|v| v.subst_shift(var, val)).collect(),
-            ),
-            ValueF::RecordLit(kvs) => ValueF::RecordLit(
-                kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.subst_shift(var, val)))
-                    .collect(),
-            ),
-            ValueF::RecordType(kvs) => ValueF::RecordType(
-                kvs.iter()
-                    .map(|(k, v)| (k.clone(), v.subst_shift(var, val)))
-                    .collect(),
-            ),
-            ValueF::UnionType(kts) => ValueF::UnionType(
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
-                    })
-                    .collect(),
-            ),
-            ValueF::UnionConstructor(x, kts) => ValueF::UnionConstructor(
-                x.clone(),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
-                    })
-                    .collect(),
-            ),
+            ValueF::NEListLit(elts) => {
+                ValueF::NEListLit(elts.subst_shift(var, val))
+            }
+            ValueF::RecordLit(kvs) => {
+                ValueF::RecordLit(kvs.subst_shift(var, val))
+            }
+            ValueF::RecordType(kvs) => {
+                ValueF::RecordType(kvs.subst_shift(var, val))
+            }
+            ValueF::UnionType(kts) => {
+                ValueF::UnionType(kts.subst_shift(var, val))
+            }
+            ValueF::UnionConstructor(x, kts) => {
+                ValueF::UnionConstructor(x.clone(), kts.subst_shift(var, val))
+            }
             ValueF::UnionLit(x, v, kts) => ValueF::UnionLit(
                 x.clone(),
                 v.subst_shift(var, val),
-                kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.subst_shift(var, val)))
-                    })
-                    .collect(),
+                kts.subst_shift(var, val),
             ),
             ValueF::Equivalence(x, y) => ValueF::Equivalence(
                 x.subst_shift(var, val),

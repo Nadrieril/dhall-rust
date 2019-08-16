@@ -266,24 +266,16 @@ impl TypedThunk {
 
 impl Shift for Thunk {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(
-            self.0
-                .borrow()
-                .shift(delta, var)?
-                .into_thunk(self.1.shift(delta, var)?),
-        )
+        Some(Thunk(self.0.shift(delta, var)?, self.1.shift(delta, var)?))
     }
 }
 
 impl Shift for ThunkInternal {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
-                e.traverse_ref_with_special_handling_of_binders(
-                    |v| Ok(v.shift(delta, var)?),
-                    |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
-                )?,
-            ),
+            ThunkInternal::PartialExpr(e) => {
+                ThunkInternal::PartialExpr(e.shift(delta, var)?)
+            }
             ThunkInternal::ValueF(m, v) => {
                 ThunkInternal::ValueF(*m, v.shift(delta, var)?)
             }
@@ -301,27 +293,16 @@ impl Shift for TypedThunk {
 
 impl Subst<Typed> for Thunk {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        self.0
-            .borrow()
-            .subst_shift(var, val)
-            .into_thunk(self.1.subst_shift(var, val))
+        Thunk(self.0.subst_shift(var, val), self.1.subst_shift(var, val))
     }
 }
 
 impl Subst<Typed> for ThunkInternal {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
-                e.map_ref_with_special_handling_of_binders(
-                    |v| v.subst_shift(var, val),
-                    |x, v| {
-                        v.subst_shift(
-                            &var.under_binder(x),
-                            &val.under_binder(x),
-                        )
-                    },
-                ),
-            ),
+            ThunkInternal::PartialExpr(e) => {
+                ThunkInternal::PartialExpr(e.subst_shift(var, val))
+            }
             ThunkInternal::ValueF(_, v) => {
                 // The resulting value may not stay in normal form after substitution
                 ThunkInternal::ValueF(WHNF, v.subst_shift(var, val))
