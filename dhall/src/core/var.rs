@@ -157,6 +157,12 @@ impl Shift for () {
     }
 }
 
+impl<A: Shift, B: Shift> Shift for (A, B) {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some((self.0.shift(delta, var)?, self.1.shift(delta, var)?))
+    }
+}
+
 impl<T: Shift> Shift for Option<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
@@ -228,6 +234,12 @@ impl<T: Shift> Shift for dhall_syntax::InterpolatedTextContents<T> {
 
 impl<S> Subst<S> for () {
     fn subst_shift(&self, _var: &AlphaVar, _val: &S) -> Self {}
+}
+
+impl<S, A: Subst<S>, B: Subst<S>> Subst<S> for (A, B) {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        (self.0.subst_shift(var, val), self.1.subst_shift(var, val))
+    }
 }
 
 impl<S, T: Subst<S>> Subst<S> for Option<T> {
