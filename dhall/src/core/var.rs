@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use dhall_syntax::{Label, V};
 
-/// Stores a pair of variables: a normal one and if relevant one
+/// Stores a pair of variables: a normal one and one
 /// that corresponds to the alpha-normalized version of the first one.
-/// Equality is up to alpha-equivalence.
+/// Equality is up to alpha-equivalence (compares on the second one only).
 #[derive(Clone, Eq)]
 pub struct AlphaVar {
     normal: V<Label>,
-    alpha: Option<V<()>>,
+    alpha: V<()>,
 }
 
 // Exactly like a Label, but equality returns always true.
@@ -56,15 +56,16 @@ pub(crate) trait Subst<T> {
 
 impl AlphaVar {
     pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
-        match (alpha, &self.alpha) {
-            (true, Some(x)) => V("_".into(), x.1),
-            _ => self.normal.clone(),
+        if alpha {
+            V("_".into(), self.alpha.1)
+        } else {
+            self.normal.clone()
         }
     }
     pub(crate) fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
         AlphaVar {
             normal,
-            alpha: Some(V((), alpha)),
+            alpha: V((), alpha),
         }
     }
 }
@@ -86,10 +87,7 @@ impl Shift for AlphaVar {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(AlphaVar {
             normal: self.normal.shift(delta, &var.normal)?,
-            alpha: match (&self.alpha, &var.alpha) {
-                (Some(x), Some(v)) => Some(x.shift(delta, v)?),
-                _ => None,
-            },
+            alpha: self.alpha.shift(delta, &var.alpha)?,
         })
     }
 }
@@ -104,13 +102,10 @@ impl<T> Subst<T> for () {
     fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {}
 }
 
+/// Equality up to alpha-equivalence
 impl std::cmp::PartialEq for AlphaVar {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.alpha, &other.alpha) {
-            (Some(x), Some(y)) => x == y,
-            (None, None) => self.normal == other.normal,
-            _ => false,
-        }
+        self.alpha == other.alpha
     }
 }
 impl std::cmp::PartialEq for AlphaLabel {
@@ -121,10 +116,7 @@ impl std::cmp::PartialEq for AlphaLabel {
 
 impl std::fmt::Debug for AlphaVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.alpha {
-            Some(a) => write!(f, "AlphaVar({}, {})", self.normal, a.1),
-            None => write!(f, "AlphaVar({}, free)", self.normal),
-        }
+        write!(f, "AlphaVar({}, {})", self.normal, self.alpha.1)
     }
 }
 
@@ -138,7 +130,7 @@ impl From<Label> for AlphaVar {
     fn from(x: Label) -> AlphaVar {
         AlphaVar {
             normal: V(x, 0),
-            alpha: Some(V((), 0)),
+            alpha: V((), 0),
         }
     }
 }
