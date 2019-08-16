@@ -10,46 +10,46 @@ use crate::error::TypeError;
 use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone)]
-enum CtxItem<T> {
-    Kept(AlphaVar, T),
-    Replaced(Thunk, T),
+enum CtxItem {
+    Kept(AlphaVar, Type),
+    Replaced(Thunk, Type),
 }
 
 #[derive(Debug, Clone)]
-struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
+pub(crate) struct TypecheckContext(Rc<Vec<(Label, CtxItem)>>);
 
-#[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(Context<Type>);
-
-impl<T> Context<T> {
+impl TypecheckContext {
     pub fn new() -> Self {
-        Context(Rc::new(Vec::new()))
+        TypecheckContext(Rc::new(Vec::new()))
     }
-    pub fn insert_kept(&self, x: &Label, t: T) -> Self
-    where
-        T: Shift + Clone,
-    {
+    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
         let mut vec = self.0.as_ref().clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
-        Context(Rc::new(vec))
+        TypecheckContext(Rc::new(vec))
     }
-    pub fn insert_replaced(&self, x: &Label, th: Thunk, t: T) -> Self
-    where
-        T: Clone,
-    {
+    pub fn insert_value(&self, x: &Label, e: Typed) -> Result<Self, TypeError> {
         let mut vec = self.0.as_ref().clone();
-        vec.push((x.clone(), CtxItem::Replaced(th, t)));
-        Context(Rc::new(vec))
+        vec.push((
+            x.clone(),
+            CtxItem::Replaced(e.to_thunk(), e.get_type()?.into_owned()),
+        ));
+        Ok(TypecheckContext(Rc::new(vec)))
     }
-    pub fn lookup(&self, var: &V<Label>) -> Result<CtxItem<T>, V<Label>>
-    where
-        T: Clone + Shift,
-    {
+    pub fn lookup(&self, var: &V<Label>) -> Option<Typed> {
         let mut var = var.clone();
         let mut shift_map: HashMap<Label, _> = HashMap::new();
         for (l, i) in self.0.iter().rev() {
             match var.over_binder(l) {
-                None => return Ok(i.under_multiple_binders(&shift_map)),
+                None => {
+                    let i = i.under_multiple_binders(&shift_map);
+                    let (th, t) = match i {
+                        CtxItem::Kept(newvar, t) => {
+                            (Value::Var(newvar).into_thunk(), t)
+                        }
+                        CtxItem::Replaced(th, t) => (th, t),
+                    };
+                    return Some(Typed::from_thunk_and_type(th, t));
+                }
                 Some(newvar) => var = newvar,
             };
             if let CtxItem::Kept(_, _) = i {
@@ -57,7 +57,7 @@ impl<T> Context<T> {
             }
         }
         // Free variable
-        Err(var)
+        None
     }
     /// Given a var that makes sense in the current context, map the given function in such a way
     /// that the passed variable always makes sense in the context of the passed item.
@@ -66,11 +66,8 @@ impl<T> Context<T> {
     fn do_with_var<E>(
         &self,
         var: &AlphaVar,
-        mut f: impl FnMut(&AlphaVar, &CtxItem<T>) -> Result<CtxItem<T>, E>,
-    ) -> Result<Self, E>
-    where
-        T: Clone,
-    {
+        mut f: impl FnMut(&AlphaVar, &CtxItem) -> Result<CtxItem, E>,
+    ) -> Result<Self, E> {
         let mut vec = Vec::new();
         vec.reserve(self.0.len());
         let mut var = var.clone();
@@ -88,16 +85,13 @@ impl<T> Context<T> {
             vec.push((l.clone(), (*i).clone()));
         }
         vec.reverse();
-        Ok(Context(Rc::new(vec)))
+        Ok(TypecheckContext(Rc::new(vec)))
     }
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self>
-    where
-        T: Clone + Shift,
-    {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         if delta < 0 {
             Some(self.do_with_var(var, |var, i| Ok(i.shift(delta, &var)?))?)
         } else {
-            Some(Context(Rc::new(
+            Some(TypecheckContext(Rc::new(
                 self.0
                     .iter()
                     .map(|(l, i)| Ok((l.clone(), i.shift(delta, &var)?)))
@@ -105,44 +99,13 @@ impl<T> Context<T> {
             )))
         }
     }
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self
-    where
-        T: Clone + Subst<Typed>,
-    {
+    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         self.do_with_var(var, |var, i| Ok::<_, !>(i.subst_shift(&var, val)))
             .unwrap()
     }
 }
 
-impl TypecheckContext {
-    pub fn new() -> Self {
-        TypecheckContext(Context::new())
-    }
-    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
-        TypecheckContext(self.0.insert_kept(x, t))
-    }
-    pub fn insert_value(&self, x: &Label, e: Typed) -> Result<Self, TypeError> {
-        Ok(TypecheckContext(self.0.insert_replaced(
-            x,
-            e.to_thunk(),
-            e.get_type()?.into_owned(),
-        )))
-    }
-    pub fn lookup(&self, var: &V<Label>) -> Option<Typed> {
-        match self.0.lookup(var) {
-            Ok(CtxItem::Kept(newvar, t)) => Some(Typed::from_thunk_and_type(
-                Thunk::from_value(Value::Var(newvar.clone())),
-                t.clone(),
-            )),
-            Ok(CtxItem::Replaced(th, t)) => {
-                Some(Typed::from_thunk_and_type(th.clone(), t.clone()))
-            }
-            Err(_) => None,
-        }
-    }
-}
-
-impl<T: Shift> Shift for CtxItem<T> {
+impl Shift for CtxItem {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
             CtxItem::Kept(v, t) => {
@@ -155,13 +118,13 @@ impl<T: Shift> Shift for CtxItem<T> {
     }
 }
 
-impl<T: Clone + Shift> Shift for Context<T> {
+impl Shift for TypecheckContext {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         self.shift(delta, var)
     }
 }
 
-impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
+impl Subst<Typed> for CtxItem {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
             CtxItem::Replaced(e, t) => CtxItem::Replaced(
@@ -178,16 +141,16 @@ impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
     }
 }
 
-impl<T: Clone + Subst<Typed>> Subst<Typed> for Context<T> {
+impl Subst<Typed> for TypecheckContext {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         self.subst_shift(var, val)
     }
 }
 
+/// Don't count contexts when comparing stuff.
+/// This is dirty but needed.
 impl PartialEq for TypecheckContext {
     fn eq(&self, _: &Self) -> bool {
-        // don't count contexts when comparing stuff
-        // this is dirty but needed for now
         true
     }
 }
