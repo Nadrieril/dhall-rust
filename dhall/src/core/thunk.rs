@@ -45,11 +45,6 @@ pub enum TypedThunk {
     // Any value, along with (optionally) its type
     Untyped(Thunk),
     Typed(Thunk, Box<Type>),
-    // One of the base higher-kinded types.
-    // Used to avoid storing the same tower ot Type->Kind->Sort
-    // over and over again. Also enables having Sort as a value
-    // even though it doesn't itself have a type.
-    Const(Const),
 }
 
 impl ThunkInternal {
@@ -191,7 +186,6 @@ impl TypedThunk {
 
     pub(crate) fn normalize_nf(&self) -> ValueF {
         match self {
-            TypedThunk::Const(c) => ValueF::Const(*c),
             TypedThunk::Untyped(thunk) | TypedThunk::Typed(thunk, _) => {
                 thunk.normalize_nf().clone()
             }
@@ -219,7 +213,10 @@ impl TypedThunk {
         TypedThunk::Untyped(th)
     }
     pub(crate) fn from_const(c: Const) -> Self {
-        TypedThunk::Const(c)
+        match type_of_const(c) {
+            Ok(t) => TypedThunk::from_valuef_and_type(ValueF::Const(c), t),
+            Err(_) => TypedThunk::from_valuef(ValueF::Const(c)),
+        }
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
         TypedThunk::from_thunk_and_type(Thunk::from_valuef(v), t)
@@ -231,7 +228,6 @@ impl TypedThunk {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => {
                 th.to_valuef()
             }
-            TypedThunk::Const(c) => ValueF::Const(*c),
         }
     }
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
@@ -243,7 +239,6 @@ impl TypedThunk {
     pub(crate) fn to_thunk(&self) -> Thunk {
         match self {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => th.clone(),
-            TypedThunk::Const(c) => Thunk::from_valuef(ValueF::Const(*c)),
         }
     }
     pub(crate) fn to_type(&self) -> Type {
@@ -265,18 +260,16 @@ impl TypedThunk {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => {
                 th.normalize_mut()
             }
-            TypedThunk::Const(_) => {}
         }
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         match self {
-            TypedThunk::Untyped(_) => Err(TypeError::new(
+            TypedThunk::Untyped(th) => Err(TypeError::new(
                 &TypecheckContext::new(),
                 TypeMessage::Untyped,
             )),
             TypedThunk::Typed(_, t) => Ok(Cow::Borrowed(t)),
-            TypedThunk::Const(c) => Ok(Cow::Owned(type_of_const(*c)?)),
         }
     }
 }
@@ -313,7 +306,6 @@ impl Shift for TypedThunk {
                 th.shift(delta, var)?,
                 Box::new(t.shift(delta, var)?),
             ),
-            TypedThunk::Const(c) => TypedThunk::Const(*c),
         })
     }
 }
@@ -356,7 +348,6 @@ impl Subst<Typed> for TypedThunk {
                 th.subst_shift(var, val),
                 Box::new(t.subst_shift(var, val)),
             ),
-            TypedThunk::Const(c) => TypedThunk::Const(*c),
         }
     }
 }
