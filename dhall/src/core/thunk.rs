@@ -182,11 +182,7 @@ impl Thunk {
 
 impl TypedThunk {
     pub(crate) fn from_value(v: Value) -> TypedThunk {
-        TypedThunk::from_thunk(Thunk::from_value(v))
-    }
-
-    pub fn from_thunk(th: Thunk) -> TypedThunk {
-        TypedThunk::from_thunk_untyped(th)
+        TypedThunk::from_thunk_untyped(Thunk::from_value(v))
     }
 
     pub(crate) fn from_type(t: Type) -> TypedThunk {
@@ -216,14 +212,17 @@ impl TypedThunk {
     pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         TypedThunk::Typed(th, Box::new(t))
     }
+    pub fn from_thunk_simple_type(th: Thunk) -> Self {
+        TypedThunk::from_thunk_and_type(th, Type::const_type())
+    }
     pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
         TypedThunk::Untyped(th)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         TypedThunk::Const(c)
     }
-    pub(crate) fn from_value_untyped(v: Value) -> Self {
-        TypedThunk::from_thunk_untyped(Thunk::from_value(v))
+    pub(crate) fn from_value_and_type(v: Value, t: Type) -> Self {
+        TypedThunk::from_thunk_and_type(Thunk::from_value(v), t)
     }
 
     // TODO: Avoid cloning if possible

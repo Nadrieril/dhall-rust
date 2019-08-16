@@ -22,10 +22,13 @@ macro_rules! make_closure {
         );
         Value::Var(var).into_thunk()
     }};
+    // Warning: assumes that $ty, as a dhall value, has type `Type`
     (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
         Value::Lam(
             Label::from(stringify!($var)).into(),
-            TypedThunk::from_thunk_untyped(make_closure!($($ty)*)),
+            TypedThunk::from_thunk_simple_type(
+                make_closure!($($ty)*),
+            ),
             make_closure!($($rest)*),
         ).into_thunk()
     };
@@ -61,9 +64,10 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
 
     // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.
     let ret = match (b, args.as_slice()) {
-        (OptionalNone, [t, r..]) => {
-            Ok((r, EmptyOptionalLit(TypedThunk::from_thunk(t.clone()))))
-        }
+        (OptionalNone, [t, r..]) => Ok((
+            r,
+            EmptyOptionalLit(TypedThunk::from_thunk_simple_type(t.clone())),
+        )),
         (NaturalIsZero, [n, r..]) => match &*n.as_value() {
             NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
             _ => Err(()),
@@ -228,7 +232,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                             [ var(x, 1) ] # var(xs, 0)
                         )
                     })
-                    .app_val(EmptyListLit(TypedThunk::from_thunk(t.clone()))),
+                    .app_val(EmptyListLit(TypedThunk::from_thunk_simple_type(
+                        t.clone(),
+                    ))),
             )),
         },
         (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_value() {
@@ -260,9 +266,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
                 r,
                 f.app_val(Value::from_builtin(Optional).app_thunk(t.clone()))
                     .app_thunk(make_closure!(λ(x: #t) -> Some var(x, 0)))
-                    .app_val(EmptyOptionalLit(TypedThunk::from_thunk(
-                        t.clone(),
-                    ))),
+                    .app_val(EmptyOptionalLit(
+                        TypedThunk::from_thunk_simple_type(t.clone()),
+                    )),
             )),
         },
         (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_value() {
@@ -611,18 +617,20 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
         }
         (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                TypedThunk::from_thunk(Thunk::from_partial_expr(ExprF::BinOp(
-                    RecursiveRecordTypeMerge,
-                    v1.to_thunk(),
-                    v2.to_thunk(),
-                )))
+                TypedThunk::from_thunk_untyped(Thunk::from_partial_expr(
+                    ExprF::BinOp(
+                        RecursiveRecordTypeMerge,
+                        v1.to_thunk(),
+                        v2.to_thunk(),
+                    ),
+                ))
             });
             Ret::Value(RecordType(kvs))
         }
 
         (Equivalence, _, _) => Ret::Value(Value::Equivalence(
-            TypedThunk::from_thunk(x.clone()),
-            TypedThunk::from_thunk(y.clone()),
+            TypedThunk::from_thunk_simple_type(x.clone()),
+            TypedThunk::from_thunk_simple_type(y.clone()),
         )),
 
         _ => return None,
@@ -645,12 +653,12 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
         ExprF::Annot(x, _) => Ret::Thunk(x),
         ExprF::Assert(_) => Ret::Expr(expr),
         ExprF::Lam(x, t, e) => {
-            Ret::Value(Lam(x.into(), TypedThunk::from_thunk(t), e))
+            Ret::Value(Lam(x.into(), TypedThunk::from_thunk_untyped(t), e))
         }
         ExprF::Pi(x, t, e) => Ret::Value(Pi(
             x.into(),
-            TypedThunk::from_thunk(t),
-            TypedThunk::from_thunk(e),
+            TypedThunk::from_thunk_untyped(t),
+            TypedThunk::from_thunk_untyped(e),
         )),
         ExprF::Let(x, _, v, b) => {
             let v = Typed::from_thunk_untyped(v);
@@ -669,9 +677,9 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
             let t_borrow = t.as_value();
             match &*t_borrow {
                 AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
-                    Ret::Value(EmptyListLit(TypedThunk::from_thunk(
-                        args[0].clone(),
-                    )))
+                    Ret::Value(EmptyListLit(
+                        TypedThunk::from_thunk_simple_type(args[0].clone()),
+                    ))
                 }
                 _ => {
                     drop(t_borrow);
@@ -687,12 +695,12 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
         }
         ExprF::RecordType(kts) => Ret::Value(RecordType(
             kts.into_iter()
-                .map(|(k, t)| (k, TypedThunk::from_thunk(t)))
+                .map(|(k, t)| (k, TypedThunk::from_thunk_untyped(t)))
                 .collect(),
         )),
         ExprF::UnionType(kts) => Ret::Value(UnionType(
             kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypedThunk::from_thunk(t))))
+                .map(|(k, t)| (k, t.map(|t| TypedThunk::from_thunk_untyped(t))))
                 .collect(),
         )),
         ExprF::TextLit(elts) => {

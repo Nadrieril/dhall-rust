@@ -101,11 +101,14 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(TypedThunk::from_const(c))
     }
-    pub fn from_value_untyped(v: Value) -> Self {
-        Typed(TypedThunk::from_value_untyped(v))
+    pub fn from_value_and_type(v: Value, t: Type) -> Self {
+        Typed(TypedThunk::from_value_and_type(v, t))
     }
     pub(crate) fn from_typethunk(th: TypedThunk) -> Self {
         Typed(th)
+    }
+    pub fn const_type() -> Self {
+        Typed::from_const(Const::Type)
     }
 
     pub(crate) fn to_value(&self) -> Value {

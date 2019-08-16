@@ -160,20 +160,21 @@ pub mod value {
             self.0.to_type()
         }
 
-        pub(crate) fn from_dhall_value(v: DhallValue) -> Self {
-            Value(Typed::from_value_untyped(v))
+        /// Assumes that the given value has type `Type`.
+        pub(crate) fn make_simple_type(v: DhallValue) -> Self {
+            Value(Typed::from_value_and_type(v, Type::const_type()))
         }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Self::from_dhall_value(DhallValue::from_builtin(b))
+            Self::make_simple_type(DhallValue::from_builtin(b))
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
-            Self::from_dhall_value(
+            Self::make_simple_type(
                 DhallValue::from_builtin(Builtin::Optional)
                     .app_thunk(t.to_thunk()),
             )
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
-            Self::from_dhall_value(
+            Self::make_simple_type(
                 DhallValue::from_builtin(Builtin::List).app_thunk(t.to_thunk()),
             )
         }
@@ -182,9 +183,9 @@ pub mod value {
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Value)>,
         ) -> Self {
-            Self::from_dhall_value(DhallValue::RecordType(
+            Self::make_simple_type(DhallValue::RecordType(
                 kts.map(|(k, t)| {
-                    (k.into(), TypedThunk::from_thunk(t.to_thunk()))
+                    (k.into(), TypedThunk::from_thunk_simple_type(t.to_thunk()))
                 })
                 .collect(),
             ))
@@ -193,9 +194,14 @@ pub mod value {
         pub fn make_union_type(
             kts: impl Iterator<Item = (String, Option<Value>)>,
         ) -> Self {
-            Self::from_dhall_value(DhallValue::UnionType(
+            Self::make_simple_type(DhallValue::UnionType(
                 kts.map(|(k, t)| {
-                    (k.into(), t.map(|t| TypedThunk::from_thunk(t.to_thunk())))
+                    (
+                        k.into(),
+                        t.map(|t| {
+                            TypedThunk::from_thunk_simple_type(t.to_thunk())
+                        }),
+                    )
                 })
                 .collect(),
             ))
