@@ -106,7 +106,7 @@ unquoted_path_component
 quoted_path_component
 path_component
 path
-# local
+local
 parent_path
 here_path
 home_path

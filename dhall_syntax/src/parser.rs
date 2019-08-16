@@ -127,17 +127,75 @@ macro_rules! make_parser {
     (@filter, token_rule) => (true);
     (@filter, rule_group) => (false);
 
-    (@construct_climber,
-        ($map:expr),
+    (@child_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:pat), $($rest:tt)*]
+    ) => (
+        make_parser!(@child_pattern,
+            $varpat,
+            ($($acc)* , Rule::$variant),
+            [$($rest)*]
+        )
+    );
+    (@child_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        make_parser!(@child_pattern,
+            $varpat,
+            ($($acc)* , $varpat..),
+            [$($rest)*]
+        )
+    );
+    (@child_pattern,
+        $varpat:ident,
+        (, $($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+    (@child_pattern,
+        $varpat:ident,
+        ($($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+
+    (@child_filter,
+        $varpat:ident,
+        [$variant:ident ($x:pat), $($rest:tt)*]
+    ) => (
+        true &&
+        make_parser!(@child_filter, $varpat, [$($rest)*])
+    );
+    (@child_filter,
+        $varpat:ident,
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        $varpat.iter().all(|r| r == &Rule::$variant) &&
+        make_parser!(@child_filter, $varpat, [$($rest)*])
+    );
+    (@child_filter, $varpat:ident, [$(,)*]) => (true);
+
+    (@rule_alias,
+        rule!( $name:ident<$o:ty>; $($args:tt)* )
+    ) => (
+        Rule::$name
+    );
+    (@rule_alias,
         rule!(
             $name:ident<$o:ty>
             as $group:ident;
-            prec_climb!( $climber:expr, $($_rest:tt)* )
+            $($args:tt)*
         )
     ) => ({
-        $map.insert(Rule::$name, $climber)
+        Rule::$group
     });
-    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
+    (@rule_alias,
+        token_rule!($name:ident<$o:ty>)
+    ) => ({
+        Rule::$name
+    });
+    (@rule_alias, rule_group!( $name:ident<$o:ty> )) => (
+        unreachable!()
+    );
 
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
@@ -169,19 +227,43 @@ macro_rules! make_parser {
             .into_inner()
             .map(|p| parse_any($climbers, $input.clone(), p))
             .collect::<Result<_, _>>()?;
+        let children_rules: Vec<Rule> = $pair
+            .clone()
+            .into_inner()
+            .map(|p| p.as_rule())
+            .map(rule_alias)
+            .collect();
 
         #[allow(unreachable_code)]
         let res: Result<_, String> = try {
             #[allow(unused_imports)]
             use ParsedValue::*;
             let $span = Span::make($input, $pair.as_span());
+            #[allow(unused_mut)]
+            let mut iter = children.into_iter();
 
-            improved_slice_patterns::match_vec!(children;
-                $( [$($args)*] => $body, )*
-                [x..] => Err(
-                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-                )?,
-            ).map_err(|_| -> String { unreachable!() })?
+            match children_rules.as_slice() {
+                $(
+                    make_parser!(@child_pattern, x, (), [$($args)*,])
+                    if make_parser!(@child_filter, x, [$($args)*,])
+                    => {
+                        let ret =
+                            improved_slice_patterns::destructure_iter!(iter;
+                                [$($args)*] => $body
+                        );
+                        match ret {
+                            Some(x) => x,
+                            None => Err({
+                                format!("Unexpected children: {:?}", children_rules)
+                            })?
+                        }
+                    }
+                    ,
+                )*
+                [..] => Err({
+                    format!("Unexpected children: {:?}", children_rules)
+                })?,
+            }
         };
 
         let res = res.map_err(|msg| custom_parse_error(&$pair, msg))?;
@@ -252,6 +334,18 @@ macro_rules! make_parser {
         unreachable!()
     );
 
+    (@construct_climber,
+        ($map:expr),
+        rule!(
+            $name:ident<$o:ty>
+            as $group:ident;
+            prec_climb!( $climber:expr, $($_rest:tt)* )
+        )
+    ) => ({
+        $map.insert(Rule::$name, $climber)
+    });
+    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
+
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
         #[allow(non_camel_case_types, dead_code, clippy::large_enum_variant)]
         #[derive(Debug)]
@@ -282,6 +376,19 @@ macro_rules! make_parser {
                                $submac!( $name<$o> $($args)* ))
             }
             )*
+        }
+
+        fn rule_alias(r: Rule) -> Rule {
+            match r {
+                $(
+                    make_parser!(@pattern, $submac, $name)
+                    if make_parser!(@filter, $submac)
+                    => make_parser!(@rule_alias,
+                                    $submac!( $name<$o> $($args)* ))
+                    ,
+                )*
+                r => r,
+            }
         }
 
         fn parse_any<'a>(
@@ -520,21 +627,15 @@ make_parser! {
             lines.last_mut().unwrap().push(c);
             lines
         },
-        [single_quote_char("\n"), single_quote_continue(lines)] => {
-            let mut lines = lines;
-            lines.push(vec![]);
-            lines
-        },
-        [single_quote_char("\r\n"), single_quote_continue(lines)] => {
-            let mut lines = lines;
-            lines.push(vec![]);
-            lines
-        },
         [single_quote_char(c), single_quote_continue(lines)] => {
-            // TODO: don't allocate for every char
-            let c = InterpolatedTextContents::Text(c.to_owned());
             let mut lines = lines;
-            lines.last_mut().unwrap().push(c);
+            if c == "\n" || c == "\r\n" {
+                lines.push(vec![]);
+            } else {
+                // TODO: don't allocate for every char
+                let c = InterpolatedTextContents::Text(c.to_owned());
+                lines.last_mut().unwrap().push(c);
+            }
             lines
         },
         [] => {
@@ -631,7 +732,9 @@ make_parser! {
         }
     ));
 
-    rule_group!(local<(FilePrefix, Vec<String>)>);
+    rule!(local<(FilePrefix, Vec<String>)>; children!(
+        [local(l)] => l
+    ));
 
     rule!(parent_path<(FilePrefix, Vec<String>)> as local; children!(
         [path(p)] => (FilePrefix::Parent, p)
