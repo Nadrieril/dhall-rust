@@ -125,7 +125,7 @@ pub use value::Value;
 // A Dhall value.
 pub mod value {
     use dhall::core::thunk::{Thunk, TypedThunk};
-    use dhall::core::value::Value as DhallValue;
+    use dhall::core::value::ValueF as DhallValue;
     use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
     use dhall_syntax::Builtin;
 
@@ -162,7 +162,7 @@ pub mod value {
 
         /// Assumes that the given value has type `Type`.
         pub(crate) fn make_simple_type(v: DhallValue) -> Self {
-            Value(Typed::from_value_and_type(v, Type::const_type()))
+            Value(Typed::from_valuef_and_type(v, Type::const_type()))
         }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
             Self::make_simple_type(DhallValue::from_builtin(b))

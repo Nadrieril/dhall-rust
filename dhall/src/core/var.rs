@@ -12,7 +12,7 @@ pub struct AlphaVar {
 }
 
 // Exactly like a Label, but equality returns always true.
-// This is so that Value equality is exactly alpha-equivalence.
+// This is so that ValueF equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct AlphaLabel(Label);
 

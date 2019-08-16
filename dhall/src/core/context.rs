@@ -4,7 +4,7 @@ use std::rc::Rc;
 use dhall_syntax::{Label, V};
 
 use crate::core::thunk::Thunk;
-use crate::core::value::Value;
+use crate::core::value::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
 use crate::phase::{Type, Typed};
@@ -44,7 +44,7 @@ impl TypecheckContext {
                     let i = i.under_multiple_binders(&shift_map);
                     let (th, t) = match i {
                         CtxItem::Kept(newvar, t) => {
-                            (Value::Var(newvar).into_thunk(), t)
+                            (ValueF::Var(newvar).into_thunk(), t)
                         }
                         CtxItem::Replaced(th, t) => (th, t),
                     };

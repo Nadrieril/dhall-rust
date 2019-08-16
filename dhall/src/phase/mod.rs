@@ -5,7 +5,7 @@ use std::path::Path;
 use dhall_syntax::{Const, SubExpr};
 
 use crate::core::thunk::{Thunk, TypedThunk};
-use crate::core::value::Value;
+use crate::core::value::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 
@@ -101,8 +101,8 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(TypedThunk::from_const(c))
     }
-    pub fn from_value_and_type(v: Value, t: Type) -> Self {
-        Typed(TypedThunk::from_value_and_type(v, t))
+    pub fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
+        Typed(TypedThunk::from_valuef_and_type(v, t))
     }
     pub(crate) fn from_typethunk(th: TypedThunk) -> Self {
         Typed(th)
@@ -111,8 +111,8 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
+    pub(crate) fn to_valuef(&self) -> ValueF {
+        self.0.to_valuef()
     }
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
@@ -229,7 +229,7 @@ impl std::hash::Hash for Normalized {
 impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {
-        self.to_value() == other.to_value()
+        self.to_valuef() == other.to_valuef()
     }
 }
 

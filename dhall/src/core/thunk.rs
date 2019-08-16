@@ -5,7 +5,7 @@ use std::rc::Rc;
 use dhall_syntax::{Const, ExprF};
 
 use crate::core::context::TypecheckContext;
-use crate::core::value::Value;
+use crate::core::value::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_one_layer, OutputSubExpr};
@@ -24,12 +24,12 @@ use Marker::{NF, WHNF};
 #[derive(Debug)]
 enum ThunkInternal {
     /// Partially normalized value whose subexpressions have been thunked (this is returned from
-    /// typechecking). Note that this is different from `Value::PartialExpr` because there is no
+    /// typechecking). Note that this is different from `ValueF::PartialExpr` because there is no
     /// requirement of WHNF here.
     PartialExpr(ExprF<Thunk, Normalized>),
     /// Partially normalized value.
     /// Invariant: if the marker is `NF`, the value must be fully normalized
-    Value(Marker, Value),
+    ValueF(Marker, ValueF),
 }
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
@@ -61,10 +61,10 @@ impl ThunkInternal {
         match self {
             ThunkInternal::PartialExpr(e) => {
                 *self =
-                    ThunkInternal::Value(WHNF, normalize_one_layer(e.clone()))
+                    ThunkInternal::ValueF(WHNF, normalize_one_layer(e.clone()))
             }
             // Already at least in WHNF
-            ThunkInternal::Value(_, _) => {}
+            ThunkInternal::ValueF(_, _) => {}
         }
     }
 
@@ -74,37 +74,37 @@ impl ThunkInternal {
                 self.normalize_whnf();
                 self.normalize_nf();
             }
-            ThunkInternal::Value(m @ WHNF, v) => {
+            ThunkInternal::ValueF(m @ WHNF, v) => {
                 v.normalize_mut();
                 *m = NF;
             }
             // Already in NF
-            ThunkInternal::Value(NF, _) => {}
+            ThunkInternal::ValueF(NF, _) => {}
         }
     }
 
     // Always use normalize_whnf before
-    fn as_whnf(&self) -> &Value {
+    fn as_whnf(&self) -> &ValueF {
         match self {
             ThunkInternal::PartialExpr(_) => unreachable!(),
-            ThunkInternal::Value(_, v) => v,
+            ThunkInternal::ValueF(_, v) => v,
         }
     }
 
     // Always use normalize_nf before
-    fn as_nf(&self) -> &Value {
+    fn as_nf(&self) -> &ValueF {
         match self {
-            ThunkInternal::PartialExpr(_) | ThunkInternal::Value(WHNF, _) => {
+            ThunkInternal::PartialExpr(_) | ThunkInternal::ValueF(WHNF, _) => {
                 unreachable!()
             }
-            ThunkInternal::Value(NF, v) => v,
+            ThunkInternal::ValueF(NF, v) => v,
         }
     }
 }
 
 impl Thunk {
-    pub(crate) fn from_value(v: Value) -> Thunk {
-        ThunkInternal::Value(WHNF, v).into_thunk()
+    pub(crate) fn from_valuef(v: ValueF) -> Thunk {
+        ThunkInternal::ValueF(WHNF, v).into_thunk()
     }
 
     pub(crate) fn from_partial_expr(e: ExprF<Thunk, Normalized>) -> Thunk {
@@ -130,38 +130,38 @@ impl Thunk {
                 self.0.borrow_mut().normalize_whnf();
             }
             // Already at least in WHNF
-            ThunkInternal::Value(_, _) => {}
+            ThunkInternal::ValueF(_, _) => {}
         }
     }
 
     fn do_normalize_nf(&self) {
         let borrow = self.0.borrow();
         match &*borrow {
-            ThunkInternal::PartialExpr(_) | ThunkInternal::Value(WHNF, _) => {
+            ThunkInternal::PartialExpr(_) | ThunkInternal::ValueF(WHNF, _) => {
                 drop(borrow);
                 self.0.borrow_mut().normalize_nf();
             }
             // Already in NF
-            ThunkInternal::Value(NF, _) => {}
+            ThunkInternal::ValueF(NF, _) => {}
         }
     }
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub(crate) fn normalize_nf(&self) -> Ref<Value> {
+    pub(crate) fn normalize_nf(&self) -> Ref<ValueF> {
         self.do_normalize_nf();
         Ref::map(self.0.borrow(), ThunkInternal::as_nf)
     }
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub(crate) fn as_value(&self) -> Ref<Value> {
+    pub(crate) fn as_valuef(&self) -> Ref<ValueF> {
         self.do_normalize_whnf();
         Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
     }
 
-    pub(crate) fn to_value(&self) -> Value {
-        self.as_value().clone()
+    pub(crate) fn to_valuef(&self) -> ValueF {
+        self.as_valuef().clone()
     }
 
     pub(crate) fn normalize_to_expr_maybe_alpha(
@@ -171,27 +171,27 @@ impl Thunk {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app_val(&self, val: Value) -> Value {
+    pub(crate) fn app_val(&self, val: ValueF) -> ValueF {
         self.app_thunk(val.into_thunk())
     }
 
-    pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
+    pub(crate) fn app_thunk(&self, th: Thunk) -> ValueF {
         apply_any(self.clone(), th)
     }
 }
 
 impl TypedThunk {
-    pub(crate) fn from_value(v: Value) -> TypedThunk {
-        TypedThunk::from_thunk_untyped(Thunk::from_value(v))
+    pub(crate) fn from_valuef(v: ValueF) -> TypedThunk {
+        TypedThunk::from_thunk_untyped(Thunk::from_valuef(v))
     }
 
     pub(crate) fn from_type(t: Type) -> TypedThunk {
         t.into_typethunk()
     }
 
-    pub(crate) fn normalize_nf(&self) -> Value {
+    pub(crate) fn normalize_nf(&self) -> ValueF {
         match self {
-            TypedThunk::Const(c) => Value::Const(*c),
+            TypedThunk::Const(c) => ValueF::Const(*c),
             TypedThunk::Untyped(thunk) | TypedThunk::Typed(thunk, _) => {
                 thunk.normalize_nf().clone()
             }
@@ -221,27 +221,29 @@ impl TypedThunk {
     pub(crate) fn from_const(c: Const) -> Self {
         TypedThunk::Const(c)
     }
-    pub(crate) fn from_value_and_type(v: Value, t: Type) -> Self {
-        TypedThunk::from_thunk_and_type(Thunk::from_value(v), t)
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
+        TypedThunk::from_thunk_and_type(Thunk::from_valuef(v), t)
     }
 
     // TODO: Avoid cloning if possible
-    pub(crate) fn to_value(&self) -> Value {
+    pub(crate) fn to_valuef(&self) -> ValueF {
         match self {
-            TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => th.to_value(),
-            TypedThunk::Const(c) => Value::Const(*c),
+            TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => {
+                th.to_valuef()
+            }
+            TypedThunk::Const(c) => ValueF::Const(*c),
         }
     }
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-        self.to_value().normalize_to_expr()
+        self.to_valuef().normalize_to_expr()
     }
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
-        self.to_value().normalize_to_expr_maybe_alpha(true)
+        self.to_valuef().normalize_to_expr_maybe_alpha(true)
     }
     pub(crate) fn to_thunk(&self) -> Thunk {
         match self {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => th.clone(),
-            TypedThunk::Const(c) => Thunk::from_value(Value::Const(*c)),
+            TypedThunk::Const(c) => Thunk::from_valuef(ValueF::Const(*c)),
         }
     }
     pub(crate) fn to_type(&self) -> Type {
@@ -252,8 +254,8 @@ impl TypedThunk {
     }
     pub(crate) fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
-        match &self.to_value() {
-            Value::Const(c) => Some(*c),
+        match &self.to_valuef() {
+            ValueF::Const(c) => Some(*c),
             _ => None,
         }
     }
@@ -294,8 +296,8 @@ impl Shift for ThunkInternal {
                     |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
                 )?,
             ),
-            ThunkInternal::Value(m, v) => {
-                ThunkInternal::Value(*m, v.shift(delta, var)?)
+            ThunkInternal::ValueF(m, v) => {
+                ThunkInternal::ValueF(*m, v.shift(delta, var)?)
             }
         })
     }
@@ -336,9 +338,9 @@ impl Subst<Typed> for ThunkInternal {
                     },
                 ),
             ),
-            ThunkInternal::Value(_, v) => {
+            ThunkInternal::ValueF(_, v) => {
                 // The resulting value may not stay in normal form after substitution
-                ThunkInternal::Value(WHNF, v.subst_shift(var, val))
+                ThunkInternal::ValueF(WHNF, v.subst_shift(var, val))
             }
         }
     }
@@ -361,14 +363,14 @@ impl Subst<Typed> for TypedThunk {
 
 impl std::cmp::PartialEq for Thunk {
     fn eq(&self, other: &Self) -> bool {
-        *self.as_value() == *other.as_value()
+        *self.as_valuef() == *other.as_valuef()
     }
 }
 impl std::cmp::Eq for Thunk {}
 
 impl std::cmp::PartialEq for TypedThunk {
     fn eq(&self, other: &Self) -> bool {
-        self.to_value() == other.to_value()
+        self.to_valuef() == other.to_valuef()
     }
 }
 impl std::cmp::Eq for TypedThunk {}
@@ -377,7 +379,7 @@ impl std::fmt::Debug for Thunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let b: &ThunkInternal = &self.0.borrow();
         match b {
-            ThunkInternal::Value(m, v) => {
+            ThunkInternal::ValueF(m, v) => {
                 f.debug_tuple(&format!("Thunk@{:?}", m)).field(v).finish()
             }
             ThunkInternal::PartialExpr(e) => {
