@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Const, SubExpr, Void};
+use dhall_syntax::{Const, SubExpr};
 
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
@@ -17,8 +17,8 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedSubExpr = SubExpr<Void>;
-pub type DecodedSubExpr = SubExpr<Void>;
+pub type ParsedSubExpr = SubExpr<!>;
+pub type DecodedSubExpr = SubExpr<!>;
 pub type ResolvedSubExpr = SubExpr<Normalized>;
 pub type NormalizedSubExpr = SubExpr<Normalized>;
 

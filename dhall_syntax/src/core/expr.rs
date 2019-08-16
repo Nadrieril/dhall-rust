@@ -8,20 +8,10 @@ pub type Integer = isize;
 pub type Natural = usize;
 pub type Double = NaiveDouble;
 
-/// An empty type
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Void {}
-
-impl std::fmt::Display for Void {
-    fn fmt(&self, _f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        match *self {}
-    }
-}
-
-pub fn trivial_result<T>(x: Result<T, Void>) -> T {
+pub fn trivial_result<T>(x: Result<T, !>) -> T {
     match x {
         Ok(x) => x,
-        Err(e) => match e {},
+        Err(e) => e,
     }
 }
 

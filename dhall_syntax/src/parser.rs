@@ -18,8 +18,8 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-pub(crate) type ParsedExpr = Expr<Void>;
-pub(crate) type ParsedSubExpr = SubExpr<Void>;
+pub(crate) type ParsedExpr = Expr<!>;
+pub(crate) type ParsedSubExpr = SubExpr<!>;
 type ParsedText = InterpolatedText<ParsedSubExpr>;
 type ParsedTextContents = InterpolatedTextContents<ParsedSubExpr>;
 

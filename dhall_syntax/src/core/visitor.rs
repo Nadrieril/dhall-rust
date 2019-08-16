@@ -176,7 +176,7 @@ impl<'a, T, SE1, SE2, E1, E2> ExprFFallibleVisitor<'a, SE1, SE2, E1, E2>
 where
     T: ExprFInFallibleVisitor<'a, SE1, SE2, E1, E2>,
 {
-    type Error = Void;
+    type Error = !;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error> {
         Ok(self.0.visit_subexpr(subexpr))
