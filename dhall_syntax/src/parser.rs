@@ -120,52 +120,52 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 macro_rules! make_parser {
-    (@child_pattern,
+    (@children_pattern,
         $varpat:ident,
         ($($acc:tt)*),
         [$variant:ident ($x:pat), $($rest:tt)*]
     ) => (
-        make_parser!(@child_pattern,
+        make_parser!(@children_pattern,
             $varpat,
             ($($acc)* , Rule::$variant),
             [$($rest)*]
         )
     );
-    (@child_pattern,
+    (@children_pattern,
         $varpat:ident,
         ($($acc:tt)*),
         [$variant:ident ($x:ident).., $($rest:tt)*]
     ) => (
-        make_parser!(@child_pattern,
+        make_parser!(@children_pattern,
             $varpat,
             ($($acc)* , $varpat..),
             [$($rest)*]
         )
     );
-    (@child_pattern,
+    (@children_pattern,
         $varpat:ident,
         (, $($acc:tt)*), [$(,)*]
     ) => ([$($acc)*]);
-    (@child_pattern,
+    (@children_pattern,
         $varpat:ident,
         ($($acc:tt)*), [$(,)*]
     ) => ([$($acc)*]);
 
-    (@child_filter,
+    (@children_filter,
         $varpat:ident,
         [$variant:ident ($x:pat), $($rest:tt)*]
     ) => (
         true &&
-        make_parser!(@child_filter, $varpat, [$($rest)*])
+        make_parser!(@children_filter, $varpat, [$($rest)*])
     );
-    (@child_filter,
+    (@children_filter,
         $varpat:ident,
         [$variant:ident ($x:ident).., $($rest:tt)*]
     ) => (
         $varpat.iter().all(|r| r == &Rule::$variant) &&
-        make_parser!(@child_filter, $varpat, [$($rest)*])
+        make_parser!(@children_filter, $varpat, [$($rest)*])
     );
-    (@child_filter, $varpat:ident, [$(,)*]) => (true);
+    (@children_filter, $varpat:ident, [$(,)*]) => (true);
 
     (@rule_alias,
         rule!( $name:ident<$o:ty>; $($args:tt)* )
@@ -234,8 +234,8 @@ macro_rules! make_parser {
 
             match children_rules.as_slice() {
                 $(
-                    make_parser!(@child_pattern, x, (), [$($args)*,])
-                    if make_parser!(@child_filter, x, [$($args)*,])
+                    make_parser!(@children_pattern, x, (), [$($args)*,])
+                    if make_parser!(@children_filter, x, [$($args)*,])
                     => {
                         let ret =
                             improved_slice_patterns::destructure_iter!(iter;
