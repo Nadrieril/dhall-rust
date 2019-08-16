@@ -56,7 +56,7 @@ impl TypecheckContext {
                 *shift_map.entry(l.clone()).or_insert(0) += 1;
             }
         }
-        // Free variable
+        // Unbound variable
         None
     }
     /// Given a var that makes sense in the current context, map the given function in such a way
