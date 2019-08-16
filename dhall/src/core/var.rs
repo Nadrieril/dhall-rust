@@ -50,8 +50,8 @@ pub(crate) trait Shift: Sized {
     }
 }
 
-pub(crate) trait Subst<T> {
-    fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
+pub(crate) trait Subst<S> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self;
 }
 
 impl AlphaVar {
@@ -98,8 +98,35 @@ impl Shift for () {
     }
 }
 
-impl<T> Subst<T> for () {
-    fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {}
+impl<T: Shift> Shift for Option<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
+            None => None,
+            Some(x) => Some(x.shift(delta, var)?),
+        })
+    }
+}
+
+impl<T: Shift> Shift for Box<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(Box::new(self.as_ref().shift(delta, var)?))
+    }
+}
+
+impl<S> Subst<S> for () {
+    fn subst_shift(&self, _var: &AlphaVar, _val: &S) -> Self {}
+}
+
+impl<S, T: Subst<S>> Subst<S> for Option<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        self.as_ref().map(|x| x.subst_shift(var, val))
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for Box<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        Box::new(self.as_ref().subst_shift(var, val))
+    }
 }
 
 /// Equality up to alpha-equivalence
