@@ -564,13 +564,12 @@ fn type_last_layer(
                         Value::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
-                                // TODO: avoid capture
                                 Ok(RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
                                         "_".into(),
                                         t.to_type(),
-                                        r.clone(),
+                                        r.under_binder(Label::from("_")),
                                     )?.to_type()
                                 ))
                             },
