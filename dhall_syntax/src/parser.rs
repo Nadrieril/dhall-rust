@@ -120,13 +120,6 @@ fn debug_pair(pair: Pair<Rule>) -> String {
 }
 
 macro_rules! make_parser {
-    (@pattern, rule, $name:ident) => (Rule::$name);
-    (@pattern, token_rule, $name:ident) => (Rule::$name);
-    (@pattern, rule_group, $name:ident) => (_);
-    (@filter, rule) => (true);
-    (@filter, token_rule) => (true);
-    (@filter, rule_group) => (false);
-
     (@child_pattern,
         $varpat:ident,
         ($($acc:tt)*),
@@ -193,9 +186,6 @@ macro_rules! make_parser {
     ) => ({
         Rule::$name
     });
-    (@rule_alias, rule_group!( $name:ident<$o:ty> )) => (
-        unreachable!()
-    );
 
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
@@ -330,9 +320,6 @@ macro_rules! make_parser {
     ) => ({
         Ok(ParsedValue::$name(()))
     });
-    (@body, ($($things:tt)*), rule_group!( $name:ident<$o:ty> )) => (
-        unreachable!()
-    );
 
     (@construct_climber,
         ($map:expr),
@@ -381,11 +368,9 @@ macro_rules! make_parser {
         fn rule_alias(r: Rule) -> Rule {
             match r {
                 $(
-                    make_parser!(@pattern, $submac, $name)
-                    if make_parser!(@filter, $submac)
-                    => make_parser!(@rule_alias,
-                                    $submac!( $name<$o> $($args)* ))
-                    ,
+                    Rule::$name => {
+                        make_parser!(@rule_alias, $submac!($name<$o> $($args)*))
+                    }
                 )*
                 r => r,
             }
@@ -417,10 +402,7 @@ macro_rules! make_parser {
 
             match pair.as_rule() {
                 $(
-                    make_parser!(@pattern, $submac, $name)
-                    if make_parser!(@filter, $submac)
-                    => Parsers::$name(climbers, input, pair)
-                    ,
+                    Rule::$name => Parsers::$name(climbers, input, pair),
                 )*
                 r => Err(custom_parse_error(&pair, format!("Unexpected {:?}", r))),
             }
