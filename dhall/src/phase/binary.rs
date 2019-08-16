@@ -11,14 +11,14 @@ use dhall_syntax::{
 use crate::error::{DecodeError, EncodeError};
 use crate::phase::DecodedSubExpr;
 
-pub fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
+pub(crate) fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {
         Ok(v) => cbor_value_to_dhall(&v),
         Err(e) => Err(DecodeError::CBORError(e)),
     }
 }
 
-pub fn encode<E>(expr: &SubExpr<E>) -> Result<Vec<u8>, EncodeError> {
+pub(crate) fn encode<E>(expr: &SubExpr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
 }

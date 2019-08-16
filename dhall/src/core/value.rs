@@ -56,17 +56,17 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn into_thunk(self) -> Thunk {
+    pub(crate) fn into_thunk(self) -> Thunk {
         Thunk::from_value(self)
     }
 
     /// Convert the value to a fully normalized syntactic expression
-    pub fn normalize_to_expr(&self) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
         self.normalize_to_expr_maybe_alpha(false)
     }
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
-    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -179,14 +179,7 @@ impl Value {
         }
     }
 
-    // Deprecated
-    pub fn normalize(&self) -> Value {
-        let mut v = self.clone();
-        v.normalize_mut();
-        v
-    }
-
-    pub fn normalize_mut(&mut self) {
+    pub(crate) fn normalize_mut(&mut self) {
         match self {
             Value::Var(_)
             | Value::Const(_)
@@ -264,12 +257,12 @@ impl Value {
     }
 
     /// Apply to a value
-    pub fn app(self, val: Value) -> Value {
+    pub(crate) fn app(self, val: Value) -> Value {
         self.app_val(val)
     }
 
     /// Apply to a value
-    pub fn app_val(self, val: Value) -> Value {
+    pub(crate) fn app_val(self, val: Value) -> Value {
         self.app_thunk(val.into_thunk())
     }
 

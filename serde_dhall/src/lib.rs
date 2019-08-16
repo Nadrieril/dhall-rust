@@ -167,16 +167,14 @@ pub mod value {
             Self::from_dhall_value(DhallValue::from_builtin(b))
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
-            Self::from_dhall_value(DhallValue::AppliedBuiltin(
-                Builtin::Optional,
-                vec![t.to_thunk()],
-            ))
+            Self::from_dhall_value(
+                DhallValue::from_builtin(Builtin::Optional).app_thunk(t.to_thunk()),
+            )
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
-            Self::from_dhall_value(DhallValue::AppliedBuiltin(
-                Builtin::List,
-                vec![t.to_thunk()],
-            ))
+            Self::from_dhall_value(
+                DhallValue::from_builtin(Builtin::List).app_thunk(t.to_thunk()),
+            )
         }
         // Made public for the StaticType derive macro
         #[doc(hidden)]

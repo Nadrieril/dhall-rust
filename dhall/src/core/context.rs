@@ -10,19 +10,19 @@ use crate::error::TypeError;
 use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone)]
-pub enum CtxItem<T> {
+enum CtxItem<T> {
     Kept(AlphaVar, T),
     Replaced(Thunk, T),
 }
 
 #[derive(Debug, Clone)]
-pub struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
+struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
 
 #[derive(Debug, Clone)]
-pub struct NormalizationContext(Context<()>);
+pub(crate) struct NormalizationContext(Context<()>);
 
 #[derive(Debug, Clone)]
-pub struct TypecheckContext(Context<Type>);
+pub(crate) struct TypecheckContext(Context<Type>);
 
 impl<T> Context<T> {
     pub fn new() -> Self {

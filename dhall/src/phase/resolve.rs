@@ -8,13 +8,13 @@ type Import = dhall_syntax::Import<NormalizedSubExpr>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImportRoot {
+pub(crate) enum ImportRoot {
     LocalDir(PathBuf),
 }
 
 type ImportCache = HashMap<Import, Normalized>;
 
-pub type ImportStack = Vec<Import>;
+pub(crate) type ImportStack = Vec<Import>;
 
 fn resolve_import(
     import: &Import,
@@ -90,11 +90,11 @@ fn do_resolve_expr(
     Ok(Resolved(expr))
 }
 
-pub fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
+pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
     do_resolve_expr(e, &mut HashMap::new(), &Vec::new())
 }
 
-pub fn skip_resolve_expr(
+pub(crate) fn skip_resolve_expr(
     Parsed(expr, _root): Parsed,
 ) -> Result<Resolved, ImportError> {
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {

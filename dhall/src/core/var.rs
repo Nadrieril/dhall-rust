@@ -16,7 +16,7 @@ pub struct AlphaVar {
 #[derive(Clone, Eq)]
 pub struct AlphaLabel(Label);
 
-pub trait Shift: Sized {
+pub(crate) trait Shift: Sized {
     // Shift an expression to move it around binders without changing the meaning of its free
     // variables. Shift by 1 to move an expression under a binder. Shift by -1 to extract an
     // expression from under a binder, if the expression does not refer to that bound variable.
@@ -50,24 +50,24 @@ pub trait Shift: Sized {
     }
 }
 
-pub trait Subst<T> {
+pub(crate) trait Subst<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
 }
 
 impl AlphaVar {
-    pub fn to_var(&self, alpha: bool) -> V<Label> {
+    pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
         match (alpha, &self.alpha) {
             (true, Some(x)) => V("_".into(), x.1),
             _ => self.normal.clone(),
         }
     }
-    pub fn from_var(normal: V<Label>) -> Self {
+    pub(crate) fn from_var(normal: V<Label>) -> Self {
         AlphaVar {
             normal,
             alpha: None,
         }
     }
-    pub fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
+    pub(crate) fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
         AlphaVar {
             normal,
             alpha: Some(V((), alpha)),
@@ -76,14 +76,14 @@ impl AlphaVar {
 }
 
 impl AlphaLabel {
-    pub fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
+    pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
             "_".into()
         } else {
             self.to_label()
         }
     }
-    pub fn to_label(&self) -> Label {
+    pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
     }
 }

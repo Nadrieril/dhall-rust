@@ -11,8 +11,8 @@ use crate::core::value::Value;
 use crate::core::var::{Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr, ResolvedSubExpr, Typed};
 
-pub type InputSubExpr = ResolvedSubExpr;
-pub type OutputSubExpr = NormalizedSubExpr;
+pub(crate) type InputSubExpr = ResolvedSubExpr;
+pub(crate) type OutputSubExpr = NormalizedSubExpr;
 
 // Ad-hoc macro to help construct closures
 macro_rules! make_closure {
@@ -57,7 +57,7 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
+pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
     use dhall_syntax::Builtin::*;
     use Value::*;
 
@@ -315,7 +315,7 @@ pub fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> Value {
     }
 }
 
-pub fn apply_any(f: Thunk, a: Thunk) -> Value {
+pub(crate) fn apply_any(f: Thunk, a: Thunk) -> Value {
     let fallback = |f: Thunk, a: Thunk| Value::PartialExpr(ExprF::App(f, a));
 
     let f_borrow = f.as_value();
@@ -339,7 +339,7 @@ pub fn apply_any(f: Thunk, a: Thunk) -> Value {
     }
 }
 
-pub fn squash_textlit(
+pub(crate) fn squash_textlit(
     elts: impl Iterator<Item = InterpolatedTextContents<Thunk>>,
 ) -> Vec<InterpolatedTextContents<Thunk>> {
     use std::mem::replace;
@@ -382,7 +382,7 @@ pub fn squash_textlit(
 }
 
 /// Reduces the imput expression to a Value. Evaluates as little as possible.
-pub fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
+pub(crate) fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
     match expr.as_ref() {
         ExprF::Embed(e) => return e.to_value(),
         ExprF::Var(v) => return ctx.lookup(v),
@@ -649,7 +649,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     })
 }
 
-pub fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
+pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> Value {
     use Value::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
         NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,

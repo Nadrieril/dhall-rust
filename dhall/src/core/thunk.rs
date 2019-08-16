@@ -115,21 +115,21 @@ impl ThunkInternal {
 }
 
 impl Thunk {
-    pub fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
+    pub(crate) fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
         ThunkInternal::Unnormalized(ctx, e).into_thunk()
     }
 
-    pub fn from_value(v: Value) -> Thunk {
+    pub(crate) fn from_value(v: Value) -> Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
 
-    pub fn from_partial_expr(e: ExprF<Thunk, Normalized>) -> Thunk {
+    pub(crate) fn from_partial_expr(e: ExprF<Thunk, Normalized>) -> Thunk {
         ThunkInternal::PartialExpr(e).into_thunk()
     }
 
     // Normalizes contents to normal form; faster than `normalize_nf` if
     // no one else shares this thunk
-    pub fn normalize_mut(&mut self) {
+    pub(crate) fn normalize_mut(&mut self) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
             Some(refcell) => RefCell::get_mut(refcell).normalize_nf(),
@@ -167,37 +167,37 @@ impl Thunk {
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub fn normalize_nf(&self) -> Ref<Value> {
+    pub(crate) fn normalize_nf(&self) -> Ref<Value> {
         self.do_normalize_nf();
         Ref::map(self.0.borrow(), ThunkInternal::as_nf)
     }
 
     // WARNING: avoid normalizing any thunk while holding on to this ref
     // or you could run into BorrowMut panics
-    pub fn as_value(&self) -> Ref<Value> {
+    pub(crate) fn as_value(&self) -> Ref<Value> {
         self.do_normalize_whnf();
         Ref::map(self.0.borrow(), ThunkInternal::as_whnf)
     }
 
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         self.as_value().clone()
     }
 
-    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub fn app_val(&self, val: Value) -> Value {
+    pub(crate) fn app_val(&self, val: Value) -> Value {
         self.app_thunk(val.into_thunk())
     }
 
-    pub fn app_thunk(&self, th: Thunk) -> Value {
+    pub(crate) fn app_thunk(&self, th: Thunk) -> Value {
         apply_any(self.clone(), th)
     }
 }
 
 impl TypedThunk {
-    pub fn from_value(v: Value) -> TypedThunk {
+    pub(crate) fn from_value(v: Value) -> TypedThunk {
         TypedThunk::from_thunk(Thunk::from_value(v))
     }
 
@@ -205,11 +205,11 @@ impl TypedThunk {
         TypedThunk::from_thunk_untyped(th)
     }
 
-    pub fn from_type(t: Type) -> TypedThunk {
+    pub(crate) fn from_type(t: Type) -> TypedThunk {
         t.into_typethunk()
     }
 
-    pub fn normalize_nf(&self) -> Value {
+    pub(crate) fn normalize_nf(&self) -> Value {
         match self {
             TypedThunk::Const(c) => Value::Const(*c),
             TypedThunk::Untyped(thunk) | TypedThunk::Typed(thunk, _) => {
@@ -218,53 +218,53 @@ impl TypedThunk {
         }
     }
 
-    pub fn to_typed(&self) -> Typed {
+    pub(crate) fn to_typed(&self) -> Typed {
         self.clone().into_typed()
     }
 
-    pub fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         TypedThunk::Typed(th, Box::new(t))
     }
-    pub fn from_thunk_untyped(th: Thunk) -> Self {
+    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
         TypedThunk::Untyped(th)
     }
-    pub fn from_const(c: Const) -> Self {
+    pub(crate) fn from_const(c: Const) -> Self {
         TypedThunk::Const(c)
     }
-    pub fn from_value_untyped(v: Value) -> Self {
+    pub(crate) fn from_value_untyped(v: Value) -> Self {
         TypedThunk::from_thunk_untyped(Thunk::from_value(v))
     }
 
     // TODO: Avoid cloning if possible
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         match self {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => th.to_value(),
             TypedThunk::Const(c) => Value::Const(*c),
         }
     }
-    pub fn to_expr(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
         self.to_value().normalize_to_expr()
     }
-    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.to_value().normalize_to_expr_maybe_alpha(true)
     }
-    pub fn to_thunk(&self) -> Thunk {
+    pub(crate) fn to_thunk(&self) -> Thunk {
         match self {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => th.clone(),
             TypedThunk::Const(c) => Thunk::from_value(Value::Const(*c)),
         }
     }
-    pub fn to_type(&self) -> Type {
+    pub(crate) fn to_type(&self) -> Type {
         self.clone().into_typed().into_type()
     }
-    pub fn into_typed(self) -> Typed {
+    pub(crate) fn into_typed(self) -> Typed {
         Typed::from_typethunk(self)
     }
-    pub fn as_const(&self) -> Option<Const> {
+    pub(crate) fn as_const(&self) -> Option<Const> {
         // TODO: avoid clone
         match &self.to_value() {
             Value::Const(c) => Some(*c),
@@ -272,7 +272,7 @@ impl TypedThunk {
         }
     }
 
-    pub fn normalize_mut(&mut self) {
+    pub(crate) fn normalize_mut(&mut self) {
         match self {
             TypedThunk::Untyped(th) | TypedThunk::Typed(th, _) => {
                 th.normalize_mut()
@@ -281,7 +281,7 @@ impl TypedThunk {
         }
     }
 
-    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         match self {
             TypedThunk::Untyped(_) => Err(TypeError::new(
                 &TypecheckContext::new(),

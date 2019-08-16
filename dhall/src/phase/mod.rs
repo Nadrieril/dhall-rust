@@ -50,11 +50,9 @@ impl Parsed {
     pub fn parse_str(s: &str) -> Result<Parsed, Error> {
         parse::parse_str(s)
     }
-    #[allow(dead_code)]
     pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_binary_file(f)
     }
-    #[allow(dead_code)]
     pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
         parse::parse_binary(data)
     }
@@ -62,12 +60,10 @@ impl Parsed {
     pub fn resolve(self) -> Result<Resolved, ImportError> {
         resolve::resolve(self)
     }
-    #[allow(dead_code)]
     pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
         resolve::skip_resolve_expr(self)
     }
 
-    #[allow(dead_code)]
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
         crate::phase::binary::encode(&self.0)
     }
@@ -82,7 +78,7 @@ impl Resolved {
     }
     /// Pretends this expression has been typechecked. Use with care.
     #[allow(dead_code)]
-    pub fn skip_typecheck(self) -> Typed {
+    pub(crate) fn skip_typecheck(self) -> Typed {
         typecheck::skip_typecheck(self)
     }
 }
@@ -101,29 +97,29 @@ impl Typed {
         Normalized(self)
     }
 
-    pub fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
+    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
         Typed(TypedThunk::from_thunk_and_type(th, t))
     }
-    pub fn from_thunk_untyped(th: Thunk) -> Self {
+    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
         Typed(TypedThunk::from_thunk_untyped(th))
     }
-    pub fn from_const(c: Const) -> Self {
+    pub(crate) fn from_const(c: Const) -> Self {
         Typed(TypedThunk::from_const(c))
     }
     pub fn from_value_untyped(v: Value) -> Self {
         Typed(TypedThunk::from_value_untyped(v))
     }
-    pub fn from_typethunk(th: TypedThunk) -> Self {
+    pub(crate) fn from_typethunk(th: TypedThunk) -> Self {
         Typed(th)
     }
 
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
-    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
     pub fn to_thunk(&self) -> Thunk {
@@ -134,24 +130,24 @@ impl Typed {
         self.clone()
     }
     // Deprecated
-    pub fn into_type(self) -> Type {
+    pub(crate) fn into_type(self) -> Type {
         self
     }
-    pub fn into_typethunk(self) -> TypedThunk {
+    pub(crate) fn into_typethunk(self) -> TypedThunk {
         self.0
     }
-    pub fn to_normalized(&self) -> Normalized {
+    pub(crate) fn to_normalized(&self) -> Normalized {
         self.clone().normalize()
     }
-    pub fn as_const(&self) -> Option<Const> {
+    pub(crate) fn as_const(&self) -> Option<Const> {
         self.0.as_const()
     }
 
-    pub fn normalize_mut(&mut self) {
+    pub(crate) fn normalize_mut(&mut self) {
         self.0.normalize_mut()
     }
 
-    pub fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
         self.0.get_type()
     }
 }
@@ -161,22 +157,21 @@ impl Normalized {
         crate::phase::binary::encode(&self.to_expr())
     }
 
-    #[allow(dead_code)]
-    pub fn to_expr(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
     #[allow(dead_code)]
-    pub fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
     #[allow(dead_code)]
-    pub fn to_type(&self) -> Type {
+    pub(crate) fn to_type(&self) -> Type {
         self.0.to_type()
     }
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub fn into_typed(self) -> Typed {
+    pub(crate) fn into_typed(self) -> Typed {
         self.0
     }
 }
