@@ -14,4 +14,3 @@ itertools = "0.8.0"
 quote = "0.6.11"
 proc-macro2 = "0.4.27"
 syn = "0.15.29"
-dhall_syntax = { path = "../dhall_syntax" }

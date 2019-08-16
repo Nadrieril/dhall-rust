@@ -93,7 +93,6 @@ dependencies = [
 name = "dhall_proc_macros"
 version = "0.1.0"
 dependencies = [
- "dhall_syntax 0.1.0",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 0.4.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
