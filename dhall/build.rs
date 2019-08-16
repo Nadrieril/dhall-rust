@@ -213,7 +213,10 @@ fn main() -> std::io::Result<()> {
         "alpha_normalize",
         "alpha-normalization/",
         "AlphaNormalization",
-        |_| false,
+        |path| {
+            // This test doesn't typecheck
+            path == "success/unit/FunctionNestedBindingXXFree"
+        },
     )?;
 
     make_test_module(

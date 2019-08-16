@@ -1002,10 +1002,7 @@ fn type_last_layer(
 /// will fail.
 fn type_of(e: SubExpr<Normalized>) -> Result<Typed, TypeError> {
     let ctx = TypecheckContext::new();
-    let e = type_with(&ctx, e)?;
-    // Ensure `e` has a type (i.e. `e` is not `Sort`)
-    e.get_type()?;
-    Ok(e)
+    type_with(&ctx, e)
 }
 
 pub(crate) fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
