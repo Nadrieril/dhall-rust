@@ -4,7 +4,7 @@ use dhall_syntax::{
     rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, SubExpr,
 };
 
-use crate::core::context::{NormalizationContext, TypecheckContext};
+use crate::core::context::TypecheckContext;
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
 use crate::core::var::{Shift, Subst};
@@ -1009,11 +1009,11 @@ pub(crate) fn typecheck(e: Resolved) -> Result<Typed, TypeError> {
     type_of(e.0)
 }
 
-pub(crate) fn typecheck_with(e: Resolved, ty: &Type) -> Result<Typed, TypeError> {
+pub(crate) fn typecheck_with(
+    e: Resolved,
+    ty: &Type,
+) -> Result<Typed, TypeError> {
     let expr: SubExpr<_> = e.0;
     let ty: SubExpr<_> = ty.to_expr();
     type_of(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
-}
-pub(crate) fn skip_typecheck(e: Resolved) -> Typed {
-    Typed::from_thunk_untyped(Thunk::new(NormalizationContext::new(), e.0))
 }

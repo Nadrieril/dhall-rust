@@ -5,13 +5,11 @@ use dhall_syntax::{
     NaiveDouble,
 };
 
-use crate::core::context::NormalizationContext;
 use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
 use crate::core::var::{Shift, Subst};
-use crate::phase::{Normalized, NormalizedSubExpr, ResolvedSubExpr, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr, Typed};
 
-pub(crate) type InputSubExpr = ResolvedSubExpr;
 pub(crate) type OutputSubExpr = NormalizedSubExpr;
 
 // Ad-hoc macro to help construct closures
@@ -379,24 +377,6 @@ pub(crate) fn squash_textlit(
         ret.push(Text(replace(&mut crnt_str, String::new())))
     }
     ret
-}
-
-/// Reduces the imput expression to a Value. Evaluates as little as possible.
-pub(crate) fn normalize_whnf(ctx: NormalizationContext, expr: InputSubExpr) -> Value {
-    match expr.as_ref() {
-        ExprF::Embed(e) => return e.to_value(),
-        ExprF::Var(v) => return ctx.lookup(v),
-        _ => {}
-    }
-
-    // Thunk subexpressions
-    let expr: ExprF<Thunk, Normalized> =
-        expr.as_ref().map_ref_with_special_handling_of_binders(
-            |e| Thunk::new(ctx.clone(), e.clone()),
-            |x, e| Thunk::new(ctx.skip(x), e.clone()),
-        );
-
-    normalize_one_layer(expr)
 }
 
 // Small helper enum to avoid repetition

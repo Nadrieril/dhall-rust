@@ -4,13 +4,11 @@ use std::rc::Rc;
 
 use dhall_syntax::{Const, ExprF};
 
-use crate::core::context::{NormalizationContext, TypecheckContext};
+use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{
-    apply_any, normalize_one_layer, normalize_whnf, InputSubExpr, OutputSubExpr,
-};
+use crate::phase::normalize::{apply_any, normalize_one_layer, OutputSubExpr};
 use crate::phase::typecheck::type_of_const;
 use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
 
@@ -25,8 +23,6 @@ use Marker::{NF, WHNF};
 
 #[derive(Debug)]
 enum ThunkInternal {
-    /// Non-normalized value alongside a normalization context
-    Unnormalized(NormalizationContext, InputSubExpr),
     /// Partially normalized value whose subexpressions have been thunked (this is returned from
     /// typechecking). Note that this is different from `Value::PartialExpr` because there is no
     /// requirement of WHNF here.
@@ -63,12 +59,6 @@ impl ThunkInternal {
 
     fn normalize_whnf(&mut self) {
         match self {
-            ThunkInternal::Unnormalized(ctx, e) => {
-                *self = ThunkInternal::Value(
-                    WHNF,
-                    normalize_whnf(ctx.clone(), e.clone()),
-                )
-            }
             ThunkInternal::PartialExpr(e) => {
                 *self =
                     ThunkInternal::Value(WHNF, normalize_one_layer(e.clone()))
@@ -80,8 +70,7 @@ impl ThunkInternal {
 
     fn normalize_nf(&mut self) {
         match self {
-            ThunkInternal::Unnormalized(_, _)
-            | ThunkInternal::PartialExpr(_) => {
+            ThunkInternal::PartialExpr(_) => {
                 self.normalize_whnf();
                 self.normalize_nf();
             }
@@ -97,8 +86,7 @@ impl ThunkInternal {
     // Always use normalize_whnf before
     fn as_whnf(&self) -> &Value {
         match self {
-            ThunkInternal::Unnormalized(_, _)
-            | ThunkInternal::PartialExpr(_) => unreachable!(),
+            ThunkInternal::PartialExpr(_) => unreachable!(),
             ThunkInternal::Value(_, v) => v,
         }
     }
@@ -106,19 +94,15 @@ impl ThunkInternal {
     // Always use normalize_nf before
     fn as_nf(&self) -> &Value {
         match self {
-            ThunkInternal::Unnormalized(_, _)
-            | ThunkInternal::PartialExpr(_)
-            | ThunkInternal::Value(WHNF, _) => unreachable!(),
+            ThunkInternal::PartialExpr(_) | ThunkInternal::Value(WHNF, _) => {
+                unreachable!()
+            }
             ThunkInternal::Value(NF, v) => v,
         }
     }
 }
 
 impl Thunk {
-    pub(crate) fn new(ctx: NormalizationContext, e: InputSubExpr) -> Thunk {
-        ThunkInternal::Unnormalized(ctx, e).into_thunk()
-    }
-
     pub(crate) fn from_value(v: Value) -> Thunk {
         ThunkInternal::Value(WHNF, v).into_thunk()
     }
@@ -141,8 +125,7 @@ impl Thunk {
     fn do_normalize_whnf(&self) {
         let borrow = self.0.borrow();
         match &*borrow {
-            ThunkInternal::Unnormalized(_, _)
-            | ThunkInternal::PartialExpr(_) => {
+            ThunkInternal::PartialExpr(_) => {
                 drop(borrow);
                 self.0.borrow_mut().normalize_whnf();
             }
@@ -154,9 +137,7 @@ impl Thunk {
     fn do_normalize_nf(&self) {
         let borrow = self.0.borrow();
         match &*borrow {
-            ThunkInternal::Unnormalized(_, _)
-            | ThunkInternal::PartialExpr(_)
-            | ThunkInternal::Value(WHNF, _) => {
+            ThunkInternal::PartialExpr(_) | ThunkInternal::Value(WHNF, _) => {
                 drop(borrow);
                 self.0.borrow_mut().normalize_nf();
             }
@@ -183,7 +164,10 @@ impl Thunk {
         self.as_value().clone()
     }
 
-    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(
+        &self,
+        alpha: bool,
+    ) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
@@ -222,7 +206,10 @@ impl TypedThunk {
         self.clone().into_typed()
     }
 
-    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(
+        &self,
+        alpha: bool,
+    ) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
@@ -302,9 +289,6 @@ impl Shift for Thunk {
 impl Shift for ThunkInternal {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ThunkInternal::Unnormalized(ctx, e) => {
-                ThunkInternal::Unnormalized(ctx.shift(delta, var)?, e.clone())
-            }
             ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
                 e.traverse_ref_with_special_handling_of_binders(
                     |v| Ok(v.shift(delta, var)?),
@@ -342,10 +326,6 @@ impl Subst<Typed> for Thunk {
 impl Subst<Typed> for ThunkInternal {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            ThunkInternal::Unnormalized(ctx, e) => ThunkInternal::Unnormalized(
-                ctx.subst_shift(var, val),
-                e.clone(),
-            ),
             ThunkInternal::PartialExpr(e) => ThunkInternal::PartialExpr(
                 e.map_ref_with_special_handling_of_binders(
                     |v| v.subst_shift(var, val),
@@ -404,11 +384,6 @@ impl std::fmt::Debug for Thunk {
             ThunkInternal::PartialExpr(e) => {
                 f.debug_tuple("Thunk@PartialExpr").field(e).finish()
             }
-            ThunkInternal::Unnormalized(ctx, e) => f
-                .debug_tuple("Thunk@Unnormalized")
-                .field(ctx)
-                .field(e)
-                .finish(),
         }
     }
 }

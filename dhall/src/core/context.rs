@@ -19,9 +19,6 @@ enum CtxItem<T> {
 struct Context<T>(Rc<Vec<(Label, CtxItem<T>)>>);
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizationContext(Context<()>);
-
-#[derive(Debug, Clone)]
 pub(crate) struct TypecheckContext(Context<Type>);
 
 impl<T> Context<T> {
@@ -117,22 +114,6 @@ impl<T> Context<T> {
     }
 }
 
-impl NormalizationContext {
-    pub fn new() -> Self {
-        NormalizationContext(Context::new())
-    }
-    pub fn skip(&self, x: &Label) -> Self {
-        NormalizationContext(self.0.insert_kept(x, ()))
-    }
-    pub fn lookup(&self, var: &V<Label>) -> Value {
-        match self.0.lookup(var) {
-            Ok(CtxItem::Replaced(t, ())) => t.to_value(),
-            Ok(CtxItem::Kept(newvar, ())) => Value::Var(newvar.clone()),
-            Err(var) => Value::Var(AlphaVar::from_var(var)),
-        }
-    }
-}
-
 impl TypecheckContext {
     pub fn new() -> Self {
         TypecheckContext(Context::new())
@@ -180,12 +161,6 @@ impl<T: Clone + Shift> Shift for Context<T> {
     }
 }
 
-impl Shift for NormalizationContext {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(NormalizationContext(self.0.shift(delta, var)?))
-    }
-}
-
 impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
@@ -206,12 +181,6 @@ impl<T: Subst<Typed>> Subst<Typed> for CtxItem<T> {
 impl<T: Clone + Subst<Typed>> Subst<Typed> for Context<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         self.subst_shift(var, val)
-    }
-}
-
-impl Subst<Typed> for NormalizationContext {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        NormalizationContext(self.0.subst_shift(var, val))
     }
 }
 

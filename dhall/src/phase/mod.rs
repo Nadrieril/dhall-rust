@@ -76,11 +76,6 @@ impl Resolved {
     pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
         typecheck::typecheck_with(self, ty)
     }
-    /// Pretends this expression has been typechecked. Use with care.
-    #[allow(dead_code)]
-    pub(crate) fn skip_typecheck(self) -> Typed {
-        typecheck::skip_typecheck(self)
-    }
 }
 
 impl Typed {
@@ -167,9 +162,6 @@ impl Normalized {
     #[allow(dead_code)]
     pub(crate) fn to_type(&self) -> Type {
         self.0.to_type()
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
     }
     pub(crate) fn into_typed(self) -> Typed {
         self.0

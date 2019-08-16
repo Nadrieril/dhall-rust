@@ -66,7 +66,10 @@ impl Value {
     }
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
     /// if alpha is `true`
-    pub(crate) fn normalize_to_expr_maybe_alpha(&self, alpha: bool) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr_maybe_alpha(
+        &self,
+        alpha: bool,
+    ) -> OutputSubExpr {
         match self {
             Value::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
