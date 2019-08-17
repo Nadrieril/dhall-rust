@@ -124,8 +124,9 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::core::thunk::{Thunk, TypedThunk};
-    use dhall::core::value::ValueF as DhallValue;
+    use dhall::core::value::TypedValue as TypedThunk;
+    use dhall::core::value::Value as Thunk;
+    use dhall::core::valuef::ValueF as DhallValue;
     use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
     use dhall_syntax::Builtin;
 
@@ -153,8 +154,8 @@ pub mod value {
         pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
             self.0.to_expr()
         }
-        pub(crate) fn to_thunk(&self) -> Thunk {
-            self.0.to_thunk()
+        pub(crate) fn to_value(&self) -> Thunk {
+            self.0.to_value()
         }
         pub(crate) fn to_type(&self) -> Type {
             self.0.to_type()
@@ -170,12 +171,12 @@ pub mod value {
         pub(crate) fn make_optional_type(t: Value) -> Self {
             Self::make_simple_type(
                 DhallValue::from_builtin(Builtin::Optional)
-                    .app_thunk(t.to_thunk()),
+                    .app_value(t.to_value()),
             )
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
             Self::make_simple_type(
-                DhallValue::from_builtin(Builtin::List).app_thunk(t.to_thunk()),
+                DhallValue::from_builtin(Builtin::List).app_value(t.to_value()),
             )
         }
         // Made public for the StaticType derive macro
@@ -185,7 +186,7 @@ pub mod value {
         ) -> Self {
             Self::make_simple_type(DhallValue::RecordType(
                 kts.map(|(k, t)| {
-                    (k.into(), TypedThunk::from_thunk_simple_type(t.to_thunk()))
+                    (k.into(), TypedThunk::from_value_simple_type(t.to_value()))
                 })
                 .collect(),
             ))
@@ -199,7 +200,7 @@ pub mod value {
                     (
                         k.into(),
                         t.map(|t| {
-                            TypedThunk::from_thunk_simple_type(t.to_thunk())
+                            TypedThunk::from_value_simple_type(t.to_value())
                         }),
                     )
                 })

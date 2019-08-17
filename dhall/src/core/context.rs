@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use dhall_syntax::{Label, V};
 
-use crate::core::thunk::Thunk;
-use crate::core::value::ValueF;
+use crate::core::value::Value;
+use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
 use crate::phase::{Type, Typed};
@@ -12,7 +12,7 @@ use crate::phase::{Type, Typed};
 #[derive(Debug, Clone)]
 enum CtxItem {
     Kept(AlphaVar, Type),
-    Replaced(Thunk, Type),
+    Replaced(Value, Type),
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +31,7 @@ impl TypecheckContext {
         let mut vec = self.0.as_ref().clone();
         vec.push((
             x.clone(),
-            CtxItem::Replaced(e.to_thunk(), e.get_type()?.into_owned()),
+            CtxItem::Replaced(e.to_value(), e.get_type()?.into_owned()),
         ));
         Ok(TypecheckContext(Rc::new(vec)))
     }
@@ -44,11 +44,11 @@ impl TypecheckContext {
                     let i = i.under_multiple_binders(&shift_map);
                     let (th, t) = match i {
                         CtxItem::Kept(newvar, t) => {
-                            (ValueF::Var(newvar).into_thunk(), t)
+                            (ValueF::Var(newvar).into_value(), t)
                         }
                         CtxItem::Replaced(th, t) => (th, t),
                     };
-                    return Some(Typed::from_thunk_and_type(th, t));
+                    return Some(Typed::from_value_and_type(th, t));
                 }
                 Some(newvar) => var = newvar,
             };
@@ -133,7 +133,7 @@ impl Subst<Typed> for CtxItem {
             ),
             CtxItem::Kept(v, t) => match v.shift(-1, var) {
                 None => {
-                    CtxItem::Replaced(val.to_thunk(), t.subst_shift(var, val))
+                    CtxItem::Replaced(val.to_value(), t.subst_shift(var, val))
                 }
                 Some(newvar) => CtxItem::Kept(newvar, t.subst_shift(var, val)),
             },

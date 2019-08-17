@@ -5,8 +5,8 @@ use dhall_syntax::{
 };
 
 use crate::core::context::TypecheckContext;
-use crate::core::thunk::{Thunk, TypedThunk};
-use crate::core::value::ValueF;
+use crate::core::value::{TypedValue, Value};
+use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::{Normalized, Resolved, Type, Typed};
@@ -42,13 +42,13 @@ fn tck_pi_type(
 
     let k = function_check(ka, kb);
 
-    Ok(Typed::from_thunk_and_type(
+    Ok(Typed::from_value_and_type(
         ValueF::Pi(
             x.into(),
-            TypedThunk::from_type(tx),
-            TypedThunk::from_type(te),
+            TypedValue::from_type(tx),
+            TypedValue::from_type(te),
         )
-        .into_thunk(),
+        .into_value(),
         Type::from_const(k),
     ))
 }
@@ -80,15 +80,15 @@ fn tck_record_type(
                 return Err(TypeError::new(ctx, RecordTypeDuplicateField))
             }
             Entry::Vacant(_) => {
-                entry.or_insert_with(|| TypedThunk::from_type(t.clone()))
+                entry.or_insert_with(|| TypedValue::from_type(t.clone()))
             }
         };
     }
     // An empty record type has type Type
     let k = k.unwrap_or(dhall_syntax::Const::Type);
 
-    Ok(Typed::from_thunk_and_type(
-        ValueF::RecordType(new_kts).into_thunk(),
+    Ok(Typed::from_value_and_type(
+        ValueF::RecordType(new_kts).into_value(),
         Type::from_const(k),
     ))
 }
@@ -122,7 +122,7 @@ fn tck_union_type(
                 return Err(TypeError::new(ctx, UnionTypeDuplicateField))
             }
             Entry::Vacant(_) => entry.or_insert_with(|| {
-                t.as_ref().map(|t| TypedThunk::from_type(t.clone()))
+                t.as_ref().map(|t| TypedValue::from_type(t.clone()))
             }),
         };
     }
@@ -131,8 +131,8 @@ fn tck_union_type(
     // an union type with only unary variants also has type Type
     let k = k.unwrap_or(dhall_syntax::Const::Type);
 
-    Ok(Typed::from_thunk_and_type(
-        ValueF::UnionType(new_kts).into_thunk(),
+    Ok(Typed::from_value_and_type(
+        ValueF::UnionType(new_kts).into_value(),
         Type::from_const(k),
     ))
 }
@@ -337,12 +337,12 @@ fn type_with(
             let b = type_with(&ctx2, b.clone())?;
             let v = ValueF::Lam(
                 x.clone().into(),
-                TypedThunk::from_type(tx.clone()),
-                b.to_thunk(),
+                TypedValue::from_type(tx.clone()),
+                b.to_value(),
             );
             let tb = b.get_type()?.into_owned();
             let t = tck_pi_type(ctx, x.clone(), tx, tb)?.to_type();
-            Typed::from_thunk_and_type(Thunk::from_valuef(v), t)
+            Typed::from_value_and_type(Value::from_valuef(v), t)
         }
         Pi(x, ta, tb) => {
             let ta = mktype(ctx, ta.clone())?;
@@ -380,9 +380,9 @@ fn type_with(
             let ret = type_last_layer(ctx, &expr)?;
             match ret {
                 RetTypeOnly(typ) => {
-                    let expr = expr.map_ref(|typed| typed.to_thunk());
-                    Typed::from_thunk_and_type(
-                        Thunk::from_partial_expr(expr),
+                    let expr = expr.map_ref(|typed| typed.to_value());
+                    Typed::from_value_and_type(
+                        Value::from_partial_expr(expr),
                         typ,
                     )
                 }
@@ -505,10 +505,10 @@ fn type_last_layer(
             }
 
             Ok(RetTypeOnly(
-                Typed::from_thunk_and_type(
+                Typed::from_value_and_type(
                     ValueF::from_builtin(dhall_syntax::Builtin::List)
                         .app(t.to_valuef())
-                        .into_thunk(),
+                        .into_value(),
                     Typed::from_const(Type),
                 )
                 .to_type(),
@@ -524,10 +524,10 @@ fn type_last_layer(
             }
 
             Ok(RetTypeOnly(
-                Typed::from_thunk_and_type(
+                Typed::from_value_and_type(
                     ValueF::from_builtin(dhall_syntax::Builtin::Optional)
                         .app(t.to_valuef())
-                        .into_thunk(),
+                        .into_value(),
                     Typed::from_const(Type).into_type(),
                 )
                 .to_type(),
@@ -662,8 +662,8 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: HashMap<Label, TypedThunk>,
-                kts_r: HashMap<Label, TypedThunk>,
+                kts_l: HashMap<Label, TypedValue>,
+                kts_r: HashMap<Label, TypedValue>,
             ) -> Result<Typed, TypeError> {
                 use crate::phase::normalize::outer_join;
 
@@ -671,8 +671,8 @@ fn type_last_layer(
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
                 let combine = |k: &Label,
-                               inner_l: &TypedThunk,
-                               inner_r: &TypedThunk|
+                               inner_l: &TypedValue,
+                               inner_r: &TypedValue|
                  -> Result<Typed, TypeError> {
                     match (inner_l.to_valuef(), inner_r.to_valuef()) {
                         (
@@ -690,7 +690,7 @@ fn type_last_layer(
                 let kts: HashMap<Label, Result<Typed, TypeError>> = outer_join(
                     |l| Ok(l.to_type()),
                     |r| Ok(r.to_type()),
-                    |k: &Label, l: &TypedThunk, r: &TypedThunk| {
+                    |k: &Label, l: &TypedValue, r: &TypedValue| {
                         combine(k, l, r)
                     },
                     &kts_l,
@@ -735,8 +735,8 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: HashMap<Label, TypedThunk>,
-                kts_r: HashMap<Label, TypedThunk>,
+                kts_l: HashMap<Label, TypedValue>,
+                kts_r: HashMap<Label, TypedValue>,
             ) -> Result<Typed, TypeError> {
                 use crate::phase::normalize::intersection_with_key;
 
@@ -744,8 +744,8 @@ fn type_last_layer(
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
                 let combine = |k: &Label,
-                               kts_l_inner: &TypedThunk,
-                               kts_r_inner: &TypedThunk|
+                               kts_l_inner: &TypedValue,
+                               kts_r_inner: &TypedValue|
                  -> Result<Typed, TypeError> {
                     match (kts_l_inner.to_valuef(), kts_r_inner.to_valuef()) {
                         (
@@ -761,7 +761,7 @@ fn type_last_layer(
                 };
 
                 let kts = intersection_with_key(
-                    |k: &Label, l: &TypedThunk, r: &TypedThunk| {
+                    |k: &Label, l: &TypedValue, r: &TypedValue| {
                         combine(k, l, r)
                     },
                     &kts_l,
@@ -989,8 +989,8 @@ fn type_last_layer(
             }
 
             Ok(RetTypeOnly(
-                Typed::from_thunk_and_type(
-                    ValueF::RecordType(new_kts).into_thunk(),
+                Typed::from_value_and_type(
+                    ValueF::RecordType(new_kts).into_value(),
                     trecord.get_type()?.into_owned(),
                 )
                 .to_type(),

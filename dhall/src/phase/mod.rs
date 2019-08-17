@@ -4,8 +4,8 @@ use std::path::Path;
 
 use dhall_syntax::{Const, SubExpr};
 
-use crate::core::thunk::{Thunk, TypedThunk};
-use crate::core::value::ValueF;
+use crate::core::value::{TypedValue, Value};
+use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 
@@ -33,7 +33,7 @@ pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TypedThunk);
+pub struct Typed(TypedValue);
 
 /// A normalized expression.
 ///
@@ -92,19 +92,19 @@ impl Typed {
         Normalized(self)
     }
 
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed(TypedThunk::from_thunk_and_type(th, t))
+    pub(crate) fn from_value_and_type(th: Value, t: Type) -> Self {
+        Typed(TypedValue::from_value_and_type(th, t))
     }
-    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed(TypedThunk::from_thunk_untyped(th))
+    pub(crate) fn from_value_untyped(th: Value) -> Self {
+        Typed(TypedValue::from_value_untyped(th))
     }
     pub(crate) fn from_const(c: Const) -> Self {
-        Typed(TypedThunk::from_const(c))
+        Typed(TypedValue::from_const(c))
     }
     pub fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
-        Typed(TypedThunk::from_valuef_and_type(v, t))
+        Typed(TypedValue::from_valuef_and_type(v, t))
     }
-    pub(crate) fn from_typethunk(th: TypedThunk) -> Self {
+    pub(crate) fn from_typedvalue(th: TypedValue) -> Self {
         Typed(th)
     }
     pub fn const_type() -> Self {
@@ -120,8 +120,8 @@ impl Typed {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
-    pub fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
+    pub fn to_value(&self) -> Value {
+        self.0.to_value()
     }
     // Deprecated
     pub fn to_type(&self) -> Type {
@@ -131,7 +131,7 @@ impl Typed {
     pub(crate) fn into_type(self) -> Type {
         self
     }
-    pub(crate) fn into_typethunk(self) -> TypedThunk {
+    pub(crate) fn into_typedvalue(self) -> TypedValue {
         self.0
     }
     pub(crate) fn to_normalized(&self) -> Normalized {

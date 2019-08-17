@@ -5,8 +5,8 @@ use dhall_syntax::{
     NaiveDouble,
 };
 
-use crate::core::thunk::{Thunk, TypedThunk};
-use crate::core::value::ValueF;
+use crate::core::value::{TypedValue, Value};
+use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr, Typed};
 
@@ -20,45 +20,45 @@ macro_rules! make_closure {
             Label::from(stringify!($var)).into(),
             $n
         );
-        ValueF::Var(var).into_thunk()
+        ValueF::Var(var).into_value()
     }};
     // Warning: assumes that $ty, as a dhall value, has type `Type`
     (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
         ValueF::Lam(
             Label::from(stringify!($var)).into(),
-            TypedThunk::from_thunk_simple_type(
+            TypedValue::from_value_simple_type(
                 make_closure!($($ty)*),
             ),
             make_closure!($($rest)*),
-        ).into_thunk()
+        ).into_value()
     };
-    (Natural) => { ValueF::from_builtin(Builtin::Natural).into_thunk() };
+    (Natural) => { ValueF::from_builtin(Builtin::Natural).into_value() };
     (List $($rest:tt)*) => {
         ValueF::from_builtin(Builtin::List)
-            .app_thunk(make_closure!($($rest)*))
-            .into_thunk()
+            .app_value(make_closure!($($rest)*))
+            .into_value()
     };
     (Some $($rest:tt)*) => {
-        ValueF::NEOptionalLit(make_closure!($($rest)*)).into_thunk()
+        ValueF::NEOptionalLit(make_closure!($($rest)*)).into_value()
     };
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
-            Thunk::from_valuef(ValueF::NaturalLit(1)),
-        )).into_thunk()
+            Value::from_valuef(ValueF::NaturalLit(1)),
+        )).into_value()
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::ListAppend,
-            ValueF::NEListLit(vec![make_closure!($($head)*)]).into_thunk(),
+            ValueF::NEListLit(vec![make_closure!($($head)*)]).into_value(),
             make_closure!($($tail)*),
-        )).into_thunk()
+        )).into_value()
     };
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
+pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
     use dhall_syntax::Builtin::*;
     use ValueF::*;
 
@@ -66,7 +66,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t, r..]) => Ok((
             r,
-            EmptyOptionalLit(TypedThunk::from_thunk_simple_type(t.clone())),
+            EmptyOptionalLit(TypedValue::from_value_simple_type(t.clone())),
         )),
         (NaturalIsZero, [n, r..]) => match &*n.as_valuef() {
             NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
@@ -189,10 +189,10 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
                 let mut kts = HashMap::new();
                 kts.insert(
                     "index".into(),
-                    TypedThunk::from_valuef(ValueF::from_builtin(Natural)),
+                    TypedValue::from_valuef(ValueF::from_builtin(Natural)),
                 );
                 kts.insert("value".into(), t.clone());
-                Ok((r, EmptyListLit(TypedThunk::from_valuef(RecordType(kts)))))
+                Ok((r, EmptyListLit(TypedValue::from_valuef(RecordType(kts)))))
             }
             NEListLit(xs) => {
                 let xs = xs
@@ -201,9 +201,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
                         let mut kvs = HashMap::new();
-                        kvs.insert("index".into(), Thunk::from_valuef(i));
+                        kvs.insert("index".into(), Value::from_valuef(i));
                         kvs.insert("value".into(), e.clone());
-                        Thunk::from_valuef(RecordLit(kvs))
+                        Value::from_valuef(RecordLit(kvs))
                     })
                     .collect();
                 Ok((r, NEListLit(xs)))
@@ -222,8 +222,8 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
             }
             _ => Ok((
                 r,
-                f.app_val(ValueF::from_builtin(List).app_thunk(t.clone()))
-                    .app_thunk({
+                f.app_valuef(ValueF::from_builtin(List).app_value(t.clone()))
+                    .app_value({
                         // Move `t` under new `x` variable
                         let t1 = t.under_binder(Label::from("x"));
                         make_closure!(
@@ -232,9 +232,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
                             [ var(x, 1) ] # var(xs, 0)
                         )
                     })
-                    .app_val(EmptyListLit(TypedThunk::from_thunk_simple_type(
-                        t.clone(),
-                    ))),
+                    .app_valuef(EmptyListLit(
+                        TypedValue::from_value_simple_type(t.clone()),
+                    )),
             )),
         },
         (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_valuef() {
@@ -244,9 +244,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
                 for x in xs.iter().rev() {
                     v = cons
                         .clone()
-                        .app_thunk(x.clone())
-                        .app_thunk(v)
-                        .into_thunk();
+                        .app_value(x.clone())
+                        .app_value(v)
+                        .into_value();
                 }
                 Ok((r, v.to_valuef()))
             }
@@ -264,17 +264,19 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
             }
             _ => Ok((
                 r,
-                f.app_val(ValueF::from_builtin(Optional).app_thunk(t.clone()))
-                    .app_thunk(make_closure!(λ(x: #t) -> Some var(x, 0)))
-                    .app_val(EmptyOptionalLit(
-                        TypedThunk::from_thunk_simple_type(t.clone()),
-                    )),
+                f.app_valuef(
+                    ValueF::from_builtin(Optional).app_value(t.clone()),
+                )
+                .app_value(make_closure!(λ(x: #t) -> Some var(x, 0)))
+                .app_valuef(EmptyOptionalLit(
+                    TypedValue::from_value_simple_type(t.clone()),
+                )),
             )),
         },
         (OptionalFold, [_, v, _, just, nothing, r..]) => {
             match &*v.as_valuef() {
                 EmptyOptionalLit(_) => Ok((r, nothing.to_valuef())),
-                NEOptionalLit(x) => Ok((r, just.app_thunk(x.clone()))),
+                NEOptionalLit(x) => Ok((r, just.app_value(x.clone()))),
                 _ => Err(()),
             }
         }
@@ -290,9 +292,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
             }
             _ => Ok((
                 r,
-                f.app_val(ValueF::from_builtin(Natural))
-                    .app_thunk(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
-                    .app_val(NaturalLit(0)),
+                f.app_valuef(ValueF::from_builtin(Natural))
+                    .app_value(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
+                    .app_valuef(NaturalLit(0)),
             )),
         },
         (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_valuef() {
@@ -300,10 +302,10 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
             NaturalLit(n) => {
                 let fold = ValueF::from_builtin(NaturalFold)
                     .app(NaturalLit(n - 1))
-                    .app_thunk(t.clone())
-                    .app_thunk(succ.clone())
-                    .app_thunk(zero.clone());
-                Ok((r, succ.app_val(fold)))
+                    .app_value(t.clone())
+                    .app_value(succ.clone())
+                    .app_value(zero.clone());
+                Ok((r, succ.app_valuef(fold)))
             }
             _ => Err(()),
         },
@@ -313,7 +315,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
         Ok((unconsumed_args, mut v)) => {
             let n_consumed_args = args.len() - unconsumed_args.len();
             for x in args.into_iter().skip(n_consumed_args) {
-                v = v.app_thunk(x);
+                v = v.app_value(x);
             }
             v
         }
@@ -321,13 +323,13 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Thunk>) -> ValueF {
     }
 }
 
-pub(crate) fn apply_any(f: Thunk, a: Thunk) -> ValueF {
-    let fallback = |f: Thunk, a: Thunk| ValueF::PartialExpr(ExprF::App(f, a));
+pub(crate) fn apply_any(f: Value, a: Value) -> ValueF {
+    let fallback = |f: Value, a: Value| ValueF::PartialExpr(ExprF::App(f, a));
 
     let f_borrow = f.as_valuef();
     match &*f_borrow {
         ValueF::Lam(x, _, e) => {
-            let val = Typed::from_thunk_untyped(a);
+            let val = Typed::from_value_untyped(a);
             e.subst_shift(&x.into(), &val).to_valuef()
         }
         ValueF::AppliedBuiltin(b, args) => {
@@ -346,15 +348,15 @@ pub(crate) fn apply_any(f: Thunk, a: Thunk) -> ValueF {
 }
 
 pub(crate) fn squash_textlit(
-    elts: impl Iterator<Item = InterpolatedTextContents<Thunk>>,
-) -> Vec<InterpolatedTextContents<Thunk>> {
+    elts: impl Iterator<Item = InterpolatedTextContents<Value>>,
+) -> Vec<InterpolatedTextContents<Value>> {
     use std::mem::replace;
     use InterpolatedTextContents::{Expr, Text};
 
     fn inner(
-        elts: impl Iterator<Item = InterpolatedTextContents<Thunk>>,
+        elts: impl Iterator<Item = InterpolatedTextContents<Value>>,
         crnt_str: &mut String,
-        ret: &mut Vec<InterpolatedTextContents<Thunk>>,
+        ret: &mut Vec<InterpolatedTextContents<Value>>,
     ) {
         for contents in elts {
             match contents {
@@ -390,9 +392,9 @@ pub(crate) fn squash_textlit(
 // Small helper enum to avoid repetition
 enum Ret<'a> {
     ValueF(ValueF),
-    Thunk(Thunk),
-    ThunkRef(&'a Thunk),
-    Expr(ExprF<Thunk, Normalized>),
+    Value(Value),
+    ValueRef(&'a Value),
+    Expr(ExprF<Value, Normalized>),
 }
 
 /// Performs an intersection of two HashMaps.
@@ -508,7 +510,7 @@ where
     kvs
 }
 
-fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
+fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
     use BinOp::{
         BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
@@ -521,46 +523,46 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
     let x_borrow = x.as_valuef();
     let y_borrow = y.as_valuef();
     Some(match (o, &*x_borrow, &*y_borrow) {
-        (BoolAnd, BoolLit(true), _) => Ret::ThunkRef(y),
-        (BoolAnd, _, BoolLit(true)) => Ret::ThunkRef(x),
+        (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
+        (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
         (BoolAnd, BoolLit(false), _) => Ret::ValueF(BoolLit(false)),
         (BoolAnd, _, BoolLit(false)) => Ret::ValueF(BoolLit(false)),
-        (BoolAnd, _, _) if x == y => Ret::ThunkRef(x),
+        (BoolAnd, _, _) if x == y => Ret::ValueRef(x),
         (BoolOr, BoolLit(true), _) => Ret::ValueF(BoolLit(true)),
         (BoolOr, _, BoolLit(true)) => Ret::ValueF(BoolLit(true)),
-        (BoolOr, BoolLit(false), _) => Ret::ThunkRef(y),
-        (BoolOr, _, BoolLit(false)) => Ret::ThunkRef(x),
-        (BoolOr, _, _) if x == y => Ret::ThunkRef(x),
-        (BoolEQ, BoolLit(true), _) => Ret::ThunkRef(y),
-        (BoolEQ, _, BoolLit(true)) => Ret::ThunkRef(x),
+        (BoolOr, BoolLit(false), _) => Ret::ValueRef(y),
+        (BoolOr, _, BoolLit(false)) => Ret::ValueRef(x),
+        (BoolOr, _, _) if x == y => Ret::ValueRef(x),
+        (BoolEQ, BoolLit(true), _) => Ret::ValueRef(y),
+        (BoolEQ, _, BoolLit(true)) => Ret::ValueRef(x),
         (BoolEQ, BoolLit(x), BoolLit(y)) => Ret::ValueF(BoolLit(x == y)),
         (BoolEQ, _, _) if x == y => Ret::ValueF(BoolLit(true)),
-        (BoolNE, BoolLit(false), _) => Ret::ThunkRef(y),
-        (BoolNE, _, BoolLit(false)) => Ret::ThunkRef(x),
+        (BoolNE, BoolLit(false), _) => Ret::ValueRef(y),
+        (BoolNE, _, BoolLit(false)) => Ret::ValueRef(x),
         (BoolNE, BoolLit(x), BoolLit(y)) => Ret::ValueF(BoolLit(x != y)),
         (BoolNE, _, _) if x == y => Ret::ValueF(BoolLit(false)),
 
-        (NaturalPlus, NaturalLit(0), _) => Ret::ThunkRef(y),
-        (NaturalPlus, _, NaturalLit(0)) => Ret::ThunkRef(x),
+        (NaturalPlus, NaturalLit(0), _) => Ret::ValueRef(y),
+        (NaturalPlus, _, NaturalLit(0)) => Ret::ValueRef(x),
         (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
             Ret::ValueF(NaturalLit(x + y))
         }
         (NaturalTimes, NaturalLit(0), _) => Ret::ValueF(NaturalLit(0)),
         (NaturalTimes, _, NaturalLit(0)) => Ret::ValueF(NaturalLit(0)),
-        (NaturalTimes, NaturalLit(1), _) => Ret::ThunkRef(y),
-        (NaturalTimes, _, NaturalLit(1)) => Ret::ThunkRef(x),
+        (NaturalTimes, NaturalLit(1), _) => Ret::ValueRef(y),
+        (NaturalTimes, _, NaturalLit(1)) => Ret::ValueRef(x),
         (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
             Ret::ValueF(NaturalLit(x * y))
         }
 
-        (ListAppend, EmptyListLit(_), _) => Ret::ThunkRef(y),
-        (ListAppend, _, EmptyListLit(_)) => Ret::ThunkRef(x),
+        (ListAppend, EmptyListLit(_), _) => Ret::ValueRef(y),
+        (ListAppend, _, EmptyListLit(_)) => Ret::ValueRef(x),
         (ListAppend, NEListLit(xs), NEListLit(ys)) => Ret::ValueF(NEListLit(
             xs.iter().chain(ys.iter()).cloned().collect(),
         )),
 
-        (TextAppend, TextLit(x), _) if x.is_empty() => Ret::ThunkRef(y),
-        (TextAppend, _, TextLit(y)) if y.is_empty() => Ret::ThunkRef(x),
+        (TextAppend, TextLit(x), _) if x.is_empty() => Ret::ValueRef(y),
+        (TextAppend, _, TextLit(y)) if y.is_empty() => Ret::ValueRef(x),
         (TextAppend, TextLit(x), TextLit(y)) => Ret::ValueF(TextLit(
             squash_textlit(x.iter().chain(y.iter()).cloned()),
         )),
@@ -580,10 +582,10 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
         }
 
         (RightBiasedRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
-            Ret::ThunkRef(x)
+            Ret::ValueRef(x)
         }
         (RightBiasedRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
-            Ret::ThunkRef(y)
+            Ret::ValueRef(y)
         }
         (RightBiasedRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
             let mut kvs = kvs2.clone();
@@ -595,14 +597,14 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
         }
 
         (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
-            Ret::ThunkRef(x)
+            Ret::ValueRef(x)
         }
         (RecursiveRecordMerge, RecordLit(kvs), _) if kvs.is_empty() => {
-            Ret::ThunkRef(y)
+            Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                Thunk::from_partial_expr(ExprF::BinOp(
+                Value::from_partial_expr(ExprF::BinOp(
                     RecursiveRecordMerge,
                     v1.clone(),
                     v2.clone(),
@@ -612,18 +614,18 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
         }
 
         (RecursiveRecordTypeMerge, _, RecordType(kvs)) if kvs.is_empty() => {
-            Ret::ThunkRef(x)
+            Ret::ValueRef(x)
         }
         (RecursiveRecordTypeMerge, RecordType(kvs), _) if kvs.is_empty() => {
-            Ret::ThunkRef(y)
+            Ret::ValueRef(y)
         }
         (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                TypedThunk::from_thunk_untyped(Thunk::from_partial_expr(
+                TypedValue::from_value_untyped(Value::from_partial_expr(
                     ExprF::BinOp(
                         RecursiveRecordTypeMerge,
-                        v1.to_thunk(),
-                        v2.to_thunk(),
+                        v1.to_value(),
+                        v2.to_value(),
                     ),
                 ))
             });
@@ -631,15 +633,15 @@ fn apply_binop<'a>(o: BinOp, x: &'a Thunk, y: &'a Thunk) -> Option<Ret<'a>> {
         }
 
         (Equivalence, _, _) => Ret::ValueF(ValueF::Equivalence(
-            TypedThunk::from_thunk_simple_type(x.clone()),
-            TypedThunk::from_thunk_simple_type(y.clone()),
+            TypedValue::from_value_simple_type(x.clone()),
+            TypedValue::from_value_simple_type(y.clone()),
         )),
 
         _ => return None,
     })
 }
 
-pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
+pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
     use ValueF::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
         NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
@@ -652,21 +654,21 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
         ),
         ExprF::Embed(_) => unreachable!(),
         ExprF::Var(_) => unreachable!(),
-        ExprF::Annot(x, _) => Ret::Thunk(x),
+        ExprF::Annot(x, _) => Ret::Value(x),
         ExprF::Assert(_) => Ret::Expr(expr),
         ExprF::Lam(x, t, e) => {
-            Ret::ValueF(Lam(x.into(), TypedThunk::from_thunk_untyped(t), e))
+            Ret::ValueF(Lam(x.into(), TypedValue::from_value_untyped(t), e))
         }
         ExprF::Pi(x, t, e) => Ret::ValueF(Pi(
             x.into(),
-            TypedThunk::from_thunk_untyped(t),
-            TypedThunk::from_thunk_untyped(e),
+            TypedValue::from_value_untyped(t),
+            TypedValue::from_value_untyped(e),
         )),
         ExprF::Let(x, _, v, b) => {
-            let v = Typed::from_thunk_untyped(v);
-            Ret::Thunk(b.subst_shift(&x.into(), &v))
+            let v = Typed::from_value_untyped(v);
+            Ret::Value(b.subst_shift(&x.into(), &v))
         }
-        ExprF::App(v, a) => Ret::ValueF(v.app_thunk(a)),
+        ExprF::App(v, a) => Ret::ValueF(v.app_value(a)),
         ExprF::Builtin(b) => Ret::ValueF(ValueF::from_builtin(b)),
         ExprF::Const(c) => Ret::ValueF(ValueF::Const(c)),
         ExprF::BoolLit(b) => Ret::ValueF(BoolLit(b)),
@@ -680,7 +682,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
             match &*t_borrow {
                 AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
                     Ret::ValueF(EmptyListLit(
-                        TypedThunk::from_thunk_simple_type(args[0].clone()),
+                        TypedValue::from_value_simple_type(args[0].clone()),
                     ))
                 }
                 _ => {
@@ -697,12 +699,12 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
         }
         ExprF::RecordType(kts) => Ret::ValueF(RecordType(
             kts.into_iter()
-                .map(|(k, t)| (k, TypedThunk::from_thunk_untyped(t)))
+                .map(|(k, t)| (k, TypedValue::from_value_untyped(t)))
                 .collect(),
         )),
         ExprF::UnionType(kts) => Ret::ValueF(UnionType(
             kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypedThunk::from_thunk_untyped(t))))
+                .map(|(k, t)| (k, t.map(|t| TypedValue::from_value_untyped(t))))
                 .collect(),
         )),
         ExprF::TextLit(elts) => {
@@ -710,7 +712,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
             let elts: Vec<_> = squash_textlit(elts.into_iter());
             // Simplify bare interpolation
             if let [Expr(th)] = elts.as_slice() {
-                Ret::Thunk(th.clone())
+                Ret::Value(th.clone())
             } else {
                 Ret::ValueF(TextLit(elts))
             }
@@ -718,15 +720,15 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
         ExprF::BoolIf(ref b, ref e1, ref e2) => {
             let b_borrow = b.as_valuef();
             match &*b_borrow {
-                BoolLit(true) => Ret::ThunkRef(e1),
-                BoolLit(false) => Ret::ThunkRef(e2),
+                BoolLit(true) => Ret::ValueRef(e1),
+                BoolLit(false) => Ret::ValueRef(e2),
                 _ => {
                     let e1_borrow = e1.as_valuef();
                     let e2_borrow = e2.as_valuef();
                     match (&*e1_borrow, &*e2_borrow) {
                         // Simplify `if b then True else False`
-                        (BoolLit(true), BoolLit(false)) => Ret::ThunkRef(b),
-                        _ if e1 == e2 => Ret::ThunkRef(e1),
+                        (BoolLit(true), BoolLit(false)) => Ret::ValueRef(b),
+                        _ if e1 == e2 => Ret::ValueRef(e1),
                         _ => {
                             drop(b_borrow);
                             drop(e1_borrow);
@@ -765,7 +767,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
             let v_borrow = v.as_valuef();
             match &*v_borrow {
                 RecordLit(kvs) => match kvs.get(l) {
-                    Some(r) => Ret::Thunk(r.clone()),
+                    Some(r) => Ret::Value(r.clone()),
                     None => {
                         drop(v_borrow);
                         Ret::Expr(expr)
@@ -786,7 +788,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
             let variant_borrow = variant.as_valuef();
             match (&*handlers_borrow, &*variant_borrow) {
                 (RecordLit(kvs), UnionConstructor(l, _)) => match kvs.get(l) {
-                    Some(h) => Ret::Thunk(h.clone()),
+                    Some(h) => Ret::Value(h.clone()),
                     None => {
                         drop(handlers_borrow);
                         drop(variant_borrow);
@@ -794,7 +796,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
                     }
                 },
                 (RecordLit(kvs), UnionLit(l, v, _)) => match kvs.get(l) {
-                    Some(h) => Ret::ValueF(h.app_thunk(v.clone())),
+                    Some(h) => Ret::ValueF(h.app_value(v.clone())),
                     None => {
                         drop(handlers_borrow);
                         drop(variant_borrow);
@@ -812,8 +814,8 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Thunk, Normalized>) -> ValueF {
 
     match ret {
         Ret::ValueF(v) => v,
-        Ret::Thunk(th) => th.to_valuef(),
-        Ret::ThunkRef(th) => th.to_valuef(),
+        Ret::Value(th) => th.to_valuef(),
+        Ret::ValueRef(th) => th.to_valuef(),
         Ret::Expr(expr) => ValueF::PartialExpr(expr),
     }
 }
