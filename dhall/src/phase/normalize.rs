@@ -389,14 +389,6 @@ pub(crate) fn squash_textlit(
     ret
 }
 
-// Small helper enum to avoid repetition
-enum Ret<'a> {
-    ValueF(ValueF),
-    Value(Value),
-    ValueRef(&'a Value),
-    Expr(ExprF<Value, Normalized>),
-}
-
 /// Performs an intersection of two HashMaps.
 ///
 /// # Arguments
@@ -508,6 +500,14 @@ where
         kvs.entry(x.clone()).or_insert_with(|| v1.clone());
     }
     kvs
+}
+
+// Small helper enum to avoid repetition
+enum Ret<'a> {
+    ValueF(ValueF),
+    Value(Value),
+    ValueRef(&'a Value),
+    Expr(ExprF<Value, Normalized>),
 }
 
 fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
@@ -817,5 +817,18 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         Ret::Value(th) => th.to_valuef(),
         Ret::ValueRef(th) => th.to_valuef(),
         Ret::Expr(expr) => ValueF::PartialExpr(expr),
+    }
+}
+
+/// Normalize a ValueF into WHNF
+pub(crate) fn normalize_whnf(v: ValueF) -> ValueF {
+    match v {
+        ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args),
+        ValueF::PartialExpr(e) => normalize_one_layer(e),
+        ValueF::TextLit(elts) => {
+            ValueF::TextLit(squash_textlit(elts.into_iter()))
+        }
+        // All other cases are already in WHNF
+        v => v,
     }
 }

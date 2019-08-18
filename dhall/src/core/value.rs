@@ -8,28 +8,32 @@ use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{apply_any, normalize_one_layer, OutputSubExpr};
+use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
 use crate::phase::typecheck::type_of_const;
 use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
 
 #[derive(Debug, Clone, Copy)]
-enum Marker {
-    /// Weak Head Normal Form, i.e. subexpressions may not be normalized
+enum Form {
+    /// No constraints; expression may not be normalized at all.
+    Unevaled,
+    /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
+    /// not be normalized. This means that the first constructor of the contained ValueF is the first
+    /// constructor of the final Normal Form (NF).
     WHNF,
-    /// Normal form, i.e. completely normalized
+    /// Normal Form, i.e. completely normalized.
+    /// When all the Values in a ValueF are at least in WHNF, and recursively so, then the
+    /// ValueF is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
+    /// if we have the first constructor of the NF at all levels, we actually have the NF.
     NF,
 }
-use Marker::{NF, WHNF};
+use Form::{Unevaled, NF, WHNF};
 
 #[derive(Debug, Clone)]
 enum ValueInternal {
-    /// Partially normalized value whose subexpressions have been thunked (this is returned from
-    /// typechecking). Note that this is different from `ValueF::PartialExpr` because there is no
-    /// requirement of WHNF here.
-    PartialExpr(ExprF<Value, Normalized>),
     /// Partially normalized value.
+    /// Invariant: if the marker is `WHNF`, the value must be in Weak Head Normal Form
     /// Invariant: if the marker is `NF`, the value must be fully normalized
-    ValueF(Marker, ValueF),
+    ValueF(Form, ValueF),
 }
 
 #[derive(Debug)]
@@ -45,6 +49,8 @@ struct TypedValueInternal {
 #[derive(Clone)]
 pub struct Value(Rc<RefCell<TypedValueInternal>>);
 
+/// A value that needs to carry a type for typechecking to work.
+/// TODO: actually enforce this.
 #[derive(Debug, Clone)]
 pub struct TypedValue(Value);
 
@@ -58,25 +64,25 @@ impl ValueInternal {
     }
 
     fn normalize_whnf(&mut self) {
-        match self {
-            ValueInternal::PartialExpr(e) => {
-                *self =
-                    ValueInternal::ValueF(WHNF, normalize_one_layer(e.clone()))
+        take_mut::take(self, |vint| match vint {
+            ValueInternal::ValueF(Unevaled, v) => {
+                ValueInternal::ValueF(WHNF, normalize_whnf(v))
             }
-            // Already at least in WHNF
-            ValueInternal::ValueF(_, _) => {}
-        }
+            // Already in WHNF
+            vint @ ValueInternal::ValueF(WHNF, _)
+            | vint @ ValueInternal::ValueF(NF, _) => vint,
+        })
     }
 
     fn normalize_nf(&mut self) {
         match self {
-            ValueInternal::PartialExpr(_) => {
+            ValueInternal::ValueF(Unevaled, _) => {
                 self.normalize_whnf();
                 self.normalize_nf();
             }
-            ValueInternal::ValueF(m @ WHNF, v) => {
+            ValueInternal::ValueF(f @ WHNF, v) => {
                 v.normalize_mut();
-                *m = NF;
+                *f = NF;
             }
             // Already in NF
             ValueInternal::ValueF(NF, _) => {}
@@ -86,7 +92,7 @@ impl ValueInternal {
     // Always use normalize_whnf before
     fn as_whnf(&self) -> &ValueF {
         match self {
-            ValueInternal::PartialExpr(_) => unreachable!(),
+            ValueInternal::ValueF(Unevaled, _) => unreachable!(),
             ValueInternal::ValueF(_, v) => v,
         }
     }
@@ -94,9 +100,8 @@ impl ValueInternal {
     // Always use normalize_nf before
     fn as_nf(&self) -> &ValueF {
         match self {
-            ValueInternal::PartialExpr(_) | ValueInternal::ValueF(WHNF, _) => {
-                unreachable!()
-            }
+            ValueInternal::ValueF(Unevaled, _)
+            | ValueInternal::ValueF(WHNF, _) => unreachable!(),
             ValueInternal::ValueF(NF, v) => v,
         }
     }
@@ -126,13 +131,13 @@ impl TypedValueInternal {
 
 impl Value {
     pub(crate) fn from_valuef(v: ValueF) -> Value {
-        ValueInternal::ValueF(WHNF, v).into_value(None)
+        ValueInternal::ValueF(Unevaled, v).into_value(None)
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Value {
-        ValueInternal::ValueF(WHNF, v).into_value(Some(t))
+        ValueInternal::ValueF(Unevaled, v).into_value(Some(t))
     }
     pub(crate) fn from_partial_expr(e: ExprF<Value, Normalized>) -> Value {
-        ValueInternal::PartialExpr(e).into_value(None)
+        Value::from_valuef(ValueF::PartialExpr(e))
     }
     pub(crate) fn with_type(self, t: Type) -> Value {
         self.as_internal().clone().into_value(Some(t))
@@ -150,7 +155,7 @@ impl Value {
     }
 
     /// Normalizes contents to normal form; faster than `normalize_nf` if
-    /// no one else shares this thunk
+    /// no one else shares this thunk.
     pub(crate) fn normalize_mut(&mut self) {
         self.mutate_internal(|i| i.as_internal_mut().normalize_nf())
     }
@@ -171,19 +176,20 @@ impl Value {
     fn do_normalize_whnf(&self) {
         let borrow = self.as_internal();
         match &*borrow {
-            ValueInternal::PartialExpr(_) => {
+            ValueInternal::ValueF(Unevaled, _) => {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
             // Already at least in WHNF
-            ValueInternal::ValueF(_, _) => {}
+            ValueInternal::ValueF(WHNF, _) | ValueInternal::ValueF(NF, _) => {}
         }
     }
 
     fn do_normalize_nf(&self) {
         let borrow = self.as_internal();
         match &*borrow {
-            ValueInternal::PartialExpr(_) | ValueInternal::ValueF(WHNF, _) => {
+            ValueInternal::ValueF(Unevaled, _)
+            | ValueInternal::ValueF(WHNF, _) => {
                 drop(borrow);
                 self.as_internal_mut().normalize_nf();
             }
@@ -199,13 +205,21 @@ impl Value {
         Ref::map(self.as_internal(), ValueInternal::as_nf)
     }
 
-    // WARNING: avoid normalizing any thunk while holding on to this ref
-    // or you could run into BorrowMut panics
+    /// WARNING: avoid normalizing any thunk while holding on to this ref
+    /// or you could run into BorrowMut panics
+    /// TODO: deprecated because of misleading name
     pub(crate) fn as_valuef(&self) -> Ref<ValueF> {
+        self.as_whnf()
+    }
+
+    /// WARNING: avoid normalizing any thunk while holding on to this ref
+    /// or you could run into BorrowMut panics
+    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
         self.do_normalize_whnf();
         Ref::map(self.as_internal(), ValueInternal::as_whnf)
     }
 
+    /// TODO: deprecated because of misleading name
     pub(crate) fn to_valuef(&self) -> ValueF {
         self.as_valuef().clone()
     }
@@ -317,11 +331,8 @@ impl Shift for Value {
 impl Shift for ValueInternal {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ValueInternal::PartialExpr(e) => {
-                ValueInternal::PartialExpr(e.shift(delta, var)?)
-            }
-            ValueInternal::ValueF(m, v) => {
-                ValueInternal::ValueF(*m, v.shift(delta, var)?)
+            ValueInternal::ValueF(f, v) => {
+                ValueInternal::ValueF(*f, v.shift(delta, var)?)
             }
         })
     }
@@ -351,12 +362,9 @@ impl Subst<Typed> for Value {
 impl Subst<Typed> for ValueInternal {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            ValueInternal::PartialExpr(e) => {
-                ValueInternal::PartialExpr(e.subst_shift(var, val))
-            }
             ValueInternal::ValueF(_, v) => {
-                // The resulting value may not stay in normal form after substitution
-                ValueInternal::ValueF(WHNF, v.subst_shift(var, val))
+                // The resulting value may not stay in wnhf after substitution
+                ValueInternal::ValueF(Unevaled, v.subst_shift(var, val))
             }
         }
     }
@@ -392,14 +400,11 @@ impl std::cmp::PartialEq for TypedValue {
 impl std::cmp::Eq for TypedValue {}
 
 impl std::fmt::Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let b: &ValueInternal = &self.as_internal();
         match b {
-            ValueInternal::ValueF(m, v) => {
-                f.debug_tuple(&format!("Value@{:?}", m)).field(v).finish()
-            }
-            ValueInternal::PartialExpr(e) => {
-                f.debug_tuple("Value@PartialExpr").field(e).finish()
+            ValueInternal::ValueF(f, v) => {
+                fmt.debug_tuple(&format!("Value@{:?}", f)).field(v).finish()
             }
         }
     }

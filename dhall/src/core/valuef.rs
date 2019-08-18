@@ -7,22 +7,13 @@ use dhall_syntax::{
 
 use crate::core::value::{TypedValue, Value};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
-use crate::phase::normalize::{
-    apply_builtin, normalize_one_layer, squash_textlit, OutputSubExpr,
-};
+use crate::phase::normalize::OutputSubExpr;
 use crate::phase::{Normalized, Typed};
 
-/// A semantic value. The invariants ensure this value represents a Weak-Head
-/// Normal Form (WHNF). This means that this first constructor is the first constructor of the
-/// final Normal Form (NF).
-/// This WHNF must be preserved by operations on `ValueF`s. In particular, `subst_shift` could break
-/// the invariants so need to be careful to reevaluate as needed.
-/// Subexpressions are Values, which are partially evaluated expressions that are normalized
-/// on-demand. When all the Values in a ValueF are at least in WHNF, and recursively so, then the
-/// ValueF is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
-/// if we have the first constructor of the NF at all levels, we actually have the NF.
+/// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
+/// normalized on-demand.
 /// Equality is up to alpha-equivalence (renaming of bound variables) and beta-equivalence
-/// (normalization). Equality will normalize only as needed.
+/// (normalization). Equality will normalize as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueF {
     /// Closures
@@ -338,18 +329,15 @@ impl Shift for ValueF {
 impl Subst<Typed> for ValueF {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
         match self {
-            // Retry normalizing since substituting may allow progress
             ValueF::AppliedBuiltin(b, args) => {
-                apply_builtin(*b, args.subst_shift(var, val))
+                ValueF::AppliedBuiltin(*b, args.subst_shift(var, val))
             }
-            // Retry normalizing since substituting may allow progress
             ValueF::PartialExpr(e) => {
-                normalize_one_layer(e.subst_shift(var, val))
+                ValueF::PartialExpr(e.subst_shift(var, val))
             }
-            // Retry normalizing since substituting may allow progress
-            ValueF::TextLit(elts) => ValueF::TextLit(squash_textlit(
-                elts.iter().map(|contents| contents.subst_shift(var, val)),
-            )),
+            ValueF::TextLit(elts) => {
+                ValueF::TextLit(elts.subst_shift(var, val))
+            }
             ValueF::Lam(x, t, e) => ValueF::Lam(
                 x.clone(),
                 t.subst_shift(var, val),
