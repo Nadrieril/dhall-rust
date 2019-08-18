@@ -29,17 +29,13 @@ enum Form {
 use Form::{Unevaled, NF, WHNF};
 
 #[derive(Debug, Clone)]
-enum ValueInternal {
-    /// Partially normalized value.
-    /// Invariant: if the marker is `WHNF`, the value must be in Weak Head Normal Form
-    /// Invariant: if the marker is `NF`, the value must be fully normalized
-    ValueF(Form, ValueF),
-}
-
-#[derive(Debug)]
-struct TypedValueInternal {
-    internal: ValueInternal,
-    typ: Option<Type>,
+/// Partially normalized value.
+/// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
+/// Invariant: if `form` is `NF`, `value` must be fully normalized
+struct ValueInternal {
+    form: Form,
+    value: ValueF,
+    ty: Option<Type>,
 }
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
@@ -47,7 +43,7 @@ struct TypedValueInternal {
 /// Can optionally store a Type from typechecking to preserve type information through
 /// normalization.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<TypedValueInternal>>);
+pub struct Value(Rc<RefCell<ValueInternal>>);
 
 /// A value that needs to carry a type for typechecking to work.
 /// TODO: actually enforce this.
@@ -55,72 +51,54 @@ pub struct Value(Rc<RefCell<TypedValueInternal>>);
 pub struct TypedValue(Value);
 
 impl ValueInternal {
-    fn into_value(self, t: Option<Type>) -> Value {
-        TypedValueInternal {
-            internal: self,
-            typ: t,
-        }
-        .into_value()
-    }
-
-    fn normalize_whnf(&mut self) {
-        take_mut::take(self, |vint| match vint {
-            ValueInternal::ValueF(Unevaled, v) => {
-                ValueInternal::ValueF(WHNF, normalize_whnf(v))
-            }
-            // Already in WHNF
-            vint @ ValueInternal::ValueF(WHNF, _)
-            | vint @ ValueInternal::ValueF(NF, _) => vint,
-        })
-    }
-
-    fn normalize_nf(&mut self) {
-        match self {
-            ValueInternal::ValueF(Unevaled, _) => {
-                self.normalize_whnf();
-                self.normalize_nf();
-            }
-            ValueInternal::ValueF(f @ WHNF, v) => {
-                v.normalize_mut();
-                *f = NF;
-            }
-            // Already in NF
-            ValueInternal::ValueF(NF, _) => {}
-        }
-    }
-
-    // Always use normalize_whnf before
-    fn as_whnf(&self) -> &ValueF {
-        match self {
-            ValueInternal::ValueF(Unevaled, _) => unreachable!(),
-            ValueInternal::ValueF(_, v) => v,
-        }
-    }
-
-    // Always use normalize_nf before
-    fn as_nf(&self) -> &ValueF {
-        match self {
-            ValueInternal::ValueF(Unevaled, _)
-            | ValueInternal::ValueF(WHNF, _) => unreachable!(),
-            ValueInternal::ValueF(NF, v) => v,
-        }
-    }
-}
-
-impl TypedValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
-    fn as_internal(&self) -> &ValueInternal {
-        &self.internal
+
+    fn normalize_whnf(&mut self) {
+        take_mut::take(self, |vint| match &vint.form {
+            Unevaled => ValueInternal {
+                form: WHNF,
+                value: normalize_whnf(vint.value),
+                ty: vint.ty,
+            },
+            // Already in WHNF
+            WHNF | NF => vint,
+        })
     }
-    fn as_internal_mut(&mut self) -> &mut ValueInternal {
-        &mut self.internal
+    fn normalize_nf(&mut self) {
+        match self.form {
+            Unevaled => {
+                self.normalize_whnf();
+                self.normalize_nf();
+            }
+            WHNF => {
+                self.value.normalize_mut();
+                self.form = NF;
+            }
+            // Already in NF
+            NF => {}
+        }
     }
 
-    fn get_type(&self) -> Result<Type, TypeError> {
-        match &self.typ {
-            Some(t) => Ok(t.clone()),
+    /// Always use normalize_whnf before
+    fn as_whnf(&self) -> &ValueF {
+        match self.form {
+            Unevaled => unreachable!(),
+            _ => &self.value,
+        }
+    }
+    /// Always use normalize_nf before
+    fn as_nf(&self) -> &ValueF {
+        match self.form {
+            Unevaled | WHNF => unreachable!(),
+            NF => &self.value,
+        }
+    }
+
+    fn get_type(&self) -> Result<&Type, TypeError> {
+        match &self.ty {
+            Some(t) => Ok(t),
             None => Err(TypeError::new(
                 &TypecheckContext::new(),
                 TypeMessage::Untyped,
@@ -131,70 +109,80 @@ impl TypedValueInternal {
 
 impl Value {
     pub(crate) fn from_valuef(v: ValueF) -> Value {
-        ValueInternal::ValueF(Unevaled, v).into_value(None)
+        ValueInternal {
+            form: Unevaled,
+            value: v,
+            ty: None,
+        }
+        .into_value()
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Value {
-        ValueInternal::ValueF(Unevaled, v).into_value(Some(t))
+        ValueInternal {
+            form: Unevaled,
+            value: v,
+            ty: Some(t),
+        }
+        .into_value()
     }
     pub(crate) fn from_partial_expr(e: ExprF<Value, Normalized>) -> Value {
         Value::from_valuef(ValueF::PartialExpr(e))
     }
+    // TODO: avoid using this function
     pub(crate) fn with_type(self, t: Type) -> Value {
-        self.as_internal().clone().into_value(Some(t))
+        let vint = self.as_internal();
+        ValueInternal {
+            form: vint.form,
+            value: vint.value.clone(),
+            ty: Some(t),
+        }
+        .into_value()
     }
 
     /// Mutates the contents. If no one else shares this thunk,
     /// mutates directly, thus avoiding a RefCell lock.
-    fn mutate_internal(&mut self, f: impl FnOnce(&mut TypedValueInternal)) {
+    fn mutate_internal(&mut self, f: impl FnOnce(&mut ValueInternal)) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
             Some(refcell) => f(RefCell::get_mut(refcell)),
             // Otherwise mutate through the refcell
-            None => f(&mut self.as_tinternal_mut()),
+            None => f(&mut self.as_internal_mut()),
         }
     }
 
     /// Normalizes contents to normal form; faster than `normalize_nf` if
     /// no one else shares this thunk.
     pub(crate) fn normalize_mut(&mut self) {
-        self.mutate_internal(|i| i.as_internal_mut().normalize_nf())
+        self.mutate_internal(|vint| vint.normalize_nf())
     }
 
-    fn as_tinternal(&self) -> Ref<TypedValueInternal> {
+    fn as_internal(&self) -> Ref<ValueInternal> {
         self.0.borrow()
     }
-    fn as_tinternal_mut(&mut self) -> RefMut<TypedValueInternal> {
-        self.0.borrow_mut()
-    }
-    fn as_internal(&self) -> Ref<ValueInternal> {
-        Ref::map(self.as_tinternal(), TypedValueInternal::as_internal)
-    }
     fn as_internal_mut(&self) -> RefMut<ValueInternal> {
-        RefMut::map(self.0.borrow_mut(), TypedValueInternal::as_internal_mut)
+        self.0.borrow_mut()
     }
 
     fn do_normalize_whnf(&self) {
         let borrow = self.as_internal();
-        match &*borrow {
-            ValueInternal::ValueF(Unevaled, _) => {
+        match borrow.form {
+            Unevaled => {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
             // Already at least in WHNF
-            ValueInternal::ValueF(WHNF, _) | ValueInternal::ValueF(NF, _) => {}
+            WHNF | NF => {}
         }
     }
 
     fn do_normalize_nf(&self) {
         let borrow = self.as_internal();
-        match &*borrow {
-            ValueInternal::ValueF(Unevaled, _)
-            | ValueInternal::ValueF(WHNF, _) => {
+        match borrow.form {
+            Unevaled | WHNF => {
                 drop(borrow);
                 self.as_internal_mut().normalize_nf();
             }
             // Already in NF
-            ValueInternal::ValueF(NF, _) => {}
+            NF => {}
         }
     }
 
@@ -240,7 +228,7 @@ impl Value {
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        Ok(Cow::Owned(self.as_tinternal().get_type()?))
+        Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
     }
 }
 
@@ -330,10 +318,10 @@ impl Shift for Value {
 
 impl Shift for ValueInternal {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            ValueInternal::ValueF(f, v) => {
-                ValueInternal::ValueF(*f, v.shift(delta, var)?)
-            }
+        Some(ValueInternal {
+            form: self.form,
+            value: self.value.shift(delta, var)?,
+            ty: self.ty.shift(delta, var)?,
         })
     }
 }
@@ -341,15 +329,6 @@ impl Shift for ValueInternal {
 impl Shift for TypedValue {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(TypedValue(self.0.shift(delta, var)?))
-    }
-}
-
-impl Shift for TypedValueInternal {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(TypedValueInternal {
-            internal: self.internal.shift(delta, var)?,
-            typ: self.typ.shift(delta, var)?,
-        })
     }
 }
 
@@ -361,20 +340,11 @@ impl Subst<Typed> for Value {
 
 impl Subst<Typed> for ValueInternal {
     fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        match self {
-            ValueInternal::ValueF(_, v) => {
-                // The resulting value may not stay in wnhf after substitution
-                ValueInternal::ValueF(Unevaled, v.subst_shift(var, val))
-            }
-        }
-    }
-}
-
-impl Subst<Typed> for TypedValueInternal {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
-        TypedValueInternal {
-            internal: self.internal.subst_shift(var, val),
-            typ: self.typ.subst_shift(var, val),
+        ValueInternal {
+            // The resulting value may not stay in wnhf after substitution
+            form: Unevaled,
+            value: self.value.subst_shift(var, val),
+            ty: self.ty.subst_shift(var, val),
         }
     }
 }
@@ -401,11 +371,9 @@ impl std::cmp::Eq for TypedValue {}
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let b: &ValueInternal = &self.as_internal();
-        match b {
-            ValueInternal::ValueF(f, v) => {
-                fmt.debug_tuple(&format!("Value@{:?}", f)).field(v).finish()
-            }
-        }
+        let vint: &ValueInternal = &self.as_internal();
+        fmt.debug_tuple(&format!("Value@{:?}", &vint.form))
+            .field(&vint.value)
+            .finish()
     }
 }
