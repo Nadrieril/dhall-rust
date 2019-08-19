@@ -68,23 +68,23 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
             r,
             EmptyOptionalLit(TypedValue::from_value_simple_type(t.clone())),
         )),
-        (NaturalIsZero, [n, r..]) => match &*n.as_valuef() {
+        (NaturalIsZero, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
             _ => Err(()),
         },
-        (NaturalEven, [n, r..]) => match &*n.as_valuef() {
+        (NaturalEven, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((r, BoolLit(*n % 2 == 0))),
             _ => Err(()),
         },
-        (NaturalOdd, [n, r..]) => match &*n.as_valuef() {
+        (NaturalOdd, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((r, BoolLit(*n % 2 != 0))),
             _ => Err(()),
         },
-        (NaturalToInteger, [n, r..]) => match &*n.as_valuef() {
+        (NaturalToInteger, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((r, IntegerLit(*n as isize))),
             _ => Err(()),
         },
-        (NaturalShow, [n, r..]) => match &*n.as_valuef() {
+        (NaturalShow, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((
                 r,
                 TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
@@ -92,7 +92,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
             _ => Err(()),
         },
         (NaturalSubtract, [a, b, r..]) => {
-            match (&*a.as_valuef(), &*b.as_valuef()) {
+            match (&*a.as_whnf(), &*b.as_whnf()) {
                 (NaturalLit(a), NaturalLit(b)) => {
                     Ok((r, NaturalLit(if b > a { b - a } else { 0 })))
                 }
@@ -102,7 +102,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 _ => Err(()),
             }
         }
-        (IntegerShow, [n, r..]) => match &*n.as_valuef() {
+        (IntegerShow, [n, r..]) => match &*n.as_whnf() {
             IntegerLit(n) => {
                 let s = if *n < 0 {
                     n.to_string()
@@ -113,18 +113,18 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
             }
             _ => Err(()),
         },
-        (IntegerToDouble, [n, r..]) => match &*n.as_valuef() {
+        (IntegerToDouble, [n, r..]) => match &*n.as_whnf() {
             IntegerLit(n) => Ok((r, DoubleLit(NaiveDouble::from(*n as f64)))),
             _ => Err(()),
         },
-        (DoubleShow, [n, r..]) => match &*n.as_valuef() {
+        (DoubleShow, [n, r..]) => match &*n.as_whnf() {
             DoubleLit(n) => Ok((
                 r,
                 TextLit(vec![InterpolatedTextContents::Text(n.to_string())]),
             )),
             _ => Err(()),
         },
-        (TextShow, [v, r..]) => match &*v.as_valuef() {
+        (TextShow, [v, r..]) => match &*v.as_whnf() {
             TextLit(elts) => {
                 match elts.as_slice() {
                     // Empty string literal.
@@ -158,33 +158,33 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
             }
             _ => Err(()),
         },
-        (ListLength, [_, l, r..]) => match &*l.as_valuef() {
+        (ListLength, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(_) => Ok((r, NaturalLit(0))),
             NEListLit(xs) => Ok((r, NaturalLit(xs.len()))),
             _ => Err(()),
         },
-        (ListHead, [_, l, r..]) => match &*l.as_valuef() {
+        (ListHead, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
             NEListLit(xs) => {
                 Ok((r, NEOptionalLit(xs.iter().next().unwrap().clone())))
             }
             _ => Err(()),
         },
-        (ListLast, [_, l, r..]) => match &*l.as_valuef() {
+        (ListLast, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(n) => Ok((r, EmptyOptionalLit(n.clone()))),
             NEListLit(xs) => {
                 Ok((r, NEOptionalLit(xs.iter().rev().next().unwrap().clone())))
             }
             _ => Err(()),
         },
-        (ListReverse, [_, l, r..]) => match &*l.as_valuef() {
+        (ListReverse, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(n) => Ok((r, EmptyListLit(n.clone()))),
             NEListLit(xs) => {
                 Ok((r, NEListLit(xs.iter().rev().cloned().collect())))
             }
             _ => Err(()),
         },
-        (ListIndexed, [_, l, r..]) => match &*l.as_valuef() {
+        (ListIndexed, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(t) => {
                 let mut kts = HashMap::new();
                 kts.insert(
@@ -210,11 +210,11 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
             }
             _ => Err(()),
         },
-        (ListBuild, [t, f, r..]) => match &*f.as_valuef() {
+        (ListBuild, [t, f, r..]) => match &*f.as_whnf() {
             // fold/build fusion
             ValueF::AppliedBuiltin(ListFold, args) => {
                 if args.len() >= 2 {
-                    Ok((r, args[1].to_valuef()))
+                    Ok((r, args[1].to_whnf()))
                 } else {
                     // Do we really need to handle this case ?
                     unimplemented!()
@@ -237,8 +237,8 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     )),
             )),
         },
-        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_valuef() {
-            EmptyListLit(_) => Ok((r, nil.to_valuef())),
+        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_whnf() {
+            EmptyListLit(_) => Ok((r, nil.to_whnf())),
             NEListLit(xs) => {
                 let mut v = nil.clone();
                 for x in xs.iter().rev() {
@@ -248,15 +248,15 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                         .app_value(v)
                         .into_value();
                 }
-                Ok((r, v.to_valuef()))
+                Ok((r, v.to_whnf()))
             }
             _ => Err(()),
         },
-        (OptionalBuild, [t, f, r..]) => match &*f.as_valuef() {
+        (OptionalBuild, [t, f, r..]) => match &*f.as_whnf() {
             // fold/build fusion
             ValueF::AppliedBuiltin(OptionalFold, args) => {
                 if args.len() >= 2 {
-                    Ok((r, args[1].to_valuef()))
+                    Ok((r, args[1].to_whnf()))
                 } else {
                     // Do we really need to handle this case ?
                     unimplemented!()
@@ -273,18 +273,16 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 )),
             )),
         },
-        (OptionalFold, [_, v, _, just, nothing, r..]) => {
-            match &*v.as_valuef() {
-                EmptyOptionalLit(_) => Ok((r, nothing.to_valuef())),
-                NEOptionalLit(x) => Ok((r, just.app_value(x.clone()))),
-                _ => Err(()),
-            }
-        }
-        (NaturalBuild, [f, r..]) => match &*f.as_valuef() {
+        (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_whnf() {
+            EmptyOptionalLit(_) => Ok((r, nothing.to_whnf())),
+            NEOptionalLit(x) => Ok((r, just.app_value(x.clone()))),
+            _ => Err(()),
+        },
+        (NaturalBuild, [f, r..]) => match &*f.as_whnf() {
             // fold/build fusion
             ValueF::AppliedBuiltin(NaturalFold, args) => {
                 if !args.is_empty() {
-                    Ok((r, args[0].to_valuef()))
+                    Ok((r, args[0].to_whnf()))
                 } else {
                     // Do we really need to handle this case ?
                     unimplemented!()
@@ -297,8 +295,8 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     .app_valuef(NaturalLit(0)),
             )),
         },
-        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_valuef() {
-            NaturalLit(0) => Ok((r, zero.to_valuef())),
+        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_whnf() {
+            NaturalLit(0) => Ok((r, zero.to_whnf())),
             NaturalLit(n) => {
                 let fold = ValueF::from_builtin(NaturalFold)
                     .app(NaturalLit(n - 1))
@@ -326,11 +324,11 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
 pub(crate) fn apply_any(f: Value, a: Value) -> ValueF {
     let fallback = |f: Value, a: Value| ValueF::PartialExpr(ExprF::App(f, a));
 
-    let f_borrow = f.as_valuef();
+    let f_borrow = f.as_whnf();
     match &*f_borrow {
         ValueF::Lam(x, _, e) => {
             let val = Typed::from_value_untyped(a);
-            e.subst_shift(&x.into(), &val).to_valuef()
+            e.subst_shift(&x.into(), &val).to_whnf()
         }
         ValueF::AppliedBuiltin(b, args) => {
             use std::iter::once;
@@ -362,7 +360,7 @@ pub(crate) fn squash_textlit(
             match contents {
                 Text(s) => crnt_str.push_str(&s),
                 Expr(e) => {
-                    let e_borrow = e.as_valuef();
+                    let e_borrow = e.as_whnf();
                     match &*e_borrow {
                         ValueF::TextLit(elts2) => {
                             inner(elts2.iter().cloned(), crnt_str, ret)
@@ -520,8 +518,8 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
         TextLit,
     };
-    let x_borrow = x.as_valuef();
-    let y_borrow = y.as_valuef();
+    let x_borrow = x.as_whnf();
+    let y_borrow = y.as_whnf();
     Some(match (o, &*x_borrow, &*y_borrow) {
         (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
         (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
@@ -678,7 +676,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         ExprF::SomeLit(e) => Ret::ValueF(NEOptionalLit(e)),
         ExprF::EmptyListLit(ref t) => {
             // Check if the type is of the form `List x`
-            let t_borrow = t.as_valuef();
+            let t_borrow = t.as_whnf();
             match &*t_borrow {
                 AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
                     Ret::ValueF(EmptyListLit(
@@ -718,13 +716,13 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
             }
         }
         ExprF::BoolIf(ref b, ref e1, ref e2) => {
-            let b_borrow = b.as_valuef();
+            let b_borrow = b.as_whnf();
             match &*b_borrow {
                 BoolLit(true) => Ret::ValueRef(e1),
                 BoolLit(false) => Ret::ValueRef(e2),
                 _ => {
-                    let e1_borrow = e1.as_valuef();
-                    let e2_borrow = e2.as_valuef();
+                    let e1_borrow = e1.as_whnf();
+                    let e2_borrow = e2.as_whnf();
                     match (&*e1_borrow, &*e2_borrow) {
                         // Simplify `if b then True else False`
                         (BoolLit(true), BoolLit(false)) => Ret::ValueRef(b),
@@ -748,7 +746,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
             Ret::ValueF(RecordLit(HashMap::new()))
         }
         ExprF::Projection(ref v, ref ls) => {
-            let v_borrow = v.as_valuef();
+            let v_borrow = v.as_whnf();
             match &*v_borrow {
                 RecordLit(kvs) => Ret::ValueF(RecordLit(
                     ls.iter()
@@ -764,7 +762,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
             }
         }
         ExprF::Field(ref v, ref l) => {
-            let v_borrow = v.as_valuef();
+            let v_borrow = v.as_whnf();
             match &*v_borrow {
                 RecordLit(kvs) => match kvs.get(l) {
                     Some(r) => Ret::Value(r.clone()),
@@ -784,8 +782,8 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         }
 
         ExprF::Merge(ref handlers, ref variant, _) => {
-            let handlers_borrow = handlers.as_valuef();
-            let variant_borrow = variant.as_valuef();
+            let handlers_borrow = handlers.as_whnf();
+            let variant_borrow = variant.as_whnf();
             match (&*handlers_borrow, &*variant_borrow) {
                 (RecordLit(kvs), UnionConstructor(l, _)) => match kvs.get(l) {
                     Some(h) => Ret::Value(h.clone()),
@@ -814,8 +812,8 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
 
     match ret {
         Ret::ValueF(v) => v,
-        Ret::Value(th) => th.to_valuef(),
-        Ret::ValueRef(th) => th.to_valuef(),
+        Ret::Value(th) => th.as_whnf().clone(),
+        Ret::ValueRef(th) => th.as_whnf().clone(),
         Ret::Expr(expr) => ValueF::PartialExpr(expr),
     }
 }

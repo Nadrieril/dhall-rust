@@ -185,7 +185,7 @@ pub fn run_test(
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;
-                    let ty = expr.get_type()?.to_normalized();
+                    let ty = expr.get_type()?.into_owned().normalize();
                     assert_eq_display!(ty, expected);
                 }
                 Normalization => {

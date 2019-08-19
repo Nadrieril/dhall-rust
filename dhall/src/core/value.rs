@@ -193,23 +193,17 @@ impl Value {
         Ref::map(self.as_internal(), ValueInternal::as_nf)
     }
 
-    /// WARNING: avoid normalizing any thunk while holding on to this ref
-    /// or you could run into BorrowMut panics
-    /// TODO: deprecated because of misleading name
-    pub(crate) fn as_valuef(&self) -> Ref<ValueF> {
-        self.as_whnf()
-    }
-
-    /// WARNING: avoid normalizing any thunk while holding on to this ref
-    /// or you could run into BorrowMut panics
+    /// This is what you want if you want to pattern-match on the value.
+    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
+    /// panics.
     pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
         self.do_normalize_whnf();
         Ref::map(self.as_internal(), ValueInternal::as_whnf)
     }
 
-    /// TODO: deprecated because of misleading name
-    pub(crate) fn to_valuef(&self) -> ValueF {
-        self.as_valuef().clone()
+    /// TODO: cloning a valuef can often be avoided
+    pub(crate) fn to_whnf(&self) -> ValueF {
+        self.as_whnf().clone()
     }
 
     pub(crate) fn normalize_to_expr_maybe_alpha(
@@ -275,14 +269,19 @@ impl TypedValue {
         TypedValue(Value::from_valuef_and_type(v, t))
     }
 
-    pub(crate) fn to_valuef(&self) -> ValueF {
-        self.0.to_valuef()
+    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
+    /// panics.
+    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
+        self.0.as_whnf()
+    }
+    pub(crate) fn to_whnf(&self) -> ValueF {
+        self.0.to_whnf()
     }
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-        self.to_valuef().normalize_to_expr()
+        self.as_whnf().normalize_to_expr()
     }
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
-        self.to_valuef().normalize_to_expr_maybe_alpha(true)
+        self.as_whnf().normalize_to_expr_maybe_alpha(true)
     }
     pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
@@ -294,8 +293,7 @@ impl TypedValue {
         Typed::from_typedvalue(self)
     }
     pub(crate) fn as_const(&self) -> Option<Const> {
-        // TODO: avoid clone
-        match &self.to_valuef() {
+        match &*self.as_whnf() {
             ValueF::Const(c) => Some(*c),
             _ => None,
         }
@@ -357,14 +355,14 @@ impl Subst<Typed> for TypedValue {
 
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        *self.as_valuef() == *other.as_valuef()
+        *self.as_whnf() == *other.as_whnf()
     }
 }
 impl std::cmp::Eq for Value {}
 
 impl std::cmp::PartialEq for TypedValue {
     fn eq(&self, other: &Self) -> bool {
-        self.to_valuef() == other.to_valuef()
+        &*self.as_whnf() == &*other.as_whnf()
     }
 }
 impl std::cmp::Eq for TypedValue {}

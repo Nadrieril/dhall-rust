@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::Ref;
 use std::fmt::Display;
 use std::path::Path;
 
@@ -111,8 +112,13 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
-    pub(crate) fn to_valuef(&self) -> ValueF {
-        self.0.to_valuef()
+    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
+    /// panics.
+    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
+        self.0.as_whnf()
+    }
+    pub(crate) fn to_whnf(&self) -> ValueF {
+        self.0.to_whnf()
     }
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
@@ -133,9 +139,6 @@ impl Typed {
     }
     pub(crate) fn into_typedvalue(self) -> TypedValue {
         self.0
-    }
-    pub(crate) fn to_normalized(&self) -> Normalized {
-        self.clone().normalize()
     }
     pub(crate) fn as_const(&self) -> Option<Const> {
         self.0.as_const()
@@ -229,7 +232,7 @@ impl std::hash::Hash for Normalized {
 impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {
-        self.to_valuef() == other.to_valuef()
+        self.0 == other.0
     }
 }
 

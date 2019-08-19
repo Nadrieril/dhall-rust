@@ -4,7 +4,7 @@ use dhall_syntax::{BinOp, Import, Label, ParseError, V};
 
 use crate::core::context::TypecheckContext;
 use crate::phase::resolve::ImportStack;
-use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
+use crate::phase::{NormalizedSubExpr, Type, Typed};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -48,24 +48,24 @@ pub struct TypeError {
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
     UnboundVariable(V<Label>),
-    InvalidInputType(Normalized),
-    InvalidOutputType(Normalized),
+    InvalidInputType(Typed),
+    InvalidOutputType(Typed),
     NotAFunction(Typed),
-    TypeMismatch(Typed, Normalized, Typed),
-    AnnotMismatch(Typed, Normalized),
+    TypeMismatch(Typed, Typed, Typed),
+    AnnotMismatch(Typed, Typed),
     Untyped,
     FieldCollision(Label),
-    InvalidListElement(usize, Normalized, Typed),
-    InvalidListType(Normalized),
-    InvalidOptionalType(Normalized),
+    InvalidListElement(usize, Typed, Typed),
+    InvalidListType(Typed),
+    InvalidOptionalType(Typed),
     InvalidPredicate(Typed),
     IfBranchMismatch(Typed, Typed),
     IfBranchMustBeTerm(bool, Typed),
     InvalidFieldType(Label, Type),
-    NotARecord(Label, Normalized),
+    NotARecord(Label, Typed),
     MustCombineRecord(Typed),
     MissingRecordField(Label, Typed),
-    MissingUnionField(Label, Normalized),
+    MissingUnionField(Label, Typed),
     BinOpTypeMismatch(BinOp, Typed),
     InvalidTextInterpolation(Typed),
     Merge1ArgMustBeRecord(Typed),

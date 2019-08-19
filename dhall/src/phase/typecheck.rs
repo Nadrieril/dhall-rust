@@ -22,12 +22,7 @@ fn tck_pi_type(
 
     let ka = match tx.get_type()?.as_const() {
         Some(k) => k,
-        _ => {
-            return Err(TypeError::new(
-                ctx,
-                InvalidInputType(tx.to_normalized()),
-            ))
-        }
+        _ => return Err(TypeError::new(ctx, InvalidInputType(tx))),
     };
 
     let kb = match te.get_type()?.as_const() {
@@ -35,7 +30,7 @@ fn tck_pi_type(
         _ => {
             return Err(TypeError::new(
                 &ctx2,
-                InvalidOutputType(te.get_type()?.to_normalized()),
+                InvalidOutputType(te.get_type()?.into_owned()),
             ))
         }
     };
@@ -415,18 +410,14 @@ fn type_last_layer(
         }
         App(f, a) => {
             let tf = f.get_type()?;
-            let (x, tx, tb) = match &tf.to_valuef() {
+            let (x, tx, tb) = match &*tf.as_whnf() {
                 ValueF::Pi(x, tx, tb) => {
                     (x.clone(), tx.to_type(), tb.to_type())
                 }
                 _ => return Err(mkerr(NotAFunction(f.clone()))),
             };
             if a.get_type()?.as_ref() != &tx {
-                return Err(mkerr(TypeMismatch(
-                    f.clone(),
-                    tx.to_normalized(),
-                    a.clone(),
-                )));
+                return Err(mkerr(TypeMismatch(f.clone(), tx, a.clone())));
             }
 
             Ok(RetTypeOnly(tb.subst_shift(&x.into(), &a)))
@@ -434,13 +425,13 @@ fn type_last_layer(
         Annot(x, t) => {
             let t = t.to_type();
             if &t != x.get_type()?.as_ref() {
-                return Err(mkerr(AnnotMismatch(x.clone(), t.to_normalized())));
+                return Err(mkerr(AnnotMismatch(x.clone(), t)));
             }
             Ok(RetTypeOnly(x.get_type()?.into_owned()))
         }
         Assert(t) => {
-            match t.to_valuef() {
-                ValueF::Equivalence(ref x, ref y) if x == y => {}
+            match &*t.as_whnf() {
+                ValueF::Equivalence(x, y) if x == y => {}
                 ValueF::Equivalence(x, y) => {
                     return Err(mkerr(AssertMismatch(
                         x.to_typed(),
@@ -472,14 +463,11 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let t = t.to_type();
-            match &t.to_valuef() {
+            match &*t.as_whnf() {
                 ValueF::AppliedBuiltin(dhall_syntax::Builtin::List, args)
                     if args.len() == 1 => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        InvalidListType(t.to_normalized()),
-                    ))
+                    return Err(TypeError::new(ctx, InvalidListType(t.clone())))
                 }
             }
             Ok(RetTypeOnly(t))
@@ -491,7 +479,7 @@ fn type_last_layer(
                 if x.get_type()? != y.get_type()? {
                     return Err(mkerr(InvalidListElement(
                         i,
-                        x.get_type()?.to_normalized(),
+                        x.get_type()?.into_owned(),
                         y.clone(),
                     )));
                 }
@@ -500,14 +488,14 @@ fn type_last_layer(
             if t.get_type()?.as_const() != Some(Type) {
                 return Err(TypeError::new(
                     ctx,
-                    InvalidListType(t.to_normalized()),
+                    InvalidListType(t.into_owned()),
                 ));
             }
 
             Ok(RetTypeOnly(
                 Typed::from_value_and_type(
                     ValueF::from_builtin(dhall_syntax::Builtin::List)
-                        .app(t.to_valuef())
+                        .app_value(t.to_value())
                         .into_value(),
                     Typed::from_const(Type),
                 )
@@ -517,16 +505,13 @@ fn type_last_layer(
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
             if t.get_type()?.as_const() != Some(Type) {
-                return Err(TypeError::new(
-                    ctx,
-                    InvalidOptionalType(t.to_normalized()),
-                ));
+                return Err(TypeError::new(ctx, InvalidOptionalType(t)));
             }
 
             Ok(RetTypeOnly(
                 Typed::from_value_and_type(
                     ValueF::from_builtin(dhall_syntax::Builtin::Optional)
-                        .app(t.to_valuef())
+                        .app_value(t.to_value())
                         .into_value(),
                     Typed::from_const(Type).into_type(),
                 )
@@ -551,7 +536,7 @@ fn type_last_layer(
             .into_type(),
         )),
         Field(r, x) => {
-            match &r.get_type()?.to_valuef() {
+            match &*r.get_type()?.as_whnf() {
                 ValueF::RecordType(kts) => match kts.get(&x) {
                     Some(tth) => {
                         Ok(RetTypeOnly(tth.to_type()))
@@ -561,8 +546,7 @@ fn type_last_layer(
                 },
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
-                    let r = r.to_type();
-                    match &r.to_valuef() {
+                    match &*r.as_whnf() {
                         ValueF::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
@@ -581,21 +565,21 @@ fn type_last_layer(
                             None => {
                                 Err(mkerr(MissingUnionField(
                                     x.clone(),
-                                    r.to_normalized(),
+                                    r.clone(),
                                 )))
                             },
                         },
                         _ => {
                             Err(mkerr(NotARecord(
                                 x.clone(),
-                                r.to_normalized()
+                                r.clone()
                             )))
                         },
                     }
                 }
                 // _ => Err(mkerr(NotARecord(
                 //     x,
-                //     r.to_type()?.to_normalized(),
+                //     r.to_type()?,
                 // ))),
             }
         }
@@ -633,20 +617,22 @@ fn type_last_layer(
             }
 
             // Extract the LHS record type
-            let kts_x = match l_type.to_valuef() {
+            let l_type_borrow = l_type.as_whnf();
+            let kts_x = match &*l_type_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(MustCombineRecord(l.clone()))),
             };
 
             // Extract the RHS record type
-            let kts_y = match r_type.to_valuef() {
+            let r_type_borrow = r_type.as_whnf();
+            let kts_y = match &*r_type_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(MustCombineRecord(r.clone()))),
             };
 
             // Union the two records, prefering
             // the values found in the RHS.
-            let kts = merge_maps(&kts_x, &kts_y, |_, r_t| r_t.clone());
+            let kts = merge_maps(kts_x, kts_y, |_, r_t| r_t.clone());
 
             // Construct the final record type from the union
             Ok(RetTypeOnly(
@@ -662,8 +648,8 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: HashMap<Label, TypedValue>,
-                kts_r: HashMap<Label, TypedValue>,
+                kts_l: &HashMap<Label, TypedValue>,
+                kts_r: &HashMap<Label, TypedValue>,
             ) -> Result<Typed, TypeError> {
                 use crate::phase::normalize::outer_join;
 
@@ -674,7 +660,7 @@ fn type_last_layer(
                                inner_l: &TypedValue,
                                inner_r: &TypedValue|
                  -> Result<Typed, TypeError> {
-                    match (inner_l.to_valuef(), inner_r.to_valuef()) {
+                    match (&*inner_l.as_whnf(), &*inner_r.as_whnf()) {
                         (
                             ValueF::RecordType(inner_l_kvs),
                             ValueF::RecordType(inner_r_kvs),
@@ -690,11 +676,9 @@ fn type_last_layer(
                 let kts: HashMap<Label, Result<Typed, TypeError>> = outer_join(
                     |l| Ok(l.to_type()),
                     |r| Ok(r.to_type()),
-                    |k: &Label, l: &TypedValue, r: &TypedValue| {
-                        combine(k, l, r)
-                    },
-                    &kts_l,
-                    &kts_r,
+                    combine,
+                    kts_l,
+                    kts_r,
                 );
 
                 Ok(tck_record_type(
@@ -717,13 +701,15 @@ fn type_last_layer(
             }
 
             // Extract the LHS record type
-            let kts_x = match l_type.to_valuef() {
+            let l_type_borrow = l_type.as_whnf();
+            let kts_x = match &*l_type_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(MustCombineRecord(l.clone()))),
             };
 
             // Extract the RHS record type
-            let kts_y = match r_type.to_valuef() {
+            let r_type_borrow = r_type.as_whnf();
+            let kts_y = match &*r_type_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(MustCombineRecord(r.clone()))),
             };
@@ -735,8 +721,8 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: HashMap<Label, TypedValue>,
-                kts_r: HashMap<Label, TypedValue>,
+                kts_l: &HashMap<Label, TypedValue>,
+                kts_r: &HashMap<Label, TypedValue>,
             ) -> Result<Typed, TypeError> {
                 use crate::phase::normalize::intersection_with_key;
 
@@ -747,7 +733,7 @@ fn type_last_layer(
                                kts_l_inner: &TypedValue,
                                kts_r_inner: &TypedValue|
                  -> Result<Typed, TypeError> {
-                    match (kts_l_inner.to_valuef(), kts_r_inner.to_valuef()) {
+                    match (&*kts_l_inner.as_whnf(), &*kts_r_inner.as_whnf()) {
                         (
                             ValueF::RecordType(kvs_l_inner),
                             ValueF::RecordType(kvs_r_inner),
@@ -760,13 +746,7 @@ fn type_last_layer(
                     }
                 };
 
-                let kts = intersection_with_key(
-                    |k: &Label, l: &TypedValue, r: &TypedValue| {
-                        combine(k, l, r)
-                    },
-                    &kts_l,
-                    &kts_r,
-                );
+                let kts = intersection_with_key(combine, kts_l, kts_r);
 
                 Ok(tck_record_type(
                     ctx,
@@ -776,8 +756,8 @@ fn type_last_layer(
             };
 
             // Extract the Const of the LHS
-            let k_l = match l.get_type()?.to_valuef() {
-                ValueF::Const(k) => k,
+            let k_l = match l.get_type()?.as_const() {
+                Some(k) => k,
                 _ => {
                     return Err(mkerr(RecordTypeMergeRequiresRecordType(
                         l.clone(),
@@ -786,8 +766,8 @@ fn type_last_layer(
             };
 
             // Extract the Const of the RHS
-            let k_r = match r.get_type()?.to_valuef() {
-                ValueF::Const(k) => k,
+            let k_r = match r.get_type()?.as_const() {
+                Some(k) => k,
                 _ => {
                     return Err(mkerr(RecordTypeMergeRequiresRecordType(
                         r.clone(),
@@ -808,7 +788,8 @@ fn type_last_layer(
             };
 
             // Extract the LHS record type
-            let kts_x = match l.to_valuef() {
+            let borrow_l = l.as_whnf();
+            let kts_x = match &*borrow_l {
                 ValueF::RecordType(kts) => kts,
                 _ => {
                     return Err(mkerr(RecordTypeMergeRequiresRecordType(
@@ -818,7 +799,8 @@ fn type_last_layer(
             };
 
             // Extract the RHS record type
-            let kts_y = match r.to_valuef() {
+            let borrow_r = r.as_whnf();
+            let kts_y = match &*borrow_r {
                 ValueF::RecordType(kts) => kts,
                 _ => {
                     return Err(mkerr(RecordTypeMergeRequiresRecordType(
@@ -833,7 +815,7 @@ fn type_last_layer(
                 .and(Ok(RetTypeOnly(Typed::from_const(k))))
         }
         BinOp(o @ ListAppend, l, r) => {
-            match l.get_type()?.to_valuef() {
+            match &*l.get_type()?.as_whnf() {
                 ValueF::AppliedBuiltin(List, _) => {}
                 _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone()))),
             }
@@ -895,56 +877,63 @@ fn type_last_layer(
             Ok(RetTypeOnly(t))
         }
         Merge(record, union, type_annot) => {
-            let handlers = match record.get_type()?.to_valuef() {
+            let record_type = record.get_type()?;
+            let record_borrow = record_type.as_whnf();
+            let handlers = match &*record_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(Merge1ArgMustBeRecord(record.clone()))),
             };
 
-            let variants = match union.get_type()?.to_valuef() {
+            let union_type = union.get_type()?;
+            let union_borrow = union_type.as_whnf();
+            let variants = match &*union_borrow {
                 ValueF::UnionType(kts) => kts,
                 _ => return Err(mkerr(Merge2ArgMustBeUnion(union.clone()))),
             };
 
             let mut inferred_type = None;
-            for (x, handler) in handlers.iter() {
-                let handler_return_type = match variants.get(x) {
-                    // Union alternative with type
-                    Some(Some(variant_type)) => {
-                        let variant_type = variant_type.to_type();
-                        let handler_type = handler.to_type();
-                        let (x, tx, tb) = match &handler_type.to_valuef() {
-                            ValueF::Pi(x, tx, tb) => {
-                                (x.clone(), tx.to_type(), tb.to_type())
+            for (x, handler) in handlers {
+                let handler_return_type =
+                    match variants.get(x) {
+                        // Union alternative with type
+                        Some(Some(variant_type)) => {
+                            let variant_type = variant_type.to_type();
+                            let handler_type = handler.to_type();
+                            let (x, tx, tb) = match &*handler_type.as_whnf() {
+                                ValueF::Pi(x, tx, tb) => {
+                                    (x.clone(), tx.to_type(), tb.to_type())
+                                }
+                                _ => {
+                                    return Err(mkerr(NotAFunction(
+                                        handler_type.clone(),
+                                    )))
+                                }
+                            };
+
+                            if &variant_type != &tx {
+                                return Err(mkerr(TypeMismatch(
+                                    handler_type,
+                                    tx,
+                                    variant_type,
+                                )));
                             }
-                            _ => return Err(mkerr(NotAFunction(handler_type))),
-                        };
 
-                        if &variant_type != &tx {
-                            return Err(mkerr(TypeMismatch(
-                                handler_type,
-                                tx.to_normalized(),
-                                variant_type,
-                            )));
-                        }
-
-                        // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
-                        match tb.over_binder(x) {
-                            Some(x) => x,
-                            None => {
-                                return Err(mkerr(
+                            // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
+                            match tb.over_binder(x) {
+                                Some(x) => x,
+                                None => return Err(mkerr(
                                     MergeHandlerReturnTypeMustNotBeDependent,
-                                ))
+                                )),
                             }
                         }
-                    }
-                    // Union alternative without type
-                    Some(None) => handler.to_type(),
-                    None => {
-                        return Err(mkerr(MergeHandlerMissingVariant(
-                            x.clone(),
-                        )))
-                    }
-                };
+                        // Union alternative without type
+                        Some(None) => handler.to_type(),
+                        None => {
+                            return Err(mkerr(MergeHandlerMissingVariant(
+                                x.clone(),
+                            )))
+                        }
+                    };
                 match &inferred_type {
                     None => inferred_type = Some(handler_return_type),
                     Some(t) => {
@@ -974,8 +963,9 @@ fn type_last_layer(
             }
         }
         Projection(record, labels) => {
-            let trecord = record.get_type()?;
-            let kts = match trecord.to_valuef() {
+            let record_type = record.get_type()?;
+            let record_borrow = record_type.as_whnf();
+            let kts = match &*record_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return Err(mkerr(ProjectionMustBeRecord)),
             };
@@ -991,7 +981,7 @@ fn type_last_layer(
             Ok(RetTypeOnly(
                 Typed::from_value_and_type(
                     ValueF::RecordType(new_kts).into_value(),
-                    trecord.get_type()?.into_owned(),
+                    record_type.get_type()?.into_owned(),
                 )
                 .to_type(),
             ))

@@ -12,8 +12,9 @@ use crate::phase::{Normalized, Typed};
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
 /// normalized on-demand.
-/// Equality is up to alpha-equivalence (renaming of bound variables) and beta-equivalence
-/// (normalization). Equality will normalize as needed.
+/// If you compare for equality two `ValueF`s in WHNF, then equality will be up to
+/// alpha-equivalence (renaming of bound variables) and beta-equivalence (normalization). It will
+/// recursively normalize as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueF {
     /// Closures
@@ -348,7 +349,7 @@ impl Subst<Typed> for ValueF {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
-            ValueF::Var(v) if v == var => val.to_valuef(),
+            ValueF::Var(v) if v == var => val.to_whnf(),
             ValueF::Var(v) => ValueF::Var(v.shift(-1, var).unwrap()),
             ValueF::Const(c) => ValueF::Const(*c),
             ValueF::BoolLit(b) => ValueF::BoolLit(*b),
