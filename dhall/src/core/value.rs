@@ -49,6 +49,9 @@ impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
+    fn as_valuef(&self) -> &ValueF {
+        &self.value
+    }
 
     fn normalize_whnf(&mut self) {
         take_mut::take(self, |vint| match &vint.form {
@@ -73,21 +76,6 @@ impl ValueInternal {
             }
             // Already in NF
             NF => {}
-        }
-    }
-
-    /// Always use normalize_whnf before
-    fn as_whnf(&self) -> &ValueF {
-        match self.form {
-            Unevaled => unreachable!(),
-            _ => &self.value,
-        }
-    }
-    /// Always use normalize_nf before
-    fn as_nf(&self) -> &ValueF {
-        match self.form {
-            Unevaled | WHNF => unreachable!(),
-            NF => &self.value,
         }
     }
 
@@ -145,12 +133,23 @@ impl Value {
     fn as_internal_mut(&self) -> RefMut<ValueInternal> {
         self.0.borrow_mut()
     }
+    /// WARNING: The returned ValueF may be entirely unnormalized, in aprticular it may just be an
+    /// unevaled PartialExpr. You probably want to use `as_whnf`.
+    fn as_valuef(&self) -> Ref<ValueF> {
+        Ref::map(self.as_internal(), ValueInternal::as_valuef)
+    }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
     pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
-        self.do_normalize_whnf();
-        Ref::map(self.as_internal(), ValueInternal::as_whnf)
+        self.normalize_whnf();
+        self.as_valuef()
+    }
+    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
+    /// panics.
+    pub(crate) fn as_nf(&self) -> Ref<ValueF> {
+        self.normalize_nf();
+        self.as_valuef()
     }
 
     // TODO: rename `normalize_to_expr`
@@ -189,7 +188,7 @@ impl Value {
         self.mutate_internal(|vint| vint.normalize_nf())
     }
 
-    fn do_normalize_whnf(&self) {
+    pub(crate) fn normalize_whnf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
             Unevaled => {
@@ -200,7 +199,7 @@ impl Value {
             WHNF | NF => {}
         }
     }
-    fn do_normalize_nf(&self) {
+    pub(crate) fn normalize_nf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
             Unevaled | WHNF => {
@@ -212,19 +211,11 @@ impl Value {
         }
     }
 
-    /// WARNING: avoid normalizing any thunk while holding on to this ref
-    /// or you could run into BorrowMut panics
-    // TODO: rename to `as_nf`
-    pub(crate) fn normalize_nf(&self) -> Ref<ValueF> {
-        self.do_normalize_nf();
-        Ref::map(self.as_internal(), ValueInternal::as_nf)
-    }
-
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
     ) -> OutputSubExpr {
-        self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
+        self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
     pub(crate) fn app_valuef(&self, val: ValueF) -> ValueF {
