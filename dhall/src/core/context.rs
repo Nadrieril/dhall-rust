@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use dhall_syntax::{Label, V};
 
-use crate::core::value::{TypedValue, Value};
+use crate::core::value::TypedValue;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
@@ -11,7 +11,7 @@ use crate::error::TypeError;
 #[derive(Debug, Clone)]
 enum CtxItem {
     Kept(AlphaVar, TypedValue),
-    Replaced(Value, TypedValue),
+    Replaced(TypedValue),
 }
 
 #[derive(Debug, Clone)]
@@ -32,10 +32,7 @@ impl TypecheckContext {
         e: TypedValue,
     ) -> Result<Self, TypeError> {
         let mut vec = self.0.as_ref().clone();
-        vec.push((
-            x.clone(),
-            CtxItem::Replaced(e.to_value(), e.get_type()?.into_owned()),
-        ));
+        vec.push((x.clone(), CtxItem::Replaced(e)));
         Ok(TypecheckContext(Rc::new(vec)))
     }
     pub fn lookup(&self, var: &V<Label>) -> Option<TypedValue> {
@@ -45,13 +42,15 @@ impl TypecheckContext {
             match var.over_binder(l) {
                 None => {
                     let i = i.under_multiple_binders(&shift_map);
-                    let (th, t) = match i {
+                    return Some(match i {
                         CtxItem::Kept(newvar, t) => {
-                            (ValueF::Var(newvar).into_value(), t)
+                            TypedValue::from_valuef_and_type(
+                                ValueF::Var(newvar),
+                                t,
+                            )
                         }
-                        CtxItem::Replaced(th, t) => (th, t),
-                    };
-                    return Some(TypedValue::from_value_and_type(th, t));
+                        CtxItem::Replaced(v) => v,
+                    });
                 }
                 Some(newvar) => var = newvar,
             };
@@ -114,9 +113,7 @@ impl Shift for CtxItem {
             CtxItem::Kept(v, t) => {
                 CtxItem::Kept(v.shift(delta, var)?, t.shift(delta, var)?)
             }
-            CtxItem::Replaced(e, t) => {
-                CtxItem::Replaced(e.shift(delta, var)?, t.shift(delta, var)?)
-            }
+            CtxItem::Replaced(e) => CtxItem::Replaced(e.shift(delta, var)?),
         })
     }
 }
@@ -130,14 +127,9 @@ impl Shift for TypecheckContext {
 impl Subst<TypedValue> for CtxItem {
     fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         match self {
-            CtxItem::Replaced(e, t) => CtxItem::Replaced(
-                e.subst_shift(var, val),
-                t.subst_shift(var, val),
-            ),
+            CtxItem::Replaced(e) => CtxItem::Replaced(e.subst_shift(var, val)),
             CtxItem::Kept(v, t) => match v.shift(-1, var) {
-                None => {
-                    CtxItem::Replaced(val.to_value(), t.subst_shift(var, val))
-                }
+                None => CtxItem::Replaced(val.clone()),
                 Some(newvar) => CtxItem::Kept(newvar, t.subst_shift(var, val)),
             },
         }

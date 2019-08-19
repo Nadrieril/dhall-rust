@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use dhall_syntax::{Const, ExprF};
+use dhall_syntax::Const;
 
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
@@ -10,7 +10,7 @@ use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
 use crate::phase::typecheck::type_of_const;
-use crate::phase::{Normalized, NormalizedSubExpr, Typed};
+use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
 enum Form {
@@ -28,7 +28,7 @@ enum Form {
 }
 use Form::{Unevaled, NF, WHNF};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Partially normalized value.
 /// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
 /// Invariant: if `form` is `NF`, `value` must be fully normalized
@@ -108,7 +108,7 @@ impl ValueInternal {
 }
 
 impl Value {
-    pub(crate) fn from_valuef(v: ValueF) -> Value {
+    pub(crate) fn from_valuef_untyped(v: ValueF) -> Value {
         ValueInternal {
             form: Unevaled,
             value: v,
@@ -124,18 +124,8 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_partial_expr(e: ExprF<Value, Normalized>) -> Value {
-        Value::from_valuef(ValueF::PartialExpr(e))
-    }
-    // TODO: avoid using this function
-    pub(crate) fn with_type(self, t: TypedValue) -> Value {
-        let vint = self.as_internal();
-        ValueInternal {
-            form: vint.form,
-            value: vint.value.clone(),
-            ty: Some(t),
-        }
-        .into_value()
+    pub(crate) fn from_valuef_simple_type(v: ValueF) -> Value {
+        Value::from_valuef_and_type(v, TypedValue::from_const(Const::Type))
     }
 
     /// Mutates the contents. If no one else shares this thunk,
@@ -214,7 +204,7 @@ impl Value {
     }
 
     pub(crate) fn app_valuef(&self, val: ValueF) -> ValueF {
-        self.app_value(val.into_value())
+        self.app_value(val.into_value_untyped())
     }
 
     pub(crate) fn app_value(&self, th: Value) -> ValueF {
@@ -227,8 +217,28 @@ impl Value {
 }
 
 impl TypedValue {
-    pub(crate) fn from_valuef(v: ValueF) -> TypedValue {
-        TypedValue::from_value_untyped(Value::from_valuef(v))
+    pub fn from_value(th: Value) -> Self {
+        TypedValue(th)
+    }
+    pub(crate) fn from_valuef_untyped(v: ValueF) -> TypedValue {
+        TypedValue::from_value(Value::from_valuef_untyped(v))
+    }
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Self {
+        TypedValue(Value::from_valuef_and_type(v, t))
+    }
+    // TODO: do something with the info that the type is Type. Maybe check
+    // is a type is present ?
+    pub(crate) fn from_value_simple_type(th: Value) -> Self {
+        TypedValue::from_value(th)
+    }
+    pub(crate) fn from_const(c: Const) -> Self {
+        match type_of_const(c) {
+            Ok(t) => TypedValue::from_valuef_and_type(ValueF::Const(c), t),
+            Err(_) => TypedValue::from_valuef_untyped(ValueF::Const(c)),
+        }
+    }
+    pub fn const_type() -> Self {
+        TypedValue::from_const(Const::Type)
     }
 
     pub(crate) fn normalize_nf(&self) -> ValueF {
@@ -240,28 +250,6 @@ impl TypedValue {
         alpha: bool,
     ) -> OutputSubExpr {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
-    }
-
-    pub(crate) fn from_value_and_type(th: Value, t: TypedValue) -> Self {
-        TypedValue(th.with_type(t))
-    }
-    pub fn from_value_simple_type(th: Value) -> Self {
-        TypedValue::from_value_and_type(th, TypedValue::const_type())
-    }
-    pub(crate) fn from_value_untyped(th: Value) -> Self {
-        TypedValue(th)
-    }
-    pub(crate) fn from_const(c: Const) -> Self {
-        match type_of_const(c) {
-            Ok(t) => TypedValue::from_valuef_and_type(ValueF::Const(c), t),
-            Err(_) => TypedValue::from_valuef(ValueF::Const(c)),
-        }
-    }
-    pub fn const_type() -> Self {
-        TypedValue::from_const(Const::Type)
-    }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Self {
-        TypedValue(Value::from_valuef_and_type(v, t))
     }
 
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut

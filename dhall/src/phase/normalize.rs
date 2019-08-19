@@ -20,7 +20,7 @@ macro_rules! make_closure {
             Label::from(stringify!($var)).into(),
             $n
         );
-        ValueF::Var(var).into_value()
+        ValueF::Var(var).into_value_untyped()
     }};
     // Warning: assumes that $ty, as a dhall value, has type `Type`
     (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
@@ -30,30 +30,40 @@ macro_rules! make_closure {
                 make_closure!($($ty)*),
             ),
             make_closure!($($rest)*),
-        ).into_value()
+        ).into_value_untyped()
     };
-    (Natural) => { ValueF::from_builtin(Builtin::Natural).into_value() };
+    (Natural) => {
+        ValueF::from_builtin(Builtin::Natural)
+            .into_value_simple_type()
+    };
     (List $($rest:tt)*) => {
         ValueF::from_builtin(Builtin::List)
             .app_value(make_closure!($($rest)*))
-            .into_value()
+            .into_value_simple_type()
     };
-    (Some $($rest:tt)*) => {
-        ValueF::NEOptionalLit(make_closure!($($rest)*)).into_value()
+    (Some($($rest:tt)*)) => {
+        ValueF::NEOptionalLit(make_closure!($($rest)*))
+            .into_value_untyped()
     };
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
-            Value::from_valuef(ValueF::NaturalLit(1)),
-        )).into_value()
+            Value::from_valuef_and_type(
+                ValueF::NaturalLit(1),
+                TypedValue::from_value(make_closure!(Natural))
+            ),
+        )).into_value_with_type(
+            TypedValue::from_value(make_closure!(Natural))
+        )
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::ListAppend,
-            ValueF::NEListLit(vec![make_closure!($($head)*)]).into_value(),
+            ValueF::NEListLit(vec![make_closure!($($head)*)])
+                .into_value_untyped(),
             make_closure!($($tail)*),
-        )).into_value()
+        )).into_value_untyped()
     };
 }
 
@@ -189,10 +199,17 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 let mut kts = HashMap::new();
                 kts.insert(
                     "index".into(),
-                    TypedValue::from_valuef(ValueF::from_builtin(Natural)),
+                    TypedValue::from_valuef_untyped(ValueF::from_builtin(
+                        Natural,
+                    )),
                 );
                 kts.insert("value".into(), t.clone());
-                Ok((r, EmptyListLit(TypedValue::from_valuef(RecordType(kts)))))
+                Ok((
+                    r,
+                    EmptyListLit(TypedValue::from_valuef_untyped(RecordType(
+                        kts,
+                    ))),
+                ))
             }
             NEListLit(xs) => {
                 let xs = xs
@@ -201,9 +218,12 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     .map(|(i, e)| {
                         let i = NaturalLit(i);
                         let mut kvs = HashMap::new();
-                        kvs.insert("index".into(), Value::from_valuef(i));
+                        kvs.insert(
+                            "index".into(),
+                            Value::from_valuef_untyped(i),
+                        );
                         kvs.insert("value".into(), e.clone());
-                        Value::from_valuef(RecordLit(kvs))
+                        Value::from_valuef_untyped(RecordLit(kvs))
                     })
                     .collect();
                 Ok((r, NEListLit(xs)))
@@ -246,7 +266,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                         .clone()
                         .app_value(x.clone())
                         .app_value(v)
-                        .into_value();
+                        .into_value_untyped();
                 }
                 Ok((r, v.to_whnf()))
             }
@@ -267,7 +287,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 f.app_valuef(
                     ValueF::from_builtin(Optional).app_value(t.clone()),
                 )
-                .app_value(make_closure!(λ(x: #t) -> Some var(x, 0)))
+                .app_value(make_closure!(λ(x: #t) -> Some(var(x, 0))))
                 .app_valuef(EmptyOptionalLit(
                     TypedValue::from_value_simple_type(t.clone()),
                 )),
@@ -327,7 +347,7 @@ pub(crate) fn apply_any(f: Value, a: Value) -> ValueF {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
         ValueF::Lam(x, _, e) => {
-            let val = TypedValue::from_value_untyped(a);
+            let val = TypedValue::from_value(a);
             e.subst_shift(&x.into(), &val).to_whnf()
         }
         ValueF::AppliedBuiltin(b, args) => {
@@ -602,11 +622,11 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                Value::from_partial_expr(ExprF::BinOp(
+                Value::from_valuef_untyped(ValueF::PartialExpr(ExprF::BinOp(
                     RecursiveRecordMerge,
                     v1.clone(),
                     v2.clone(),
-                ))
+                )))
             });
             Ret::ValueF(RecordLit(kvs))
         }
@@ -619,7 +639,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         }
         (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                TypedValue::from_value_untyped(Value::from_partial_expr(
+                TypedValue::from_valuef_untyped(ValueF::PartialExpr(
                     ExprF::BinOp(
                         RecursiveRecordTypeMerge,
                         v1.to_value(),
@@ -655,15 +675,15 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         ExprF::Annot(x, _) => Ret::Value(x),
         ExprF::Assert(_) => Ret::Expr(expr),
         ExprF::Lam(x, t, e) => {
-            Ret::ValueF(Lam(x.into(), TypedValue::from_value_untyped(t), e))
+            Ret::ValueF(Lam(x.into(), TypedValue::from_value(t), e))
         }
         ExprF::Pi(x, t, e) => Ret::ValueF(Pi(
             x.into(),
-            TypedValue::from_value_untyped(t),
-            TypedValue::from_value_untyped(e),
+            TypedValue::from_value(t),
+            TypedValue::from_value(e),
         )),
         ExprF::Let(x, _, v, b) => {
-            let v = TypedValue::from_value_untyped(v);
+            let v = TypedValue::from_value(v);
             Ret::Value(b.subst_shift(&x.into(), &v))
         }
         ExprF::App(v, a) => Ret::ValueF(v.app_value(a)),
@@ -697,12 +717,12 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         }
         ExprF::RecordType(kts) => Ret::ValueF(RecordType(
             kts.into_iter()
-                .map(|(k, t)| (k, TypedValue::from_value_untyped(t)))
+                .map(|(k, t)| (k, TypedValue::from_value(t)))
                 .collect(),
         )),
         ExprF::UnionType(kts) => Ret::ValueF(UnionType(
             kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypedValue::from_value_untyped(t))))
+                .map(|(k, t)| (k, t.map(|t| TypedValue::from_value(t))))
                 .collect(),
         )),
         ExprF::TextLit(elts) => {

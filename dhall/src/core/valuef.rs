@@ -48,8 +48,14 @@ pub enum ValueF {
 }
 
 impl ValueF {
-    pub(crate) fn into_value(self) -> Value {
-        Value::from_valuef(self)
+    pub(crate) fn into_value_untyped(self) -> Value {
+        Value::from_valuef_untyped(self)
+    }
+    pub(crate) fn into_value_with_type(self, t: TypedValue) -> Value {
+        Value::from_valuef_and_type(self, t)
+    }
+    pub(crate) fn into_value_simple_type(self) -> Value {
+        Value::from_valuef_simple_type(self)
     }
 
     /// Convert the value to a fully normalized syntactic expression
@@ -258,12 +264,12 @@ impl ValueF {
 
     /// Apply to a value
     pub(crate) fn app_valuef(self, val: ValueF) -> ValueF {
-        self.app_value(val.into_value())
+        self.app_value(val.into_value_untyped())
     }
 
     /// Apply to a thunk
     pub fn app_value(self, th: Value) -> ValueF {
-        Value::from_valuef(self).app_value(th)
+        Value::from_valuef_untyped(self).app_value(th)
     }
 
     pub fn from_builtin(b: Builtin) -> ValueF {

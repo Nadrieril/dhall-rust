@@ -5,7 +5,7 @@ use dhall_syntax::{
 };
 
 use crate::core::context::TypecheckContext;
-use crate::core::value::{TypedValue, Value};
+use crate::core::value::TypedValue;
 use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
@@ -37,8 +37,8 @@ fn tck_pi_type(
 
     let k = function_check(ka, kb);
 
-    Ok(TypedValue::from_value_and_type(
-        ValueF::Pi(x.into(), tx, te).into_value(),
+    Ok(TypedValue::from_valuef_and_type(
+        ValueF::Pi(x.into(), tx, te),
         TypedValue::from_const(k),
     ))
 }
@@ -70,8 +70,8 @@ fn tck_record_type(
     // An empty record type has type Type
     let k = k.unwrap_or(Const::Type);
 
-    Ok(TypedValue::from_value_and_type(
-        ValueF::RecordType(new_kts).into_value(),
+    Ok(TypedValue::from_valuef_and_type(
+        ValueF::RecordType(new_kts),
         TypedValue::from_const(k),
     ))
 }
@@ -115,8 +115,8 @@ where
     // an union type with only unary variants also has type Type
     let k = k.unwrap_or(Const::Type);
 
-    Ok(TypedValue::from_value_and_type(
-        ValueF::UnionType(new_kts).into_value(),
+    Ok(TypedValue::from_valuef_and_type(
+        ValueF::UnionType(new_kts),
         TypedValue::from_const(k),
     ))
 }
@@ -281,6 +281,7 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
     }
 }
 
+// TODO: this can't fail in practise
 pub(crate) fn builtin_to_type(b: Builtin) -> Result<TypedValue, TypeError> {
     type_with(&TypecheckContext::new(), SubExpr::from_builtin(b))
 }
@@ -351,8 +352,8 @@ fn type_with(
             match ret {
                 RetTypeOnly(typ) => {
                     let expr = expr.map_ref(|typed| typed.to_value());
-                    TypedValue::from_value_and_type(
-                        Value::from_partial_expr(expr),
+                    TypedValue::from_valuef_and_type(
+                        ValueF::PartialExpr(expr),
                         typ,
                     )
                 }
@@ -465,10 +466,9 @@ fn type_last_layer(
                 ));
             }
 
-            Ok(RetTypeOnly(TypedValue::from_value_and_type(
+            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app_value(t.to_value())
-                    .into_value(),
+                    .app_value(t.to_value()),
                 TypedValue::from_const(Type),
             )))
         }
@@ -478,10 +478,9 @@ fn type_last_layer(
                 return Err(TypeError::new(ctx, InvalidOptionalType(t)));
             }
 
-            Ok(RetTypeOnly(TypedValue::from_value_and_type(
+            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::Optional)
-                    .app_value(t.to_value())
-                    .into_value(),
+                    .app_value(t.to_value()),
                 TypedValue::from_const(Type),
             )))
         }
@@ -942,8 +941,8 @@ fn type_last_layer(
                 };
             }
 
-            Ok(RetTypeOnly(TypedValue::from_value_and_type(
-                ValueF::RecordType(new_kts).into_value(),
+            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
+                ValueF::RecordType(new_kts),
                 record_type.get_type()?.into_owned(),
             )))
         }

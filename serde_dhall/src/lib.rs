@@ -186,7 +186,7 @@ pub mod value {
         ) -> Self {
             Self::make_simple_type(DhallValue::RecordType(
                 kts.map(|(k, t)| {
-                    (k.into(), TypedThunk::from_value_simple_type(t.to_value()))
+                    (k.into(), TypedThunk::from_value(t.to_value()))
                 })
                 .collect(),
             ))
@@ -197,12 +197,7 @@ pub mod value {
         ) -> Self {
             Self::make_simple_type(DhallValue::UnionType(
                 kts.map(|(k, t)| {
-                    (
-                        k.into(),
-                        t.map(|t| {
-                            TypedThunk::from_value_simple_type(t.to_value())
-                        }),
-                    )
+                    (k.into(), t.map(|t| TypedThunk::from_value(t.to_value())))
                 })
                 .collect(),
             ))
