@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural,
 };
 
-use crate::core::value::{TypedValue, Value};
+use crate::core::value::Value;
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::normalize::OutputSubExpr;
 use crate::phase::Normalized;
@@ -18,8 +18,8 @@ use crate::phase::Normalized;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueF {
     /// Closures
-    Lam(AlphaLabel, TypedValue, Value),
-    Pi(AlphaLabel, TypedValue, TypedValue),
+    Lam(AlphaLabel, Value, Value),
+    Pi(AlphaLabel, Value, Value),
     // Invariant: the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
@@ -29,20 +29,20 @@ pub enum ValueF {
     NaturalLit(Natural),
     IntegerLit(Integer),
     DoubleLit(NaiveDouble),
-    EmptyOptionalLit(TypedValue),
+    EmptyOptionalLit(Value),
     NEOptionalLit(Value),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
-    EmptyListLit(TypedValue),
+    EmptyListLit(Value),
     NEListLit(Vec<Value>),
     RecordLit(HashMap<Label, Value>),
-    RecordType(HashMap<Label, TypedValue>),
-    UnionType(HashMap<Label, Option<TypedValue>>),
-    UnionConstructor(Label, HashMap<Label, Option<TypedValue>>),
-    UnionLit(Label, Value, HashMap<Label, Option<TypedValue>>),
+    RecordType(HashMap<Label, Value>),
+    UnionType(HashMap<Label, Option<Value>>),
+    UnionConstructor(Label, HashMap<Label, Option<Value>>),
+    UnionLit(Label, Value, HashMap<Label, Option<Value>>),
     // Invariant: this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Value>>),
-    Equivalence(TypedValue, TypedValue),
+    Equivalence(Value, Value),
     // Invariant: this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Value, Normalized>),
 }
@@ -51,7 +51,7 @@ impl ValueF {
     pub(crate) fn into_value_untyped(self) -> Value {
         Value::from_valuef_untyped(self)
     }
-    pub(crate) fn into_value_with_type(self, t: TypedValue) -> Value {
+    pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
     }
     pub(crate) fn into_value_simple_type(self) -> Value {
@@ -333,8 +333,8 @@ impl Shift for ValueF {
     }
 }
 
-impl Subst<TypedValue> for ValueF {
-    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
+impl Subst<Value> for ValueF {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
             ValueF::AppliedBuiltin(b, args) => {
                 ValueF::AppliedBuiltin(*b, args.subst_shift(var, val))

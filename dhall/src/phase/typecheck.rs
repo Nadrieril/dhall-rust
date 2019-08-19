@@ -5,7 +5,7 @@ use dhall_syntax::{
 };
 
 use crate::core::context::TypecheckContext;
-use crate::core::value::TypedValue;
+use crate::core::value::Value;
 use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
@@ -14,9 +14,9 @@ use crate::phase::Normalized;
 fn tck_pi_type(
     ctx: &TypecheckContext,
     x: Label,
-    tx: TypedValue,
-    te: TypedValue,
-) -> Result<TypedValue, TypeError> {
+    tx: Value,
+    te: Value,
+) -> Result<Value, TypeError> {
     use crate::error::TypeMessage::*;
     let ctx2 = ctx.insert_type(&x, tx.clone());
 
@@ -37,16 +37,16 @@ fn tck_pi_type(
 
     let k = function_check(ka, kb);
 
-    Ok(TypedValue::from_valuef_and_type(
+    Ok(Value::from_valuef_and_type(
         ValueF::Pi(x.into(), tx, te),
-        TypedValue::from_const(k),
+        Value::from_const(k),
     ))
 }
 
 fn tck_record_type(
     ctx: &TypecheckContext,
-    kts: impl IntoIterator<Item = Result<(Label, TypedValue), TypeError>>,
-) -> Result<TypedValue, TypeError> {
+    kts: impl IntoIterator<Item = Result<(Label, Value), TypeError>>,
+) -> Result<Value, TypeError> {
     use crate::error::TypeMessage::*;
     use std::collections::hash_map::Entry;
     let mut new_kts = HashMap::new();
@@ -70,18 +70,18 @@ fn tck_record_type(
     // An empty record type has type Type
     let k = k.unwrap_or(Const::Type);
 
-    Ok(TypedValue::from_valuef_and_type(
+    Ok(Value::from_valuef_and_type(
         ValueF::RecordType(new_kts),
-        TypedValue::from_const(k),
+        Value::from_const(k),
     ))
 }
 
 fn tck_union_type<Iter>(
     ctx: &TypecheckContext,
     kts: Iter,
-) -> Result<TypedValue, TypeError>
+) -> Result<Value, TypeError>
 where
-    Iter: IntoIterator<Item = Result<(Label, Option<TypedValue>), TypeError>>,
+    Iter: IntoIterator<Item = Result<(Label, Option<Value>), TypeError>>,
 {
     use crate::error::TypeMessage::*;
     use std::collections::hash_map::Entry;
@@ -115,9 +115,9 @@ where
     // an union type with only unary variants also has type Type
     let k = k.unwrap_or(Const::Type);
 
-    Ok(TypedValue::from_valuef_and_type(
+    Ok(Value::from_valuef_and_type(
         ValueF::UnionType(new_kts),
-        TypedValue::from_const(k),
+        Value::from_const(k),
     ))
 }
 
@@ -130,10 +130,10 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-pub(crate) fn type_of_const(c: Const) -> Result<TypedValue, TypeError> {
+pub(crate) fn type_of_const(c: Const) -> Result<Value, TypeError> {
     match c {
-        Const::Type => Ok(TypedValue::from_const(Const::Kind)),
-        Const::Kind => Ok(TypedValue::from_const(Const::Sort)),
+        Const::Type => Ok(Value::from_const(Const::Kind)),
+        Const::Kind => Ok(Value::from_const(Const::Sort)),
         Const::Sort => {
             Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
         }
@@ -282,16 +282,16 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 }
 
 // TODO: this can't fail in practise
-pub(crate) fn builtin_to_type(b: Builtin) -> Result<TypedValue, TypeError> {
+pub(crate) fn builtin_to_type(b: Builtin) -> Result<Value, TypeError> {
     type_with(&TypecheckContext::new(), SubExpr::from_builtin(b))
 }
 
 /// Intermediary return type
 enum Ret {
     /// Returns the contained value as is
-    RetWhole(TypedValue),
-    /// Use the contained TypedValue as the type of the input expression
-    RetTypeOnly(TypedValue),
+    RetWhole(Value),
+    /// Use the contained Value as the type of the input expression
+    RetTypeOnly(Value),
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
@@ -301,7 +301,7 @@ enum Ret {
 fn type_with(
     ctx: &TypecheckContext,
     e: SubExpr<Normalized>,
-) -> Result<TypedValue, TypeError> {
+) -> Result<Value, TypeError> {
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
     use Ret::*;
@@ -313,7 +313,7 @@ fn type_with(
             let v = ValueF::Lam(x.clone().into(), tx.clone(), b.to_value());
             let tb = b.get_type()?.into_owned();
             let t = tck_pi_type(ctx, x.clone(), tx, tb)?;
-            TypedValue::from_valuef_and_type(v, t)
+            Value::from_valuef_and_type(v, t)
         }
         Pi(x, ta, tb) => {
             let ta = type_with(ctx, ta.clone())?;
@@ -331,7 +331,7 @@ fn type_with(
             let v = type_with(ctx, v)?;
             return type_with(&ctx.insert_value(x, v.clone())?, e.clone());
         }
-        Embed(p) => p.clone().into_typed().into_typedvalue(),
+        Embed(p) => p.clone().into_typed().into_value(),
         Var(var) => match ctx.lookup(&var) {
             Some(typed) => typed.clone(),
             None => {
@@ -352,10 +352,7 @@ fn type_with(
             match ret {
                 RetTypeOnly(typ) => {
                     let expr = expr.map_ref(|typed| typed.to_value());
-                    TypedValue::from_valuef_and_type(
-                        ValueF::PartialExpr(expr),
-                        typ,
-                    )
+                    Value::from_valuef_and_type(ValueF::PartialExpr(expr), typ)
                 }
                 RetWhole(tt) => tt,
             }
@@ -367,7 +364,7 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: &ExprF<TypedValue, Normalized>,
+    e: &ExprF<Value, Normalized>,
 ) -> Result<Ret, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
@@ -466,10 +463,10 @@ fn type_last_layer(
                 ));
             }
 
-            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
+            Ok(RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
                     .app_value(t.to_value()),
-                TypedValue::from_const(Type),
+                Value::from_const(Type),
             )))
         }
         SomeLit(x) => {
@@ -478,10 +475,10 @@ fn type_last_layer(
                 return Err(TypeError::new(ctx, InvalidOptionalType(t)));
             }
 
-            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
+            Ok(RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::Optional)
                     .app_value(t.to_value()),
-                TypedValue::from_const(Type),
+                Value::from_const(Type),
             )))
         }
         RecordType(kts) => Ok(RetWhole(tck_record_type(
@@ -545,7 +542,7 @@ fn type_last_layer(
                 // ))),
             }
         }
-        Const(c) => Ok(RetWhole(TypedValue::from_const(*c))),
+        Const(c) => Ok(RetWhole(Value::from_const(*c))),
         Builtin(b) => Ok(RetTypeOnly(type_with(ctx, rc(type_of_builtin(*b)))?)),
         BoolLit(_) => Ok(RetTypeOnly(builtin_to_type(Bool)?)),
         NaturalLit(_) => Ok(RetTypeOnly(builtin_to_type(Natural)?)),
@@ -607,43 +604,38 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: &HashMap<Label, TypedValue>,
-                kts_r: &HashMap<Label, TypedValue>,
-            ) -> Result<TypedValue, TypeError> {
+                kts_l: &HashMap<Label, Value>,
+                kts_r: &HashMap<Label, Value>,
+            ) -> Result<Value, TypeError> {
                 use crate::phase::normalize::outer_join;
 
                 // If the Label exists for both records and the values
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
-                let combine =
-                    |k: &Label,
-                     inner_l: &TypedValue,
-                     inner_r: &TypedValue|
-                     -> Result<TypedValue, TypeError> {
-                        match (&*inner_l.as_whnf(), &*inner_r.as_whnf()) {
-                            (
-                                ValueF::RecordType(inner_l_kvs),
-                                ValueF::RecordType(inner_r_kvs),
-                            ) => combine_record_types(
-                                ctx,
-                                inner_l_kvs,
-                                inner_r_kvs,
-                            ),
-                            (_, _) => Err(TypeError::new(
-                                ctx,
-                                FieldCollision(k.clone()),
-                            )),
+                let combine = |k: &Label,
+                               inner_l: &Value,
+                               inner_r: &Value|
+                 -> Result<Value, TypeError> {
+                    match (&*inner_l.as_whnf(), &*inner_r.as_whnf()) {
+                        (
+                            ValueF::RecordType(inner_l_kvs),
+                            ValueF::RecordType(inner_r_kvs),
+                        ) => {
+                            combine_record_types(ctx, inner_l_kvs, inner_r_kvs)
                         }
-                    };
+                        (_, _) => {
+                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
+                        }
+                    }
+                };
 
-                let kts: HashMap<Label, Result<TypedValue, TypeError>> =
-                    outer_join(
-                        |l| Ok(l.clone()),
-                        |r| Ok(r.clone()),
-                        combine,
-                        kts_l,
-                        kts_r,
-                    );
+                let kts: HashMap<Label, Result<Value, TypeError>> = outer_join(
+                    |l| Ok(l.clone()),
+                    |r| Ok(r.clone()),
+                    combine,
+                    kts_l,
+                    kts_r,
+                );
 
                 Ok(tck_record_type(
                     ctx,
@@ -684,35 +676,30 @@ fn type_last_layer(
             // records of records when merging.
             fn combine_record_types(
                 ctx: &TypecheckContext,
-                kts_l: &HashMap<Label, TypedValue>,
-                kts_r: &HashMap<Label, TypedValue>,
-            ) -> Result<TypedValue, TypeError> {
+                kts_l: &HashMap<Label, Value>,
+                kts_r: &HashMap<Label, Value>,
+            ) -> Result<Value, TypeError> {
                 use crate::phase::normalize::intersection_with_key;
 
                 // If the Label exists for both records and the values
                 // are records themselves, then we hit the recursive case.
                 // Otherwise we have a field collision.
-                let combine =
-                    |k: &Label,
-                     kts_l_inner: &TypedValue,
-                     kts_r_inner: &TypedValue|
-                     -> Result<TypedValue, TypeError> {
-                        match (&*kts_l_inner.as_whnf(), &*kts_r_inner.as_whnf())
-                        {
-                            (
-                                ValueF::RecordType(kvs_l_inner),
-                                ValueF::RecordType(kvs_r_inner),
-                            ) => combine_record_types(
-                                ctx,
-                                kvs_l_inner,
-                                kvs_r_inner,
-                            ),
-                            (_, _) => Err(TypeError::new(
-                                ctx,
-                                FieldCollision(k.clone()),
-                            )),
+                let combine = |k: &Label,
+                               kts_l_inner: &Value,
+                               kts_r_inner: &Value|
+                 -> Result<Value, TypeError> {
+                    match (&*kts_l_inner.as_whnf(), &*kts_r_inner.as_whnf()) {
+                        (
+                            ValueF::RecordType(kvs_l_inner),
+                            ValueF::RecordType(kvs_r_inner),
+                        ) => {
+                            combine_record_types(ctx, kvs_l_inner, kvs_r_inner)
                         }
-                    };
+                        (_, _) => {
+                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
+                        }
+                    }
+                };
 
                 let kts = intersection_with_key(combine, kts_l, kts_r);
 
@@ -747,8 +734,8 @@ fn type_last_layer(
                 k_l
             } else {
                 return Err(mkerr(RecordTypeMismatch(
-                    TypedValue::from_const(k_l),
-                    TypedValue::from_const(k_r),
+                    Value::from_const(k_l),
+                    Value::from_const(k_r),
                     l.clone(),
                     r.clone(),
                 )));
@@ -779,7 +766,7 @@ fn type_last_layer(
             // Ensure that the records combine without a type error
             // and if not output the final Const value.
             combine_record_types(ctx, kts_x, kts_y)
-                .and(Ok(RetTypeOnly(TypedValue::from_const(k))))
+                .and(Ok(RetTypeOnly(Value::from_const(k))))
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {
@@ -814,7 +801,7 @@ fn type_last_layer(
                 )));
             }
 
-            Ok(RetTypeOnly(TypedValue::from_const(Type)))
+            Ok(RetTypeOnly(Value::from_const(Type)))
         }
         BinOp(o, l, r) => {
             let t = builtin_to_type(match o {
@@ -941,7 +928,7 @@ fn type_last_layer(
                 };
             }
 
-            Ok(RetTypeOnly(TypedValue::from_valuef_and_type(
+            Ok(RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::RecordType(new_kts),
                 record_type.get_type()?.into_owned(),
             )))
@@ -952,15 +939,13 @@ fn type_last_layer(
 /// `type_of` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub(crate) fn typecheck(
-    e: SubExpr<Normalized>,
-) -> Result<TypedValue, TypeError> {
+pub(crate) fn typecheck(e: SubExpr<Normalized>) -> Result<Value, TypeError> {
     type_with(&TypecheckContext::new(), e)
 }
 
 pub(crate) fn typecheck_with(
     expr: SubExpr<Normalized>,
     ty: SubExpr<Normalized>,
-) -> Result<TypedValue, TypeError> {
+) -> Result<Value, TypeError> {
     typecheck(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }

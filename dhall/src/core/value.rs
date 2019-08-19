@@ -35,7 +35,7 @@ use Form::{Unevaled, NF, WHNF};
 struct ValueInternal {
     form: Form,
     value: ValueF,
-    ty: Option<TypedValue>,
+    ty: Option<Value>,
 }
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
@@ -44,11 +44,6 @@ struct ValueInternal {
 /// normalization.
 #[derive(Clone)]
 pub struct Value(Rc<RefCell<ValueInternal>>);
-
-/// A value that needs to carry a type for typechecking to work.
-/// TODO: actually enforce this.
-#[derive(Debug, Clone)]
-pub struct TypedValue(Value);
 
 impl ValueInternal {
     fn into_value(self) -> Value {
@@ -96,7 +91,7 @@ impl ValueInternal {
         }
     }
 
-    fn get_type(&self) -> Result<&TypedValue, TypeError> {
+    fn get_type(&self) -> Result<&Value, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
             None => Err(TypeError::new(
@@ -116,7 +111,7 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Value {
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
         ValueInternal {
             form: Unevaled,
             value: v,
@@ -125,7 +120,57 @@ impl Value {
         .into_value()
     }
     pub(crate) fn from_valuef_simple_type(v: ValueF) -> Value {
-        Value::from_valuef_and_type(v, TypedValue::from_const(Const::Type))
+        Value::from_valuef_and_type(v, Value::from_const(Const::Type))
+    }
+    pub(crate) fn from_const(c: Const) -> Self {
+        match type_of_const(c) {
+            Ok(t) => Value::from_valuef_and_type(ValueF::Const(c), t),
+            Err(_) => Value::from_valuef_untyped(ValueF::Const(c)),
+        }
+    }
+    pub fn const_type() -> Self {
+        Value::from_const(Const::Type)
+    }
+
+    pub(crate) fn as_const(&self) -> Option<Const> {
+        match &*self.as_whnf() {
+            ValueF::Const(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    fn as_internal(&self) -> Ref<ValueInternal> {
+        self.0.borrow()
+    }
+    fn as_internal_mut(&self) -> RefMut<ValueInternal> {
+        self.0.borrow_mut()
+    }
+    /// This is what you want if you want to pattern-match on the value.
+    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
+    /// panics.
+    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
+        self.do_normalize_whnf();
+        Ref::map(self.as_internal(), ValueInternal::as_whnf)
+    }
+
+    // TODO: rename `normalize_to_expr`
+    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+        self.as_whnf().normalize_to_expr()
+    }
+    // TODO: rename `normalize_to_expr_maybe_alpha`
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+        self.as_whnf().normalize_to_expr_maybe_alpha(true)
+    }
+    // TODO: deprecated
+    pub(crate) fn to_value(&self) -> Value {
+        self.clone()
+    }
+    /// TODO: cloning a valuef can often be avoided
+    pub(crate) fn to_whnf(&self) -> ValueF {
+        self.as_whnf().clone()
+    }
+    pub(crate) fn into_typed(self) -> Typed {
+        Typed::from_value(self)
     }
 
     /// Mutates the contents. If no one else shares this thunk,
@@ -138,18 +183,10 @@ impl Value {
             None => f(&mut self.as_internal_mut()),
         }
     }
-
     /// Normalizes contents to normal form; faster than `normalize_nf` if
     /// no one else shares this thunk.
     pub(crate) fn normalize_mut(&mut self) {
         self.mutate_internal(|vint| vint.normalize_nf())
-    }
-
-    fn as_internal(&self) -> Ref<ValueInternal> {
-        self.0.borrow()
-    }
-    fn as_internal_mut(&self) -> RefMut<ValueInternal> {
-        self.0.borrow_mut()
     }
 
     fn do_normalize_whnf(&self) {
@@ -163,7 +200,6 @@ impl Value {
             WHNF | NF => {}
         }
     }
-
     fn do_normalize_nf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
@@ -176,24 +212,12 @@ impl Value {
         }
     }
 
-    // WARNING: avoid normalizing any thunk while holding on to this ref
-    // or you could run into BorrowMut panics
+    /// WARNING: avoid normalizing any thunk while holding on to this ref
+    /// or you could run into BorrowMut panics
+    // TODO: rename to `as_nf`
     pub(crate) fn normalize_nf(&self) -> Ref<ValueF> {
         self.do_normalize_nf();
         Ref::map(self.as_internal(), ValueInternal::as_nf)
-    }
-
-    /// This is what you want if you want to pattern-match on the value.
-    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
-    /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
-        self.do_normalize_whnf();
-        Ref::map(self.as_internal(), ValueInternal::as_whnf)
-    }
-
-    /// TODO: cloning a valuef can often be avoided
-    pub(crate) fn to_whnf(&self) -> ValueF {
-        self.as_whnf().clone()
     }
 
     pub(crate) fn normalize_to_expr_maybe_alpha(
@@ -211,80 +235,8 @@ impl Value {
         apply_any(self.clone(), th)
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, TypedValue>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Value>, TypeError> {
         Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
-    }
-}
-
-impl TypedValue {
-    pub fn from_value(th: Value) -> Self {
-        TypedValue(th)
-    }
-    pub(crate) fn from_valuef_untyped(v: ValueF) -> TypedValue {
-        TypedValue::from_value(Value::from_valuef_untyped(v))
-    }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Self {
-        TypedValue(Value::from_valuef_and_type(v, t))
-    }
-    // TODO: do something with the info that the type is Type. Maybe check
-    // is a type is present ?
-    pub(crate) fn from_value_simple_type(th: Value) -> Self {
-        TypedValue::from_value(th)
-    }
-    pub(crate) fn from_const(c: Const) -> Self {
-        match type_of_const(c) {
-            Ok(t) => TypedValue::from_valuef_and_type(ValueF::Const(c), t),
-            Err(_) => TypedValue::from_valuef_untyped(ValueF::Const(c)),
-        }
-    }
-    pub fn const_type() -> Self {
-        TypedValue::from_const(Const::Type)
-    }
-
-    pub(crate) fn normalize_nf(&self) -> ValueF {
-        self.0.normalize_nf().clone()
-    }
-
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> OutputSubExpr {
-        self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
-    }
-
-    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
-    /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
-        self.0.as_whnf()
-    }
-    pub(crate) fn to_whnf(&self) -> ValueF {
-        self.0.to_whnf()
-    }
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
-        self.as_whnf().normalize_to_expr()
-    }
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
-        self.as_whnf().normalize_to_expr_maybe_alpha(true)
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.clone()
-    }
-    pub(crate) fn into_typed(self) -> Typed {
-        Typed::from_typedvalue(self)
-    }
-    pub(crate) fn as_const(&self) -> Option<Const> {
-        match &*self.as_whnf() {
-            ValueF::Const(c) => Some(*c),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn normalize_mut(&mut self) {
-        self.0.normalize_mut()
-    }
-
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, TypedValue>, TypeError> {
-        self.0.get_type()
     }
 }
 
@@ -304,20 +256,14 @@ impl Shift for ValueInternal {
     }
 }
 
-impl Shift for TypedValue {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(TypedValue(self.0.shift(delta, var)?))
-    }
-}
-
-impl Subst<TypedValue> for Value {
-    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
+impl Subst<Value> for Value {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         Value(self.0.subst_shift(var, val))
     }
 }
 
-impl Subst<TypedValue> for ValueInternal {
-    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
+impl Subst<Value> for ValueInternal {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
@@ -327,25 +273,13 @@ impl Subst<TypedValue> for ValueInternal {
     }
 }
 
-impl Subst<TypedValue> for TypedValue {
-    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
-        TypedValue(self.0.subst_shift(var, val))
-    }
-}
-
+// TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         *self.as_whnf() == *other.as_whnf()
     }
 }
 impl std::cmp::Eq for Value {}
-
-impl std::cmp::PartialEq for TypedValue {
-    fn eq(&self, other: &Self) -> bool {
-        &*self.as_whnf() == &*other.as_whnf()
-    }
-}
-impl std::cmp::Eq for TypedValue {}
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

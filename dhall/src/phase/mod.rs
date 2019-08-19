@@ -4,7 +4,7 @@ use std::path::Path;
 
 use dhall_syntax::{Const, SubExpr};
 
-use crate::core::value::{TypedValue, Value};
+use crate::core::value::Value;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
@@ -33,7 +33,7 @@ pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TypedValue);
+pub struct Typed(Value);
 
 /// A normalized expression.
 ///
@@ -91,12 +91,12 @@ impl Typed {
     }
 
     pub(crate) fn from_const(c: Const) -> Self {
-        Typed(TypedValue::from_const(c))
+        Typed(Value::from_const(c))
     }
     pub fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
-        Typed(TypedValue::from_valuef_and_type(v, t.into_typedvalue()))
+        Typed(Value::from_valuef_and_type(v, t.into_value()))
     }
-    pub(crate) fn from_typedvalue(th: TypedValue) -> Self {
+    pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
     }
     pub fn const_type() -> Self {
@@ -112,7 +112,7 @@ impl Typed {
     pub fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    pub(crate) fn into_typedvalue(self) -> TypedValue {
+    pub(crate) fn into_value(self) -> Value {
         self.0
     }
 
@@ -155,8 +155,8 @@ impl Shift for Normalized {
     }
 }
 
-impl Subst<TypedValue> for Typed {
-    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
+impl Subst<Value> for Typed {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 }

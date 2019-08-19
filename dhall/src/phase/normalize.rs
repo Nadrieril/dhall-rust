@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble,
 };
 
-use crate::core::value::{TypedValue, Value};
+use crate::core::value::Value;
 use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr};
@@ -26,9 +26,7 @@ macro_rules! make_closure {
     (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
         ValueF::Lam(
             Label::from(stringify!($var)).into(),
-            TypedValue::from_value_simple_type(
-                make_closure!($($ty)*),
-            ),
+            make_closure!($($ty)*),
             make_closure!($($rest)*),
         ).into_value_untyped()
     };
@@ -51,10 +49,10 @@ macro_rules! make_closure {
             make_closure!($($rest)*),
             Value::from_valuef_and_type(
                 ValueF::NaturalLit(1),
-                TypedValue::from_value(make_closure!(Natural))
+                make_closure!(Natural)
             ),
         )).into_value_with_type(
-            TypedValue::from_value(make_closure!(Natural))
+            make_closure!(Natural)
         )
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {
@@ -74,10 +72,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
 
     // Return Ok((unconsumed args, returned value)), or Err(()) if value could not be produced.
     let ret = match (b, args.as_slice()) {
-        (OptionalNone, [t, r..]) => Ok((
-            r,
-            EmptyOptionalLit(TypedValue::from_value_simple_type(t.clone())),
-        )),
+        (OptionalNone, [t, r..]) => Ok((r, EmptyOptionalLit(t.clone()))),
         (NaturalIsZero, [n, r..]) => match &*n.as_whnf() {
             NaturalLit(n) => Ok((r, BoolLit(*n == 0))),
             _ => Err(()),
@@ -199,16 +194,12 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 let mut kts = HashMap::new();
                 kts.insert(
                     "index".into(),
-                    TypedValue::from_valuef_untyped(ValueF::from_builtin(
-                        Natural,
-                    )),
+                    Value::from_valuef_untyped(ValueF::from_builtin(Natural)),
                 );
                 kts.insert("value".into(), t.clone());
                 Ok((
                     r,
-                    EmptyListLit(TypedValue::from_valuef_untyped(RecordType(
-                        kts,
-                    ))),
+                    EmptyListLit(Value::from_valuef_untyped(RecordType(kts))),
                 ))
             }
             NEListLit(xs) => {
@@ -252,9 +243,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                             [ var(x, 1) ] # var(xs, 0)
                         )
                     })
-                    .app_valuef(EmptyListLit(
-                        TypedValue::from_value_simple_type(t.clone()),
-                    )),
+                    .app_valuef(EmptyListLit(t.clone())),
             )),
         },
         (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_whnf() {
@@ -288,9 +277,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     ValueF::from_builtin(Optional).app_value(t.clone()),
                 )
                 .app_value(make_closure!(λ(x: #t) -> Some(var(x, 0))))
-                .app_valuef(EmptyOptionalLit(
-                    TypedValue::from_value_simple_type(t.clone()),
-                )),
+                .app_valuef(EmptyOptionalLit(t.clone())),
             )),
         },
         (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_whnf() {
@@ -346,10 +333,7 @@ pub(crate) fn apply_any(f: Value, a: Value) -> ValueF {
 
     let f_borrow = f.as_whnf();
     match &*f_borrow {
-        ValueF::Lam(x, _, e) => {
-            let val = TypedValue::from_value(a);
-            e.subst_shift(&x.into(), &val).to_whnf()
-        }
+        ValueF::Lam(x, _, e) => e.subst_shift(&x.into(), &a).to_whnf(),
         ValueF::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
@@ -639,21 +623,18 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         }
         (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                TypedValue::from_valuef_untyped(ValueF::PartialExpr(
-                    ExprF::BinOp(
-                        RecursiveRecordTypeMerge,
-                        v1.to_value(),
-                        v2.to_value(),
-                    ),
-                ))
+                Value::from_valuef_untyped(ValueF::PartialExpr(ExprF::BinOp(
+                    RecursiveRecordTypeMerge,
+                    v1.to_value(),
+                    v2.to_value(),
+                )))
             });
             Ret::ValueF(RecordType(kvs))
         }
 
-        (Equivalence, _, _) => Ret::ValueF(ValueF::Equivalence(
-            TypedValue::from_value_simple_type(x.clone()),
-            TypedValue::from_value_simple_type(y.clone()),
-        )),
+        (Equivalence, _, _) => {
+            Ret::ValueF(ValueF::Equivalence(x.clone(), y.clone()))
+        }
 
         _ => return None,
     })
@@ -674,18 +655,9 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         ExprF::Var(_) => unreachable!(),
         ExprF::Annot(x, _) => Ret::Value(x),
         ExprF::Assert(_) => Ret::Expr(expr),
-        ExprF::Lam(x, t, e) => {
-            Ret::ValueF(Lam(x.into(), TypedValue::from_value(t), e))
-        }
-        ExprF::Pi(x, t, e) => Ret::ValueF(Pi(
-            x.into(),
-            TypedValue::from_value(t),
-            TypedValue::from_value(e),
-        )),
-        ExprF::Let(x, _, v, b) => {
-            let v = TypedValue::from_value(v);
-            Ret::Value(b.subst_shift(&x.into(), &v))
-        }
+        ExprF::Lam(x, t, e) => Ret::ValueF(Lam(x.into(), t, e)),
+        ExprF::Pi(x, t, e) => Ret::ValueF(Pi(x.into(), t, e)),
+        ExprF::Let(x, _, v, b) => Ret::Value(b.subst_shift(&x.into(), &v)),
         ExprF::App(v, a) => Ret::ValueF(v.app_value(a)),
         ExprF::Builtin(b) => Ret::ValueF(ValueF::from_builtin(b)),
         ExprF::Const(c) => Ret::ValueF(ValueF::Const(c)),
@@ -699,9 +671,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
             let t_borrow = t.as_whnf();
             match &*t_borrow {
                 AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
-                    Ret::ValueF(EmptyListLit(
-                        TypedValue::from_value_simple_type(args[0].clone()),
-                    ))
+                    Ret::ValueF(EmptyListLit(args[0].clone()))
                 }
                 _ => {
                     drop(t_borrow);
@@ -715,16 +685,12 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
         ExprF::RecordLit(kvs) => {
             Ret::ValueF(RecordLit(kvs.into_iter().collect()))
         }
-        ExprF::RecordType(kts) => Ret::ValueF(RecordType(
-            kts.into_iter()
-                .map(|(k, t)| (k, TypedValue::from_value(t)))
-                .collect(),
-        )),
-        ExprF::UnionType(kts) => Ret::ValueF(UnionType(
-            kts.into_iter()
-                .map(|(k, t)| (k, t.map(|t| TypedValue::from_value(t))))
-                .collect(),
-        )),
+        ExprF::RecordType(kts) => {
+            Ret::ValueF(RecordType(kts.into_iter().collect()))
+        }
+        ExprF::UnionType(kts) => {
+            Ret::ValueF(UnionType(kts.into_iter().collect()))
+        }
         ExprF::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
             let elts: Vec<_> = squash_textlit(elts.into_iter());
