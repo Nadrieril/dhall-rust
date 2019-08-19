@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::Ref;
 use std::fmt::Display;
 use std::path::Path;
 
@@ -42,8 +41,6 @@ pub struct Typed(TypedValue);
 #[derive(Debug, Clone)]
 pub struct Normalized(Typed);
 
-pub type Type = Typed;
-
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_file(f)
@@ -72,10 +69,10 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
-        typecheck::typecheck(self)
+        Ok(typecheck::typecheck(self.0)?.into_typed())
     }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        typecheck::typecheck_with(self, ty)
+    pub fn typecheck_with(self, ty: &Typed) -> Result<Typed, TypeError> {
+        Ok(typecheck::typecheck_with(self.0, ty.to_expr())?.into_typed())
     }
 }
 
@@ -93,17 +90,11 @@ impl Typed {
         Normalized(self)
     }
 
-    pub(crate) fn from_value_and_type(th: Value, t: Type) -> Self {
-        Typed(TypedValue::from_value_and_type(th, t))
-    }
-    pub(crate) fn from_value_untyped(th: Value) -> Self {
-        Typed(TypedValue::from_value_untyped(th))
-    }
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(TypedValue::from_const(c))
     }
-    pub fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
-        Typed(TypedValue::from_valuef_and_type(v, t))
+    pub fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
+        Typed(TypedValue::from_valuef_and_type(v, t.into_typedvalue()))
     }
     pub(crate) fn from_typedvalue(th: TypedValue) -> Self {
         Typed(th)
@@ -112,14 +103,6 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
-    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
-    /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
-        self.0.as_whnf()
-    }
-    pub(crate) fn to_whnf(&self) -> ValueF {
-        self.0.to_whnf()
-    }
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
@@ -129,27 +112,17 @@ impl Typed {
     pub fn to_value(&self) -> Value {
         self.0.to_value()
     }
-    // Deprecated
-    pub fn to_type(&self) -> Type {
-        self.clone()
-    }
-    // Deprecated
-    pub(crate) fn into_type(self) -> Type {
-        self
-    }
     pub(crate) fn into_typedvalue(self) -> TypedValue {
         self.0
-    }
-    pub(crate) fn as_const(&self) -> Option<Const> {
-        self.0.as_const()
     }
 
     pub(crate) fn normalize_mut(&mut self) {
         self.0.normalize_mut()
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
+    #[allow(dead_code)]
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Typed>, TypeError> {
+        Ok(Cow::Owned(self.0.get_type()?.into_owned().into_typed()))
     }
 }
 
@@ -164,10 +137,6 @@ impl Normalized {
     #[allow(dead_code)]
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
-    }
-    #[allow(dead_code)]
-    pub(crate) fn to_type(&self) -> Type {
-        self.0.to_type()
     }
     pub(crate) fn into_typed(self) -> Typed {
         self.0
@@ -186,8 +155,8 @@ impl Shift for Normalized {
     }
 }
 
-impl Subst<Typed> for Typed {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for Typed {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 }

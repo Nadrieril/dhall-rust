@@ -8,7 +8,7 @@ use dhall_syntax::{
 use crate::core::value::{TypedValue, Value};
 use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
-use crate::phase::{Normalized, NormalizedSubExpr, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr};
 
 pub(crate) type OutputSubExpr = NormalizedSubExpr;
 
@@ -327,7 +327,7 @@ pub(crate) fn apply_any(f: Value, a: Value) -> ValueF {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
         ValueF::Lam(x, _, e) => {
-            let val = Typed::from_value_untyped(a);
+            let val = TypedValue::from_value_untyped(a);
             e.subst_shift(&x.into(), &val).to_whnf()
         }
         ValueF::AppliedBuiltin(b, args) => {
@@ -663,7 +663,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> ValueF {
             TypedValue::from_value_untyped(e),
         )),
         ExprF::Let(x, _, v, b) => {
-            let v = Typed::from_value_untyped(v);
+            let v = TypedValue::from_value_untyped(v);
             Ret::Value(b.subst_shift(&x.into(), &v))
         }
         ExprF::App(v, a) => Ret::ValueF(v.app_value(a)),

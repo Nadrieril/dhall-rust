@@ -8,7 +8,7 @@ use dhall_syntax::{
 use crate::core::value::{TypedValue, Value};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::normalize::OutputSubExpr;
-use crate::phase::{Normalized, Typed};
+use crate::phase::Normalized;
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
 /// normalized on-demand.
@@ -327,8 +327,8 @@ impl Shift for ValueF {
     }
 }
 
-impl Subst<Typed> for ValueF {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for ValueF {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         match self {
             ValueF::AppliedBuiltin(b, args) => {
                 ValueF::AppliedBuiltin(*b, args.subst_shift(var, val))

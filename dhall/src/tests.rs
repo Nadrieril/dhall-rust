@@ -181,7 +181,7 @@ pub fn run_test(
                     assert_eq_display!(expr, expected);
                 }
                 Typecheck => {
-                    expr.typecheck_with(&expected.to_type())?.get_type()?;
+                    expr.typecheck_with(&expected.into_typed())?.get_type()?;
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;

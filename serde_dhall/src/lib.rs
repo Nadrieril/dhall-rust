@@ -127,7 +127,7 @@ pub mod value {
     use dhall::core::value::TypedValue as TypedThunk;
     use dhall::core::value::Value as Thunk;
     use dhall::core::valuef::ValueF as DhallValue;
-    use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
+    use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
     use dhall_syntax::Builtin;
 
     use super::de::{Error, Result};
@@ -147,7 +147,7 @@ pub mod value {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(&t.to_type())?,
+                Some(t) => resolved.typecheck_with(t.as_typed())?,
             };
             Ok(Value(typed))
         }
@@ -157,13 +157,13 @@ pub mod value {
         pub(crate) fn to_value(&self) -> Thunk {
             self.0.to_value()
         }
-        pub(crate) fn to_type(&self) -> Type {
-            self.0.to_type()
+        pub(crate) fn as_typed(&self) -> &Typed {
+            &self.0
         }
 
         /// Assumes that the given value has type `Type`.
         pub(crate) fn make_simple_type(v: DhallValue) -> Self {
-            Value(Typed::from_valuef_and_type(v, Type::const_type()))
+            Value(Typed::from_valuef_and_type(v, Typed::const_type()))
         }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
             Self::make_simple_type(DhallValue::from_builtin(b))

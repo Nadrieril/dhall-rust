@@ -10,7 +10,7 @@ use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
 use crate::phase::typecheck::type_of_const;
-use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
+use crate::phase::{Normalized, NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
 enum Form {
@@ -35,12 +35,12 @@ use Form::{Unevaled, NF, WHNF};
 struct ValueInternal {
     form: Form,
     value: ValueF,
-    ty: Option<Type>,
+    ty: Option<TypedValue>,
 }
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
 /// sharing computation automatically. Uses a RefCell to share computation.
-/// Can optionally store a Type from typechecking to preserve type information through
+/// Can optionally store a type from typechecking to preserve type information through
 /// normalization.
 #[derive(Clone)]
 pub struct Value(Rc<RefCell<ValueInternal>>);
@@ -96,7 +96,7 @@ impl ValueInternal {
         }
     }
 
-    fn get_type(&self) -> Result<&Type, TypeError> {
+    fn get_type(&self) -> Result<&TypedValue, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
             None => Err(TypeError::new(
@@ -116,7 +116,7 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Value {
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Value {
         ValueInternal {
             form: Unevaled,
             value: v,
@@ -128,7 +128,7 @@ impl Value {
         Value::from_valuef(ValueF::PartialExpr(e))
     }
     // TODO: avoid using this function
-    pub(crate) fn with_type(self, t: Type) -> Value {
+    pub(crate) fn with_type(self, t: TypedValue) -> Value {
         let vint = self.as_internal();
         ValueInternal {
             form: vint.form,
@@ -221,7 +221,7 @@ impl Value {
         apply_any(self.clone(), th)
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, TypedValue>, TypeError> {
         Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
     }
 }
@@ -231,16 +231,8 @@ impl TypedValue {
         TypedValue::from_value_untyped(Value::from_valuef(v))
     }
 
-    pub(crate) fn from_type(t: Type) -> TypedValue {
-        t.into_typedvalue()
-    }
-
     pub(crate) fn normalize_nf(&self) -> ValueF {
         self.0.normalize_nf().clone()
-    }
-
-    pub(crate) fn to_typed(&self) -> Typed {
-        self.clone().into_typed()
     }
 
     pub(crate) fn normalize_to_expr_maybe_alpha(
@@ -250,11 +242,11 @@ impl TypedValue {
         self.normalize_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn from_value_and_type(th: Value, t: Type) -> Self {
+    pub(crate) fn from_value_and_type(th: Value, t: TypedValue) -> Self {
         TypedValue(th.with_type(t))
     }
     pub fn from_value_simple_type(th: Value) -> Self {
-        TypedValue::from_value_and_type(th, Type::const_type())
+        TypedValue::from_value_and_type(th, TypedValue::const_type())
     }
     pub(crate) fn from_value_untyped(th: Value) -> Self {
         TypedValue(th)
@@ -265,7 +257,10 @@ impl TypedValue {
             Err(_) => TypedValue::from_valuef(ValueF::Const(c)),
         }
     }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: Type) -> Self {
+    pub fn const_type() -> Self {
+        TypedValue::from_const(Const::Type)
+    }
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: TypedValue) -> Self {
         TypedValue(Value::from_valuef_and_type(v, t))
     }
 
@@ -286,9 +281,6 @@ impl TypedValue {
     pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
     }
-    pub(crate) fn to_type(&self) -> Type {
-        self.clone().into_typed().into_type()
-    }
     pub(crate) fn into_typed(self) -> Typed {
         Typed::from_typedvalue(self)
     }
@@ -303,7 +295,7 @@ impl TypedValue {
         self.0.normalize_mut()
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, TypedValue>, TypeError> {
         self.0.get_type()
     }
 }
@@ -330,14 +322,14 @@ impl Shift for TypedValue {
     }
 }
 
-impl Subst<Typed> for Value {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for Value {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         Value(self.0.subst_shift(var, val))
     }
 }
 
-impl Subst<Typed> for ValueInternal {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for ValueInternal {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
@@ -347,8 +339,8 @@ impl Subst<Typed> for ValueInternal {
     }
 }
 
-impl Subst<Typed> for TypedValue {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for TypedValue {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         TypedValue(self.0.subst_shift(var, val))
     }
 }

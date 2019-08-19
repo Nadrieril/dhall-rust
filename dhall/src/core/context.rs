@@ -3,16 +3,15 @@ use std::rc::Rc;
 
 use dhall_syntax::{Label, V};
 
-use crate::core::value::Value;
+use crate::core::value::{TypedValue, Value};
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::TypeError;
-use crate::phase::{Type, Typed};
 
 #[derive(Debug, Clone)]
 enum CtxItem {
-    Kept(AlphaVar, Type),
-    Replaced(Value, Type),
+    Kept(AlphaVar, TypedValue),
+    Replaced(Value, TypedValue),
 }
 
 #[derive(Debug, Clone)]
@@ -22,12 +21,16 @@ impl TypecheckContext {
     pub fn new() -> Self {
         TypecheckContext(Rc::new(Vec::new()))
     }
-    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
+    pub fn insert_type(&self, x: &Label, t: TypedValue) -> Self {
         let mut vec = self.0.as_ref().clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
         TypecheckContext(Rc::new(vec))
     }
-    pub fn insert_value(&self, x: &Label, e: Typed) -> Result<Self, TypeError> {
+    pub fn insert_value(
+        &self,
+        x: &Label,
+        e: TypedValue,
+    ) -> Result<Self, TypeError> {
         let mut vec = self.0.as_ref().clone();
         vec.push((
             x.clone(),
@@ -35,7 +38,7 @@ impl TypecheckContext {
         ));
         Ok(TypecheckContext(Rc::new(vec)))
     }
-    pub fn lookup(&self, var: &V<Label>) -> Option<Typed> {
+    pub fn lookup(&self, var: &V<Label>) -> Option<TypedValue> {
         let mut var = var.clone();
         let mut shift_map: HashMap<Label, _> = HashMap::new();
         for (l, i) in self.0.iter().rev() {
@@ -48,7 +51,7 @@ impl TypecheckContext {
                         }
                         CtxItem::Replaced(th, t) => (th, t),
                     };
-                    return Some(Typed::from_value_and_type(th, t));
+                    return Some(TypedValue::from_value_and_type(th, t));
                 }
                 Some(newvar) => var = newvar,
             };
@@ -99,7 +102,7 @@ impl TypecheckContext {
             )))
         }
     }
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         self.do_with_var(var, |var, i| Ok::<_, !>(i.subst_shift(&var, val)))
             .unwrap()
     }
@@ -124,8 +127,8 @@ impl Shift for TypecheckContext {
     }
 }
 
-impl Subst<Typed> for CtxItem {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for CtxItem {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         match self {
             CtxItem::Replaced(e, t) => CtxItem::Replaced(
                 e.subst_shift(var, val),
@@ -141,8 +144,8 @@ impl Subst<Typed> for CtxItem {
     }
 }
 
-impl Subst<Typed> for TypecheckContext {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<TypedValue> for TypecheckContext {
+    fn subst_shift(&self, var: &AlphaVar, val: &TypedValue) -> Self {
         self.subst_shift(var, val)
     }
 }
