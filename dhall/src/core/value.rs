@@ -8,7 +8,7 @@ use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
+use crate::phase::normalize::{apply_any, normalize_whnf};
 use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedSubExpr, Typed};
 
@@ -208,11 +208,11 @@ impl Value {
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
-    ) -> OutputSubExpr {
+    ) -> NormalizedSubExpr {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app_value(&self, th: Value) -> ValueF {
+    pub(crate) fn app(&self, th: Value) -> ValueF {
         apply_any(self.clone(), th)
     }
 

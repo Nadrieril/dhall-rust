@@ -457,7 +457,7 @@ fn type_last_layer(
 
             RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app_value(t.into_owned()),
+                    .app(t.into_owned()),
                 Value::from_const(Type),
             ))
         }
@@ -468,8 +468,7 @@ fn type_last_layer(
             }
 
             RetTypeOnly(Value::from_valuef_and_type(
-                ValueF::from_builtin(dhall_syntax::Builtin::Optional)
-                    .app_value(t),
+                ValueF::from_builtin(dhall_syntax::Builtin::Optional).app(t),
                 Value::from_const(Type),
             ))
         }
