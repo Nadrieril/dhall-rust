@@ -214,8 +214,18 @@ impl Value {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app(&self, v: Value) -> VoVF {
-        apply_any(self.clone(), v)
+    pub(crate) fn app(&self, v: Value) -> Value {
+        let vovf = apply_any(self.clone(), v.clone());
+        match self.as_internal().get_type() {
+            Err(_) => vovf.into_value_untyped(),
+            Ok(t) => match &*t.as_whnf() {
+                ValueF::Pi(x, _, e) => {
+                    let t = e.subst_shift(&x.into(), &v);
+                    vovf.into_value_with_type(t)
+                }
+                _ => unreachable!("Internal type error"),
+            },
+        }
     }
 
     pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
@@ -248,15 +258,12 @@ impl VoVF {
             VoVF::ValueF { val, form } => Value::new(val, form, Some(t)),
         }
     }
-    pub(crate) fn into_value_simple_type(self) -> Value {
-        self.into_value_with_type(Value::from_const(Const::Type))
-    }
 
-    pub(crate) fn app(self, x: Value) -> Self {
-        match self {
+    pub(crate) fn app(self, x: Value) -> VoVF {
+        VoVF::Value(match self {
             VoVF::Value(v) => v.app(x),
             VoVF::ValueF { val, .. } => val.into_value_untyped().app(x),
-        }
+        })
     }
 }
 

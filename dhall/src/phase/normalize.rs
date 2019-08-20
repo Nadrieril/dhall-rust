@@ -34,7 +34,6 @@ macro_rules! make_closure {
     (List $($rest:tt)*) => {
         Value::from_builtin(Builtin::List)
             .app(make_closure!($($rest)*))
-            .into_value_simple_type()
     };
     (Some($($rest:tt)*)) => {
         ValueF::NEOptionalLit(make_closure!($($rest)*))
@@ -251,9 +250,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                 }
             }
             _ => {
-                let list_t = Value::from_builtin(List)
-                    .app(t.clone())
-                    .into_value_simple_type();
+                let list_t = Value::from_builtin(List).app(t.clone());
                 Ok((
                     r,
                     f.app(list_t.clone())
@@ -269,18 +266,19 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                         .app(
                             EmptyListLit(t.clone())
                                 .into_value_with_type(list_t),
-                        ),
+                        )
+                        .into_vovf(),
                 ))
             }
         },
         (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_whnf() {
             EmptyListLit(_) => Ok((r, nil.clone().into_vovf())),
             NEListLit(xs) => {
-                let mut v = nil.clone().into_vovf();
+                let mut v = nil.clone();
                 for x in xs.iter().cloned().rev() {
-                    v = cons.app(x).app(v.into_value_untyped());
+                    v = cons.app(x).app(v);
                 }
-                Ok((r, v))
+                Ok((r, v.into_vovf()))
             }
             _ => Err(()),
         },
@@ -295,9 +293,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                 }
             }
             _ => {
-                let optional_t = Value::from_builtin(Optional)
-                    .app(t.clone())
-                    .into_value_simple_type();
+                let optional_t = Value::from_builtin(Optional).app(t.clone());
                 Ok((
                     r,
                     f.app(optional_t.clone())
@@ -305,13 +301,14 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                         .app(
                             EmptyOptionalLit(t.clone())
                                 .into_value_with_type(optional_t),
-                        ),
+                        )
+                        .into_vovf(),
                 ))
             }
         },
         (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_whnf() {
             EmptyOptionalLit(_) => Ok((r, nothing.clone().into_vovf())),
-            NEOptionalLit(x) => Ok((r, just.app(x.clone()))),
+            NEOptionalLit(x) => Ok((r, just.app(x.clone()).into_vovf())),
             _ => Err(()),
         },
         (NaturalBuild, [f, r..]) => match &*f.as_whnf() {
@@ -331,7 +328,8 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                     .app(
                         NaturalLit(0)
                             .into_value_with_type(Value::from_builtin(Natural)),
-                    ),
+                    )
+                    .into_vovf(),
             )),
         },
         (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_whnf() {
@@ -344,9 +342,8 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                     )
                     .app(t.clone())
                     .app(succ.clone())
-                    .app(zero.clone())
-                    .into_value_with_type(t.clone());
-                Ok((r, succ.app(fold)))
+                    .app(zero.clone());
+                Ok((r, succ.app(fold).into_vovf()))
             }
             _ => Err(()),
         },
@@ -643,7 +640,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
         ExprF::Lam(x, t, e) => Ret::ValueF(Lam(x.into(), t, e)),
         ExprF::Pi(x, t, e) => Ret::ValueF(Pi(x.into(), t, e)),
         ExprF::Let(x, _, v, b) => Ret::Value(b.subst_shift(&x.into(), &v)),
-        ExprF::App(v, a) => Ret::VoVF(v.app(a)),
+        ExprF::App(v, a) => Ret::Value(v.app(a)),
         ExprF::Builtin(b) => Ret::ValueF(ValueF::from_builtin(b)),
         ExprF::Const(c) => Ret::ValueF(ValueF::Const(c)),
         ExprF::BoolLit(b) => Ret::ValueF(BoolLit(b)),
@@ -765,7 +762,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
                     }
                 },
                 (RecordLit(kvs), UnionLit(l, v, _)) => match kvs.get(l) {
-                    Some(h) => Ret::VoVF(h.app(v.clone())),
+                    Some(h) => Ret::Value(h.app(v.clone())),
                     None => {
                         drop(handlers_borrow);
                         drop(variant_borrow);

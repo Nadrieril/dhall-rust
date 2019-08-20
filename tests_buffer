@@ -41,5 +41,6 @@ failure/
     merge {x=...,y=...} <x:T>.x
     MergeBoolIsNotUnion merge x True
     MergeOptionalIsNotUnion merge x (Some 1)
+    SortInLet let x = Sort in 1
 
 equivalence:

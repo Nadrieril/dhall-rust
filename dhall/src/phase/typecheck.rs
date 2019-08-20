@@ -455,11 +455,7 @@ fn type_last_layer(
                 return mkerr(InvalidListType(t));
             }
 
-            RetTypeOnly(
-                ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app(t)
-                    .into_value_simple_type(),
-            )
+            RetTypeOnly(Value::from_builtin(dhall_syntax::Builtin::List).app(t))
         }
         SomeLit(x) => {
             let t = x.get_type()?;
@@ -468,9 +464,7 @@ fn type_last_layer(
             }
 
             RetTypeOnly(
-                Value::from_builtin(dhall_syntax::Builtin::Optional)
-                    .app(t)
-                    .into_value_simple_type(),
+                Value::from_builtin(dhall_syntax::Builtin::Optional).app(t),
             )
         }
         RecordType(kts) => RetWhole(tck_record_type(
