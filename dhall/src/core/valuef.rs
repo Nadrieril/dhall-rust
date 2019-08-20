@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural,
 };
 
-use crate::core::value::Value;
+use crate::core::value::{Value, VoVF};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr};
 
@@ -55,6 +55,9 @@ impl ValueF {
     }
     pub(crate) fn into_value_simple_type(self) -> Value {
         Value::from_valuef_simple_type(self)
+    }
+    pub(crate) fn into_vovf(self) -> VoVF {
+        VoVF::ValueF(self)
     }
 
     /// Convert the value to a fully normalized syntactic expression
@@ -257,8 +260,8 @@ impl ValueF {
     }
 
     /// Apply to a value
-    pub fn app(self, th: Value) -> ValueF {
-        Value::from_valuef_untyped(self).app(th)
+    pub fn app(self, v: Value) -> VoVF {
+        self.into_vovf().app(v)
     }
 
     pub fn from_builtin(b: Builtin) -> ValueF {

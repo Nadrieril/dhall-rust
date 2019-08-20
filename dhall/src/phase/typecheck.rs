@@ -455,11 +455,11 @@ fn type_last_layer(
                 return mkerr(InvalidListType(t.into_owned()));
             }
 
-            RetTypeOnly(Value::from_valuef_and_type(
+            RetTypeOnly(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app(t.into_owned()),
-                Value::from_const(Type),
-            ))
+                    .app(t.into_owned())
+                    .into_value_simple_type(),
+            )
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
@@ -467,10 +467,11 @@ fn type_last_layer(
                 return mkerr(InvalidOptionalType(t));
             }
 
-            RetTypeOnly(Value::from_valuef_and_type(
-                ValueF::from_builtin(dhall_syntax::Builtin::Optional).app(t),
-                Value::from_const(Type),
-            ))
+            RetTypeOnly(
+                Value::from_builtin(dhall_syntax::Builtin::Optional)
+                    .app(t)
+                    .into_value_simple_type(),
+            )
         }
         RecordType(kts) => RetWhole(tck_record_type(
             ctx,

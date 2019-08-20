@@ -44,6 +44,14 @@ struct ValueInternal {
 #[derive(Clone)]
 pub struct Value(Rc<RefCell<ValueInternal>>);
 
+/// When a function needs to return either a freshly created ValueF or an existing Value, but
+/// doesn't want to convert both to the same thing, either to avoid unnecessary allocations or to
+/// avoid loss of typ information.
+pub enum VoVF {
+    Value(Value),
+    ValueF(ValueF),
+}
+
 impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
@@ -56,7 +64,8 @@ impl ValueInternal {
         take_mut::take(self, |vint| match &vint.form {
             Unevaled => ValueInternal {
                 form: WHNF,
-                value: normalize_whnf(vint.value),
+                // TODO: thunk chaining
+                value: normalize_whnf(vint.value).into_whnf(),
                 ty: vint.ty,
             },
             // Already in WHNF
@@ -166,6 +175,9 @@ impl Value {
     pub(crate) fn into_typed(self) -> Typed {
         Typed::from_value(self)
     }
+    pub(crate) fn into_vovf(self) -> VoVF {
+        VoVF::Value(self)
+    }
 
     /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
     fn mutate_internal(&mut self, f: impl FnOnce(&mut ValueInternal)) {
@@ -212,12 +224,48 @@ impl Value {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app(&self, th: Value) -> ValueF {
-        apply_any(self.clone(), th)
+    pub(crate) fn app(&self, v: Value) -> VoVF {
+        apply_any(self.clone(), v)
     }
 
     pub(crate) fn get_type(&self) -> Result<Cow<'_, Value>, TypeError> {
         Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
+    }
+}
+
+impl VoVF {
+    pub fn into_whnf(self) -> ValueF {
+        match self {
+            VoVF::Value(v) => v.to_whnf(),
+            VoVF::ValueF(v) => v,
+        }
+    }
+    pub(crate) fn into_value_untyped(self) -> Value {
+        match self {
+            VoVF::Value(v) => v,
+            VoVF::ValueF(v) => v.into_value_untyped(),
+        }
+    }
+    pub(crate) fn into_value_with_type(self, t: Value) -> Value {
+        match self {
+            // TODO: check type with debug_assert ?
+            VoVF::Value(v) => v,
+            VoVF::ValueF(v) => v.into_value_with_type(t),
+        }
+    }
+    pub(crate) fn into_value_simple_type(self) -> Value {
+        match self {
+            // TODO: check type with debug_assert ?
+            VoVF::Value(v) => v,
+            VoVF::ValueF(v) => v.into_value_simple_type(),
+        }
+    }
+
+    pub(crate) fn app(self, x: Value) -> Self {
+        match self {
+            VoVF::Value(v) => v.app(x),
+            VoVF::ValueF(v) => v.into_value_untyped().app(x),
+        }
     }
 }
 

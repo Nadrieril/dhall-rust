@@ -169,12 +169,16 @@ pub mod value {
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
             Self::make_simple_type(
-                DhallValueF::from_builtin(Builtin::Optional).app(t.to_value()),
+                DhallValueF::from_builtin(Builtin::Optional)
+                    .app(t.to_value())
+                    .into_whnf(),
             )
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
             Self::make_simple_type(
-                DhallValueF::from_builtin(Builtin::List).app(t.to_value()),
+                DhallValueF::from_builtin(Builtin::List)
+                    .app(t.to_value())
+                    .into_whnf(),
             )
         }
         // Made public for the StaticType derive macro
