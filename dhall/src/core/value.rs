@@ -12,7 +12,7 @@ use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
-enum Form {
+pub enum Form {
     /// No constraints; expression may not be normalized at all.
     Unevaled,
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
@@ -46,9 +46,10 @@ pub struct Value(Rc<RefCell<ValueInternal>>);
 /// When a function needs to return either a freshly created ValueF or an existing Value, but
 /// doesn't want to convert both to the same thing, either to avoid unnecessary allocations or to
 /// avoid loss of typ information.
+#[derive(Debug, Clone)]
 pub enum VoVF {
     Value(Value),
-    ValueF(ValueF),
+    ValueF { val: ValueF, form: Form },
 }
 
 impl ValueInternal {
@@ -98,24 +99,14 @@ impl ValueInternal {
 }
 
 impl Value {
+    pub(crate) fn new(value: ValueF, form: Form, ty: Option<Value>) -> Value {
+        ValueInternal { form, value, ty }.into_value()
+    }
     pub(crate) fn from_valuef_untyped(v: ValueF) -> Value {
-        ValueInternal {
-            form: Unevaled,
-            value: v,
-            ty: None,
-        }
-        .into_value()
+        Value::new(v, Unevaled, None)
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
-        ValueInternal {
-            form: Unevaled,
-            value: v,
-            ty: Some(t),
-        }
-        .into_value()
-    }
-    pub(crate) fn from_valuef_simple_type(v: ValueF) -> Value {
-        Value::from_valuef_and_type(v, Value::from_const(Const::Type))
+        Value::new(v, Unevaled, Some(t))
     }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
@@ -236,34 +227,35 @@ impl VoVF {
     pub fn into_whnf(self) -> ValueF {
         match self {
             VoVF::Value(v) => v.to_whnf(),
-            VoVF::ValueF(v) => v,
+            VoVF::ValueF {
+                val,
+                form: Unevaled,
+            } => normalize_whnf(val).into_whnf(),
+            // Already at lest in WHNF
+            VoVF::ValueF { val, .. } => val,
         }
     }
     pub(crate) fn into_value_untyped(self) -> Value {
         match self {
             VoVF::Value(v) => v,
-            VoVF::ValueF(v) => v.into_value_untyped(),
+            VoVF::ValueF { val, form } => Value::new(val, form, None),
         }
     }
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         match self {
             // TODO: check type with debug_assert ?
             VoVF::Value(v) => v,
-            VoVF::ValueF(v) => v.into_value_with_type(t),
+            VoVF::ValueF { val, form } => Value::new(val, form, Some(t)),
         }
     }
     pub(crate) fn into_value_simple_type(self) -> Value {
-        match self {
-            // TODO: check type with debug_assert ?
-            VoVF::Value(v) => v,
-            VoVF::ValueF(v) => v.into_value_simple_type(),
-        }
+        self.into_value_with_type(Value::from_const(Const::Type))
     }
 
     pub(crate) fn app(self, x: Value) -> Self {
         match self {
             VoVF::Value(v) => v.app(x),
-            VoVF::ValueF(v) => v.into_value_untyped().app(x),
+            VoVF::ValueF { val, .. } => val.into_value_untyped().app(x),
         }
     }
 }

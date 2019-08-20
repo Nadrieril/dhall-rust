@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural,
 };
 
-use crate::core::value::{Value, VoVF};
+use crate::core::value::{Form, Value, VoVF};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr};
 
@@ -19,7 +19,7 @@ pub enum ValueF {
     /// Closures
     Lam(AlphaLabel, Value, Value),
     Pi(AlphaLabel, Value, Value),
-    // Invariant: the evaluation must not be able to progress further.
+    // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
     Var(AlphaVar),
@@ -33,16 +33,16 @@ pub enum ValueF {
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Value),
     NEListLit(Vec<Value>),
-    RecordLit(HashMap<Label, Value>),
     RecordType(HashMap<Label, Value>),
+    RecordLit(HashMap<Label, Value>),
     UnionType(HashMap<Label, Option<Value>>),
     UnionConstructor(Label, HashMap<Label, Option<Value>>),
     UnionLit(Label, Value, HashMap<Label, Option<Value>>),
-    // Invariant: this must not contain interpolations that are themselves TextLits, and
+    // Invariant: in whnf, this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Value>>),
     Equivalence(Value, Value),
-    // Invariant: this must not contain a value captured by one of the variants above.
+    // Invariant: in whnf, this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Value, Normalized>),
 }
 
@@ -53,11 +53,23 @@ impl ValueF {
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
     }
-    pub(crate) fn into_value_simple_type(self) -> Value {
-        Value::from_valuef_simple_type(self)
+    pub(crate) fn into_vovf_unevaled(self) -> VoVF {
+        VoVF::ValueF {
+            val: self,
+            form: Form::Unevaled,
+        }
     }
-    pub(crate) fn into_vovf(self) -> VoVF {
-        VoVF::ValueF(self)
+    pub(crate) fn into_vovf_whnf(self) -> VoVF {
+        VoVF::ValueF {
+            val: self,
+            form: Form::WHNF,
+        }
+    }
+    pub(crate) fn into_vovf_nf(self) -> VoVF {
+        VoVF::ValueF {
+            val: self,
+            form: Form::NF,
+        }
     }
 
     /// Convert the value to a fully normalized syntactic expression
@@ -261,7 +273,7 @@ impl ValueF {
 
     /// Apply to a value
     pub fn app(self, v: Value) -> VoVF {
-        self.into_vovf().app(v)
+        self.into_vovf_unevaled().app(v)
     }
 
     pub fn from_builtin(b: Builtin) -> ValueF {
