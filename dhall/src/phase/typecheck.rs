@@ -300,7 +300,7 @@ fn type_with(
             let tx = type_with(ctx, t.clone())?;
             let ctx2 = ctx.insert_type(x, tx.clone());
             let b = type_with(&ctx2, b.clone())?;
-            let v = ValueF::Lam(x.clone().into(), tx.clone(), b.to_value());
+            let v = ValueF::Lam(x.clone().into(), tx.clone(), b.clone());
             let tb = b.get_type()?.into_owned();
             let t = tck_pi_type(ctx, x.clone(), tx, tb)?;
             Value::from_valuef_and_type(v, t)
@@ -446,7 +446,7 @@ fn type_last_layer(
 
             RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app_value(t.to_value()),
+                    .app_value(t.into_owned()),
                 Value::from_const(Type),
             ))
         }
@@ -458,7 +458,7 @@ fn type_last_layer(
 
             RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::Optional)
-                    .app_value(t.to_value()),
+                    .app_value(t),
                 Value::from_const(Type),
             ))
         }

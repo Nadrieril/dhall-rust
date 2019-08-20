@@ -257,17 +257,17 @@ impl ValueF {
         }
     }
 
-    /// Apply to a value
+    /// Apply to a valuef
     pub(crate) fn app(self, val: ValueF) -> ValueF {
         self.app_valuef(val)
     }
 
-    /// Apply to a value
+    /// Apply to a valuef
     pub(crate) fn app_valuef(self, val: ValueF) -> ValueF {
         self.app_value(val.into_value_untyped())
     }
 
-    /// Apply to a thunk
+    /// Apply to a value
     pub fn app_value(self, th: Value) -> ValueF {
         Value::from_valuef_untyped(self).app_value(th)
     }

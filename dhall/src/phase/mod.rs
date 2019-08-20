@@ -110,7 +110,7 @@ impl Typed {
         self.0.to_expr_alpha()
     }
     pub fn to_value(&self) -> Value {
-        self.0.to_value()
+        self.0.clone()
     }
     pub(crate) fn into_value(self) -> Value {
         self.0

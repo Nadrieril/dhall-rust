@@ -231,20 +231,28 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     unimplemented!()
                 }
             }
-            _ => Ok((
-                r,
-                f.app_valuef(ValueF::from_builtin(List).app_value(t.clone()))
-                    .app_value({
-                        // Move `t` under new `x` variable
-                        let t1 = t.under_binder(Label::from("x"));
-                        make_closure!(
-                            λ(x : #t) ->
-                            λ(xs : List #t1) ->
-                            [ var(x, 1) ] # var(xs, 0)
-                        )
-                    })
-                    .app_valuef(EmptyListLit(t.clone())),
-            )),
+            _ => {
+                let list_t = ValueF::from_builtin(List)
+                    .app_value(t.clone())
+                    .into_value_simple_type();
+                Ok((
+                    r,
+                    f.app_value(list_t.clone())
+                        .app_value({
+                            // Move `t` under new `x` variable
+                            let t1 = t.under_binder(Label::from("x"));
+                            make_closure!(
+                                λ(x : #t) ->
+                                λ(xs : List #t1) ->
+                                [ var(x, 1) ] # var(xs, 0)
+                            )
+                        })
+                        .app_value(
+                            EmptyListLit(t.clone())
+                                .into_value_with_type(list_t),
+                        ),
+                ))
+            }
         },
         (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_whnf() {
             EmptyListLit(_) => Ok((r, nil.to_whnf())),
@@ -271,14 +279,20 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     unimplemented!()
                 }
             }
-            _ => Ok((
-                r,
-                f.app_valuef(
-                    ValueF::from_builtin(Optional).app_value(t.clone()),
-                )
-                .app_value(make_closure!(λ(x: #t) -> Some(var(x, 0))))
-                .app_valuef(EmptyOptionalLit(t.clone())),
-            )),
+            _ => {
+                let optional_t = ValueF::from_builtin(Optional)
+                    .app_value(t.clone())
+                    .into_value_simple_type();
+                Ok((
+                    r,
+                    f.app_value(optional_t.clone())
+                        .app_value(make_closure!(λ(x: #t) -> Some(var(x, 0))))
+                        .app_value(
+                            EmptyOptionalLit(t.clone())
+                                .into_value_with_type(optional_t),
+                        ),
+                ))
+            }
         },
         (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_whnf() {
             EmptyOptionalLit(_) => Ok((r, nothing.to_whnf())),
@@ -295,12 +309,20 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     unimplemented!()
                 }
             }
-            _ => Ok((
-                r,
-                f.app_valuef(ValueF::from_builtin(Natural))
-                    .app_value(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
-                    .app_valuef(NaturalLit(0)),
-            )),
+            _ => {
+                let nat_type =
+                    ValueF::from_builtin(Natural).into_value_simple_type();
+                Ok((
+                    r,
+                    f.app_value(nat_type.clone())
+                        .app_value(
+                            make_closure!(λ(x : Natural) -> 1 + var(x, 0)),
+                        )
+                        .app_value(
+                            NaturalLit(0).into_value_with_type(nat_type),
+                        ),
+                ))
+            }
         },
         (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_whnf() {
             NaturalLit(0) => Ok((r, zero.to_whnf())),
@@ -309,8 +331,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     .app(NaturalLit(n - 1))
                     .app_value(t.clone())
                     .app_value(succ.clone())
-                    .app_value(zero.clone());
-                Ok((r, succ.app_valuef(fold)))
+                    .app_value(zero.clone())
+                    .into_value_with_type(t.clone());
+                Ok((r, succ.app_value(fold)))
             }
             _ => Err(()),
         },
@@ -571,8 +594,8 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
             let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
                 Value::from_valuef_untyped(ValueF::PartialExpr(ExprF::BinOp(
                     RecursiveRecordTypeMerge,
-                    v1.to_value(),
-                    v2.to_value(),
+                    v1.clone(),
+                    v2.clone(),
                 )))
             });
             Ret::ValueF(RecordType(kvs))

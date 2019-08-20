@@ -40,8 +40,7 @@ struct ValueInternal {
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
 /// sharing computation automatically. Uses a RefCell to share computation.
-/// Can optionally store a type from typechecking to preserve type information through
-/// normalization.
+/// Can optionally store a type from typechecking to preserve type information.
 #[derive(Clone)]
 pub struct Value(Rc<RefCell<ValueInternal>>);
 
@@ -160,10 +159,6 @@ impl Value {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.as_whnf().normalize_to_expr_maybe_alpha(true)
     }
-    // TODO: deprecated
-    pub(crate) fn to_value(&self) -> Value {
-        self.clone()
-    }
     /// TODO: cloning a valuef can often be avoided
     pub(crate) fn to_whnf(&self) -> ValueF {
         self.as_whnf().clone()
@@ -172,8 +167,7 @@ impl Value {
         Typed::from_value(self)
     }
 
-    /// Mutates the contents. If no one else shares this thunk,
-    /// mutates directly, thus avoiding a RefCell lock.
+    /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
     fn mutate_internal(&mut self, f: impl FnOnce(&mut ValueInternal)) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
@@ -183,7 +177,7 @@ impl Value {
         }
     }
     /// Normalizes contents to normal form; faster than `normalize_nf` if
-    /// no one else shares this thunk.
+    /// no one else shares this.
     pub(crate) fn normalize_mut(&mut self) {
         self.mutate_internal(|vint| vint.normalize_nf())
     }
@@ -216,10 +210,6 @@ impl Value {
         alpha: bool,
     ) -> OutputSubExpr {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
-    }
-
-    pub(crate) fn app_valuef(&self, val: ValueF) -> ValueF {
-        self.app_value(val.into_value_untyped())
     }
 
     pub(crate) fn app_value(&self, th: Value) -> ValueF {
