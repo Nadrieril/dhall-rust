@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
@@ -121,8 +120,8 @@ impl Typed {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Typed>, TypeError> {
-        Ok(Cow::Owned(self.0.get_type()?.into_owned().into_typed()))
+    pub(crate) fn get_type(&self) -> Result<Typed, TypeError> {
+        Ok(self.0.get_type()?.into_typed())
     }
 }
 

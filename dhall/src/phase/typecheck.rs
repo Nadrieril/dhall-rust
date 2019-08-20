@@ -31,7 +31,7 @@ fn tck_pi_type(
         _ => {
             return Err(TypeError::new(
                 &ctx2,
-                InvalidOutputType(te.get_type()?.into_owned()),
+                InvalidOutputType(te.get_type()?),
             ))
         }
     };
@@ -312,7 +312,7 @@ fn type_with(
             let ctx2 = ctx.insert_type(x, tx.clone());
             let b = type_with(&ctx2, b.clone())?;
             let v = ValueF::Lam(x.clone().into(), tx.clone(), b.clone());
-            let tb = b.get_type()?.into_owned();
+            let tb = b.get_type()?;
             let t = tck_pi_type(ctx, x.clone(), tx, tb)?;
             Value::from_valuef_and_type(v, t)
         }
@@ -389,17 +389,17 @@ fn type_last_layer(
                 ValueF::Pi(x, tx, tb) => (x, tx, tb),
                 _ => return mkerr(NotAFunction(f.clone())),
             };
-            if a.get_type()?.as_ref() != tx {
+            if &a.get_type()? != tx {
                 return mkerr(TypeMismatch(f.clone(), tx.clone(), a.clone()));
             }
 
             RetTypeOnly(tb.subst_shift(&x.into(), a))
         }
         Annot(x, t) => {
-            if t != x.get_type()?.as_ref() {
+            if &x.get_type()? != t {
                 return mkerr(AnnotMismatch(x.clone(), t.clone()));
             }
-            RetTypeOnly(x.get_type()?.into_owned())
+            RetTypeOnly(x.get_type()?)
         }
         Assert(t) => {
             match &*t.as_whnf() {
@@ -412,7 +412,7 @@ fn type_last_layer(
             RetTypeOnly(t.clone())
         }
         BoolIf(x, y, z) => {
-            if x.get_type()?.as_ref() != &builtin_to_value(Bool) {
+            if &*x.get_type()?.as_whnf() != &ValueF::from_builtin(Bool) {
                 return mkerr(InvalidPredicate(x.clone()));
             }
 
@@ -428,7 +428,7 @@ fn type_last_layer(
                 return mkerr(IfBranchMismatch(y.clone(), z.clone()));
             }
 
-            RetTypeOnly(y.get_type()?.into_owned())
+            RetTypeOnly(y.get_type()?)
         }
         EmptyListLit(t) => {
             match &*t.as_whnf() {
@@ -445,24 +445,24 @@ fn type_last_layer(
                 if x.get_type()? != y.get_type()? {
                     return mkerr(InvalidListElement(
                         i,
-                        x.get_type()?.into_owned(),
+                        x.get_type()?,
                         y.clone(),
                     ));
                 }
             }
             let t = x.get_type()?;
             if t.get_type()?.as_const() != Some(Type) {
-                return mkerr(InvalidListType(t.into_owned()));
+                return mkerr(InvalidListType(t));
             }
 
             RetTypeOnly(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
-                    .app(t.into_owned())
+                    .app(t)
                     .into_value_simple_type(),
             )
         }
         SomeLit(x) => {
-            let t = x.get_type()?.into_owned();
+            let t = x.get_type()?;
             if t.get_type()?.as_const() != Some(Type) {
                 return mkerr(InvalidOptionalType(t));
             }
@@ -483,8 +483,7 @@ fn type_last_layer(
         )?),
         RecordLit(kvs) => RetTypeOnly(tck_record_type(
             ctx,
-            kvs.iter()
-                .map(|(x, v)| Ok((x.clone(), v.get_type()?.into_owned()))),
+            kvs.iter().map(|(x, v)| Ok((x.clone(), v.get_type()?))),
         )?),
         Field(r, x) => {
             match &*r.get_type()?.as_whnf() {
@@ -545,7 +544,7 @@ fn type_last_layer(
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
-                    if x.get_type()?.as_ref() != &text_type {
+                    if x.get_type()? != text_type {
                         return mkerr(InvalidTextInterpolation(x.clone()));
                     }
                 }
@@ -586,8 +585,8 @@ fn type_last_layer(
             ctx,
             ExprF::BinOp(
                 RecursiveRecordTypeMerge,
-                l.get_type()?.into_owned(),
-                r.get_type()?.into_owned(),
+                l.get_type()?,
+                r.get_type()?,
             ),
         )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
@@ -659,7 +658,7 @@ fn type_last_layer(
                 return mkerr(BinOpTypeMismatch(*o, r.clone()));
             }
 
-            RetTypeOnly(l.get_type()?.into_owned())
+            RetTypeOnly(l.get_type()?)
         }
         BinOp(Equivalence, l, r) => {
             if l.get_type()?.get_type()?.as_const() != Some(Type) {
@@ -692,11 +691,11 @@ fn type_last_layer(
                 Equivalence => unreachable!(),
             });
 
-            if l.get_type()?.as_ref() != &t {
+            if l.get_type()? != t {
                 return mkerr(BinOpTypeMismatch(*o, l.clone()));
             }
 
-            if r.get_type()?.as_ref() != &t {
+            if r.get_type()? != t {
                 return mkerr(BinOpTypeMismatch(*o, r.clone()));
             }
 
@@ -800,7 +799,7 @@ fn type_last_layer(
 
             RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::RecordType(new_kts),
-                record_type.get_type()?.into_owned(),
+                record_type.get_type()?,
             ))
         }
     };

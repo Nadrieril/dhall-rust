@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
@@ -228,8 +227,8 @@ impl Value {
         apply_any(self.clone(), v)
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Value>, TypeError> {
-        Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
+    pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
+        Ok(self.as_internal().get_type()?.clone())
     }
 }
 
