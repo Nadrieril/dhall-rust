@@ -55,7 +55,6 @@ pub(crate) enum TypeMessage {
     TypeMismatch(Value, Value, Value),
     AnnotMismatch(Value, Value),
     Untyped,
-    FieldCollision(Label),
     InvalidListElement(usize, Value, Value),
     InvalidListType(Value),
     InvalidOptionalType(Value),

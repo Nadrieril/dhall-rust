@@ -582,49 +582,6 @@ fn type_last_layer(
             )?)
         }
         BinOp(RecursiveRecordMerge, l, r) => {
-            // A recursive function to dig down into
-            // records of records when merging.
-            fn combine_record_types(
-                ctx: &TypecheckContext,
-                kts_l: &HashMap<Label, Value>,
-                kts_r: &HashMap<Label, Value>,
-            ) -> Result<Value, TypeError> {
-                use crate::phase::normalize::outer_join;
-
-                // If the Label exists for both records and the values
-                // are records themselves, then we hit the recursive case.
-                // Otherwise we have a field collision.
-                let combine = |k: &Label,
-                               inner_l: &Value,
-                               inner_r: &Value|
-                 -> Result<Value, TypeError> {
-                    match (&*inner_l.as_whnf(), &*inner_r.as_whnf()) {
-                        (
-                            ValueF::RecordType(inner_l_kvs),
-                            ValueF::RecordType(inner_r_kvs),
-                        ) => {
-                            combine_record_types(ctx, inner_l_kvs, inner_r_kvs)
-                        }
-                        (_, _) => {
-                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
-                        }
-                    }
-                };
-
-                let kts: HashMap<Label, Result<Value, TypeError>> = outer_join(
-                    |l| Ok(l.clone()),
-                    |r| Ok(r.clone()),
-                    combine,
-                    kts_l,
-                    kts_r,
-                );
-
-                tck_record_type(
-                    ctx,
-                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
-                )
-            };
-
             let l_type = l.get_type()?;
             let l_kind = l_type.get_type()?;
             let r_type = r.get_type()?;
@@ -637,60 +594,17 @@ fn type_last_layer(
                 return mkerr(RecordMismatch(l.clone(), r.clone()));
             }
 
-            // Extract the LHS record type
-            let l_type_borrow = l_type.as_whnf();
-            let kts_x = match &*l_type_borrow {
-                ValueF::RecordType(kts) => kts,
-                _ => return mkerr(MustCombineRecord(l.clone())),
-            };
-
-            // Extract the RHS record type
-            let r_type_borrow = r_type.as_whnf();
-            let kts_y = match &*r_type_borrow {
-                ValueF::RecordType(kts) => kts,
-                _ => return mkerr(MustCombineRecord(r.clone())),
-            };
-
-            let r = combine_record_types(ctx, kts_x, kts_y)?;
-            RetTypeOnly(r)
+            RetTypeOnly(type_last_layer(
+                ctx,
+                ExprF::BinOp(
+                    RecursiveRecordTypeMerge,
+                    l_type.into_owned(),
+                    r_type.into_owned(),
+                ),
+            )?)
         }
         BinOp(RecursiveRecordTypeMerge, l, r) => {
-            // A recursive function to dig down into
-            // records of records when merging.
-            fn combine_record_types(
-                ctx: &TypecheckContext,
-                kts_l: &HashMap<Label, Value>,
-                kts_r: &HashMap<Label, Value>,
-            ) -> Result<Value, TypeError> {
-                use crate::phase::normalize::intersection_with_key;
-
-                // If the Label exists for both records and the values
-                // are records themselves, then we hit the recursive case.
-                // Otherwise we have a field collision.
-                let combine = |k: &Label,
-                               kts_l_inner: &Value,
-                               kts_r_inner: &Value|
-                 -> Result<Value, TypeError> {
-                    match (&*kts_l_inner.as_whnf(), &*kts_r_inner.as_whnf()) {
-                        (
-                            ValueF::RecordType(kvs_l_inner),
-                            ValueF::RecordType(kvs_r_inner),
-                        ) => {
-                            combine_record_types(ctx, kvs_l_inner, kvs_r_inner)
-                        }
-                        (_, _) => {
-                            Err(TypeError::new(ctx, FieldCollision(k.clone())))
-                        }
-                    }
-                };
-
-                let kts = intersection_with_key(combine, kts_l, kts_r);
-
-                tck_record_type(
-                    ctx,
-                    kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
-                )
-            };
+            use crate::phase::normalize::intersection_with_key;
 
             // Extract the Const of the LHS
             let k_l = match l.get_type()?.as_const() {
@@ -739,7 +653,22 @@ fn type_last_layer(
             };
 
             // Ensure that the records combine without a type error
-            combine_record_types(ctx, kts_x, kts_y)?;
+            let kts = intersection_with_key(
+                // If the Label exists for both records, then we hit the recursive case.
+                |_: &Label, l: &Value, r: &Value| {
+                    type_last_layer(
+                        ctx,
+                        ExprF::BinOp(
+                            RecursiveRecordTypeMerge,
+                            l.clone(),
+                            r.clone(),
+                        ),
+                    )
+                },
+                kts_x,
+                kts_y,
+            );
+            tck_record_type(ctx, kts.into_iter().map(|(x, v)| Ok((x, v?))))?;
 
             RetTypeOnly(Value::from_const(k))
         }
