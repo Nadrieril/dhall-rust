@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 
 use dhall_syntax::{
@@ -50,15 +51,16 @@ fn tck_record_type(
     use crate::error::TypeMessage::*;
     use std::collections::hash_map::Entry;
     let mut new_kts = HashMap::new();
-    // Check that all types are the same const
-    let mut k = None;
+    // An empty record type has type Type
+    let mut k = Const::Type;
     for e in kts {
         let (x, t) = e?;
-        match (k, t.get_type()?.as_const()) {
-            (None, Some(k2)) => k = Some(k2),
-            (Some(k1), Some(k2)) if k1 == k2 => {}
-            _ => return Err(TypeError::new(ctx, InvalidFieldType(x, t))),
+        // Construct the union of the contained `Const`s
+        match t.get_type()?.as_const() {
+            Some(k2) => k = max(k, k2),
+            None => return Err(TypeError::new(ctx, InvalidFieldType(x, t))),
         }
+        // Check for duplicated entries
         let entry = new_kts.entry(x);
         match &entry {
             Entry::Occupied(_) => {
@@ -67,8 +69,6 @@ fn tck_record_type(
             Entry::Vacant(_) => entry.or_insert_with(|| t),
         };
     }
-    // An empty record type has type Type
-    let k = k.unwrap_or(Const::Type);
 
     Ok(Value::from_valuef_and_type(
         ValueF::RecordType(new_kts),
@@ -122,7 +122,6 @@ where
 }
 
 fn function_check(a: Const, b: Const) -> Const {
-    use std::cmp::max;
     if b == Const::Type {
         Const::Type
     } else {
@@ -546,16 +545,7 @@ fn type_last_layer(
             use crate::phase::normalize::merge_maps;
 
             let l_type = l.get_type()?;
-            let l_kind = l_type.get_type()?;
             let r_type = r.get_type()?;
-            let r_kind = r_type.get_type()?;
-
-            // Check the equality of kinds.
-            // This is to disallow expression such as:
-            // "{ x = Text } // { y = 1 }"
-            if l_kind != r_kind {
-                return mkerr(RecordMismatch(l.clone(), r.clone()));
-            }
 
             // Extract the LHS record type
             let l_type_borrow = l_type.as_whnf();
@@ -581,28 +571,14 @@ fn type_last_layer(
                 kts.into_iter().map(|(x, v)| Ok((x.clone(), v))),
             )?)
         }
-        BinOp(RecursiveRecordMerge, l, r) => {
-            let l_type = l.get_type()?;
-            let l_kind = l_type.get_type()?;
-            let r_type = r.get_type()?;
-            let r_kind = r_type.get_type()?;
-
-            // Check the equality of kinds.
-            // This is to disallow expression such as:
-            // "{ x = Text } // { y = 1 }"
-            if l_kind != r_kind {
-                return mkerr(RecordMismatch(l.clone(), r.clone()));
-            }
-
-            RetTypeOnly(type_last_layer(
-                ctx,
-                ExprF::BinOp(
-                    RecursiveRecordTypeMerge,
-                    l_type.into_owned(),
-                    r_type.into_owned(),
-                ),
-            )?)
-        }
+        BinOp(RecursiveRecordMerge, l, r) => RetTypeOnly(type_last_layer(
+            ctx,
+            ExprF::BinOp(
+                RecursiveRecordTypeMerge,
+                l.get_type()?.into_owned(),
+                r.get_type()?.into_owned(),
+            ),
+        )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
             use crate::phase::normalize::intersection_with_key;
 
@@ -622,17 +598,7 @@ fn type_last_layer(
                 }
             };
 
-            // Const values must match for the Records
-            let k = if k_l == k_r {
-                k_l
-            } else {
-                return mkerr(RecordTypeMismatch(
-                    Value::from_const(k_l),
-                    Value::from_const(k_r),
-                    l.clone(),
-                    r.clone(),
-                ));
-            };
+            let k = max(k_l, k_r);
 
             // Extract the LHS record type
             let borrow_l = l.as_whnf();
