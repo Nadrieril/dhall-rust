@@ -129,13 +129,21 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-pub(crate) fn type_of_const(c: Const) -> Result<Value, TypeError> {
+fn type_of_const(c: Const) -> Result<Value, TypeError> {
     match c {
-        Const::Type => Ok(Value::from_const(Const::Kind)),
-        Const::Kind => Ok(Value::from_const(Const::Sort)),
+        Const::Type => Ok(const_to_value(Const::Kind)),
+        Const::Kind => Ok(const_to_value(Const::Sort)),
         Const::Sort => {
             Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
         }
+    }
+}
+
+pub(crate) fn const_to_value(c: Const) -> Value {
+    let v = ValueF::Const(c);
+    match type_of_const(c) {
+        Ok(t) => Value::from_valuef_and_type(v, t),
+        Err(_) => Value::from_valuef_untyped(v),
     }
 }
 
@@ -280,9 +288,12 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
     }
 }
 
-// TODO: this can't fail in practise
-pub(crate) fn builtin_to_type(b: Builtin) -> Result<Value, TypeError> {
-    type_with(&TypecheckContext::new(), SubExpr::from_builtin(b))
+pub(crate) fn builtin_to_value(b: Builtin) -> Value {
+    let ctx = TypecheckContext::new();
+    Value::from_valuef_and_type(
+        ValueF::PartialExpr(ExprF::Builtin(b)),
+        type_with(&ctx, rc(type_of_builtin(b))).unwrap(),
+    )
 }
 
 /// Type-check an expression and return the expression alongside its type if type-checking
@@ -401,7 +412,7 @@ fn type_last_layer(
             RetTypeOnly(t.clone())
         }
         BoolIf(x, y, z) => {
-            if x.get_type()?.as_ref() != &builtin_to_type(Bool)? {
+            if x.get_type()?.as_ref() != &builtin_to_value(Bool) {
                 return mkerr(InvalidPredicate(x.clone()));
             }
 
@@ -523,14 +534,14 @@ fn type_last_layer(
                 // )),
             }
         }
-        Const(c) => RetWhole(Value::from_const(*c)),
-        Builtin(b) => RetTypeOnly(type_with(ctx, rc(type_of_builtin(*b)))?),
-        BoolLit(_) => RetTypeOnly(builtin_to_type(Bool)?),
-        NaturalLit(_) => RetTypeOnly(builtin_to_type(Natural)?),
-        IntegerLit(_) => RetTypeOnly(builtin_to_type(Integer)?),
-        DoubleLit(_) => RetTypeOnly(builtin_to_type(Double)?),
+        Const(c) => RetWhole(const_to_value(*c)),
+        Builtin(b) => RetWhole(builtin_to_value(*b)),
+        BoolLit(_) => RetTypeOnly(builtin_to_value(Bool)),
+        NaturalLit(_) => RetTypeOnly(builtin_to_value(Natural)),
+        IntegerLit(_) => RetTypeOnly(builtin_to_value(Integer)),
+        DoubleLit(_) => RetTypeOnly(builtin_to_value(Double)),
         TextLit(interpolated) => {
-            let text_type = builtin_to_type(Text)?;
+            let text_type = builtin_to_value(Text);
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
@@ -665,7 +676,7 @@ fn type_last_layer(
             RetTypeOnly(Value::from_const(Type))
         }
         BinOp(o, l, r) => {
-            let t = builtin_to_type(match o {
+            let t = builtin_to_value(match o {
                 BoolAnd => Bool,
                 BoolOr => Bool,
                 BoolEQ => Bool,
@@ -679,7 +690,7 @@ fn type_last_layer(
                 RecursiveRecordTypeMerge => unreachable!(),
                 ImportAlt => unreachable!("There should remain no import alternatives in a resolved expression"),
                 Equivalence => unreachable!(),
-            })?;
+            });
 
             if l.get_type()?.as_ref() != &t {
                 return mkerr(BinOpTypeMismatch(*o, l.clone()));

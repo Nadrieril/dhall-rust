@@ -9,7 +9,7 @@ use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
-use crate::phase::typecheck::type_of_const;
+use crate::phase::typecheck::const_to_value;
 use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
@@ -110,10 +110,7 @@ impl Value {
         Value::from_valuef_and_type(v, Value::from_const(Const::Type))
     }
     pub(crate) fn from_const(c: Const) -> Self {
-        match type_of_const(c) {
-            Ok(t) => Value::from_valuef_and_type(ValueF::Const(c), t),
-            Err(_) => Value::from_valuef_untyped(ValueF::Const(c)),
-        }
+        const_to_value(c)
     }
     pub fn const_type() -> Self {
         Value::from_const(Const::Type)
