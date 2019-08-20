@@ -12,7 +12,7 @@ use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
-pub enum Form {
+pub(crate) enum Form {
     /// No constraints; expression may not be normalized at all.
     Unevaled,
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
@@ -41,13 +41,13 @@ struct ValueInternal {
 /// sharing computation automatically. Uses a RefCell to share computation.
 /// Can optionally store a type from typechecking to preserve type information.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<ValueInternal>>);
+pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
 /// When a function needs to return either a freshly created ValueF or an existing Value, but
 /// doesn't want to convert both to the same thing, either to avoid unnecessary allocations or to
 /// avoid loss of typ information.
 #[derive(Debug, Clone)]
-pub enum VoVF {
+pub(crate) enum VoVF {
     Value(Value),
     ValueF { val: ValueF, form: Form },
 }
@@ -111,10 +111,7 @@ impl Value {
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
     }
-    pub fn const_type() -> Self {
-        Value::from_const(Const::Type)
-    }
-    pub fn from_builtin(b: Builtin) -> Self {
+    pub(crate) fn from_builtin(b: Builtin) -> Self {
         builtin_to_value(b)
     }
 
@@ -234,7 +231,7 @@ impl Value {
 }
 
 impl VoVF {
-    pub fn into_whnf(self) -> ValueF {
+    pub(crate) fn into_whnf(self) -> ValueF {
         match self {
             VoVF::Value(v) => v.to_whnf(),
             VoVF::ValueF {

@@ -92,13 +92,13 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(Value::from_const(c))
     }
-    pub fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
         Typed(Value::from_valuef_and_type(v, t.into_value()))
     }
     pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
     }
-    pub fn const_type() -> Self {
+    pub(crate) fn const_type() -> Self {
         Typed::from_const(Const::Type)
     }
 
@@ -108,7 +108,7 @@ impl Typed {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
     }
     pub(crate) fn into_value(self) -> Value {

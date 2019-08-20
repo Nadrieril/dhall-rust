@@ -15,7 +15,7 @@ use crate::phase::{Normalized, NormalizedSubExpr};
 /// alpha-equivalence (renaming of bound variables) and beta-equivalence (normalization). It will
 /// recursively normalize as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueF {
+pub(crate) enum ValueF {
     /// Closures
     Lam(AlphaLabel, Value, Value),
     Pi(AlphaLabel, Value, Value),
@@ -52,12 +52,6 @@ impl ValueF {
     }
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
-    }
-    pub(crate) fn into_vovf_unevaled(self) -> VoVF {
-        VoVF::ValueF {
-            val: self,
-            form: Form::Unevaled,
-        }
     }
     pub(crate) fn into_vovf_whnf(self) -> VoVF {
         VoVF::ValueF {
@@ -265,12 +259,7 @@ impl ValueF {
         }
     }
 
-    /// Apply to a value
-    pub fn app(self, v: Value) -> VoVF {
-        self.into_vovf_unevaled().app(v)
-    }
-
-    pub fn from_builtin(b: Builtin) -> ValueF {
+    pub(crate) fn from_builtin(b: Builtin) -> ValueF {
         ValueF::AppliedBuiltin(b, vec![])
     }
 }
