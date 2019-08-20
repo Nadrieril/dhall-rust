@@ -286,14 +286,6 @@ pub(crate) fn builtin_to_type(b: Builtin) -> Result<Value, TypeError> {
     type_with(&TypecheckContext::new(), SubExpr::from_builtin(b))
 }
 
-/// Intermediary return type
-enum Ret {
-    /// Returns the contained value as is
-    RetWhole(Value),
-    /// Use the contained Value as the type of the input expression
-    RetTypeOnly(Value),
-}
-
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed.
 /// Some normalization is done while typechecking, so the returned expression might be partially
@@ -304,7 +296,6 @@ fn type_with(
 ) -> Result<Value, TypeError> {
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
-    use Ret::*;
     Ok(match e.as_ref() {
         Lam(x, t, b) => {
             let tx = type_with(ctx, t.clone())?;
@@ -341,21 +332,13 @@ fn type_with(
                 ))
             }
         },
-        _ => {
+        e => {
             // Typecheck recursively all subexpressions
-            let expr =
-                e.as_ref().traverse_ref_with_special_handling_of_binders(
-                    |e| type_with(ctx, e.clone()),
-                    |_, _| unreachable!(),
-                )?;
-            let ret = type_last_layer(ctx, &expr)?;
-            match ret {
-                RetTypeOnly(typ) => {
-                    let expr = expr.map_ref(|typed| typed.to_value());
-                    Value::from_valuef_and_type(ValueF::PartialExpr(expr), typ)
-                }
-                RetWhole(tt) => tt,
-            }
+            let expr = e.traverse_ref_with_special_handling_of_binders(
+                |e| type_with(ctx, e.clone()),
+                |_, _| unreachable!(),
+            )?;
+            type_last_layer(ctx, expr)?
         }
     })
 }
@@ -364,17 +347,25 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: &ExprF<Value, Normalized>,
-) -> Result<Ret, TypeError> {
+    e: ExprF<Value, Normalized>,
+) -> Result<Value, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
     use dhall_syntax::Builtin::*;
     use dhall_syntax::Const::Type;
     use dhall_syntax::ExprF::*;
-    use Ret::*;
-    let mkerr = |msg: TypeMessage| TypeError::new(ctx, msg);
+    let mkerr = |msg: TypeMessage| Err(TypeError::new(ctx, msg));
 
-    match e {
+    /// Intermediary return type
+    enum Ret {
+        /// Returns the contained value as is
+        RetWhole(Value),
+        /// Returns the input expression `e` with the contained value as its type
+        RetTypeOnly(Value),
+    }
+    use Ret::*;
+
+    let ret = match &e {
         Import(_) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
@@ -386,122 +377,113 @@ fn type_last_layer(
             let tf_borrow = tf.as_whnf();
             let (x, tx, tb) = match &*tf_borrow {
                 ValueF::Pi(x, tx, tb) => (x, tx, tb),
-                _ => return Err(mkerr(NotAFunction(f.clone()))),
+                _ => return mkerr(NotAFunction(f.clone())),
             };
             if a.get_type()?.as_ref() != tx {
-                return Err(mkerr(TypeMismatch(
-                    f.clone(),
-                    tx.clone(),
-                    a.clone(),
-                )));
+                return mkerr(TypeMismatch(f.clone(), tx.clone(), a.clone()));
             }
 
-            Ok(RetTypeOnly(tb.subst_shift(&x.into(), a)))
+            RetTypeOnly(tb.subst_shift(&x.into(), a))
         }
         Annot(x, t) => {
             if t != x.get_type()?.as_ref() {
-                return Err(mkerr(AnnotMismatch(x.clone(), t.clone())));
+                return mkerr(AnnotMismatch(x.clone(), t.clone()));
             }
-            Ok(RetTypeOnly(x.get_type()?.into_owned()))
+            RetTypeOnly(x.get_type()?.into_owned())
         }
         Assert(t) => {
             match &*t.as_whnf() {
                 ValueF::Equivalence(x, y) if x == y => {}
                 ValueF::Equivalence(x, y) => {
-                    return Err(mkerr(AssertMismatch(x.clone(), y.clone())))
+                    return mkerr(AssertMismatch(x.clone(), y.clone()))
                 }
-                _ => return Err(mkerr(AssertMustTakeEquivalence)),
+                _ => return mkerr(AssertMustTakeEquivalence),
             }
-            Ok(RetTypeOnly(t.clone()))
+            RetTypeOnly(t.clone())
         }
         BoolIf(x, y, z) => {
             if x.get_type()?.as_ref() != &builtin_to_type(Bool)? {
-                return Err(mkerr(InvalidPredicate(x.clone())));
+                return mkerr(InvalidPredicate(x.clone()));
             }
 
             if y.get_type()?.get_type()?.as_const() != Some(Type) {
-                return Err(mkerr(IfBranchMustBeTerm(true, y.clone())));
+                return mkerr(IfBranchMustBeTerm(true, y.clone()));
             }
 
             if z.get_type()?.get_type()?.as_const() != Some(Type) {
-                return Err(mkerr(IfBranchMustBeTerm(false, z.clone())));
+                return mkerr(IfBranchMustBeTerm(false, z.clone()));
             }
 
             if y.get_type()? != z.get_type()? {
-                return Err(mkerr(IfBranchMismatch(y.clone(), z.clone())));
+                return mkerr(IfBranchMismatch(y.clone(), z.clone()));
             }
 
-            Ok(RetTypeOnly(y.get_type()?.into_owned()))
+            RetTypeOnly(y.get_type()?.into_owned())
         }
         EmptyListLit(t) => {
             match &*t.as_whnf() {
                 ValueF::AppliedBuiltin(dhall_syntax::Builtin::List, args)
                     if args.len() == 1 => {}
-                _ => {
-                    return Err(TypeError::new(ctx, InvalidListType(t.clone())))
-                }
+                _ => return mkerr(InvalidListType(t.clone())),
             }
-            Ok(RetTypeOnly(t.clone()))
+            RetTypeOnly(t.clone())
         }
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
             let (_, x) = iter.next().unwrap();
             for (i, y) in iter {
                 if x.get_type()? != y.get_type()? {
-                    return Err(mkerr(InvalidListElement(
+                    return mkerr(InvalidListElement(
                         i,
                         x.get_type()?.into_owned(),
                         y.clone(),
-                    )));
+                    ));
                 }
             }
             let t = x.get_type()?;
             if t.get_type()?.as_const() != Some(Type) {
-                return Err(TypeError::new(
-                    ctx,
-                    InvalidListType(t.into_owned()),
-                ));
+                return mkerr(InvalidListType(t.into_owned()));
             }
 
-            Ok(RetTypeOnly(Value::from_valuef_and_type(
+            RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::List)
                     .app_value(t.to_value()),
                 Value::from_const(Type),
-            )))
+            ))
         }
         SomeLit(x) => {
             let t = x.get_type()?.into_owned();
             if t.get_type()?.as_const() != Some(Type) {
-                return Err(TypeError::new(ctx, InvalidOptionalType(t)));
+                return mkerr(InvalidOptionalType(t));
             }
 
-            Ok(RetTypeOnly(Value::from_valuef_and_type(
+            RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::from_builtin(dhall_syntax::Builtin::Optional)
                     .app_value(t.to_value()),
                 Value::from_const(Type),
-            )))
+            ))
         }
-        RecordType(kts) => Ok(RetWhole(tck_record_type(
+        RecordType(kts) => RetWhole(tck_record_type(
             ctx,
             kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
-        )?)),
-        UnionType(kts) => Ok(RetWhole(tck_union_type(
+        )?),
+        UnionType(kts) => RetWhole(tck_union_type(
             ctx,
             kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
-        )?)),
-        RecordLit(kvs) => Ok(RetTypeOnly(tck_record_type(
+        )?),
+        RecordLit(kvs) => RetTypeOnly(tck_record_type(
             ctx,
             kvs.iter()
                 .map(|(x, v)| Ok((x.clone(), v.get_type()?.into_owned()))),
-        )?)),
+        )?),
         Field(r, x) => {
             match &*r.get_type()?.as_whnf() {
                 ValueF::RecordType(kts) => match kts.get(&x) {
                     Some(tth) => {
-                        Ok(RetTypeOnly(tth.clone()))
+                        RetTypeOnly(tth.clone())
                     },
-                    None => Err(mkerr(MissingRecordField(x.clone(),
-                                        r.clone()))),
+                    None => return mkerr(MissingRecordField(x.clone(),
+                                        r.clone())),
                 },
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
@@ -509,56 +491,56 @@ fn type_last_layer(
                         ValueF::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
-                                Ok(RetTypeOnly(
+                                RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
                                         "_".into(),
                                         t.clone(),
                                         r.under_binder(Label::from("_")),
                                     )?
-                                ))
+                                )
                             },
                             Some(None) => {
-                                Ok(RetTypeOnly(r.clone()))
+                                RetTypeOnly(r.clone())
                             },
                             None => {
-                                Err(mkerr(MissingUnionField(
+                                return mkerr(MissingUnionField(
                                     x.clone(),
                                     r.clone(),
-                                )))
+                                ))
                             },
                         },
                         _ => {
-                            Err(mkerr(NotARecord(
+                            return mkerr(NotARecord(
                                 x.clone(),
                                 r.clone()
-                            )))
+                            ))
                         },
                     }
                 }
-                // _ => Err(mkerr(NotARecord(
+                // _ => mkerr(NotARecord(
                 //     x,
                 //     r?,
-                // ))),
+                // )),
             }
         }
-        Const(c) => Ok(RetWhole(Value::from_const(*c))),
-        Builtin(b) => Ok(RetTypeOnly(type_with(ctx, rc(type_of_builtin(*b)))?)),
-        BoolLit(_) => Ok(RetTypeOnly(builtin_to_type(Bool)?)),
-        NaturalLit(_) => Ok(RetTypeOnly(builtin_to_type(Natural)?)),
-        IntegerLit(_) => Ok(RetTypeOnly(builtin_to_type(Integer)?)),
-        DoubleLit(_) => Ok(RetTypeOnly(builtin_to_type(Double)?)),
+        Const(c) => RetWhole(Value::from_const(*c)),
+        Builtin(b) => RetTypeOnly(type_with(ctx, rc(type_of_builtin(*b)))?),
+        BoolLit(_) => RetTypeOnly(builtin_to_type(Bool)?),
+        NaturalLit(_) => RetTypeOnly(builtin_to_type(Natural)?),
+        IntegerLit(_) => RetTypeOnly(builtin_to_type(Integer)?),
+        DoubleLit(_) => RetTypeOnly(builtin_to_type(Double)?),
         TextLit(interpolated) => {
             let text_type = builtin_to_type(Text)?;
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
                     if x.get_type()?.as_ref() != &text_type {
-                        return Err(mkerr(InvalidTextInterpolation(x.clone())));
+                        return mkerr(InvalidTextInterpolation(x.clone()));
                     }
                 }
             }
-            Ok(RetTypeOnly(text_type))
+            RetTypeOnly(text_type)
         }
         BinOp(RightBiasedRecordMerge, l, r) => {
             use crate::phase::normalize::merge_maps;
@@ -572,21 +554,21 @@ fn type_last_layer(
             // This is to disallow expression such as:
             // "{ x = Text } // { y = 1 }"
             if l_kind != r_kind {
-                return Err(mkerr(RecordMismatch(l.clone(), r.clone())));
+                return mkerr(RecordMismatch(l.clone(), r.clone()));
             }
 
             // Extract the LHS record type
             let l_type_borrow = l_type.as_whnf();
             let kts_x = match &*l_type_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(MustCombineRecord(l.clone()))),
+                _ => return mkerr(MustCombineRecord(l.clone())),
             };
 
             // Extract the RHS record type
             let r_type_borrow = r_type.as_whnf();
             let kts_y = match &*r_type_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(MustCombineRecord(r.clone()))),
+                _ => return mkerr(MustCombineRecord(r.clone())),
             };
 
             // Union the two records, prefering
@@ -594,10 +576,10 @@ fn type_last_layer(
             let kts = merge_maps(kts_x, kts_y, |_, r_t| r_t.clone());
 
             // Construct the final record type from the union
-            Ok(RetTypeOnly(tck_record_type(
+            RetTypeOnly(tck_record_type(
                 ctx,
                 kts.into_iter().map(|(x, v)| Ok((x.clone(), v))),
-            )?))
+            )?)
         }
         BinOp(RecursiveRecordMerge, l, r) => {
             // A recursive function to dig down into
@@ -637,10 +619,10 @@ fn type_last_layer(
                     kts_r,
                 );
 
-                Ok(tck_record_type(
+                tck_record_type(
                     ctx,
                     kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
-                )?)
+                )
             };
 
             let l_type = l.get_type()?;
@@ -652,24 +634,25 @@ fn type_last_layer(
             // This is to disallow expression such as:
             // "{ x = Text } // { y = 1 }"
             if l_kind != r_kind {
-                return Err(mkerr(RecordMismatch(l.clone(), r.clone())));
+                return mkerr(RecordMismatch(l.clone(), r.clone()));
             }
 
             // Extract the LHS record type
             let l_type_borrow = l_type.as_whnf();
             let kts_x = match &*l_type_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(MustCombineRecord(l.clone()))),
+                _ => return mkerr(MustCombineRecord(l.clone())),
             };
 
             // Extract the RHS record type
             let r_type_borrow = r_type.as_whnf();
             let kts_y = match &*r_type_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(MustCombineRecord(r.clone()))),
+                _ => return mkerr(MustCombineRecord(r.clone())),
             };
 
-            combine_record_types(ctx, kts_x, kts_y).map(|r| RetTypeOnly(r))
+            let r = combine_record_types(ctx, kts_x, kts_y)?;
+            RetTypeOnly(r)
         }
         BinOp(RecursiveRecordTypeMerge, l, r) => {
             // A recursive function to dig down into
@@ -703,19 +686,17 @@ fn type_last_layer(
 
                 let kts = intersection_with_key(combine, kts_l, kts_r);
 
-                Ok(tck_record_type(
+                tck_record_type(
                     ctx,
                     kts.into_iter().map(|(x, v)| v.map(|r| (x.clone(), r))),
-                )?)
+                )
             };
 
             // Extract the Const of the LHS
             let k_l = match l.get_type()?.as_const() {
                 Some(k) => k,
                 _ => {
-                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
-                        l.clone(),
-                    )))
+                    return mkerr(RecordTypeMergeRequiresRecordType(l.clone()))
                 }
             };
 
@@ -723,9 +704,7 @@ fn type_last_layer(
             let k_r = match r.get_type()?.as_const() {
                 Some(k) => k,
                 _ => {
-                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
-                        r.clone(),
-                    )))
+                    return mkerr(RecordTypeMergeRequiresRecordType(r.clone()))
                 }
             };
 
@@ -733,12 +712,12 @@ fn type_last_layer(
             let k = if k_l == k_r {
                 k_l
             } else {
-                return Err(mkerr(RecordTypeMismatch(
+                return mkerr(RecordTypeMismatch(
                     Value::from_const(k_l),
                     Value::from_const(k_r),
                     l.clone(),
                     r.clone(),
-                )));
+                ));
             };
 
             // Extract the LHS record type
@@ -746,9 +725,7 @@ fn type_last_layer(
             let kts_x = match &*borrow_l {
                 ValueF::RecordType(kts) => kts,
                 _ => {
-                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
-                        l.clone(),
-                    )))
+                    return mkerr(RecordTypeMergeRequiresRecordType(l.clone()))
                 }
             };
 
@@ -757,51 +734,40 @@ fn type_last_layer(
             let kts_y = match &*borrow_r {
                 ValueF::RecordType(kts) => kts,
                 _ => {
-                    return Err(mkerr(RecordTypeMergeRequiresRecordType(
-                        r.clone(),
-                    )))
+                    return mkerr(RecordTypeMergeRequiresRecordType(r.clone()))
                 }
             };
 
             // Ensure that the records combine without a type error
-            // and if not output the final Const value.
-            combine_record_types(ctx, kts_x, kts_y)
-                .and(Ok(RetTypeOnly(Value::from_const(k))))
+            combine_record_types(ctx, kts_x, kts_y)?;
+
+            RetTypeOnly(Value::from_const(k))
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {
                 ValueF::AppliedBuiltin(List, _) => {}
-                _ => return Err(mkerr(BinOpTypeMismatch(*o, l.clone()))),
+                _ => return mkerr(BinOpTypeMismatch(*o, l.clone())),
             }
 
             if l.get_type()? != r.get_type()? {
-                return Err(mkerr(BinOpTypeMismatch(*o, r.clone())));
+                return mkerr(BinOpTypeMismatch(*o, r.clone()));
             }
 
-            Ok(RetTypeOnly(l.get_type()?.into_owned()))
+            RetTypeOnly(l.get_type()?.into_owned())
         }
         BinOp(Equivalence, l, r) => {
             if l.get_type()?.get_type()?.as_const() != Some(Type) {
-                return Err(mkerr(EquivalenceArgumentMustBeTerm(
-                    true,
-                    l.clone(),
-                )));
+                return mkerr(EquivalenceArgumentMustBeTerm(true, l.clone()));
             }
             if r.get_type()?.get_type()?.as_const() != Some(Type) {
-                return Err(mkerr(EquivalenceArgumentMustBeTerm(
-                    false,
-                    r.clone(),
-                )));
+                return mkerr(EquivalenceArgumentMustBeTerm(false, r.clone()));
             }
 
             if l.get_type()? != r.get_type()? {
-                return Err(mkerr(EquivalenceTypeMismatch(
-                    r.clone(),
-                    l.clone(),
-                )));
+                return mkerr(EquivalenceTypeMismatch(r.clone(), l.clone()));
             }
 
-            Ok(RetTypeOnly(Value::from_const(Type)))
+            RetTypeOnly(Value::from_const(Type))
         }
         BinOp(o, l, r) => {
             let t = builtin_to_type(match o {
@@ -821,28 +787,28 @@ fn type_last_layer(
             })?;
 
             if l.get_type()?.as_ref() != &t {
-                return Err(mkerr(BinOpTypeMismatch(*o, l.clone())));
+                return mkerr(BinOpTypeMismatch(*o, l.clone()));
             }
 
             if r.get_type()?.as_ref() != &t {
-                return Err(mkerr(BinOpTypeMismatch(*o, r.clone())));
+                return mkerr(BinOpTypeMismatch(*o, r.clone()));
             }
 
-            Ok(RetTypeOnly(t))
+            RetTypeOnly(t)
         }
         Merge(record, union, type_annot) => {
             let record_type = record.get_type()?;
             let record_borrow = record_type.as_whnf();
             let handlers = match &*record_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(Merge1ArgMustBeRecord(record.clone()))),
+                _ => return mkerr(Merge1ArgMustBeRecord(record.clone())),
             };
 
             let union_type = union.get_type()?;
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
                 ValueF::UnionType(kts) => kts,
-                _ => return Err(mkerr(Merge2ArgMustBeUnion(union.clone()))),
+                _ => return mkerr(Merge2ArgMustBeUnion(union.clone())),
             };
 
             let mut inferred_type = None;
@@ -855,61 +821,59 @@ fn type_last_layer(
                             let (x, tx, tb) = match &*handler_type_borrow {
                                 ValueF::Pi(x, tx, tb) => (x, tx, tb),
                                 _ => {
-                                    return Err(mkerr(NotAFunction(
+                                    return mkerr(NotAFunction(
                                         handler_type.clone(),
-                                    )))
+                                    ))
                                 }
                             };
 
                             if variant_type != tx {
-                                return Err(mkerr(TypeMismatch(
+                                return mkerr(TypeMismatch(
                                     handler_type.clone(),
                                     tx.clone(),
                                     variant_type.clone(),
-                                )));
+                                ));
                             }
 
                             // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
                             match tb.over_binder(x) {
                                 Some(x) => x,
-                                None => return Err(mkerr(
+                                None => return mkerr(
                                     MergeHandlerReturnTypeMustNotBeDependent,
-                                )),
+                                ),
                             }
                         }
                         // Union alternative without type
                         Some(None) => handler_type.clone(),
                         None => {
-                            return Err(mkerr(MergeHandlerMissingVariant(
-                                x.clone(),
-                            )))
+                            return mkerr(MergeHandlerMissingVariant(x.clone()))
                         }
                     };
                 match &inferred_type {
                     None => inferred_type = Some(handler_return_type),
                     Some(t) => {
                         if t != &handler_return_type {
-                            return Err(mkerr(MergeHandlerTypeMismatch));
+                            return mkerr(MergeHandlerTypeMismatch);
                         }
                     }
                 }
             }
             for x in variants.keys() {
                 if !handlers.contains_key(x) {
-                    return Err(mkerr(MergeVariantMissingHandler(x.clone())));
+                    return mkerr(MergeVariantMissingHandler(x.clone()));
                 }
             }
 
             match (inferred_type, type_annot) {
                 (Some(ref t1), Some(t2)) => {
                     if t1 != t2 {
-                        return Err(mkerr(MergeAnnotMismatch));
+                        return mkerr(MergeAnnotMismatch);
                     }
-                    Ok(RetTypeOnly(t2.clone()))
+                    RetTypeOnly(t2.clone())
                 }
-                (Some(t), None) => Ok(RetTypeOnly(t)),
-                (None, Some(t)) => Ok(RetTypeOnly(t.clone())),
-                (None, None) => Err(mkerr(MergeEmptyNeedsAnnotation)),
+                (Some(t), None) => RetTypeOnly(t),
+                (None, Some(t)) => RetTypeOnly(t.clone()),
+                (None, None) => return mkerr(MergeEmptyNeedsAnnotation),
             }
         }
         Projection(record, labels) => {
@@ -917,23 +881,30 @@ fn type_last_layer(
             let record_borrow = record_type.as_whnf();
             let kts = match &*record_borrow {
                 ValueF::RecordType(kts) => kts,
-                _ => return Err(mkerr(ProjectionMustBeRecord)),
+                _ => return mkerr(ProjectionMustBeRecord),
             };
 
             let mut new_kts = HashMap::new();
             for l in labels {
                 match kts.get(l) {
-                    None => return Err(mkerr(ProjectionMissingEntry)),
+                    None => return mkerr(ProjectionMissingEntry),
                     Some(t) => new_kts.insert(l.clone(), t.clone()),
                 };
             }
 
-            Ok(RetTypeOnly(Value::from_valuef_and_type(
+            RetTypeOnly(Value::from_valuef_and_type(
                 ValueF::RecordType(new_kts),
                 record_type.get_type()?.into_owned(),
-            )))
+            ))
         }
-    }
+    };
+
+    Ok(match ret {
+        RetTypeOnly(typ) => {
+            Value::from_valuef_and_type(ValueF::PartialExpr(e), typ)
+        }
+        RetWhole(v) => v,
+    })
 }
 
 /// `type_of` is the same as `type_with` with an empty context, meaning that the
