@@ -31,11 +31,10 @@ macro_rules! make_closure {
         ).into_value_untyped()
     };
     (Natural) => {
-        ValueF::from_builtin(Builtin::Natural)
-            .into_value_simple_type()
+        Value::from_builtin(Builtin::Natural)
     };
     (List $($rest:tt)*) => {
-        ValueF::from_builtin(Builtin::List)
+        Value::from_builtin(Builtin::List)
             .app_value(make_closure!($($rest)*))
             .into_value_simple_type()
     };
@@ -192,10 +191,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
         (ListIndexed, [_, l, r..]) => match &*l.as_whnf() {
             EmptyListLit(t) => {
                 let mut kts = HashMap::new();
-                kts.insert(
-                    "index".into(),
-                    Value::from_valuef_untyped(ValueF::from_builtin(Natural)),
-                );
+                kts.insert("index".into(), Value::from_builtin(Natural));
                 kts.insert("value".into(), t.clone());
                 Ok((
                     r,
@@ -232,7 +228,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 }
             }
             _ => {
-                let list_t = ValueF::from_builtin(List)
+                let list_t = Value::from_builtin(List)
                     .app_value(t.clone())
                     .into_value_simple_type();
                 Ok((
@@ -280,7 +276,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                 }
             }
             _ => {
-                let optional_t = ValueF::from_builtin(Optional)
+                let optional_t = Value::from_builtin(Optional)
                     .app_value(t.clone())
                     .into_value_simple_type();
                 Ok((
@@ -309,26 +305,24 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> ValueF {
                     unimplemented!()
                 }
             }
-            _ => {
-                let nat_type =
-                    ValueF::from_builtin(Natural).into_value_simple_type();
-                Ok((
-                    r,
-                    f.app_value(nat_type.clone())
-                        .app_value(
-                            make_closure!(λ(x : Natural) -> 1 + var(x, 0)),
-                        )
-                        .app_value(
-                            NaturalLit(0).into_value_with_type(nat_type),
-                        ),
-                ))
-            }
+            _ => Ok((
+                r,
+                f.app_value(Value::from_builtin(Natural))
+                    .app_value(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
+                    .app_value(
+                        NaturalLit(0)
+                            .into_value_with_type(Value::from_builtin(Natural)),
+                    ),
+            )),
         },
         (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_whnf() {
             NaturalLit(0) => Ok((r, zero.to_whnf())),
             NaturalLit(n) => {
-                let fold = ValueF::from_builtin(NaturalFold)
-                    .app(NaturalLit(n - 1))
+                let fold = Value::from_builtin(NaturalFold)
+                    .app_value(
+                        NaturalLit(n - 1)
+                            .into_value_with_type(Value::from_builtin(Natural)),
+                    )
                     .app_value(t.clone())
                     .app_value(succ.clone())
                     .app_value(zero.clone())

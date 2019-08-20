@@ -2,14 +2,14 @@ use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use dhall_syntax::Const;
+use dhall_syntax::{Builtin, Const};
 
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
-use crate::phase::typecheck::const_to_value;
+use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
@@ -114,6 +114,9 @@ impl Value {
     }
     pub fn const_type() -> Self {
         Value::from_const(Const::Type)
+    }
+    pub fn from_builtin(b: Builtin) -> Self {
+        builtin_to_value(b)
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
