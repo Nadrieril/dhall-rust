@@ -169,7 +169,7 @@ pub fn run_test(
             let expected_file_path = base_path + "B.dhall";
             let expected = parse_file_str(&expected_file_path)?
                 .resolve()?
-                .skip_typecheck()
+                .typecheck()?
                 .normalize();
 
             match feature {
@@ -177,24 +177,23 @@ pub fn run_test(
                     unreachable!()
                 }
                 Import => {
-                    let expr = expr.skip_typecheck().normalize();
+                    let expr = expr.typecheck()?.normalize();
                     assert_eq_display!(expr, expected);
                 }
                 Typecheck => {
-                    expr.typecheck_with(&expected.to_type())?;
+                    expr.typecheck_with(&expected.into_typed())?.get_type()?;
                 }
                 TypeInference => {
                     let expr = expr.typecheck()?;
-                    let ty = expr.get_type()?.into_owned();
-                    assert_eq_display!(ty.to_normalized(), expected);
+                    let ty = expr.get_type()?.into_owned().normalize();
+                    assert_eq_display!(ty, expected);
                 }
                 Normalization => {
-                    let expr = expr.skip_typecheck().normalize();
+                    let expr = expr.typecheck()?.normalize();
                     assert_eq_display!(expr, expected);
                 }
                 AlphaNormalization => {
-                    let expr =
-                        expr.skip_typecheck().normalize().to_expr_alpha();
+                    let expr = expr.typecheck()?.normalize().to_expr_alpha();
                     assert_eq_display!(expr, expected.to_expr());
                 }
             }
@@ -226,10 +225,15 @@ pub fn run_test(
                 }
                 Normalization | AlphaNormalization => unreachable!(),
                 Typecheck | TypeInference => {
-                    parse_file_str(&file_path)?
-                        .skip_resolve()?
-                        .typecheck()
-                        .unwrap_err();
+                    let res =
+                        parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+                    match res {
+                        Err(_) => {}
+                        // If e did typecheck, check that it doesn't have a type
+                        Ok(e) => {
+                            e.get_type().unwrap_err();
+                        }
+                    }
                 }
             }
         }

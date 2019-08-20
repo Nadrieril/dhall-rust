@@ -3,8 +3,9 @@ use std::io::Error as IOError;
 use dhall_syntax::{BinOp, Import, Label, ParseError, V};
 
 use crate::core::context::TypecheckContext;
+use crate::core::value::Value;
 use crate::phase::resolve::ImportStack;
-use crate::phase::{Normalized, NormalizedSubExpr, Type, Typed};
+use crate::phase::NormalizedSubExpr;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -48,28 +49,27 @@ pub struct TypeError {
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
     UnboundVariable(V<Label>),
-    InvalidInputType(Normalized),
-    InvalidOutputType(Normalized),
-    NotAFunction(Typed),
-    TypeMismatch(Typed, Normalized, Typed),
-    AnnotMismatch(Typed, Normalized),
+    InvalidInputType(Value),
+    InvalidOutputType(Value),
+    NotAFunction(Value),
+    TypeMismatch(Value, Value, Value),
+    AnnotMismatch(Value, Value),
     Untyped,
-    FieldCollision(Label),
-    InvalidListElement(usize, Normalized, Typed),
-    InvalidListType(Normalized),
-    InvalidOptionalType(Normalized),
-    InvalidPredicate(Typed),
-    IfBranchMismatch(Typed, Typed),
-    IfBranchMustBeTerm(bool, Typed),
-    InvalidFieldType(Label, Type),
-    NotARecord(Label, Normalized),
-    MustCombineRecord(Typed),
-    MissingRecordField(Label, Typed),
-    MissingUnionField(Label, Normalized),
-    BinOpTypeMismatch(BinOp, Typed),
-    InvalidTextInterpolation(Typed),
-    Merge1ArgMustBeRecord(Typed),
-    Merge2ArgMustBeUnion(Typed),
+    InvalidListElement(usize, Value, Value),
+    InvalidListType(Value),
+    InvalidOptionalType(Value),
+    InvalidPredicate(Value),
+    IfBranchMismatch(Value, Value),
+    IfBranchMustBeTerm(bool, Value),
+    InvalidFieldType(Label, Value),
+    NotARecord(Label, Value),
+    MustCombineRecord(Value),
+    MissingRecordField(Label, Value),
+    MissingUnionField(Label, Value),
+    BinOpTypeMismatch(BinOp, Value),
+    InvalidTextInterpolation(Value),
+    Merge1ArgMustBeRecord(Value),
+    Merge2ArgMustBeUnion(Value),
     MergeEmptyNeedsAnnotation,
     MergeHandlerMissingVariant(Label),
     MergeVariantMissingHandler(Label),
@@ -79,14 +79,12 @@ pub(crate) enum TypeMessage {
     ProjectionMustBeRecord,
     ProjectionMissingEntry,
     Sort,
-    RecordMismatch(Typed, Typed),
     RecordTypeDuplicateField,
-    RecordTypeMergeRequiresRecordType(Type),
-    RecordTypeMismatch(Type, Type, Type, Type),
+    RecordTypeMergeRequiresRecordType(Value),
     UnionTypeDuplicateField,
-    EquivalenceArgumentMustBeTerm(bool, Typed),
-    EquivalenceTypeMismatch(Typed, Typed),
-    AssertMismatch(Typed, Typed),
+    EquivalenceArgumentMustBeTerm(bool, Value),
+    EquivalenceTypeMismatch(Value, Value),
+    AssertMismatch(Value, Value),
     AssertMustTakeEquivalence,
 }
 

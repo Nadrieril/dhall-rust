@@ -4,8 +4,8 @@ use std::path::Path;
 
 use dhall_syntax::{Const, SubExpr};
 
-use crate::core::thunk::{Thunk, TypedThunk};
 use crate::core::value::Value;
+use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 
@@ -33,15 +33,13 @@ pub struct Resolved(ResolvedSubExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TypedThunk);
+pub struct Typed(Value);
 
 /// A normalized expression.
 ///
 /// Invariant: the contained Typed expression must be in normal form,
 #[derive(Debug, Clone)]
 pub struct Normalized(Typed);
-
-pub type Type = Typed;
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
@@ -71,15 +69,10 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
-        typecheck::typecheck(self)
+        Ok(typecheck::typecheck(self.0)?.into_typed())
     }
-    pub fn typecheck_with(self, ty: &Type) -> Result<Typed, TypeError> {
-        typecheck::typecheck_with(self, ty)
-    }
-    /// Pretends this expression has been typechecked. Use with care.
-    #[allow(dead_code)]
-    pub(crate) fn skip_typecheck(self) -> Typed {
-        typecheck::skip_typecheck(self)
+    pub fn typecheck_with(self, ty: &Typed) -> Result<Typed, TypeError> {
+        Ok(typecheck::typecheck_with(self.0, ty.to_expr())?.into_typed())
     }
 }
 
@@ -97,58 +90,39 @@ impl Typed {
         Normalized(self)
     }
 
-    pub(crate) fn from_thunk_and_type(th: Thunk, t: Type) -> Self {
-        Typed(TypedThunk::from_thunk_and_type(th, t))
-    }
-    pub(crate) fn from_thunk_untyped(th: Thunk) -> Self {
-        Typed(TypedThunk::from_thunk_untyped(th))
-    }
     pub(crate) fn from_const(c: Const) -> Self {
-        Typed(TypedThunk::from_const(c))
+        Typed(Value::from_const(c))
     }
-    pub fn from_value_untyped(v: Value) -> Self {
-        Typed(TypedThunk::from_value_untyped(v))
+    pub fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
+        Typed(Value::from_valuef_and_type(v, t.into_value()))
     }
-    pub(crate) fn from_typethunk(th: TypedThunk) -> Self {
+    pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
     }
-
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
+    pub fn const_type() -> Self {
+        Typed::from_const(Const::Type)
     }
+
     pub fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
-    pub fn to_thunk(&self) -> Thunk {
-        self.0.to_thunk()
+    pub fn to_value(&self) -> Value {
+        self.0.clone()
     }
-    // Deprecated
-    pub fn to_type(&self) -> Type {
-        self.clone()
-    }
-    // Deprecated
-    pub(crate) fn into_type(self) -> Type {
-        self
-    }
-    pub(crate) fn into_typethunk(self) -> TypedThunk {
+    pub(crate) fn into_value(self) -> Value {
         self.0
-    }
-    pub(crate) fn to_normalized(&self) -> Normalized {
-        self.clone().normalize()
-    }
-    pub(crate) fn as_const(&self) -> Option<Const> {
-        self.0.as_const()
     }
 
     pub(crate) fn normalize_mut(&mut self) {
         self.0.normalize_mut()
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Type>, TypeError> {
-        self.0.get_type()
+    #[allow(dead_code)]
+    pub(crate) fn get_type(&self) -> Result<Cow<'_, Typed>, TypeError> {
+        Ok(Cow::Owned(self.0.get_type()?.into_owned().into_typed()))
     }
 }
 
@@ -163,13 +137,6 @@ impl Normalized {
     #[allow(dead_code)]
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
-    }
-    #[allow(dead_code)]
-    pub(crate) fn to_type(&self) -> Type {
-        self.0.to_type()
-    }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.to_value()
     }
     pub(crate) fn into_typed(self) -> Typed {
         self.0
@@ -188,8 +155,8 @@ impl Shift for Normalized {
     }
 }
 
-impl Subst<Typed> for Typed {
-    fn subst_shift(&self, var: &AlphaVar, val: &Typed) -> Self {
+impl Subst<Value> for Typed {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         Typed(self.0.subst_shift(var, val))
     }
 }
@@ -234,7 +201,7 @@ impl std::hash::Hash for Normalized {
 impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {
-        self.to_value() == other.to_value()
+        self.0 == other.0
     }
 }
 

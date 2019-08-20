@@ -124,9 +124,9 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::core::thunk::{Thunk, TypedThunk};
     use dhall::core::value::Value as DhallValue;
-    use dhall::phase::{NormalizedSubExpr, Parsed, Type, Typed};
+    use dhall::core::valuef::ValueF as DhallValueF;
+    use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
     use dhall_syntax::Builtin;
 
     use super::de::{Error, Result};
@@ -146,34 +146,37 @@ pub mod value {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(&t.to_type())?,
+                Some(t) => resolved.typecheck_with(t.as_typed())?,
             };
             Ok(Value(typed))
         }
         pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
             self.0.to_expr()
         }
-        pub(crate) fn to_thunk(&self) -> Thunk {
-            self.0.to_thunk()
+        pub(crate) fn to_value(&self) -> DhallValue {
+            self.0.to_value()
         }
-        pub(crate) fn to_type(&self) -> Type {
-            self.0.to_type()
+        pub(crate) fn as_typed(&self) -> &Typed {
+            &self.0
         }
 
-        pub(crate) fn from_dhall_value(v: DhallValue) -> Self {
-            Value(Typed::from_value_untyped(v))
+        /// Assumes that the given value has type `Type`.
+        pub(crate) fn make_simple_type(v: DhallValueF) -> Self {
+            Value(Typed::from_valuef_and_type(v, Typed::const_type()))
         }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Self::from_dhall_value(DhallValue::from_builtin(b))
+            Self::make_simple_type(DhallValueF::from_builtin(b))
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
-            Self::from_dhall_value(
-                DhallValue::from_builtin(Builtin::Optional).app_thunk(t.to_thunk()),
+            Self::make_simple_type(
+                DhallValueF::from_builtin(Builtin::Optional)
+                    .app_value(t.to_value()),
             )
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
-            Self::from_dhall_value(
-                DhallValue::from_builtin(Builtin::List).app_thunk(t.to_thunk()),
+            Self::make_simple_type(
+                DhallValueF::from_builtin(Builtin::List)
+                    .app_value(t.to_value()),
             )
         }
         // Made public for the StaticType derive macro
@@ -181,22 +184,17 @@ pub mod value {
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Value)>,
         ) -> Self {
-            Self::from_dhall_value(DhallValue::RecordType(
-                kts.map(|(k, t)| {
-                    (k.into(), TypedThunk::from_thunk(t.to_thunk()))
-                })
-                .collect(),
+            Self::make_simple_type(DhallValueF::RecordType(
+                kts.map(|(k, t)| (k.into(), t.to_value())).collect(),
             ))
         }
         #[doc(hidden)]
         pub fn make_union_type(
             kts: impl Iterator<Item = (String, Option<Value>)>,
         ) -> Self {
-            Self::from_dhall_value(DhallValue::UnionType(
-                kts.map(|(k, t)| {
-                    (k.into(), t.map(|t| TypedThunk::from_thunk(t.to_thunk())))
-                })
-                .collect(),
+            Self::make_simple_type(DhallValueF::UnionType(
+                kts.map(|(k, t)| (k.into(), t.map(|t| t.to_value())))
+                    .collect(),
             ))
         }
     }
