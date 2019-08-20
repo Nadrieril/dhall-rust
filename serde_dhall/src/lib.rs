@@ -124,8 +124,6 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::core::value::Value as DhallValue;
-    use dhall::core::valuef::ValueF as DhallValueF;
     use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
     use dhall_syntax::Builtin;
 
@@ -153,50 +151,32 @@ pub mod value {
         pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
             self.0.to_expr()
         }
-        pub(crate) fn to_value(&self) -> DhallValue {
-            self.0.to_value()
-        }
         pub(crate) fn as_typed(&self) -> &Typed {
             &self.0
         }
 
-        /// Assumes that the given value has type `Type`.
-        pub(crate) fn make_simple_type(v: DhallValueF) -> Self {
-            Value(Typed::from_valuef_and_type(v, Typed::const_type()))
-        }
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Self::make_simple_type(DhallValueF::from_builtin(b))
+            Value(Typed::make_builtin_type(b))
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
-            Self::make_simple_type(
-                DhallValueF::from_builtin(Builtin::Optional)
-                    .app(t.to_value())
-                    .into_whnf(),
-            )
+            Value(Typed::make_optional_type(t.0))
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
-            Self::make_simple_type(
-                DhallValueF::from_builtin(Builtin::List)
-                    .app(t.to_value())
-                    .into_whnf(),
-            )
+            Value(Typed::make_list_type(t.0))
         }
         // Made public for the StaticType derive macro
         #[doc(hidden)]
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Value)>,
         ) -> Self {
-            Self::make_simple_type(DhallValueF::RecordType(
-                kts.map(|(k, t)| (k.into(), t.to_value())).collect(),
-            ))
+            Value(Typed::make_record_type(kts.map(|(k, t)| (k, t.0))))
         }
         #[doc(hidden)]
         pub fn make_union_type(
             kts: impl Iterator<Item = (String, Option<Value>)>,
         ) -> Self {
-            Self::make_simple_type(DhallValueF::UnionType(
-                kts.map(|(k, t)| (k.into(), t.map(|t| t.to_value())))
-                    .collect(),
+            Value(Typed::make_union_type(
+                kts.map(|(k, t)| (k, t.map(|t| t.0))),
             ))
         }
     }
