@@ -65,12 +65,6 @@ impl ValueF {
             form: Form::WHNF,
         }
     }
-    pub(crate) fn into_vovf_nf(self) -> VoVF {
-        VoVF::ValueF {
-            val: self,
-            form: Form::NF,
-        }
-    }
 
     /// Convert the value to a fully normalized syntactic expression
     pub(crate) fn normalize_to_expr(&self) -> NormalizedSubExpr {
