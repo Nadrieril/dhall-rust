@@ -61,16 +61,25 @@ impl ValueInternal {
     }
 
     fn normalize_whnf(&mut self) {
-        take_mut::take(self, |vint| match &vint.form {
-            Unevaled => ValueInternal {
-                form: WHNF,
-                // TODO: thunk chaining
-                value: normalize_whnf(vint.value).into_whnf(),
-                ty: vint.ty,
+        take_mut::take_or_recover(
+            self,
+            // Dummy value in case the other closure panics
+            || ValueInternal {
+                form: Unevaled,
+                value: ValueF::Const(Const::Type),
+                ty: None,
             },
-            // Already in WHNF
-            WHNF | NF => vint,
-        })
+            |vint| match &vint.form {
+                Unevaled => ValueInternal {
+                    form: WHNF,
+                    // TODO: thunk chaining
+                    value: normalize_whnf(vint.value).into_whnf(),
+                    ty: vint.ty,
+                },
+                // Already in WHNF
+                WHNF | NF => vint,
+            },
+        )
     }
     fn normalize_nf(&mut self) {
         match self.form {
