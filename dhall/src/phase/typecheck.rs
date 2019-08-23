@@ -567,7 +567,9 @@ fn type_last_layer(
 
             // Union the two records, prefering
             // the values found in the RHS.
-            let kts = merge_maps(kts_x, kts_y, |_, r_t| r_t.clone());
+            let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, r_t| {
+                Ok(r_t.clone())
+            })?;
 
             // Construct the final record type from the union
             RetTypeOnly(tck_record_type(
@@ -584,25 +586,7 @@ fn type_last_layer(
             ),
         )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
-            use crate::phase::normalize::intersection_with_key;
-
-            // Extract the Const of the LHS
-            let k_l = match l.get_type()?.as_const() {
-                Some(k) => k,
-                _ => {
-                    return mkerr(RecordTypeMergeRequiresRecordType(l.clone()))
-                }
-            };
-
-            // Extract the Const of the RHS
-            let k_r = match r.get_type()?.as_const() {
-                Some(k) => k,
-                _ => {
-                    return mkerr(RecordTypeMergeRequiresRecordType(r.clone()))
-                }
-            };
-
-            let k = max(k_l, k_r);
+            use crate::phase::normalize::merge_maps;
 
             // Extract the LHS record type
             let borrow_l = l.as_whnf();
@@ -623,9 +607,11 @@ fn type_last_layer(
             };
 
             // Ensure that the records combine without a type error
-            let kts = intersection_with_key(
+            let kts = merge_maps(
+                kts_x,
+                kts_y,
                 // If the Label exists for both records, then we hit the recursive case.
-                |_: &Label, l: &Value, r: &Value| {
+                |l: &Value, r: &Value| {
                     type_last_layer(
                         ctx,
                         ExprF::BinOp(
@@ -635,12 +621,9 @@ fn type_last_layer(
                         ),
                     )
                 },
-                kts_x,
-                kts_y,
-            );
-            tck_record_type(ctx, kts.into_iter().map(|(x, v)| Ok((x, v?))))?;
+            )?;
 
-            RetTypeOnly(Value::from_const(k))
+            RetWhole(tck_record_type(ctx, kts.into_iter().map(Ok))?)
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {

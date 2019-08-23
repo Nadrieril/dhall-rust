@@ -452,53 +452,20 @@ pub(crate) fn squash_textlit(
     ret
 }
 
-/// Performs an intersection of two HashMaps.
-///
-/// # Arguments
-///
-/// * `f` - Will compute the final value from the intersecting
-///         key and the values from both maps.
-///
-/// # Description
-///
-/// If the key is present in both maps then the final value for
-/// that key is computed via the `f` function.
-///
-/// The final map will contain the shared keys from the
-/// two input maps with the final computed value from `f`.
-pub(crate) fn intersection_with_key<K, T, U, V>(
-    mut f: impl FnMut(&K, &T, &U) -> V,
-    map1: &HashMap<K, T>,
-    map2: &HashMap<K, U>,
-) -> HashMap<K, V>
-where
-    K: std::hash::Hash + Eq + Clone,
-{
-    let mut kvs = HashMap::new();
-
-    for (k, t) in map1 {
-        // Only insert in the final map if the key exists in both
-        if let Some(u) = map2.get(k) {
-            kvs.insert(k.clone(), f(k, t, u));
-        }
-    }
-
-    kvs
-}
-
-pub(crate) fn merge_maps<K, V>(
+pub(crate) fn merge_maps<K, V, F, Err>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,
-    mut f: impl FnMut(&V, &V) -> V,
-) -> HashMap<K, V>
+    mut f: F,
+) -> Result<HashMap<K, V>, Err>
 where
+    F: FnMut(&V, &V) -> Result<V, Err>,
     K: std::hash::Hash + Eq + Clone,
     V: Clone,
 {
     let mut kvs = HashMap::new();
     for (x, v2) in map2 {
         let newv = if let Some(v1) = map1.get(x) {
-            f(v1, v2)
+            f(v1, v2)?
         } else {
             v2.clone()
         };
@@ -508,7 +475,7 @@ where
         // Insert only if key not already present
         kvs.entry(x.clone()).or_insert_with(|| v1.clone());
     }
-    kvs
+    Ok(kvs)
 }
 
 fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
@@ -518,8 +485,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         RightBiasedRecordMerge, TextAppend,
     };
     use ValueF::{
-        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
-        TextLit,
+        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, TextLit,
     };
     let x_borrow = x.as_whnf();
     let y_borrow = y.as_whnf();
@@ -604,31 +570,16 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                Value::from_valuef_untyped(ValueF::PartialExpr(ExprF::BinOp(
-                    RecursiveRecordMerge,
-                    v1.clone(),
-                    v2.clone(),
+            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |v1, v2| {
+                Ok(Value::from_valuef_untyped(ValueF::PartialExpr(
+                    ExprF::BinOp(RecursiveRecordMerge, v1.clone(), v2.clone()),
                 )))
-            });
+            })?;
             Ret::ValueF(RecordLit(kvs))
         }
 
-        (RecursiveRecordTypeMerge, _, RecordType(kvs)) if kvs.is_empty() => {
-            Ret::ValueRef(x)
-        }
-        (RecursiveRecordTypeMerge, RecordType(kvs), _) if kvs.is_empty() => {
-            Ret::ValueRef(y)
-        }
-        (RecursiveRecordTypeMerge, RecordType(kvs1), RecordType(kvs2)) => {
-            let kvs = merge_maps(kvs1, kvs2, |v1, v2| {
-                Value::from_valuef_untyped(ValueF::PartialExpr(ExprF::BinOp(
-                    RecursiveRecordTypeMerge,
-                    v1.clone(),
-                    v2.clone(),
-                )))
-            });
-            Ret::ValueF(RecordType(kvs))
+        (RecursiveRecordTypeMerge, _, _) => {
+            unreachable!("This case should have been handled in typecheck")
         }
 
         (Equivalence, _, _) => {
