@@ -291,7 +291,7 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
     let ctx = TypecheckContext::new();
     Value::from_valuef_and_type(
-        ValueF::PartialExpr(ExprF::Builtin(b)),
+        ValueF::from_builtin(b),
         type_with(&ctx, rc(type_of_builtin(b))).unwrap(),
     )
 }
@@ -399,7 +399,7 @@ fn type_last_layer(
             if &x.get_type()? != t {
                 return mkerr(AnnotMismatch(x.clone(), t.clone()));
             }
-            RetTypeOnly(x.get_type()?)
+            RetWhole(x.clone())
         }
         Assert(t) => {
             match &*t.as_whnf() {
@@ -649,7 +649,10 @@ fn type_last_layer(
                 return mkerr(EquivalenceTypeMismatch(r.clone(), l.clone()));
             }
 
-            RetTypeOnly(Value::from_const(Type))
+            RetWhole(Value::from_valuef_and_type(
+                ValueF::Equivalence(l.clone(), r.clone()),
+                Value::from_const(Type),
+            ))
         }
         BinOp(o, l, r) => {
             let t = builtin_to_value(match o {

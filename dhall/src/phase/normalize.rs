@@ -578,12 +578,8 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
             Ret::ValueF(RecordLit(kvs))
         }
 
-        (RecursiveRecordTypeMerge, _, _) => {
+        (RecursiveRecordTypeMerge, _, _) | (Equivalence, _, _) => {
             unreachable!("This case should have been handled in typecheck")
-        }
-
-        (Equivalence, _, _) => {
-            Ret::ValueF(ValueF::Equivalence(x.clone(), y.clone()))
         }
 
         _ => return None,
@@ -592,25 +588,31 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
 
 pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
     use ValueF::{
-        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit, Lam,
-        NEListLit, NEOptionalLit, NaturalLit, Pi, RecordLit, RecordType,
-        TextLit, UnionConstructor, UnionLit, UnionType,
+        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
+        NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
+        UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
         ExprF::Import(_) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
-        ExprF::Embed(_) => unreachable!(),
-        ExprF::Var(_) => unreachable!(),
-        ExprF::Annot(x, _) => Ret::Value(x),
+        // Those cases have already been completely handled in the typechecking phase (using
+        // `RetWhole`), so they won't appear here.
+        ExprF::Lam(_, _, _)
+        | ExprF::Pi(_, _, _)
+        | ExprF::Let(_, _, _, _)
+        | ExprF::Embed(_)
+        | ExprF::Const(_)
+        | ExprF::Builtin(_)
+        | ExprF::Var(_)
+        | ExprF::Annot(_, _)
+        | ExprF::RecordType(_)
+        | ExprF::UnionType(_) => {
+            unreachable!("This case should have been handled in typecheck")
+        }
         ExprF::Assert(_) => Ret::Expr(expr),
-        ExprF::Lam(x, t, e) => Ret::ValueF(Lam(x.into(), t, e)),
-        ExprF::Pi(x, t, e) => Ret::ValueF(Pi(x.into(), t, e)),
-        ExprF::Let(x, _, v, b) => Ret::Value(b.subst_shift(&x.into(), &v)),
         ExprF::App(v, a) => Ret::Value(v.app(a)),
-        ExprF::Builtin(b) => Ret::ValueF(ValueF::from_builtin(b)),
-        ExprF::Const(c) => Ret::ValueF(ValueF::Const(c)),
         ExprF::BoolLit(b) => Ret::ValueF(BoolLit(b)),
         ExprF::NaturalLit(n) => Ret::ValueF(NaturalLit(n)),
         ExprF::IntegerLit(n) => Ret::ValueF(IntegerLit(n)),
@@ -634,12 +636,6 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
         }
         ExprF::RecordLit(kvs) => {
             Ret::ValueF(RecordLit(kvs.into_iter().collect()))
-        }
-        ExprF::RecordType(kts) => {
-            Ret::ValueF(RecordType(kts.into_iter().collect()))
-        }
-        ExprF::UnionType(kts) => {
-            Ret::ValueF(UnionType(kts.into_iter().collect()))
         }
         ExprF::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
