@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dhall_syntax::Const::Type;
 use dhall_syntax::{
     BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble,
@@ -7,7 +8,7 @@ use dhall_syntax::{
 
 use crate::core::value::{Value, VoVF};
 use crate::core::valuef::ValueF;
-use crate::core::var::{Shift, Subst};
+use crate::core::var::{AlphaLabel, Shift, Subst};
 use crate::phase::Normalized;
 
 // Small helper enum to avoid repetition
@@ -32,21 +33,24 @@ impl<'a> Ret<'a> {
 // Ad-hoc macro to help construct closures
 macro_rules! make_closure {
     (#$var:ident) => { $var.clone() };
-    (var($var:ident, $n:expr)) => {{
+    (var($var:ident, $n:expr, $($ty:tt)*)) => {{
         let var = crate::core::var::AlphaVar::from_var_and_alpha(
             Label::from(stringify!($var)).into(),
             $n
         );
-        ValueF::Var(var).into_value_untyped()
+        ValueF::Var(var)
+            .into_value_with_type(make_closure!($($ty)*))
     }};
     // Warning: assumes that $ty, as a dhall value, has type `Type`
-    (λ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
-        ValueF::Lam(
-            Label::from(stringify!($var)).into(),
-            make_closure!($($ty)*),
-            make_closure!($($rest)*),
-        ).into_value_untyped()
-    };
+    (λ($var:ident : $($ty:tt)*) -> $($body:tt)*) => {{
+        let var: AlphaLabel = Label::from(stringify!($var)).into();
+        let ty = make_closure!($($ty)*);
+        let body = make_closure!($($body)*);
+        let body_ty = body.get_type().expect("Internal type error");
+        let lam_ty = ValueF::Pi(var.clone(), ty.clone(), body_ty)
+            .into_value_with_type(Value::from_const(Type));
+        ValueF::Lam(var, ty, body).into_value_with_type(lam_ty)
+    }};
     (Natural) => {
         Value::from_builtin(Builtin::Natural)
     };
@@ -54,10 +58,12 @@ macro_rules! make_closure {
         Value::from_builtin(Builtin::List)
             .app(make_closure!($($rest)*))
     };
-    (Some($($rest:tt)*)) => {
-        ValueF::NEOptionalLit(make_closure!($($rest)*))
-            .into_value_untyped()
-    };
+    (Some($($rest:tt)*)) => {{
+        let v = make_closure!($($rest)*);
+        let v_type = v.get_type().expect("Internal type error");
+        ValueF::NEOptionalLit(v)
+            .into_value_with_type(v_type)
+    }};
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::NaturalPlus,
@@ -70,18 +76,25 @@ macro_rules! make_closure {
             make_closure!(Natural)
         )
     };
-    ([ $($head:tt)* ] # $($tail:tt)*) => {
+    ([ $($head:tt)* ] # $($tail:tt)*) => {{
+        let head = make_closure!($($head)*);
+        let tail = make_closure!($($tail)*);
+        let list_type = tail.get_type().expect("Internal type error");
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::ListAppend,
-            ValueF::NEListLit(vec![make_closure!($($head)*)])
-                .into_value_untyped(),
-            make_closure!($($tail)*),
-        )).into_value_untyped()
-    };
+            ValueF::NEListLit(vec![head])
+                .into_value_with_type(list_type.clone()),
+            tail,
+        )).into_value_with_type(list_type)
+    }};
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
+pub(crate) fn apply_builtin(
+    b: Builtin,
+    args: Vec<Value>,
+    _ty: Option<&Value>,
+) -> VoVF {
     use dhall_syntax::Builtin::*;
     use ValueF::*;
 
@@ -231,37 +244,60 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
             )),
             _ => Err(()),
         },
-        (ListIndexed, [_, l, r..]) => match &*l.as_whnf() {
-            EmptyListLit(t) => {
-                let mut kts = HashMap::new();
-                kts.insert("index".into(), Value::from_builtin(Natural));
-                kts.insert("value".into(), t.clone());
-                Ok((
-                    r,
-                    Ret::ValueF(EmptyListLit(Value::from_valuef_untyped(
+        (ListIndexed, [_, l, r..]) => {
+            let l_whnf = l.as_whnf();
+            match &*l_whnf {
+                EmptyListLit(_) | NEListLit(_) => {
+                    // Extract the type of the list elements
+                    let t = match &*l_whnf {
+                        EmptyListLit(t) => t.clone(),
+                        NEListLit(xs) => {
+                            xs[0].get_type().expect("Internal type error")
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    // Construct the returned record type: { index: Natural, value: t }
+                    let mut kts = HashMap::new();
+                    kts.insert("index".into(), Value::from_builtin(Natural));
+                    kts.insert("value".into(), t.clone());
+                    let t = Value::from_valuef_and_type(
                         RecordType(kts),
-                    ))),
-                ))
+                        Value::from_const(Type),
+                    );
+
+                    // Construct the new list, with added indices
+                    let list = match &*l_whnf {
+                        EmptyListLit(_) => EmptyListLit(t),
+                        NEListLit(xs) => NEListLit(
+                            xs.iter()
+                                .enumerate()
+                                .map(|(i, e)| {
+                                    let mut kvs = HashMap::new();
+                                    kvs.insert(
+                                        "index".into(),
+                                        Value::from_valuef_and_type(
+                                            NaturalLit(i),
+                                            Value::from_builtin(
+                                                Builtin::Natural,
+                                            ),
+                                        ),
+                                    );
+                                    kvs.insert("value".into(), e.clone());
+                                    Value::from_valuef_and_type(
+                                        RecordLit(kvs),
+                                        t.clone(),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                        _ => unreachable!(),
+                    };
+                    Ok((r, Ret::ValueF(list)))
+                }
+                _ => Err(()),
             }
-            NEListLit(xs) => {
-                let xs = xs
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| {
-                        let i = NaturalLit(i);
-                        let mut kvs = HashMap::new();
-                        kvs.insert(
-                            "index".into(),
-                            Value::from_valuef_untyped(i),
-                        );
-                        kvs.insert("value".into(), e.clone());
-                        Value::from_valuef_untyped(RecordLit(kvs))
-                    })
-                    .collect();
-                Ok((r, Ret::ValueF(NEListLit(xs))))
-            }
-            _ => Err(()),
-        },
+        }
         (ListBuild, [t, f, r..]) => match &*f.as_whnf() {
             // fold/build fusion
             ValueF::AppliedBuiltin(ListFold, args) => {
@@ -279,12 +315,13 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                     Ret::Value(
                         f.app(list_t.clone())
                             .app({
-                                // Move `t` under new `x` variable
+                                // Move `t` under new variables
                                 let t1 = t.under_binder(Label::from("x"));
+                                let t2 = t1.under_binder(Label::from("xs"));
                                 make_closure!(
                                     λ(x : #t) ->
                                     λ(xs : List #t1) ->
-                                    [ var(x, 1) ] # var(xs, 0)
+                                    [ var(x, 1, #t2) ] # var(xs, 0, List #t2)
                                 )
                             })
                             .app(
@@ -322,7 +359,10 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                     r,
                     Ret::Value(
                         f.app(optional_t.clone())
-                            .app(make_closure!(λ(x: #t) -> Some(var(x, 0))))
+                            .app({
+                                let t1 = t.under_binder(Label::from("x"));
+                                make_closure!(λ(x: #t) -> Some(var(x, 0, #t1)))
+                            })
                             .app(
                                 EmptyOptionalLit(t.clone())
                                     .into_value_with_type(optional_t),
@@ -350,7 +390,9 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
                 r,
                 Ret::Value(
                     f.app(Value::from_builtin(Natural))
-                        .app(make_closure!(λ(x : Natural) -> 1 + var(x, 0)))
+                        .app(make_closure!(
+                            λ(x : Natural) -> 1 + var(x, 0, Natural)
+                        ))
                         .app(NaturalLit(0).into_value_with_type(
                             Value::from_builtin(Natural),
                         )),
@@ -387,7 +429,7 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>) -> VoVF {
     }
 }
 
-pub(crate) fn apply_any(f: Value, a: Value) -> VoVF {
+pub(crate) fn apply_any(f: Value, a: Value, ty: Option<&Value>) -> VoVF {
     let fallback = |f: Value, a: Value| {
         ValueF::PartialExpr(ExprF::App(f, a)).into_vovf_whnf()
     };
@@ -398,7 +440,7 @@ pub(crate) fn apply_any(f: Value, a: Value) -> VoVF {
         ValueF::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
-            apply_builtin(*b, args)
+            apply_builtin(*b, args, ty)
         }
         ValueF::UnionConstructor(l, kts) => {
             ValueF::UnionLit(l.clone(), a, kts.clone()).into_vovf_whnf()
@@ -458,14 +500,14 @@ pub(crate) fn merge_maps<K, V, F, Err>(
     mut f: F,
 ) -> Result<HashMap<K, V>, Err>
 where
-    F: FnMut(&V, &V) -> Result<V, Err>,
+    F: FnMut(&K, &V, &V) -> Result<V, Err>,
     K: std::hash::Hash + Eq + Clone,
     V: Clone,
 {
     let mut kvs = HashMap::new();
     for (x, v2) in map2 {
         let newv = if let Some(v1) = map1.get(x) {
-            f(v1, v2)?
+            f(x, v1, v2)?
         } else {
             v2.clone()
         };
@@ -478,14 +520,20 @@ where
     Ok(kvs)
 }
 
-fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
+fn apply_binop<'a>(
+    o: BinOp,
+    x: &'a Value,
+    y: &'a Value,
+    ty: Option<&Value>,
+) -> Option<Ret<'a>> {
     use BinOp::{
         BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
         RightBiasedRecordMerge, TextAppend,
     };
     use ValueF::{
-        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, TextLit,
+        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
+        TextLit,
     };
     let x_borrow = x.as_whnf();
     let y_borrow = y.as_whnf();
@@ -570,10 +618,21 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |v1, v2| {
-                Ok(Value::from_valuef_untyped(ValueF::PartialExpr(
-                    ExprF::BinOp(RecursiveRecordMerge, v1.clone(), v2.clone()),
-                )))
+            let ty = ty.expect("Internal type error");
+            let ty_borrow = ty.as_whnf();
+            let kts = match &*ty_borrow {
+                RecordType(kts) => kts,
+                _ => unreachable!("Internal type error"),
+            };
+            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |k, v1, v2| {
+                Ok(Value::from_valuef_and_type(
+                    ValueF::PartialExpr(ExprF::BinOp(
+                        RecursiveRecordMerge,
+                        v1.clone(),
+                        v2.clone(),
+                    )),
+                    kts.get(k).expect("Internal type error").clone(),
+                ))
             })?;
             Ret::ValueF(RecordLit(kvs))
         }
@@ -586,7 +645,10 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
     })
 }
 
-pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
+pub(crate) fn normalize_one_layer(
+    expr: ExprF<Value, Normalized>,
+    ty: Option<&Value>,
+) -> VoVF {
     use ValueF::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
         NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
@@ -669,7 +731,7 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
                 }
             }
         }
-        ExprF::BinOp(o, ref x, ref y) => match apply_binop(o, x, y) {
+        ExprF::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
             Some(ret) => ret,
             None => Ret::Expr(expr),
         },
@@ -746,10 +808,10 @@ pub(crate) fn normalize_one_layer(expr: ExprF<Value, Normalized>) -> VoVF {
 }
 
 /// Normalize a ValueF into WHNF
-pub(crate) fn normalize_whnf(v: ValueF) -> VoVF {
+pub(crate) fn normalize_whnf(v: ValueF, ty: Option<&Value>) -> VoVF {
     match v {
-        ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args),
-        ValueF::PartialExpr(e) => normalize_one_layer(e),
+        ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
+        ValueF::PartialExpr(e) => normalize_one_layer(e, ty),
         ValueF::TextLit(elts) => {
             ValueF::TextLit(squash_textlit(elts.into_iter())).into_vovf_whnf()
         }

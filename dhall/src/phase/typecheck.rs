@@ -307,14 +307,15 @@ fn type_with(
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
     Ok(match e.as_ref() {
-        Lam(x, t, b) => {
-            let tx = type_with(ctx, t.clone())?;
-            let ctx2 = ctx.insert_type(x, tx.clone());
-            let b = type_with(&ctx2, b.clone())?;
-            let v = ValueF::Lam(x.clone().into(), tx.clone(), b.clone());
-            let tb = b.get_type()?;
-            let t = tck_pi_type(ctx, x.clone(), tx, tb)?;
-            Value::from_valuef_and_type(v, t)
+        Lam(var, annot, body) => {
+            let annot = type_with(ctx, annot.clone())?;
+            let ctx2 = ctx.insert_type(var, annot.clone());
+            let body = type_with(&ctx2, body.clone())?;
+            let body_type = body.get_type()?;
+            Value::from_valuef_and_type(
+                ValueF::Lam(var.clone().into(), annot.clone(), body),
+                tck_pi_type(ctx, var.clone(), annot, body_type)?,
+            )
         }
         Pi(x, ta, tb) => {
             let ta = type_with(ctx, ta.clone())?;
@@ -567,7 +568,7 @@ fn type_last_layer(
 
             // Union the two records, prefering
             // the values found in the RHS.
-            let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, r_t| {
+            let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, _, r_t| {
                 Ok(r_t.clone())
             })?;
 
@@ -611,7 +612,7 @@ fn type_last_layer(
                 kts_x,
                 kts_y,
                 // If the Label exists for both records, then we hit the recursive case.
-                |l: &Value, r: &Value| {
+                |_, l: &Value, r: &Value| {
                     type_last_layer(
                         ctx,
                         ExprF::BinOp(

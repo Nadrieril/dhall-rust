@@ -70,12 +70,25 @@ impl ValueInternal {
                 ty: None,
             },
             |vint| match &vint.form {
-                Unevaled => ValueInternal {
-                    form: WHNF,
-                    // TODO: thunk chaining
-                    value: normalize_whnf(vint.value).into_whnf(),
-                    ty: vint.ty,
-                },
+                Unevaled => {
+                    let (value, ty) = (vint.value, vint.ty);
+                    let vovf = normalize_whnf(value, ty.as_ref());
+                    // let was_value = if let VoVF::Value(_) = &vovf {
+                    //     true
+                    // } else {
+                    //     false
+                    // };
+                    let (new_val, _new_ty) =
+                        vovf.into_whnf_and_type(ty.as_ref());
+                    // if was_value {
+                    //     debug_assert_eq!(ty, new_ty);
+                    // }
+                    ValueInternal {
+                        form: WHNF,
+                        value: new_val,
+                        ty: ty,
+                    }
+                }
                 // Already in WHNF
                 WHNF | NF => vint,
             },
@@ -221,7 +234,8 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        let vovf = apply_any(self.clone(), v.clone());
+        let ty = self.get_type().ok();
+        let vovf = apply_any(self.clone(), v.clone(), ty.as_ref());
         match self.as_internal().get_type() {
             Err(_) => vovf.into_value_untyped(),
             Ok(t) => match &*t.as_whnf() {
@@ -240,15 +254,18 @@ impl Value {
 }
 
 impl VoVF {
-    pub(crate) fn into_whnf(self) -> ValueF {
+    pub(crate) fn into_whnf_and_type(
+        self,
+        ty: Option<&Value>,
+    ) -> (ValueF, Option<Value>) {
         match self {
-            VoVF::Value(v) => v.to_whnf(),
             VoVF::ValueF {
                 val,
                 form: Unevaled,
-            } => normalize_whnf(val).into_whnf(),
+            } => normalize_whnf(val, ty).into_whnf_and_type(ty),
             // Already at lest in WHNF
-            VoVF::ValueF { val, .. } => val,
+            VoVF::ValueF { val, .. } => (val, None),
+            VoVF::Value(v) => (v.to_whnf(), v.get_type().ok()),
         }
     }
     pub(crate) fn into_value_untyped(self) -> Value {

@@ -35,6 +35,9 @@ add some of the more complicated Prelude tests back, like List/enumerate
 success/
     regression/
         RecursiveRecordTypeMergeTripleCollision { x : { a : Bool } } ⩓ { x : { b : Bool } } ⩓ { x : { c : Bool } }
+        somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
+        somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
+        somehow test types added to the Foo/build closures
 failure/
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
