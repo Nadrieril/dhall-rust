@@ -129,21 +129,16 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-fn type_of_const(c: Const) -> Result<Value, TypeError> {
-    match c {
-        Const::Type => Ok(const_to_value(Const::Kind)),
-        Const::Kind => Ok(const_to_value(Const::Sort)),
-        Const::Sort => {
-            Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
-        }
-    }
-}
-
 pub(crate) fn const_to_value(c: Const) -> Value {
     let v = ValueF::Const(c);
-    match type_of_const(c) {
-        Ok(t) => Value::from_valuef_and_type(v, t),
-        Err(_) => Value::from_valuef_untyped(v),
+    match c {
+        Const::Type => {
+            Value::from_valuef_and_type(v, const_to_value(Const::Kind))
+        }
+        Const::Kind => {
+            Value::from_valuef_and_type(v, const_to_value(Const::Sort))
+        }
+        Const::Sort => Value::const_sort(),
     }
 }
 

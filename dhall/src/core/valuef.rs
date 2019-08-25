@@ -47,9 +47,6 @@ pub(crate) enum ValueF {
 }
 
 impl ValueF {
-    pub(crate) fn into_value_untyped(self) -> Value {
-        Value::from_valuef_untyped(self)
-    }
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
     }

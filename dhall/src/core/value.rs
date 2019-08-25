@@ -27,13 +27,14 @@ pub(crate) enum Form {
 }
 use Form::{Unevaled, NF, WHNF};
 
-#[derive(Debug)]
 /// Partially normalized value.
 /// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
 /// Invariant: if `form` is `NF`, `value` must be fully normalized
+#[derive(Debug)]
 struct ValueInternal {
     form: Form,
     value: ValueF,
+    /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
 }
 
@@ -69,11 +70,15 @@ impl ValueInternal {
                 value: ValueF::Const(Const::Type),
                 ty: None,
             },
-            |vint| match &vint.form {
-                Unevaled => {
+            |vint| match (&vint.form, &vint.ty) {
+                (Unevaled, None) => ValueInternal {
+                    form: NF,
+                    value: ValueF::Const(Const::Sort),
+                    ty: None,
+                },
+                (Unevaled, Some(ty)) => {
                     let new_value =
-                        normalize_whnf(vint.value, vint.ty.as_ref())
-                            .into_whnf(vint.ty.as_ref());
+                        normalize_whnf(vint.value, &ty).into_whnf(&ty);
                     ValueInternal {
                         form: WHNF,
                         value: new_value,
@@ -81,7 +86,7 @@ impl ValueInternal {
                     }
                 }
                 // Already in WHNF
-                WHNF | NF => vint,
+                (WHNF, _) | (NF, _) => vint,
             },
         )
     }
@@ -103,10 +108,9 @@ impl ValueInternal {
     fn get_type(&self) -> Result<&Value, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
-            None => Err(TypeError::new(
-                &TypecheckContext::new(),
-                TypeMessage::Untyped,
-            )),
+            None => {
+                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
+            }
         }
     }
 }
@@ -115,8 +119,12 @@ impl Value {
     pub(crate) fn new(value: ValueF, form: Form, ty: Option<Value>) -> Value {
         ValueInternal { form, value, ty }.into_value()
     }
+    // TODO: this is very wrong
     pub(crate) fn from_valuef_untyped(v: ValueF) -> Value {
         Value::new(v, Unevaled, None)
+    }
+    pub(crate) fn const_sort() -> Value {
+        Value::new(ValueF::Const(Const::Sort), NF, None)
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
         Value::new(v, Unevaled, Some(t))
@@ -225,27 +233,30 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        let ty = self.get_type().ok();
-        let vovf = apply_any(self.clone(), v.clone(), ty.as_ref());
-        match self.as_internal().get_type() {
-            Err(_) => vovf.into_value_untyped(),
-            Ok(t) => match &*t.as_whnf() {
-                ValueF::Pi(x, _, e) => {
-                    let t = e.subst_shift(&x.into(), &v);
-                    vovf.into_value_with_type(t)
-                }
-                _ => unreachable!("Internal type error"),
-            },
+        let t = self.get_type_not_sort();
+        let vovf = apply_any(self.clone(), v.clone(), &t);
+        let t_borrow = t.as_whnf();
+        match &*t_borrow {
+            ValueF::Pi(x, _, e) => {
+                let t = e.subst_shift(&x.into(), &v);
+                vovf.into_value_with_type(t)
+            }
+            _ => unreachable!("Internal type error"),
         }
     }
 
     pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
         Ok(self.as_internal().get_type()?.clone())
     }
+    /// When we know the value isn't `Sort`, this gets the type directly
+    pub(crate) fn get_type_not_sort(&self) -> Value {
+        self.get_type()
+            .expect("Internal type error: value is `Sort` but shouldn't be")
+    }
 }
 
 impl VoVF {
-    pub(crate) fn into_whnf(self, ty: Option<&Value>) -> ValueF {
+    pub(crate) fn into_whnf(self, ty: &Value) -> ValueF {
         match self {
             VoVF::ValueF {
                 val,
@@ -256,18 +267,12 @@ impl VoVF {
             VoVF::Value(v) => {
                 let v_ty = v.get_type().ok();
                 debug_assert_eq!(
-                    ty,
+                    Some(ty),
                     v_ty.as_ref(),
                     "The type recovered from normalization doesn't match the stored type."
                 );
                 v.to_whnf()
             }
-        }
-    }
-    pub(crate) fn into_value_untyped(self) -> Value {
-        match self {
-            VoVF::Value(v) => v,
-            VoVF::ValueF { val, form } => Value::new(val, form, None),
         }
     }
     pub(crate) fn into_value_with_type(self, ty: Value) -> Value {
@@ -288,7 +293,8 @@ impl VoVF {
     pub(crate) fn app(self, x: Value) -> VoVF {
         VoVF::Value(match self {
             VoVF::Value(v) => v.app(x),
-            VoVF::ValueF { val, .. } => val.into_value_untyped().app(x),
+            // TODO: this is very wrong
+            VoVF::ValueF { val, .. } => Value::from_valuef_untyped(val).app(x),
         })
     }
 }

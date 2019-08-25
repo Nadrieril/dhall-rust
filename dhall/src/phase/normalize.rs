@@ -46,7 +46,7 @@ macro_rules! make_closure {
         let var: AlphaLabel = Label::from(stringify!($var)).into();
         let ty = make_closure!($($ty)*);
         let body = make_closure!($($body)*);
-        let body_ty = body.get_type().expect("Internal type error");
+        let body_ty = body.get_type_not_sort();
         let lam_ty = ValueF::Pi(var.clone(), ty.clone(), body_ty)
             .into_value_with_type(Value::from_const(Type));
         ValueF::Lam(var, ty, body).into_value_with_type(lam_ty)
@@ -60,7 +60,7 @@ macro_rules! make_closure {
     };
     (Some($($rest:tt)*)) => {{
         let v = make_closure!($($rest)*);
-        let v_type = v.get_type().expect("Internal type error");
+        let v_type = v.get_type_not_sort();
         let opt_v_type = Value::from_builtin(Builtin::Optional).app(v_type);
         ValueF::NEOptionalLit(v).into_value_with_type(opt_v_type)
     }};
@@ -79,7 +79,7 @@ macro_rules! make_closure {
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
-        let list_type = tail.get_type().expect("Internal type error");
+        let list_type = tail.get_type_not_sort();
         ValueF::PartialExpr(ExprF::BinOp(
             dhall_syntax::BinOp::ListAppend,
             ValueF::NEListLit(vec![head])
@@ -90,11 +90,7 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn apply_builtin(
-    b: Builtin,
-    args: Vec<Value>,
-    _ty: Option<&Value>,
-) -> VoVF {
+pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>, _ty: &Value) -> VoVF {
     use dhall_syntax::Builtin::*;
     use ValueF::*;
 
@@ -251,9 +247,7 @@ pub(crate) fn apply_builtin(
                     // Extract the type of the list elements
                     let t = match &*l_whnf {
                         EmptyListLit(t) => t.clone(),
-                        NEListLit(xs) => {
-                            xs[0].get_type().expect("Internal type error")
-                        }
+                        NEListLit(xs) => xs[0].get_type_not_sort(),
                         _ => unreachable!(),
                     };
 
@@ -429,7 +423,7 @@ pub(crate) fn apply_builtin(
     }
 }
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: Option<&Value>) -> VoVF {
+pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> VoVF {
     let fallback = |f: Value, a: Value| {
         ValueF::PartialExpr(ExprF::App(f, a)).into_vovf_whnf()
     };
@@ -524,7 +518,7 @@ fn apply_binop<'a>(
     o: BinOp,
     x: &'a Value,
     y: &'a Value,
-    ty: Option<&Value>,
+    ty: &Value,
 ) -> Option<Ret<'a>> {
     use BinOp::{
         BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
@@ -618,7 +612,6 @@ fn apply_binop<'a>(
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let ty = ty.expect("Internal type error");
             let ty_borrow = ty.as_whnf();
             let kts = match &*ty_borrow {
                 RecordType(kts) => kts,
@@ -647,7 +640,7 @@ fn apply_binop<'a>(
 
 pub(crate) fn normalize_one_layer(
     expr: ExprF<Value, Normalized>,
-    ty: Option<&Value>,
+    ty: &Value,
 ) -> VoVF {
     use ValueF::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
@@ -808,7 +801,7 @@ pub(crate) fn normalize_one_layer(
 }
 
 /// Normalize a ValueF into WHNF
-pub(crate) fn normalize_whnf(v: ValueF, ty: Option<&Value>) -> VoVF {
+pub(crate) fn normalize_whnf(v: ValueF, ty: &Value) -> VoVF {
     match v {
         ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
         ValueF::PartialExpr(e) => normalize_one_layer(e, ty),
