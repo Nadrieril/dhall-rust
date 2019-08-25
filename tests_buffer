@@ -28,6 +28,8 @@ variables across import boundaries
     TextLitNested1 "${""}${x}"
     TextLitNested2 "${"${x}"}"
     TextLitNested3 "${"${""}"}${x}"
+    regression/
+        NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
 
 typecheck:
 something that involves destructuring a recordtype after merge

@@ -116,18 +116,24 @@ impl ValueInternal {
 }
 
 impl Value {
-    pub(crate) fn new(value: ValueF, form: Form, ty: Option<Value>) -> Value {
-        ValueInternal { form, value, ty }.into_value()
-    }
-    // TODO: this is very wrong
-    pub(crate) fn from_valuef_untyped(v: ValueF) -> Value {
-        Value::new(v, Unevaled, None)
+    fn new(value: ValueF, form: Form, ty: Value) -> Value {
+        ValueInternal {
+            form,
+            value,
+            ty: Some(ty),
+        }
+        .into_value()
     }
     pub(crate) fn const_sort() -> Value {
-        Value::new(ValueF::Const(Const::Sort), NF, None)
+        ValueInternal {
+            form: NF,
+            value: ValueF::Const(Const::Sort),
+            ty: None,
+        }
+        .into_value()
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
-        Value::new(v, Unevaled, Some(t))
+        Value::new(v, Unevaled, t)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
@@ -286,16 +292,8 @@ impl VoVF {
                 );
                 v
             }
-            VoVF::ValueF { val, form } => Value::new(val, form, Some(ty)),
+            VoVF::ValueF { val, form } => Value::new(val, form, ty),
         }
-    }
-
-    pub(crate) fn app(self, x: Value) -> VoVF {
-        VoVF::Value(match self {
-            VoVF::Value(v) => v.app(x),
-            // TODO: this is very wrong
-            VoVF::ValueF { val, .. } => Value::from_valuef_untyped(val).app(x),
-        })
     }
 }
 
