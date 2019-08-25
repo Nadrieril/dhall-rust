@@ -71,22 +71,13 @@ impl ValueInternal {
             },
             |vint| match &vint.form {
                 Unevaled => {
-                    let (value, ty) = (vint.value, vint.ty);
-                    let vovf = normalize_whnf(value, ty.as_ref());
-                    // let was_value = if let VoVF::Value(_) = &vovf {
-                    //     true
-                    // } else {
-                    //     false
-                    // };
-                    let (new_val, _new_ty) =
-                        vovf.into_whnf_and_type(ty.as_ref());
-                    // if was_value {
-                    //     debug_assert_eq!(ty, new_ty);
-                    // }
+                    let new_value =
+                        normalize_whnf(vint.value, vint.ty.as_ref())
+                            .into_whnf(vint.ty.as_ref());
                     ValueInternal {
                         form: WHNF,
-                        value: new_val,
-                        ty: ty,
+                        value: new_value,
+                        ty: vint.ty,
                     }
                 }
                 // Already in WHNF
@@ -254,18 +245,23 @@ impl Value {
 }
 
 impl VoVF {
-    pub(crate) fn into_whnf_and_type(
-        self,
-        ty: Option<&Value>,
-    ) -> (ValueF, Option<Value>) {
+    pub(crate) fn into_whnf(self, ty: Option<&Value>) -> ValueF {
         match self {
             VoVF::ValueF {
                 val,
                 form: Unevaled,
-            } => normalize_whnf(val, ty).into_whnf_and_type(ty),
+            } => normalize_whnf(val, ty).into_whnf(ty),
             // Already at lest in WHNF
-            VoVF::ValueF { val, .. } => (val, None),
-            VoVF::Value(v) => (v.to_whnf(), v.get_type().ok()),
+            VoVF::ValueF { val, .. } => val,
+            VoVF::Value(v) => {
+                let v_ty = v.get_type().ok();
+                debug_assert_eq!(
+                    ty,
+                    v_ty.as_ref(),
+                    "The type recovered from normalization doesn't match the stored type."
+                );
+                v.to_whnf()
+            }
         }
     }
     pub(crate) fn into_value_untyped(self) -> Value {
@@ -274,11 +270,18 @@ impl VoVF {
             VoVF::ValueF { val, form } => Value::new(val, form, None),
         }
     }
-    pub(crate) fn into_value_with_type(self, t: Value) -> Value {
+    pub(crate) fn into_value_with_type(self, ty: Value) -> Value {
         match self {
-            // TODO: check type with debug_assert ?
-            VoVF::Value(v) => v,
-            VoVF::ValueF { val, form } => Value::new(val, form, Some(t)),
+            VoVF::Value(v) => {
+                let v_ty = v.get_type().ok();
+                debug_assert_eq!(
+                    Some(&ty),
+                    v_ty.as_ref(),
+                    "The type recovered from normalization doesn't match the stored type."
+                );
+                v
+            }
+            VoVF::ValueF { val, form } => Value::new(val, form, Some(ty)),
         }
     }
 

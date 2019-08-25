@@ -61,8 +61,8 @@ macro_rules! make_closure {
     (Some($($rest:tt)*)) => {{
         let v = make_closure!($($rest)*);
         let v_type = v.get_type().expect("Internal type error");
-        ValueF::NEOptionalLit(v)
-            .into_value_with_type(v_type)
+        let opt_v_type = Value::from_builtin(Builtin::Optional).app(v_type);
+        ValueF::NEOptionalLit(v).into_value_with_type(opt_v_type)
     }};
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
