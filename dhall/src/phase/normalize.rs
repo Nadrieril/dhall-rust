@@ -6,7 +6,7 @@ use dhall_syntax::{
     NaiveDouble,
 };
 
-use crate::core::value::{Value, VoVF};
+use crate::core::value::Value;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaLabel, Shift, Subst};
 use crate::phase::Normalized;
@@ -71,7 +71,11 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>, _ty: &Value) -> VoVF {
+pub(crate) fn apply_builtin(
+    b: Builtin,
+    args: Vec<Value>,
+    ty: &Value,
+) -> ValueF {
     use dhall_syntax::Builtin::*;
     use ValueF::*;
 
@@ -370,38 +374,36 @@ pub(crate) fn apply_builtin(b: Builtin, args: Vec<Value>, _ty: &Value) -> VoVF {
         _ => Ret::DoneAsIs,
     };
     match ret {
-        Ret::ValueF(v) => v.into_vovf_whnf(),
-        Ret::Value(v) => v.into_vovf(),
+        Ret::ValueF(v) => v,
+        Ret::Value(v) => v.to_whnf_check_type(ty),
         Ret::ValueWithRemainingArgs(unconsumed_args, mut v) => {
             let n_consumed_args = args.len() - unconsumed_args.len();
             for x in args.into_iter().skip(n_consumed_args) {
                 v = v.app(x);
             }
-            v.into_vovf()
+            v.to_whnf_check_type(ty)
         }
-        Ret::DoneAsIs => AppliedBuiltin(b, args).into_vovf_whnf(),
+        Ret::DoneAsIs => AppliedBuiltin(b, args),
     }
 }
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> VoVF {
-    let fallback = |f: Value, a: Value| {
-        ValueF::PartialExpr(ExprF::App(f, a)).into_vovf_whnf()
-    };
-
+pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueF {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
-        ValueF::Lam(x, _, e) => e.subst_shift(&x.into(), &a).into_vovf(),
+        ValueF::Lam(x, _, e) => {
+            e.subst_shift(&x.into(), &a).to_whnf_check_type(ty)
+        }
         ValueF::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
             apply_builtin(*b, args, ty)
         }
         ValueF::UnionConstructor(l, kts) => {
-            ValueF::UnionLit(l.clone(), a, kts.clone()).into_vovf_whnf()
+            ValueF::UnionLit(l.clone(), a, kts.clone())
         }
         _ => {
             drop(f_borrow);
-            fallback(f, a)
+            ValueF::PartialExpr(ExprF::App(f, a))
         }
     }
 }
@@ -609,7 +611,7 @@ fn apply_binop<'a>(
 pub(crate) fn normalize_one_layer(
     expr: ExprF<Value, Normalized>,
     ty: &Value,
-) -> VoVF {
+) -> ValueF {
     use ValueF::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
         NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
@@ -766,22 +768,22 @@ pub(crate) fn normalize_one_layer(
     };
 
     match ret {
-        Ret::ValueF(v) => v.into_vovf_whnf(),
-        Ret::Value(v) => v.into_vovf(),
-        Ret::ValueRef(v) => v.clone().into_vovf(),
-        Ret::Expr(expr) => ValueF::PartialExpr(expr).into_vovf_whnf(),
+        Ret::ValueF(v) => v,
+        Ret::Value(v) => v.to_whnf_check_type(ty),
+        Ret::ValueRef(v) => v.to_whnf_check_type(ty),
+        Ret::Expr(expr) => ValueF::PartialExpr(expr),
     }
 }
 
 /// Normalize a ValueF into WHNF
-pub(crate) fn normalize_whnf(v: ValueF, ty: &Value) -> VoVF {
+pub(crate) fn normalize_whnf(v: ValueF, ty: &Value) -> ValueF {
     match v {
         ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
         ValueF::PartialExpr(e) => normalize_one_layer(e, ty),
         ValueF::TextLit(elts) => {
-            ValueF::TextLit(squash_textlit(elts.into_iter())).into_vovf_whnf()
+            ValueF::TextLit(squash_textlit(elts.into_iter()))
         }
         // All other cases are already in WHNF
-        v => v.into_vovf_whnf(),
+        v => v,
     }
 }

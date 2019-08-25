@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural,
 };
 
-use crate::core::value::{Form, Value, VoVF};
+use crate::core::value::Value;
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::{Normalized, NormalizedSubExpr};
 
@@ -49,12 +49,6 @@ pub(crate) enum ValueF {
 impl ValueF {
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
-    }
-    pub(crate) fn into_vovf_whnf(self) -> VoVF {
-        VoVF::ValueF {
-            val: self,
-            form: Form::WHNF,
-        }
     }
 
     /// Convert the value to a fully normalized syntactic expression
@@ -339,7 +333,7 @@ impl Subst<Value> for ValueF {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
-            ValueF::Var(v) if v == var => val.to_whnf(),
+            ValueF::Var(v) if v == var => val.to_whnf_ignore_type(),
             ValueF::Var(v) => ValueF::Var(v.shift(-1, var).unwrap()),
             ValueF::Const(c) => ValueF::Const(*c),
             ValueF::BoolLit(b) => ValueF::BoolLit(*b),

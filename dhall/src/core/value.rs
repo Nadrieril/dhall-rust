@@ -44,15 +44,6 @@ struct ValueInternal {
 #[derive(Clone)]
 pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
-/// When a function needs to return either a freshly created ValueF or an existing Value, but
-/// doesn't want to convert both to the same thing, either to avoid unnecessary allocations or to
-/// avoid loss of typ information.
-#[derive(Debug, Clone)]
-pub(crate) enum VoVF {
-    Value(Value),
-    ValueF { val: ValueF, form: Form },
-}
-
 impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
@@ -76,15 +67,11 @@ impl ValueInternal {
                     value: ValueF::Const(Const::Sort),
                     ty: None,
                 },
-                (Unevaled, Some(ty)) => {
-                    let new_value =
-                        normalize_whnf(vint.value, &ty).into_whnf(&ty);
-                    ValueInternal {
-                        form: WHNF,
-                        value: new_value,
-                        ty: vint.ty,
-                    }
-                }
+                (Unevaled, Some(ty)) => ValueInternal {
+                    form: WHNF,
+                    value: normalize_whnf(vint.value, &ty),
+                    ty: vint.ty,
+                },
                 // Already in WHNF
                 (WHNF, _) | (NF, _) => vint,
             },
@@ -135,6 +122,9 @@ impl Value {
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
         Value::new(v, Unevaled, t)
     }
+    pub(crate) fn from_valuef_and_type_whnf(v: ValueF, t: Value) -> Value {
+        Value::new(v, WHNF, t)
+    }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
     }
@@ -182,15 +172,21 @@ impl Value {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.as_whnf().normalize_to_expr_maybe_alpha(true)
     }
-    /// TODO: cloning a valuef can often be avoided
-    pub(crate) fn to_whnf(&self) -> ValueF {
+    pub(crate) fn to_whnf_ignore_type(&self) -> ValueF {
         self.as_whnf().clone()
+    }
+    /// Before discarding type information, check that it matches the expected return type.
+    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueF {
+        let self_ty = self.get_type().ok();
+        debug_assert_eq!(
+            Some(ty),
+            self_ty.as_ref(),
+            "The value returned from normalization doesn't have the expected type."
+        );
+        self.to_whnf_ignore_type()
     }
     pub(crate) fn into_typed(self) -> Typed {
         Typed::from_value(self)
-    }
-    pub(crate) fn into_vovf(self) -> VoVF {
-        VoVF::Value(self)
     }
 
     /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
@@ -239,16 +235,14 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        let t = self.get_type_not_sort();
-        let vovf = apply_any(self.clone(), v.clone(), &t);
-        let t_borrow = t.as_whnf();
-        match &*t_borrow {
-            ValueF::Pi(x, _, e) => {
-                let t = e.subst_shift(&x.into(), &v);
-                vovf.into_value_with_type(t)
-            }
+        let body_t = match &*self.get_type_not_sort().as_whnf() {
+            ValueF::Pi(x, _, e) => e.subst_shift(&x.into(), &v),
             _ => unreachable!("Internal type error"),
-        }
+        };
+        Value::from_valuef_and_type_whnf(
+            apply_any(self.clone(), v, &body_t),
+            body_t,
+        )
     }
 
     pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
@@ -258,42 +252,6 @@ impl Value {
     pub(crate) fn get_type_not_sort(&self) -> Value {
         self.get_type()
             .expect("Internal type error: value is `Sort` but shouldn't be")
-    }
-}
-
-impl VoVF {
-    pub(crate) fn into_whnf(self, ty: &Value) -> ValueF {
-        match self {
-            VoVF::ValueF {
-                val,
-                form: Unevaled,
-            } => normalize_whnf(val, ty).into_whnf(ty),
-            // Already at lest in WHNF
-            VoVF::ValueF { val, .. } => val,
-            VoVF::Value(v) => {
-                let v_ty = v.get_type().ok();
-                debug_assert_eq!(
-                    Some(ty),
-                    v_ty.as_ref(),
-                    "The type recovered from normalization doesn't match the stored type."
-                );
-                v.to_whnf()
-            }
-        }
-    }
-    pub(crate) fn into_value_with_type(self, ty: Value) -> Value {
-        match self {
-            VoVF::Value(v) => {
-                let v_ty = v.get_type().ok();
-                debug_assert_eq!(
-                    Some(&ty),
-                    v_ty.as_ref(),
-                    "The type recovered from normalization doesn't match the stored type."
-                );
-                v
-            }
-            VoVF::ValueF { val, form } => Value::new(val, form, ty),
-        }
     }
 }
 
@@ -324,6 +282,7 @@ impl Subst<Value> for ValueInternal {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
+            // TODO: check type info if self.value if Var(v) and v == var
             value: self.value.subst_shift(var, val),
             ty: self.ty.subst_shift(var, val),
         }
