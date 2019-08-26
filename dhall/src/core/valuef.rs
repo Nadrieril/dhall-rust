@@ -7,8 +7,7 @@ use dhall_syntax::{
 
 use crate::core::value::Value;
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
-use crate::phase::normalize::OutputSubExpr;
-use crate::phase::Normalized;
+use crate::phase::{Normalized, NormalizedSubExpr};
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
 /// normalized on-demand.
@@ -16,11 +15,11 @@ use crate::phase::Normalized;
 /// alpha-equivalence (renaming of bound variables) and beta-equivalence (normalization). It will
 /// recursively normalize as needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueF {
+pub(crate) enum ValueF {
     /// Closures
     Lam(AlphaLabel, Value, Value),
     Pi(AlphaLabel, Value, Value),
-    // Invariant: the evaluation must not be able to progress further.
+    // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
     Var(AlphaVar),
@@ -34,32 +33,26 @@ pub enum ValueF {
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Value),
     NEListLit(Vec<Value>),
-    RecordLit(HashMap<Label, Value>),
     RecordType(HashMap<Label, Value>),
+    RecordLit(HashMap<Label, Value>),
     UnionType(HashMap<Label, Option<Value>>),
     UnionConstructor(Label, HashMap<Label, Option<Value>>),
     UnionLit(Label, Value, HashMap<Label, Option<Value>>),
-    // Invariant: this must not contain interpolations that are themselves TextLits, and
+    // Invariant: in whnf, this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Value>>),
     Equivalence(Value, Value),
-    // Invariant: this must not contain a value captured by one of the variants above.
+    // Invariant: in whnf, this must not contain a value captured by one of the variants above.
     PartialExpr(ExprF<Value, Normalized>),
 }
 
 impl ValueF {
-    pub(crate) fn into_value_untyped(self) -> Value {
-        Value::from_valuef_untyped(self)
-    }
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_valuef_and_type(self, t)
     }
-    pub(crate) fn into_value_simple_type(self) -> Value {
-        Value::from_valuef_simple_type(self)
-    }
 
     /// Convert the value to a fully normalized syntactic expression
-    pub(crate) fn normalize_to_expr(&self) -> OutputSubExpr {
+    pub(crate) fn normalize_to_expr(&self) -> NormalizedSubExpr {
         self.normalize_to_expr_maybe_alpha(false)
     }
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
@@ -67,7 +60,7 @@ impl ValueF {
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
-    ) -> OutputSubExpr {
+    ) -> NormalizedSubExpr {
         match self {
             ValueF::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),
@@ -257,22 +250,7 @@ impl ValueF {
         }
     }
 
-    /// Apply to a valuef
-    pub(crate) fn app(self, val: ValueF) -> ValueF {
-        self.app_valuef(val)
-    }
-
-    /// Apply to a valuef
-    pub(crate) fn app_valuef(self, val: ValueF) -> ValueF {
-        self.app_value(val.into_value_untyped())
-    }
-
-    /// Apply to a value
-    pub fn app_value(self, th: Value) -> ValueF {
-        Value::from_valuef_untyped(self).app_value(th)
-    }
-
-    pub fn from_builtin(b: Builtin) -> ValueF {
+    pub(crate) fn from_builtin(b: Builtin) -> ValueF {
         ValueF::AppliedBuiltin(b, vec![])
     }
 }
@@ -355,7 +333,7 @@ impl Subst<Value> for ValueF {
                 t.subst_shift(var, val),
                 e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
             ),
-            ValueF::Var(v) if v == var => val.to_whnf(),
+            ValueF::Var(v) if v == var => val.to_whnf_ignore_type(),
             ValueF::Var(v) => ValueF::Var(v.shift(-1, var).unwrap()),
             ValueF::Const(c) => ValueF::Const(*c),
             ValueF::BoolLit(b) => ValueF::BoolLit(*b),

@@ -1,8 +1,7 @@
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Const, SubExpr};
+use dhall_syntax::{Builtin, Const, SubExpr};
 
 use crate::core::value::Value;
 use crate::core::valuef::ValueF;
@@ -93,13 +92,13 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(Value::from_const(c))
     }
-    pub fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
+    pub(crate) fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
         Typed(Value::from_valuef_and_type(v, t.into_value()))
     }
     pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
     }
-    pub fn const_type() -> Self {
+    pub(crate) fn const_type() -> Self {
         Typed::from_const(Const::Type)
     }
 
@@ -109,7 +108,7 @@ impl Typed {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }
-    pub fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
     }
     pub(crate) fn into_value(self) -> Value {
@@ -121,8 +120,41 @@ impl Typed {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Typed>, TypeError> {
-        Ok(Cow::Owned(self.0.get_type()?.into_owned().into_typed()))
+    pub(crate) fn get_type(&self) -> Result<Typed, TypeError> {
+        Ok(self.0.get_type()?.into_typed())
+    }
+
+    pub fn make_builtin_type(b: Builtin) -> Self {
+        Typed::from_value(Value::from_builtin(b))
+    }
+    pub fn make_optional_type(t: Typed) -> Self {
+        Typed::from_value(
+            Value::from_builtin(Builtin::Optional).app(t.to_value()),
+        )
+    }
+    pub fn make_list_type(t: Typed) -> Self {
+        Typed::from_value(Value::from_builtin(Builtin::List).app(t.to_value()))
+    }
+    pub fn make_record_type(
+        kts: impl Iterator<Item = (String, Typed)>,
+    ) -> Self {
+        Typed::from_valuef_and_type(
+            ValueF::RecordType(
+                kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
+            ),
+            Typed::const_type(),
+        )
+    }
+    pub fn make_union_type(
+        kts: impl Iterator<Item = (String, Option<Typed>)>,
+    ) -> Self {
+        Typed::from_valuef_and_type(
+            ValueF::UnionType(
+                kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
+                    .collect(),
+            ),
+            Typed::const_type(),
+        )
     }
 }
 

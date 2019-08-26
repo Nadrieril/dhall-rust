@@ -1,19 +1,18 @@
-use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use dhall_syntax::Const;
+use dhall_syntax::{Builtin, Const};
 
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{apply_any, normalize_whnf, OutputSubExpr};
-use crate::phase::typecheck::const_to_value;
+use crate::phase::normalize::{apply_any, normalize_whnf};
+use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedSubExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
-enum Form {
+pub(crate) enum Form {
     /// No constraints; expression may not be normalized at all.
     Unevaled,
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
@@ -28,13 +27,14 @@ enum Form {
 }
 use Form::{Unevaled, NF, WHNF};
 
-#[derive(Debug)]
 /// Partially normalized value.
 /// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
 /// Invariant: if `form` is `NF`, `value` must be fully normalized
+#[derive(Debug)]
 struct ValueInternal {
     form: Form,
     value: ValueF,
+    /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
 }
 
@@ -42,7 +42,7 @@ struct ValueInternal {
 /// sharing computation automatically. Uses a RefCell to share computation.
 /// Can optionally store a type from typechecking to preserve type information.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<ValueInternal>>);
+pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
 impl ValueInternal {
     fn into_value(self) -> Value {
@@ -53,15 +53,30 @@ impl ValueInternal {
     }
 
     fn normalize_whnf(&mut self) {
-        take_mut::take(self, |vint| match &vint.form {
-            Unevaled => ValueInternal {
-                form: WHNF,
-                value: normalize_whnf(vint.value),
-                ty: vint.ty,
+        take_mut::take_or_recover(
+            self,
+            // Dummy value in case the other closure panics
+            || ValueInternal {
+                form: Unevaled,
+                value: ValueF::Const(Const::Type),
+                ty: None,
             },
-            // Already in WHNF
-            WHNF | NF => vint,
-        })
+            |vint| match (&vint.form, &vint.ty) {
+                (Unevaled, Some(ty)) => ValueInternal {
+                    form: WHNF,
+                    value: normalize_whnf(vint.value, &ty),
+                    ty: vint.ty,
+                },
+                // `value` is `Sort`
+                (Unevaled, None) => ValueInternal {
+                    form: NF,
+                    value: ValueF::Const(Const::Sort),
+                    ty: None,
+                },
+                // Already in WHNF
+                (WHNF, _) | (NF, _) => vint,
+            },
+        )
     }
     fn normalize_nf(&mut self) {
         match self.form {
@@ -81,39 +96,41 @@ impl ValueInternal {
     fn get_type(&self) -> Result<&Value, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
-            None => Err(TypeError::new(
-                &TypecheckContext::new(),
-                TypeMessage::Untyped,
-            )),
+            None => {
+                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
+            }
         }
     }
 }
 
 impl Value {
-    pub(crate) fn from_valuef_untyped(v: ValueF) -> Value {
+    fn new(value: ValueF, form: Form, ty: Value) -> Value {
         ValueInternal {
-            form: Unevaled,
-            value: v,
+            form,
+            value,
+            ty: Some(ty),
+        }
+        .into_value()
+    }
+    pub(crate) fn const_sort() -> Value {
+        ValueInternal {
+            form: NF,
+            value: ValueF::Const(Const::Sort),
             ty: None,
         }
         .into_value()
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
-        ValueInternal {
-            form: Unevaled,
-            value: v,
-            ty: Some(t),
-        }
-        .into_value()
+        Value::new(v, Unevaled, t)
     }
-    pub(crate) fn from_valuef_simple_type(v: ValueF) -> Value {
-        Value::from_valuef_and_type(v, Value::from_const(Const::Type))
+    pub(crate) fn from_valuef_and_type_whnf(v: ValueF, t: Value) -> Value {
+        Value::new(v, WHNF, t)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
     }
-    pub fn const_type() -> Self {
-        Value::from_const(Const::Type)
+    pub(crate) fn from_builtin(b: Builtin) -> Self {
+        builtin_to_value(b)
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
@@ -156,9 +173,13 @@ impl Value {
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.as_whnf().normalize_to_expr_maybe_alpha(true)
     }
-    /// TODO: cloning a valuef can often be avoided
-    pub(crate) fn to_whnf(&self) -> ValueF {
+    pub(crate) fn to_whnf_ignore_type(&self) -> ValueF {
         self.as_whnf().clone()
+    }
+    /// Before discarding type information, check that it matches the expected return type.
+    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueF {
+        self.check_type(ty);
+        self.to_whnf_ignore_type()
     }
     pub(crate) fn into_typed(self) -> Typed {
         Typed::from_value(self)
@@ -205,16 +226,40 @@ impl Value {
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
-    ) -> OutputSubExpr {
+    ) -> NormalizedSubExpr {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
-    pub(crate) fn app_value(&self, th: Value) -> ValueF {
-        apply_any(self.clone(), th)
+    pub(crate) fn app(&self, v: Value) -> Value {
+        let body_t = match &*self.get_type_not_sort().as_whnf() {
+            ValueF::Pi(x, t, e) => {
+                v.check_type(t);
+                e.subst_shift(&x.into(), &v)
+            }
+            _ => unreachable!("Internal type error"),
+        };
+        Value::from_valuef_and_type_whnf(
+            apply_any(self.clone(), v, &body_t),
+            body_t,
+        )
     }
 
-    pub(crate) fn get_type(&self) -> Result<Cow<'_, Value>, TypeError> {
-        Ok(Cow::Owned(self.as_internal().get_type()?.clone()))
+    /// In debug mode, panic if the provided type doesn't match the value's type.
+    /// Otherwise does nothing.
+    pub(crate) fn check_type(&self, ty: &Value) {
+        debug_assert_eq!(
+            Some(ty),
+            self.get_type().ok().as_ref(),
+            "Internal type error"
+        );
+    }
+    pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
+        Ok(self.as_internal().get_type()?.clone())
+    }
+    /// When we know the value isn't `Sort`, this gets the type directly
+    pub(crate) fn get_type_not_sort(&self) -> Value {
+        self.get_type()
+            .expect("Internal type error: value is `Sort` but shouldn't be")
     }
 }
 
@@ -236,7 +281,17 @@ impl Shift for ValueInternal {
 
 impl Subst<Value> for Value {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        Value(self.0.subst_shift(var, val))
+        match &*self.as_valuef() {
+            // If the var matches, we can just reuse the provided value instead of copying it.
+            // We also check that the types match, if in debug mode.
+            ValueF::Var(v) if v == var => {
+                if let Ok(self_ty) = self.get_type() {
+                    val.check_type(&self_ty.subst_shift(var, val));
+                }
+                val.clone()
+            }
+            _ => Value(self.0.subst_shift(var, val)),
+        }
     }
 }
 
@@ -262,8 +317,17 @@ impl std::cmp::Eq for Value {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.as_internal();
-        fmt.debug_tuple(&format!("Value@{:?}", &vint.form))
-            .field(&vint.value)
-            .finish()
+        if let ValueF::Const(c) = &vint.value {
+            write!(fmt, "{:?}", c)
+        } else {
+            let mut x = fmt.debug_struct(&format!("Value@{:?}", &vint.form));
+            x.field("value", &vint.value);
+            if let Some(ty) = vint.ty.as_ref() {
+                x.field("type", &ty);
+            } else {
+                x.field("type", &None::<()>);
+            }
+            x.finish()
+        }
     }
 }
