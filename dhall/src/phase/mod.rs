@@ -119,7 +119,6 @@ impl Typed {
         self.0.normalize_mut()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn get_type(&self) -> Result<Typed, TypeError> {
         Ok(self.0.get_type()?.into_typed())
     }
@@ -166,7 +165,6 @@ impl Normalized {
     pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
         self.0.to_expr()
     }
-    #[allow(dead_code)]
     pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
         self.0.to_expr_alpha()
     }

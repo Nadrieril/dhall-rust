@@ -11,7 +11,6 @@
     clippy::ptr_arg
 )]
 
-#[cfg(test)]
 #[macro_use]
 mod tests;
 
