@@ -160,7 +160,7 @@ not_equal_expression
 equivalent_expression
 application_expression
 first_application_expression
-# import_expression
+import_expression
 selector_expression
 selector
 labels
