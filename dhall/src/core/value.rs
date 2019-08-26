@@ -62,15 +62,16 @@ impl ValueInternal {
                 ty: None,
             },
             |vint| match (&vint.form, &vint.ty) {
-                (Unevaled, None) => ValueInternal {
-                    form: NF,
-                    value: ValueF::Const(Const::Sort),
-                    ty: None,
-                },
                 (Unevaled, Some(ty)) => ValueInternal {
                     form: WHNF,
                     value: normalize_whnf(vint.value, &ty),
                     ty: vint.ty,
+                },
+                // `value` is `Sort`
+                (Unevaled, None) => ValueInternal {
+                    form: NF,
+                    value: ValueF::Const(Const::Sort),
+                    ty: None,
                 },
                 // Already in WHNF
                 (WHNF, _) | (NF, _) => vint,
@@ -177,12 +178,7 @@ impl Value {
     }
     /// Before discarding type information, check that it matches the expected return type.
     pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueF {
-        let self_ty = self.get_type().ok();
-        debug_assert_eq!(
-            Some(ty),
-            self_ty.as_ref(),
-            "The value returned from normalization doesn't have the expected type."
-        );
+        self.check_type(ty);
         self.to_whnf_ignore_type()
     }
     pub(crate) fn into_typed(self) -> Typed {
@@ -236,7 +232,10 @@ impl Value {
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {
-            ValueF::Pi(x, _, e) => e.subst_shift(&x.into(), &v),
+            ValueF::Pi(x, t, e) => {
+                v.check_type(t);
+                e.subst_shift(&x.into(), &v)
+            }
             _ => unreachable!("Internal type error"),
         };
         Value::from_valuef_and_type_whnf(
@@ -245,6 +244,15 @@ impl Value {
         )
     }
 
+    /// In debug mode, panic if the provided type doesn't match the value's type.
+    /// Otherwise does nothing.
+    pub(crate) fn check_type(&self, ty: &Value) {
+        debug_assert_eq!(
+            Some(ty),
+            self.get_type().ok().as_ref(),
+            "Internal type error"
+        );
+    }
     pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
         Ok(self.as_internal().get_type()?.clone())
     }
@@ -273,7 +281,17 @@ impl Shift for ValueInternal {
 
 impl Subst<Value> for Value {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        Value(self.0.subst_shift(var, val))
+        match &*self.as_valuef() {
+            // If the var matches, we can just reuse the provided value instead of copying it.
+            // We also check that the types match, if in debug mode.
+            ValueF::Var(v) if v == var => {
+                if let Ok(self_ty) = self.get_type() {
+                    val.check_type(&self_ty.subst_shift(var, val));
+                }
+                val.clone()
+            }
+            _ => Value(self.0.subst_shift(var, val)),
+        }
     }
 }
 
@@ -282,7 +300,6 @@ impl Subst<Value> for ValueInternal {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
-            // TODO: check type info if self.value if Var(v) and v == var
             value: self.value.subst_shift(var, val),
             ty: self.ty.subst_shift(var, val),
         }
@@ -300,8 +317,17 @@ impl std::cmp::Eq for Value {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.as_internal();
-        fmt.debug_tuple(&format!("Value@{:?}", &vint.form))
-            .field(&vint.value)
-            .finish()
+        if let ValueF::Const(c) = &vint.value {
+            write!(fmt, "{:?}", c)
+        } else {
+            let mut x = fmt.debug_struct(&format!("Value@{:?}", &vint.form));
+            x.field("value", &vint.value);
+            if let Some(ty) = vint.ty.as_ref() {
+                x.field("type", &ty);
+            } else {
+                x.field("type", &None::<()>);
+            }
+            x.finish()
+        }
     }
 }
