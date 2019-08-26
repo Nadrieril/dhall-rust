@@ -1,3 +1,6 @@
+#[cfg(not(test))]
+use assert_eq as assert_eq_pretty;
+#[cfg(test)]
 use pretty_assertions::assert_eq as assert_eq_pretty;
 
 macro_rules! assert_eq_display {
@@ -40,6 +43,7 @@ use std::path::PathBuf;
 use crate::error::{Error, Result};
 use crate::phase::Parsed;
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum Feature {
     Parser,
@@ -53,6 +57,7 @@ pub enum Feature {
     TypeInference,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum Status {
     Success,
@@ -63,6 +68,7 @@ fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
     Parsed::parse_file(&PathBuf::from(file_path))
 }
 
+#[allow(dead_code)]
 pub fn run_test_stringy_error(
     base_path: &str,
     feature: Feature,
@@ -241,6 +247,7 @@ pub fn run_test(
     Ok(())
 }
 
+#[cfg(test)]
 mod spec {
     // See build.rs
     include!(concat!(env!("OUT_DIR"), "/spec_tests.rs"));
