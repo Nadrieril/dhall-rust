@@ -328,7 +328,7 @@ macro_rules! make_parser {
     });
     (@body,
         ($($things:tt)*),
-        token_rule!($name:ident<$o:ty>)
+        rule!($name:ident<$o:ty>)
     ) => ({
         Ok(())
     });
@@ -428,7 +428,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
 }
 
 make_parser! {
-    token_rule!(EOI<()>);
+    rule!(EOI<()>);
 
     rule!(simple_label<Label>;
         captured_str!(s) => Label::from(s.trim().to_owned())
@@ -611,9 +611,9 @@ make_parser! {
         }
     );
 
-    token_rule!(NaN<()>);
-    token_rule!(minus_infinity_literal<()>);
-    token_rule!(plus_infinity_literal<()>);
+    rule!(NaN<()>);
+    rule!(minus_infinity_literal<()>);
+    rule!(plus_infinity_literal<()>);
 
     rule!(numeric_double_literal<core::Double>;
         captured_str!(s) => {
@@ -762,7 +762,7 @@ make_parser! {
         }
     );
 
-    token_rule!(missing<()>);
+    rule!(missing<()>);
 
     rule!(import_type<ImportLocation<ParsedSubExpr>>; children!(
         [missing(_)] => {
@@ -796,8 +796,8 @@ make_parser! {
             crate::Import {mode: ImportMode::Code, location, hash: Some(h) },
     ));
 
-    token_rule!(Text<()>);
-    token_rule!(Location<()>);
+    rule!(Text<()>);
+    rule!(Location<()>);
 
     rule!(import<ParsedSubExpr>; span; children!(
         [import_hashed(imp)] => {
@@ -820,13 +820,13 @@ make_parser! {
         },
     ));
 
-    token_rule!(lambda<()>);
-    token_rule!(forall<()>);
-    token_rule!(arrow<()>);
-    token_rule!(merge<()>);
-    token_rule!(assert<()>);
-    token_rule!(if_<()>);
-    token_rule!(in_<()>);
+    rule!(lambda<()>);
+    rule!(forall<()>);
+    rule!(arrow<()>);
+    rule!(merge<()>);
+    rule!(assert<()>);
+    rule!(if_<()>);
+    rule!(in_<()>);
 
     rule!(empty_list_literal<ParsedSubExpr>; span; children!(
         [application_expression(e)] => {
@@ -877,8 +877,8 @@ make_parser! {
             (name, None, expr),
     ));
 
-    token_rule!(List<()>);
-    token_rule!(Optional<()>);
+    rule!(List<()>);
+    rule!(Optional<()>);
 
     rule!(operator_expression<ParsedSubExpr>; prec_climb!(
         application_expression,
@@ -933,8 +933,8 @@ make_parser! {
         }
     ));
 
-    token_rule!(Some_<()>);
-    token_rule!(toMap<()>);
+    rule!(Some_<()>);
+    rule!(toMap<()>);
 
     rule!(application_expression<ParsedSubExpr>; children!(
         [first_application_expression(e)] => e,
@@ -1048,7 +1048,7 @@ make_parser! {
         },
     ));
 
-    token_rule!(empty_union_type<()>);
+    rule!(empty_union_type<()>);
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
