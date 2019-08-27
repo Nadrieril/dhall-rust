@@ -349,7 +349,7 @@ macro_rules! make_parser {
 
         impl Parsers {
             $(
-            #[allow(non_snake_case, unused_variables)]
+            #[allow(non_snake_case, unused_variables, clippy::let_unit_value)]
             fn $name<'a>(
                 (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
                 pair: Pair<'a, Rule>,
@@ -508,7 +508,7 @@ make_parser! {
                         0xAFFFE..=0xAFFFF | 0xBFFFE..=0xBFFFF |
                         0xCFFFE..=0xCFFFF | 0xDFFFE..=0xDFFFF |
                         0xEFFFE..=0xEFFFF | 0xFFFFE..=0xFFFFF |
-                        0x10FFFE..=0x10FFFF => {
+                        0x10_FFFE..=0x10_FFFF => {
                             let c_ecapsed = c.escape_unicode();
                             Err(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed))?
                         },
@@ -1064,7 +1064,7 @@ make_parser! {
     ));
 
     rule!(final_expression<ParsedSubExpr>; children!(
-        [expression(e), EOI(_eoi)] => e
+        [expression(e), EOI(_)] => e
     ));
 }
 

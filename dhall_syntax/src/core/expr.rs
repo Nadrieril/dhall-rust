@@ -331,7 +331,7 @@ impl<E> Expr<E> {
             ExprF::BinOp(BinOp::ImportAlt, l, r) => l
                 .as_ref()
                 .traverse_resolve_with_visitor(visitor)
-                .or(r.as_ref().traverse_resolve_with_visitor(visitor)),
+                .or_else(|_| r.as_ref().traverse_resolve_with_visitor(visitor)),
             _ => {
                 let e = self.visit(&mut *visitor)?;
                 Ok(match &e {

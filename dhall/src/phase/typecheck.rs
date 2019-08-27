@@ -408,7 +408,7 @@ fn type_last_layer(
             RetTypeOnly(t.clone())
         }
         BoolIf(x, y, z) => {
-            if &*x.get_type()?.as_whnf() != &ValueF::from_builtin(Bool) {
+            if *x.get_type()?.as_whnf() != ValueF::from_builtin(Bool) {
                 return mkerr(InvalidPredicate(x.clone()));
             }
 

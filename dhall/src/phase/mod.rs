@@ -221,9 +221,8 @@ impl std::hash::Hash for Normalized {
     where
         H: std::hash::Hasher,
     {
-        match self.encode() {
-            Ok(vec) => vec.hash(state),
-            Err(_) => {}
+        if let Ok(vec) = self.encode() {
+            vec.hash(state)
         }
     }
 }

@@ -79,7 +79,7 @@ impl<SE> ImportLocation<SE> {
     ) -> Result<ImportLocation<SE2>, Err> {
         use ImportLocation::*;
         Ok(match self {
-            Local(prefix, path) => Local(prefix.clone(), path.clone()),
+            Local(prefix, path) => Local(*prefix, path.clone()),
             Remote(url) => Remote(url.visit_subexpr(f)?),
             Env(env) => Env(env.clone()),
             Missing => Missing,

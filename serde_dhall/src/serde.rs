@@ -33,20 +33,24 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         use std::convert::TryInto;
         use ExprF::*;
         match self.0.as_ref().as_ref() {
-            NaturalLit(n) => match (*n).try_into() {
-                Ok(n64) => visitor.visit_u64(n64),
-                Err(_) => match (*n).try_into() {
-                    Ok(n32) => visitor.visit_u32(n32),
-                    Err(_) => unimplemented!(),
-                },
-            },
-            IntegerLit(n) => match (*n).try_into() {
-                Ok(n64) => visitor.visit_i64(n64),
-                Err(_) => match (*n).try_into() {
-                    Ok(n32) => visitor.visit_i32(n32),
-                    Err(_) => unimplemented!(),
-                },
-            },
+            NaturalLit(n) => {
+                if let Ok(n64) = (*n).try_into() {
+                    visitor.visit_u64(n64)
+                } else if let Ok(n32) = (*n).try_into() {
+                    visitor.visit_u32(n32)
+                } else {
+                    unimplemented!()
+                }
+            }
+            IntegerLit(n) => {
+                if let Ok(n64) = (*n).try_into() {
+                    visitor.visit_i64(n64)
+                } else if let Ok(n32) = (*n).try_into() {
+                    visitor.visit_i32(n32)
+                } else {
+                    unimplemented!()
+                }
+            }
             RecordLit(m) => visitor.visit_map(
                 serde::de::value::MapDeserializer::new(m.iter().map(
                     |(k, v)| (k.as_ref(), Deserializer(Cow::Borrowed(v))),

@@ -64,7 +64,7 @@ pub enum Status {
     Failure,
 }
 
-fn parse_file_str<'i>(file_path: &str) -> Result<Parsed> {
+fn parse_file_str(file_path: &str) -> Result<Parsed> {
     Parsed::parse_file(&PathBuf::from(file_path))
 }
 
@@ -80,6 +80,7 @@ pub fn run_test_stringy_error(
         .map(|_| ())
 }
 
+#[allow(clippy::single_match)]
 pub fn run_test(
     base_path: &str,
     feature: Feature,
