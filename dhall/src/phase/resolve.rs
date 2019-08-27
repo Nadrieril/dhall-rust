@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ImportError};
-use crate::phase::{Normalized, NormalizedSubExpr, Parsed, Resolved};
+use crate::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
 
-type Import = dhall_syntax::Import<NormalizedSubExpr>;
+type Import = dhall_syntax::Import<NormalizedExpr>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]

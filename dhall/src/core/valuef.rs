@@ -7,7 +7,7 @@ use dhall_syntax::{
 
 use crate::core::value::Value;
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
-use crate::phase::{Normalized, NormalizedSubExpr};
+use crate::phase::{Normalized, NormalizedExpr};
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
 /// normalized on-demand.
@@ -52,7 +52,7 @@ impl ValueF {
     }
 
     /// Convert the value to a fully normalized syntactic expression
-    pub(crate) fn normalize_to_expr(&self) -> NormalizedSubExpr {
+    pub(crate) fn normalize_to_expr(&self) -> NormalizedExpr {
         self.normalize_to_expr_maybe_alpha(false)
     }
     /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
@@ -60,7 +60,7 @@ impl ValueF {
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
-    ) -> NormalizedSubExpr {
+    ) -> NormalizedExpr {
         match self {
             ValueF::Lam(x, t, e) => rc(ExprF::Lam(
                 x.to_label_maybe_alpha(alpha),

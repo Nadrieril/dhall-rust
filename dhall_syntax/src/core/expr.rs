@@ -166,19 +166,21 @@ pub enum Builtin {
     TextShow,
 }
 
-// Each node carries an annotation. In practice it's either X (no annotation) or a Span.
+// Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct SubExpr<Embed>(Box<(Expr<Embed>, Option<Span>)>);
+pub struct Expr<Embed>(Box<(RawExpr<Embed>, Option<Span>)>);
 
-impl<Embed: PartialEq> std::cmp::PartialEq for SubExpr<Embed> {
+pub type RawExpr<Embed> = ExprF<Expr<Embed>, Embed>;
+
+impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
     fn eq(&self, other: &Self) -> bool {
         self.0.as_ref().0 == other.0.as_ref().0
     }
 }
 
-impl<Embed: Eq> std::cmp::Eq for SubExpr<Embed> {}
+impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
 
-impl<Embed: std::hash::Hash> std::hash::Hash for SubExpr<Embed> {
+impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
     fn hash<H>(&self, state: &mut H)
     where
         H: std::hash::Hasher,
@@ -186,8 +188,6 @@ impl<Embed: std::hash::Hash> std::hash::Hash for SubExpr<Embed> {
         (self.0).0.hash(state)
     }
 }
-
-pub type Expr<Embed> = ExprF<SubExpr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
@@ -310,11 +310,11 @@ impl<SE, E> ExprF<SE, E> {
     }
 }
 
-impl<E> Expr<E> {
+impl<E> RawExpr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
-    ) -> Result<Expr<E2>, Err> {
+        visit_import: impl FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
+    ) -> Result<RawExpr<E2>, Err> {
         self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
             visit_import,
         ))
@@ -323,9 +323,9 @@ impl<E> Expr<E> {
     pub(crate) fn traverse_resolve_with_visitor<E2, Err, F1>(
         &self,
         visitor: &mut visitor::ResolveVisitor<F1>,
-    ) -> Result<Expr<E2>, Err>
+    ) -> Result<RawExpr<E2>, Err>
     where
-        F1: FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
+        F1: FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
     {
         match self {
             ExprF::BinOp(BinOp::ImportAlt, l, r) => l
@@ -343,52 +343,52 @@ impl<E> Expr<E> {
     }
 }
 
-impl<E> SubExpr<E> {
-    pub fn as_ref(&self) -> &Expr<E> {
+impl<E> Expr<E> {
+    pub fn as_ref(&self) -> &RawExpr<E> {
         &self.0.as_ref().0
     }
 
-    pub fn new(x: Expr<E>, n: Span) -> Self {
-        SubExpr(Box::new((x, Some(n))))
+    pub fn new(x: RawExpr<E>, n: Span) -> Self {
+        Expr(Box::new((x, Some(n))))
     }
 
-    pub fn from_expr_no_span(x: Expr<E>) -> Self {
-        SubExpr(Box::new((x, None)))
+    pub fn from_expr_no_span(x: RawExpr<E>) -> Self {
+        Expr(Box::new((x, None)))
     }
 
     pub fn from_builtin(b: Builtin) -> Self {
-        SubExpr::from_expr_no_span(ExprF::Builtin(b))
+        Expr::from_expr_no_span(ExprF::Builtin(b))
     }
 
-    pub fn rewrap<E2>(&self, x: Expr<E2>) -> SubExpr<E2> {
-        SubExpr(Box::new((x, (self.0).1.clone())))
+    pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
+        Expr(Box::new((x, (self.0).1.clone())))
     }
 }
 
-impl<E> SubExpr<E> {
+impl<E> Expr<E> {
     pub fn traverse_resolve<E2, Err>(
         &self,
-        visit_import: impl FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
-    ) -> Result<SubExpr<E2>, Err> {
+        visit_import: impl FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
+    ) -> Result<Expr<E2>, Err> {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
     }
 }
 
 // Should probably rename this
-pub fn rc<E>(x: Expr<E>) -> SubExpr<E> {
-    SubExpr::from_expr_no_span(x)
+pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+    Expr::from_expr_no_span(x)
 }
 
 pub(crate) fn spanned(
     span: Span,
-    x: crate::parser::ParsedExpr,
-) -> crate::parser::ParsedSubExpr {
-    SubExpr::new(x, span)
+    x: crate::parser::ParsedRawExpr,
+) -> crate::parser::ParsedExpr {
+    Expr::new(x, span)
 }
 pub(crate) fn unspanned(
-    x: crate::parser::ParsedExpr,
-) -> crate::parser::ParsedSubExpr {
-    SubExpr::from_expr_no_span(x)
+    x: crate::parser::ParsedRawExpr,
+) -> crate::parser::ParsedExpr {
+    Expr::from_expr_no_span(x)
 }
 
 /// Add an isize to an usize

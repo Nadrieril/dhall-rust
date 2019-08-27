@@ -9,7 +9,7 @@ use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf};
 use crate::phase::typecheck::{builtin_to_value, const_to_value};
-use crate::phase::{NormalizedSubExpr, Typed};
+use crate::phase::{NormalizedExpr, Typed};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Form {
@@ -166,11 +166,11 @@ impl Value {
     }
 
     // TODO: rename `normalize_to_expr`
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr(&self) -> NormalizedExpr {
         self.as_whnf().normalize_to_expr()
     }
     // TODO: rename `normalize_to_expr_maybe_alpha`
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
         self.as_whnf().normalize_to_expr_maybe_alpha(true)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueF {
@@ -226,7 +226,7 @@ impl Value {
     pub(crate) fn normalize_to_expr_maybe_alpha(
         &self,
         alpha: bool,
-    ) -> NormalizedSubExpr {
+    ) -> NormalizedExpr {
         self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
