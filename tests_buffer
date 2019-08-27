@@ -9,6 +9,7 @@ success/
         PrecedenceAll2 a b != c == d * e ⩓ f ⫽ g ∧ h && i # j ++ k + l || m ? n
     LetNoAnnot let x = y in e
     LetAnnot let x: T = y in e
+    EmptyRecordLiteral {=}
 failure/
     AssertNoAnnotation assert
 

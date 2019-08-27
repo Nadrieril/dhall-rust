@@ -106,7 +106,7 @@ unquoted_path_component
 quoted_path_component
 path_component
 path
-# local
+local
 parent_path
 here_path
 home_path
@@ -141,7 +141,7 @@ hash
 import_hashed
 import
 expression
-annotated_expression
+# annotated_expression
 let_binding
 empty_list_literal
 operator_expression
@@ -160,7 +160,7 @@ not_equal_expression
 equivalent_expression
 application_expression
 first_application_expression
-# import_expression
+import_expression
 selector_expression
 selector
 labels

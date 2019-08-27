@@ -119,124 +119,208 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-macro_rules! make_parser {
-    (@pattern, rule, $name:ident) => (Rule::$name);
-    (@pattern, token_rule, $name:ident) => (Rule::$name);
-    (@pattern, rule_group, $name:ident) => (_);
-    (@filter, rule) => (true);
-    (@filter, token_rule) => (true);
-    (@filter, rule_group) => (false);
-
-    (@construct_climber,
-        ($map:expr),
-        rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            prec_climb!( $climber:expr, $($_rest:tt)* )
+macro_rules! parse_children {
+    // Variable length pattern with a common unary variant
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:ident)..,
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards,
+            $parse_args, $iter,
+            ({
+                let $x = $iter
+                    .map(|x| Parsers::$variant($parse_args, x))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter();
+                $body
+            }),
+            $($rest)*
         )
-    ) => ({
-        $map.insert(Rule::$name, $climber)
-    });
-    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
+    };
+    // Single item pattern
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {{
+        let p = $iter.next().unwrap();
+        let $x = Parsers::$variant($parse_args, p)?;
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($rest)*
+        )
+    }};
+    // Single item pattern after a variable length one: declare reversed and take from the end
+    (@match_backwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards, $parse_args, $iter, ({
+            let p = $iter.next_back().unwrap();
+            let $x = Parsers::$variant($parse_args, p)?;
+            $body
+        }), $($rest)*)
+    };
+
+    // Check no elements remain
+    (@match_forwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+    // After a variable length pattern, everything has already been consumed
+    (@match_backwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+
+    ($parse_args:expr, $iter:expr; [$($args:tt)*] => $body:expr) => {
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($args)*,
+        )
+    };
+}
+
+macro_rules! make_parser {
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:pat), $($rest:tt)*]
+    ) => (
+        make_parser!(@children_pattern,
+            $varpat,
+            ($($acc)* , Rule::$variant),
+            [$($rest)*]
+        )
+    );
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        make_parser!(@children_pattern,
+            $varpat,
+            ($($acc)* , $varpat..),
+            [$($rest)*]
+        )
+    );
+    (@children_pattern,
+        $varpat:ident,
+        (, $($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+
+    (@children_filter,
+        $varpat:ident,
+        [$variant:ident ($x:pat), $($rest:tt)*]
+    ) => (
+        make_parser!(@children_filter, $varpat, [$($rest)*])
+    );
+    (@children_filter,
+        $varpat:ident,
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        $varpat.iter().all(|r| r == &Rule::$variant) &&
+        make_parser!(@children_filter, $varpat, [$($rest)*])
+    );
+    (@children_filter, $varpat:ident, [$(,)*]) => (true);
 
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
+            $name:ident<$o:ty>;
             $span:ident;
             captured_str!($x:pat) => $body:expr
         )
     ) => ({
-        let res: Result<_, String> = try {
-            let $span = Span::make($input, $pair.as_span());
-            let $x = $pair.as_str();
-            ParsedValue::$group($body)
-        };
+        let $span = Span::make($input.clone(), $pair.as_span());
+        let $x = $pair.as_str();
+        let res: Result<_, String> = try { $body };
         res.map_err(|msg| custom_parse_error(&$pair, msg))
     });
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
+            $name:ident<$o:ty>;
             $span:ident;
             children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
         )
     ) => ({
-        let children: Vec<_> = $pair
+        let children_rules: Vec<Rule> = $pair
             .clone()
             .into_inner()
-            .map(|p| parse_any($climbers, $input.clone(), p))
-            .collect::<Result<_, _>>()?;
+            .map(|p| p.as_rule())
+            .collect();
+
+        let $span = Span::make($input.clone(), $pair.as_span());
+        #[allow(unused_mut)]
+        let mut iter = $pair.clone().into_inner();
 
         #[allow(unreachable_code)]
-        let res: Result<_, String> = try {
-            #[allow(unused_imports)]
-            use ParsedValue::*;
-            let $span = Span::make($input, $pair.as_span());
-
-            improved_slice_patterns::match_vec!(children;
-                $( [$($args)*] => $body, )*
-                [x..] => Err(
-                    format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-                )?,
-            ).map_err(|_| -> String { unreachable!() })?
-        };
-
-        let res = res.map_err(|msg| custom_parse_error(&$pair, msg))?;
-        Ok(ParsedValue::$group(res))
+        match children_rules.as_slice() {
+            $(
+                make_parser!(@children_pattern, x, (), [$($args)*,])
+                if make_parser!(@children_filter, x, [$($args)*,])
+                => {
+                    parse_children!(($climbers, $input.clone()), iter;
+                        [$($args)*] => {
+                            let res: Result<_, String> = try { $body };
+                            res.map_err(|msg| custom_parse_error(&$pair, msg))
+                        }
+                    )
+                }
+                ,
+            )*
+            [..] => Err(custom_parse_error(
+                &$pair,
+                format!("Unexpected children: {:?}", children_rules)
+            )),
+        }
     });
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            prec_climb!( $_climber:expr, $args:pat => $body:expr $(,)* )
+            $name:ident<$o:ty>;
+            prec_climb!(
+                $other_rule:ident,
+                $_climber:expr,
+                $args:pat => $body:expr $(,)*
+            )
         )
     ) => ({
         let climber = $climbers.get(&Rule::$name).unwrap();
         climber.climb(
             $pair.clone().into_inner(),
-            |p| parse_any($climbers, $input.clone(), p),
+            |p| Parsers::$other_rule(($climbers, $input.clone()), p),
             |l, op, r| {
-                let (l, r) = (l?, r?);
-                let res: Result<_, String> = try {
-                    #[allow(unused_imports)]
-                    use ParsedValue::*;
-                    match (l, op, r) {
-                        $args => ParsedValue::$group($body),
-                        children => Err(
-                            format!("Unexpected children: {:?}", children)
-                        )?,
-                    }
-                };
+                let $args = (l?, op, r?);
+                let res: Result<_, String> = try { $body };
                 res.map_err(|msg| custom_parse_error(&$pair, msg))
             },
         )
     });
     (@body,
         ($($things:tt)*),
-        rule!( $name:ident<$o:ty>; $($args:tt)* )
-    ) => (
-        make_parser!(@body,
-            ($($things)*),
-            rule!( $name<$o> as $name; $($args)* )
-        )
-    );
-    (@body,
-        ($($things:tt)*),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
+            $name:ident<$o:ty>;
             $($args:tt)*
         )
     ) => ({
         make_parser!(@body,
             ($($things)*),
             rule!(
-                $name<$o>
-                as $group;
+                $name<$o>;
                 _span;
                 $($args)*
             )
@@ -244,19 +328,36 @@ macro_rules! make_parser {
     });
     (@body,
         ($($things:tt)*),
-        token_rule!($name:ident<$o:ty>)
+        rule!($name:ident<$o:ty>)
     ) => ({
-        Ok(ParsedValue::$name(()))
+        Ok(())
     });
-    (@body, ($($things:tt)*), rule_group!( $name:ident<$o:ty> )) => (
-        unreachable!()
-    );
+
+    (@construct_climber,
+        ($map:expr),
+        rule!(
+            $name:ident<$o:ty>;
+            prec_climb!($other_rule:ident, $climber:expr, $($_rest:tt)* )
+        )
+    ) => ({
+        $map.insert(Rule::$name, $climber)
+    });
+    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
 
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
-        #[allow(non_camel_case_types, dead_code, clippy::large_enum_variant)]
-        #[derive(Debug)]
-        enum ParsedValue<'a> {
-            $( $name($o), )*
+        struct Parsers;
+
+        impl Parsers {
+            $(
+            #[allow(non_snake_case, unused_variables)]
+            fn $name<'a>(
+                (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<$o> {
+                make_parser!(@body, (climbers, input, pair),
+                               $submac!( $name<$o> $($args)* ))
+            }
+            )*
         }
 
         fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
@@ -268,79 +369,21 @@ macro_rules! make_parser {
             map
         }
 
-        struct Parsers;
+        struct EntryPoint;
 
-        impl Parsers {
+        impl EntryPoint {
             $(
-            #[allow(non_snake_case, unused_variables)]
+            #[allow(non_snake_case, dead_code)]
             fn $name<'a>(
-                climbers: &HashMap<Rule, PrecClimber<Rule>>,
                 input: Rc<str>,
                 pair: Pair<'a, Rule>,
-            ) -> ParseResult<ParsedValue<'a>> {
-                make_parser!(@body, (climbers, input, pair),
-                               $submac!( $name<$o> $($args)* ))
+            ) -> ParseResult<$o> {
+                let climbers = construct_precclimbers();
+                Parsers::$name((&climbers, input), pair)
             }
             )*
         }
-
-        fn parse_any<'a>(
-            climbers: &HashMap<Rule, PrecClimber<Rule>>,
-            input: Rc<str>,
-            mut pair: Pair<'a, Rule>,
-        ) -> ParseResult<ParsedValue<'a>> {
-            // Avoid parsing while the pair has exactly one child that can be returned as-is
-            loop {
-                if can_be_shortcutted(pair.as_rule()) {
-                    let mut i = pair.clone().into_inner();
-                    let first = i.next();
-                    let second = i.next();
-                    match (first, second) {
-                        // If pair has exactly one child, just go on parsing that child
-                        (Some(p), None) => {
-                            pair = p;
-                            continue;
-                        }
-                        // Otherwise parse normally
-                        _ => break,
-                    }
-                }
-                break;
-            }
-
-            match pair.as_rule() {
-                $(
-                    make_parser!(@pattern, $submac, $name)
-                    if make_parser!(@filter, $submac)
-                    => Parsers::$name(climbers, input, pair)
-                    ,
-                )*
-                r => Err(custom_parse_error(&pair, format!("Unexpected {:?}", r))),
-            }
-        }
     );
-}
-
-fn do_parse<'a>(
-    input: Rc<str>,
-    pair: Pair<'a, Rule>,
-) -> ParseResult<ParsedValue<'a>> {
-    let climbers = construct_precclimbers();
-    parse_any(&climbers, input, pair)
-}
-
-// List of rules that can be shortcutted if they have a single child
-fn can_be_shortcutted(rule: Rule) -> bool {
-    use Rule::*;
-    match rule {
-        expression
-        | operator_expression
-        | application_expression
-        | first_application_expression
-        | selector_expression
-        | annotated_expression => true,
-        _ => false,
-    }
 }
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
@@ -385,7 +428,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
 }
 
 make_parser! {
-    token_rule!(EOI<()>);
+    rule!(EOI<()>);
 
     rule!(simple_label<Label>;
         captured_str!(s) => Label::from(s.trim().to_owned())
@@ -502,10 +545,10 @@ make_parser! {
     rule!(single_quote_char<&'a str>;
         captured_str!(s) => s
     );
-    rule!(escaped_quote_pair<&'a str> as single_quote_char;
+    rule!(escaped_quote_pair<&'a str>;
         captured_str!(_) => "''"
     );
-    rule!(escaped_interpolation<&'a str> as single_quote_char;
+    rule!(escaped_interpolation<&'a str>;
         captured_str!(_) => "${"
     );
     rule!(interpolation<ParsedSubExpr>; children!(
@@ -520,21 +563,29 @@ make_parser! {
             lines.last_mut().unwrap().push(c);
             lines
         },
-        [single_quote_char("\n"), single_quote_continue(lines)] => {
+        [escaped_quote_pair(c), single_quote_continue(lines)] => {
             let mut lines = lines;
-            lines.push(vec![]);
+            // TODO: don't allocate for every char
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            lines.last_mut().unwrap().push(c);
             lines
         },
-        [single_quote_char("\r\n"), single_quote_continue(lines)] => {
+        [escaped_interpolation(c), single_quote_continue(lines)] => {
             let mut lines = lines;
-            lines.push(vec![]);
+            // TODO: don't allocate for every char
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            lines.last_mut().unwrap().push(c);
             lines
         },
         [single_quote_char(c), single_quote_continue(lines)] => {
-            // TODO: don't allocate for every char
-            let c = InterpolatedTextContents::Text(c.to_owned());
             let mut lines = lines;
-            lines.last_mut().unwrap().push(c);
+            if c == "\n" || c == "\r\n" {
+                lines.push(vec![]);
+            } else {
+                // TODO: don't allocate for every char
+                let c = InterpolatedTextContents::Text(c.to_owned());
+                lines.last_mut().unwrap().push(c);
+            }
             lines
         },
         [] => {
@@ -560,9 +611,9 @@ make_parser! {
         }
     );
 
-    token_rule!(NaN<()>);
-    token_rule!(minus_infinity_literal<()>);
-    token_rule!(plus_infinity_literal<()>);
+    rule!(NaN<()>);
+    rule!(minus_infinity_literal<()>);
+    rule!(plus_infinity_literal<()>);
 
     rule!(numeric_double_literal<core::Double>;
         captured_str!(s) => {
@@ -599,7 +650,7 @@ make_parser! {
         }
     );
 
-    rule!(identifier<ParsedSubExpr> as expression; span; children!(
+    rule!(identifier<ParsedSubExpr>; span; children!(
         [variable(v)] => {
             spanned(span, Var(v))
         },
@@ -631,18 +682,23 @@ make_parser! {
         }
     ));
 
-    rule_group!(local<(FilePrefix, Vec<String>)>);
+    rule!(local<(FilePrefix, Vec<String>)>; children!(
+        [parent_path(l)] => l,
+        [here_path(l)] => l,
+        [home_path(l)] => l,
+        [absolute_path(l)] => l,
+    ));
 
-    rule!(parent_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(parent_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Parent, p)
     ));
-    rule!(here_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(here_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Here, p)
     ));
-    rule!(home_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(home_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Home, p)
     ));
-    rule!(absolute_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(absolute_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Absolute, p)
     ));
 
@@ -675,7 +731,7 @@ make_parser! {
 
     rule!(http<URL<ParsedSubExpr>>; children!(
         [http_raw(url)] => url,
-        [http_raw(url), expression(e)] =>
+        [http_raw(url), import_expression(e)] =>
             URL { headers: Some(e), ..url },
     ));
 
@@ -706,7 +762,7 @@ make_parser! {
         }
     );
 
-    token_rule!(missing<()>);
+    rule!(missing<()>);
 
     rule!(import_type<ImportLocation<ParsedSubExpr>>; children!(
         [missing(_)] => {
@@ -740,10 +796,10 @@ make_parser! {
             crate::Import {mode: ImportMode::Code, location, hash: Some(h) },
     ));
 
-    token_rule!(Text<()>);
-    token_rule!(Location<()>);
+    rule!(Text<()>);
+    rule!(Location<()>);
 
-    rule!(import<ParsedSubExpr> as expression; span; children!(
+    rule!(import<ParsedSubExpr>; span; children!(
         [import_hashed(imp)] => {
             spanned(span, Import(crate::Import {
                 mode: ImportMode::Code,
@@ -764,21 +820,21 @@ make_parser! {
         },
     ));
 
-    token_rule!(lambda<()>);
-    token_rule!(forall<()>);
-    token_rule!(arrow<()>);
-    token_rule!(merge<()>);
-    token_rule!(assert<()>);
-    token_rule!(if_<()>);
-    token_rule!(in_<()>);
+    rule!(lambda<()>);
+    rule!(forall<()>);
+    rule!(arrow<()>);
+    rule!(merge<()>);
+    rule!(assert<()>);
+    rule!(if_<()>);
+    rule!(in_<()>);
 
-    rule!(empty_list_literal<ParsedSubExpr> as expression; span; children!(
-        [expression(e)] => {
+    rule!(empty_list_literal<ParsedSubExpr>; span; children!(
+        [application_expression(e)] => {
             spanned(span, EmptyListLit(e))
         },
     ));
 
-    rule!(expression<ParsedSubExpr> as expression; span; children!(
+    rule!(expression<ParsedSubExpr>; span; children!(
         [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
             spanned(span, Lam(l, typ, body))
@@ -796,16 +852,21 @@ make_parser! {
                 arrow(()), expression(body)] => {
             spanned(span, Pi(l, typ, body))
         },
-        [expression(typ), arrow(()), expression(body)] => {
+        [operator_expression(typ), arrow(()), expression(body)] => {
             spanned(span, Pi("_".into(), typ, body))
         },
-        [merge(()), expression(x), expression(y), expression(z)] => {
+        [merge(()), import_expression(x), import_expression(y),
+                application_expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
         },
+        [empty_list_literal(e)] => e,
         [assert(()), expression(x)] => {
             spanned(span, Assert(x))
         },
-        [expression(e)] => e,
+        [operator_expression(e)] => e,
+        [operator_expression(e), expression(annot)] => {
+            spanned(span, Annot(e, annot))
+        },
     ));
 
     rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>;
@@ -816,17 +877,11 @@ make_parser! {
             (name, None, expr),
     ));
 
-    token_rule!(List<()>);
-    token_rule!(Optional<()>);
+    rule!(List<()>);
+    rule!(Optional<()>);
 
-    rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
-        [expression(e)] => e,
-        [expression(e), expression(annot)] => {
-            spanned(span, Annot(e, annot))
-        },
-    ));
-
-    rule!(operator_expression<ParsedSubExpr> as expression; prec_climb!(
+    rule!(operator_expression<ParsedSubExpr>; prec_climb!(
+        application_expression,
         {
             use Rule::*;
             // In order of precedence
@@ -852,7 +907,7 @@ make_parser! {
                     .collect(),
             )
         },
-        (expression(l), op, expression(r)) => {
+        (l, op, r) => {
             use crate::BinOp::*;
             use Rule::*;
             let op = match op.as_rule() {
@@ -878,35 +933,41 @@ make_parser! {
         }
     ));
 
-    token_rule!(Some_<()>);
-    token_rule!(toMap<()>);
+    rule!(Some_<()>);
+    rule!(toMap<()>);
 
-    rule!(application_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
+    rule!(application_expression<ParsedSubExpr>; children!(
+        [first_application_expression(e)] => e,
+        [first_application_expression(first), import_expression(rest)..] => {
             rest.fold(first, |acc, e| unspanned(App(acc, e)))
         },
     ));
 
-    rule!(first_application_expression<ParsedSubExpr> as expression; span;
+    rule!(first_application_expression<ParsedSubExpr>; span;
             children!(
-        [expression(e)] => e,
-        [Some_(()), expression(e)] => {
+        [Some_(()), import_expression(e)] => {
             spanned(span, SomeLit(e))
         },
-        [merge(()), expression(x), expression(y)] => {
+        [merge(()), import_expression(x), import_expression(y)] => {
             spanned(span, Merge(x, y, None))
         },
+        [import_expression(e)] => e,
     ));
 
-    rule!(selector_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), selector(rest)..] => {
+    rule!(import_expression<ParsedSubExpr>; span;
+            children!(
+        [selector_expression(e)] => e,
+        [import(e)] => e,
+    ));
+
+    rule!(selector_expression<ParsedSubExpr>; children!(
+        [primitive_expression(e)] => e,
+        [primitive_expression(first), selector(rest)..] => {
             rest.fold(first, |acc, e| unspanned(match e {
                 Either::Left(l) => Field(acc, l),
                 Either::Right(ls) => Projection(acc, ls),
             }))
-        }
+        },
     ));
 
     rule!(selector<Either<Label, DupTreeSet<Label>>>; children!(
@@ -919,24 +980,30 @@ make_parser! {
         [label(ls)..] => ls.collect(),
     ));
 
-    rule!(primitive_expression<ParsedSubExpr> as expression; span; children!(
+    rule!(primitive_expression<ParsedSubExpr>; span; children!(
         [double_literal(n)] => spanned(span, DoubleLit(n)),
         [natural_literal(n)] => spanned(span, NaturalLit(n)),
         [integer_literal(n)] => spanned(span, IntegerLit(n)),
         [double_quote_literal(s)] => spanned(span, TextLit(s)),
         [single_quote_literal(s)] => spanned(span, TextLit(s)),
+        [empty_record_type(e)] => e,
+        [empty_record_literal(e)] => e,
+        [non_empty_record_type_or_literal(e)] => e,
+        [union_type(e)] => e,
+        [non_empty_list_literal(e)] => e,
+        [identifier(e)] => e,
         [expression(e)] => e,
     ));
 
-    rule!(empty_record_literal<ParsedSubExpr> as expression; span;
+    rule!(empty_record_literal<ParsedSubExpr>; span;
         captured_str!(_) => spanned(span, RecordLit(Default::default()))
     );
 
-    rule!(empty_record_type<ParsedSubExpr> as expression; span;
+    rule!(empty_record_type<ParsedSubExpr>; span;
         captured_str!(_) => spanned(span, RecordType(Default::default()))
     );
 
-    rule!(non_empty_record_type_or_literal<ParsedSubExpr> as expression; span;
+    rule!(non_empty_record_type_or_literal<ParsedSubExpr>; span;
           children!(
         [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
@@ -972,7 +1039,7 @@ make_parser! {
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type<ParsedSubExpr> as expression; span; children!(
+    rule!(union_type<ParsedSubExpr>; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(Default::default()))
         },
@@ -981,14 +1048,14 @@ make_parser! {
         },
     ));
 
-    token_rule!(empty_union_type<()>);
+    rule!(empty_union_type<()>);
 
     rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
     ));
 
-    rule!(non_empty_list_literal<ParsedSubExpr> as expression; span;
+    rule!(non_empty_list_literal<ParsedSubExpr>; span;
           children!(
         [expression(items)..] => spanned(
             span,
@@ -996,7 +1063,7 @@ make_parser! {
         )
     ));
 
-    rule!(final_expression<ParsedSubExpr> as expression; children!(
+    rule!(final_expression<ParsedSubExpr>; children!(
         [expression(e), EOI(_eoi)] => e
     ));
 }
@@ -1004,10 +1071,7 @@ make_parser! {
 pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let rc_input = s.to_string().into();
-    let expr = do_parse(rc_input, pairs.next().unwrap())?;
+    let expr = EntryPoint::final_expression(rc_input, pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);
-    match expr {
-        ParsedValue::expression(e) => Ok(e),
-        _ => unreachable!(),
-    }
+    Ok(expr)
 }
