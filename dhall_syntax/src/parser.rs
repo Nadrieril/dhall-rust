@@ -119,6 +119,76 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
+macro_rules! parse_children {
+    // Variable length pattern with a common unary variant
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:ident)..,
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards,
+            $parse_args, $iter,
+            ({
+                let $x = $iter
+                    .map(|x| Parsers::$variant($parse_args, x))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter();
+                $body
+            }),
+            $($rest)*
+        )
+    };
+    // Single item pattern
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {{
+        let p = $iter.next().unwrap();
+        let $x = Parsers::$variant($parse_args, p)?;
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($rest)*
+        )
+    }};
+    // Single item pattern after a variable length one: declare reversed and take from the end
+    (@match_backwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards, $parse_args, $iter, ({
+            let p = $iter.next_back().unwrap();
+            let $x = Parsers::$variant($parse_args, p)?;
+            $body
+        }), $($rest)*)
+    };
+
+    // Check no elements remain
+    (@match_forwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+    // After a variable length pattern, everything has already been consumed
+    (@match_backwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+
+    ($parse_args:expr, $iter:expr; [$($args:tt)*] => $body:expr) => {
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($args)*,
+        )
+    };
+}
+
 macro_rules! make_parser {
     (@children_pattern,
         $varpat:ident,
@@ -155,7 +225,6 @@ macro_rules! make_parser {
         $varpat:ident,
         [$variant:ident ($x:pat), $($rest:tt)*]
     ) => (
-        true &&
         make_parser!(@children_filter, $varpat, [$($rest)*])
     );
     (@children_filter,
@@ -167,25 +236,6 @@ macro_rules! make_parser {
     );
     (@children_filter, $varpat:ident, [$(,)*]) => (true);
 
-    (@rule_alias,
-        rule!( $name:ident<$o:ty>; $($args:tt)* )
-    ) => (
-        Rule::$name
-    );
-    (@rule_alias,
-        rule!(
-            $name:ident<$o:ty>;
-            $($args:tt)*
-        )
-    ) => ({
-        Rule::$name
-    });
-    (@rule_alias,
-        token_rule!($name:ident<$o:ty>)
-    ) => ({
-        Rule::$name
-    });
-
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
         rule!(
@@ -194,11 +244,9 @@ macro_rules! make_parser {
             captured_str!($x:pat) => $body:expr
         )
     ) => ({
-        let res: Result<_, String> = try {
-            let $span = Span::make($input, $pair.as_span());
-            let $x = $pair.as_str();
-            ParsedValue::$name($body)
-        };
+        let $span = Span::make($input.clone(), $pair.as_span());
+        let $x = $pair.as_str();
+        let res: Result<_, String> = try { $body };
         res.map_err(|msg| custom_parse_error(&$pair, msg))
     });
     (@body,
@@ -209,90 +257,64 @@ macro_rules! make_parser {
             children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
         )
     ) => ({
-        let children: Vec<_> = $pair
-            .clone()
-            .into_inner()
-            .map(|p| parse_any($climbers, $input.clone(), p))
-            .collect::<Result<_, _>>()?;
         let children_rules: Vec<Rule> = $pair
             .clone()
             .into_inner()
             .map(|p| p.as_rule())
-            .map(rule_alias)
             .collect();
 
+        let $span = Span::make($input.clone(), $pair.as_span());
+        #[allow(unused_mut)]
+        let mut iter = $pair.clone().into_inner();
+
         #[allow(unreachable_code)]
-        let res: Result<_, String> = try {
-            #[allow(unused_imports)]
-            use ParsedValue::*;
-            let $span = Span::make($input, $pair.as_span());
-            #[allow(unused_mut)]
-            let mut iter = children.into_iter();
-
-            match children_rules.as_slice() {
-                $(
-                    make_parser!(@children_pattern, x, (), [$($args)*,])
-                    if make_parser!(@children_filter, x, [$($args)*,])
-                    => {
-                        let ret =
-                            improved_slice_patterns::destructure_iter!(iter;
-                                [$($args)*] => $body
-                        );
-                        match ret {
-                            Some(x) => x,
-                            None => Err({
-                                format!("Unexpected children: {:?}", children_rules)
-                            })?
+        match children_rules.as_slice() {
+            $(
+                make_parser!(@children_pattern, x, (), [$($args)*,])
+                if make_parser!(@children_filter, x, [$($args)*,])
+                => {
+                    parse_children!(($climbers, $input.clone()), iter;
+                        [$($args)*] => {
+                            let res: Result<_, String> = try { $body };
+                            res.map_err(|msg| custom_parse_error(&$pair, msg))
                         }
-                    }
-                    ,
-                )*
-                [..] => Err({
-                    format!("Unexpected children: {:?}", children_rules)
-                })?,
-            }
-        };
-
-        let res = res.map_err(|msg| custom_parse_error(&$pair, msg))?;
-        Ok(ParsedValue::$name(res))
+                    )
+                }
+                ,
+            )*
+            [..] => Err(custom_parse_error(
+                &$pair,
+                format!("Unexpected children: {:?}", children_rules)
+            )),
+        }
     });
     (@body,
         ($climbers:expr, $input:expr, $pair:expr),
         rule!(
             $name:ident<$o:ty>;
-            prec_climb!($other_name:ident, $_climber:expr, $args:pat => $body:expr $(,)* )
+            prec_climb!(
+                $other_rule:ident,
+                $_climber:expr,
+                $args:pat => $body:expr $(,)*
+            )
         )
     ) => ({
-        let climber = $climbers.get(&Rule::$name).expect(&format!("UUUU: {:?}", $climbers));
+        let climber = $climbers.get(&Rule::$name).unwrap();
         climber.climb(
             $pair.clone().into_inner(),
-            |p| {
-                let parsed = parse_any($climbers, $input.clone(), p)?;
-                if let ParsedValue::$other_name(x) = parsed {
-                    Ok(ParsedValue::$name(x))
-                } else {
-                    unreachable!()
-                }
-            },
+            |p| Parsers::$other_rule(($climbers, $input.clone()), p),
             |l, op, r| {
-                let (l, r) = (l?, r?);
-                let res: Result<_, String> = try {
-                    #[allow(unused_imports)]
-                    use ParsedValue::*;
-                    match (l, op, r) {
-                        $args => ParsedValue::$name($body),
-                        children => Err(
-                            format!("Unexpected children: {:?}", children)
-                        )?,
-                    }
-                };
+                let $args = (l?, op, r?);
+                let res: Result<_, String> = try { $body };
                 res.map_err(|msg| custom_parse_error(&$pair, msg))
             },
         )
     });
     (@body,
         ($($things:tt)*),
-        rule!( $name:ident<$o:ty>; $($args:tt)*
+        rule!(
+            $name:ident<$o:ty>;
+            $($args:tt)*
         )
     ) => ({
         make_parser!(@body,
@@ -308,14 +330,14 @@ macro_rules! make_parser {
         ($($things:tt)*),
         token_rule!($name:ident<$o:ty>)
     ) => ({
-        Ok(ParsedValue::$name(()))
+        Ok(())
     });
 
     (@construct_climber,
         ($map:expr),
         rule!(
             $name:ident<$o:ty>;
-            prec_climb!( $other_name:ident, $climber:expr, $($_rest:tt)* )
+            prec_climb!($other_rule:ident, $climber:expr, $($_rest:tt)* )
         )
     ) => ({
         $map.insert(Rule::$name, $climber)
@@ -323,10 +345,19 @@ macro_rules! make_parser {
     (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
 
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
-        #[allow(non_camel_case_types, dead_code, clippy::large_enum_variant)]
-        #[derive(Debug)]
-        enum ParsedValue<'a> {
-            $( $name($o), )*
+        struct Parsers;
+
+        impl Parsers {
+            $(
+            #[allow(non_snake_case, unused_variables)]
+            fn $name<'a>(
+                (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<$o> {
+                make_parser!(@body, (climbers, input, pair),
+                               $submac!( $name<$o> $($args)* ))
+            }
+            )*
         }
 
         fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
@@ -338,54 +369,21 @@ macro_rules! make_parser {
             map
         }
 
-        struct Parsers;
+        struct EntryPoint;
 
-        impl Parsers {
+        impl EntryPoint {
             $(
-            #[allow(non_snake_case, unused_variables)]
+            #[allow(non_snake_case, dead_code)]
             fn $name<'a>(
-                climbers: &HashMap<Rule, PrecClimber<Rule>>,
                 input: Rc<str>,
                 pair: Pair<'a, Rule>,
-            ) -> ParseResult<ParsedValue<'a>> {
-                make_parser!(@body, (climbers, input, pair),
-                               $submac!( $name<$o> $($args)* ))
+            ) -> ParseResult<$o> {
+                let climbers = construct_precclimbers();
+                Parsers::$name((&climbers, input), pair)
             }
             )*
         }
-
-        fn rule_alias(r: Rule) -> Rule {
-            match r {
-                $(
-                    Rule::$name => {
-                        make_parser!(@rule_alias, $submac!($name<$o> $($args)*))
-                    }
-                )*
-                r => r,
-            }
-        }
-
-        fn parse_any<'a>(
-            climbers: &HashMap<Rule, PrecClimber<Rule>>,
-            input: Rc<str>,
-            pair: Pair<'a, Rule>,
-        ) -> ParseResult<ParsedValue<'a>> {
-            match pair.as_rule() {
-                $(
-                    Rule::$name => Parsers::$name(climbers, input, pair),
-                )*
-                r => Err(custom_parse_error(&pair, format!("Unexpected {:?}", r))),
-            }
-        }
     );
-}
-
-fn do_parse<'a>(
-    input: Rc<str>,
-    pair: Pair<'a, Rule>,
-) -> ParseResult<ParsedValue<'a>> {
-    let climbers = construct_precclimbers();
-    parse_any(&climbers, input, pair)
 }
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
@@ -857,14 +855,18 @@ make_parser! {
         [operator_expression(typ), arrow(()), expression(body)] => {
             spanned(span, Pi("_".into(), typ, body))
         },
-        [merge(()), import_expression(x), import_expression(y), application_expression(z)] => {
+        [merge(()), import_expression(x), import_expression(y),
+                application_expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
         },
         [empty_list_literal(e)] => e,
         [assert(()), expression(x)] => {
             spanned(span, Assert(x))
         },
-        [annotated_expression(e)] => e,
+        [operator_expression(e)] => e,
+        [operator_expression(e), expression(annot)] => {
+            spanned(span, Annot(e, annot))
+        },
     ));
 
     rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>;
@@ -878,14 +880,8 @@ make_parser! {
     token_rule!(List<()>);
     token_rule!(Optional<()>);
 
-    rule!(annotated_expression<ParsedSubExpr>; span; children!(
-        [operator_expression(e)] => e,
-        [operator_expression(e), expression(annot)] => {
-            spanned(span, Annot(e, annot))
-        },
-    ));
-
-    rule!(operator_expression<ParsedSubExpr>; prec_climb!(application_expression,
+    rule!(operator_expression<ParsedSubExpr>; prec_climb!(
+        application_expression,
         {
             use Rule::*;
             // In order of precedence
@@ -911,7 +907,7 @@ make_parser! {
                     .collect(),
             )
         },
-        (operator_expression(l), op, operator_expression(r)) => {
+        (l, op, r) => {
             use crate::BinOp::*;
             use Rule::*;
             let op = match op.as_rule() {
@@ -1075,10 +1071,7 @@ make_parser! {
 pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let rc_input = s.to_string().into();
-    let expr = do_parse(rc_input, pairs.next().unwrap())?;
+    let expr = EntryPoint::final_expression(rc_input, pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);
-    match expr {
-        ParsedValue::final_expression(e) => Ok(e),
-        _ => unreachable!(),
-    }
+    Ok(expr)
 }

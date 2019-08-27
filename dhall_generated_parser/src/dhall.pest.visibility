@@ -141,7 +141,7 @@ hash
 import_hashed
 import
 expression
-annotated_expression
+# annotated_expression
 let_binding
 empty_list_literal
 operator_expression
