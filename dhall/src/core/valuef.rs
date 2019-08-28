@@ -5,7 +5,7 @@ use dhall_syntax::{
     NaiveDouble, Natural,
 };
 
-use crate::core::value::Value;
+use crate::core::value::{ToExprOptions, Value};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::{Normalized, NormalizedExpr};
 
@@ -51,38 +51,23 @@ impl ValueF {
         Value::from_valuef_and_type(self, t)
     }
 
-    /// Convert the value to a fully normalized syntactic expression
-    pub(crate) fn normalize_to_expr(&self) -> NormalizedExpr {
-        self.normalize_to_expr_maybe_alpha(false)
-    }
-    /// Convert the value to a fully normalized syntactic expression. Also alpha-normalize
-    /// if alpha is `true`
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> NormalizedExpr {
+    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         match self {
             ValueF::Lam(x, t, e) => rc(ExprF::Lam(
-                x.to_label_maybe_alpha(alpha),
-                t.normalize_to_expr_maybe_alpha(alpha),
-                e.normalize_to_expr_maybe_alpha(alpha),
+                x.to_label_maybe_alpha(opts.alpha),
+                t.to_expr(opts),
+                e.to_expr(opts),
             )),
-            ValueF::AppliedBuiltin(b, args) => {
-                let mut e = rc(ExprF::Builtin(*b));
-                for v in args {
-                    e = rc(ExprF::App(
-                        e,
-                        v.normalize_to_expr_maybe_alpha(alpha),
-                    ));
-                }
-                e
-            }
+            ValueF::AppliedBuiltin(b, args) => args
+                .iter()
+                .map(|v| v.to_expr(opts))
+                .fold(rc(ExprF::Builtin(*b)), |acc, v| rc(ExprF::App(acc, v))),
             ValueF::Pi(x, t, e) => rc(ExprF::Pi(
-                x.to_label_maybe_alpha(alpha),
-                t.normalize_to_expr_maybe_alpha(alpha),
-                e.normalize_to_expr_maybe_alpha(alpha),
+                x.to_label_maybe_alpha(opts.alpha),
+                t.to_expr(opts),
+                e.to_expr(opts),
             )),
-            ValueF::Var(v) => rc(ExprF::Var(v.to_var(alpha))),
+            ValueF::Var(v) => rc(ExprF::Var(v.to_var(opts.alpha))),
             ValueF::Const(c) => rc(ExprF::Const(*c)),
             ValueF::BoolLit(b) => rc(ExprF::BoolLit(*b)),
             ValueF::NaturalLit(n) => rc(ExprF::NaturalLit(*n)),
@@ -90,73 +75,47 @@ impl ValueF {
             ValueF::DoubleLit(n) => rc(ExprF::DoubleLit(*n)),
             ValueF::EmptyOptionalLit(n) => rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::OptionalNone)),
-                n.normalize_to_expr_maybe_alpha(alpha),
+                n.to_expr(opts),
             )),
-            ValueF::NEOptionalLit(n) => {
-                rc(ExprF::SomeLit(n.normalize_to_expr_maybe_alpha(alpha)))
-            }
+            ValueF::NEOptionalLit(n) => rc(ExprF::SomeLit(n.to_expr(opts))),
             ValueF::EmptyListLit(n) => rc(ExprF::EmptyListLit(rc(ExprF::App(
                 rc(ExprF::Builtin(Builtin::List)),
-                n.normalize_to_expr_maybe_alpha(alpha),
+                n.to_expr(opts),
             )))),
             ValueF::NEListLit(elts) => rc(ExprF::NEListLit(
-                elts.iter()
-                    .map(|n| n.normalize_to_expr_maybe_alpha(alpha))
-                    .collect(),
+                elts.iter().map(|n| n.to_expr(opts)).collect(),
             )),
             ValueF::RecordLit(kvs) => rc(ExprF::RecordLit(
                 kvs.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.normalize_to_expr_maybe_alpha(alpha))
-                    })
+                    .map(|(k, v)| (k.clone(), v.to_expr(opts)))
                     .collect(),
             )),
             ValueF::RecordType(kts) => rc(ExprF::RecordType(
                 kts.iter()
-                    .map(|(k, v)| {
-                        (k.clone(), v.normalize_to_expr_maybe_alpha(alpha))
-                    })
+                    .map(|(k, v)| (k.clone(), v.to_expr(opts)))
                     .collect(),
             )),
             ValueF::UnionType(kts) => rc(ExprF::UnionType(
                 kts.iter()
                     .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref().map(|v| {
-                                v.normalize_to_expr_maybe_alpha(alpha)
-                            }),
-                        )
+                        (k.clone(), v.as_ref().map(|v| v.to_expr(opts)))
                     })
                     .collect(),
             )),
-            ValueF::UnionConstructor(l, kts) => {
-                let kts = kts
-                    .iter()
-                    .map(|(k, v)| {
-                        (
-                            k.clone(),
-                            v.as_ref().map(|v| {
-                                v.normalize_to_expr_maybe_alpha(alpha)
-                            }),
-                        )
-                    })
-                    .collect();
-                rc(ExprF::Field(rc(ExprF::UnionType(kts)), l.clone()))
-            }
+            ValueF::UnionConstructor(l, kts) => rc(ExprF::Field(
+                ValueF::UnionType(kts.clone()).to_expr(opts),
+                l.clone(),
+            )),
             ValueF::UnionLit(l, v, kts) => rc(ExprF::App(
-                ValueF::UnionConstructor(l.clone(), kts.clone())
-                    .normalize_to_expr_maybe_alpha(alpha),
-                v.normalize_to_expr_maybe_alpha(alpha),
+                ValueF::UnionConstructor(l.clone(), kts.clone()).to_expr(opts),
+                v.to_expr(opts),
             )),
             ValueF::TextLit(elts) => {
                 use InterpolatedTextContents::{Expr, Text};
                 rc(ExprF::TextLit(
                     elts.iter()
                         .map(|contents| match contents {
-                            Expr(e) => {
-                                Expr(e.normalize_to_expr_maybe_alpha(alpha))
-                            }
+                            Expr(e) => Expr(e.to_expr(opts)),
                             Text(s) => Text(s.clone()),
                         })
                         .collect(),
@@ -164,12 +123,10 @@ impl ValueF {
             }
             ValueF::Equivalence(x, y) => rc(ExprF::BinOp(
                 dhall_syntax::BinOp::Equivalence,
-                x.normalize_to_expr_maybe_alpha(alpha),
-                y.normalize_to_expr_maybe_alpha(alpha),
+                x.to_expr(opts),
+                y.to_expr(opts),
             )),
-            ValueF::PartialExpr(e) => {
-                rc(e.map_ref(|v| v.normalize_to_expr_maybe_alpha(alpha)))
-            }
+            ValueF::PartialExpr(e) => rc(e.map_ref(|v| v.to_expr(opts))),
         }
     }
 

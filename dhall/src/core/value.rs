@@ -44,6 +44,15 @@ struct ValueInternal {
 #[derive(Clone)]
 pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
+#[derive(Copy, Clone)]
+/// Controls conversion from `Value` to `Expr`
+pub(crate) struct ToExprOptions {
+    /// Whether to convert all variables to `_`
+    pub(crate) alpha: bool,
+    /// Whether to normalize before converting
+    pub(crate) normalize: bool,
+}
+
 impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
@@ -158,20 +167,12 @@ impl Value {
         self.normalize_whnf();
         self.as_valuef()
     }
-    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
-    /// panics.
-    pub(crate) fn as_nf(&self) -> Ref<ValueF> {
-        self.normalize_nf();
-        self.as_valuef()
-    }
 
-    // TODO: rename `normalize_to_expr`
-    pub(crate) fn to_expr(&self) -> NormalizedExpr {
-        self.as_whnf().normalize_to_expr()
-    }
-    // TODO: rename `normalize_to_expr_maybe_alpha`
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.as_whnf().normalize_to_expr_maybe_alpha(true)
+    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
+        if opts.normalize {
+            self.normalize_whnf();
+        }
+        self.as_valuef().to_expr(opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueF {
         self.as_whnf().clone()
@@ -221,13 +222,6 @@ impl Value {
             // Already in NF
             NF => {}
         }
-    }
-
-    pub(crate) fn normalize_to_expr_maybe_alpha(
-        &self,
-        alpha: bool,
-    ) -> NormalizedExpr {
-        self.as_nf().normalize_to_expr_maybe_alpha(alpha)
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {

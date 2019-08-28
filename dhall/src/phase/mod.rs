@@ -3,7 +3,7 @@ use std::path::Path;
 
 use dhall_syntax::{Builtin, Const, Expr};
 
-use crate::core::value::Value;
+use crate::core::value::{ToExprOptions, Value};
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
 use crate::error::{EncodeError, Error, ImportError, TypeError};
@@ -71,7 +71,8 @@ impl Resolved {
         Ok(typecheck::typecheck(self.0)?.into_typed())
     }
     pub fn typecheck_with(self, ty: &Typed) -> Result<Typed, TypeError> {
-        Ok(typecheck::typecheck_with(self.0, ty.to_expr())?.into_typed())
+        Ok(typecheck::typecheck_with(self.0, ty.normalize_to_expr())?
+            .into_typed())
     }
 }
 
@@ -102,11 +103,23 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
-    pub fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr()
+    pub(crate) fn to_expr(&self) -> NormalizedExpr {
+        self.0.to_expr(ToExprOptions {
+            alpha: false,
+            normalize: false,
+        })
     }
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.to_expr_alpha()
+    pub fn normalize_to_expr(&self) -> NormalizedExpr {
+        self.0.to_expr(ToExprOptions {
+            alpha: false,
+            normalize: true,
+        })
+    }
+    pub(crate) fn normalize_to_expr_alpha(&self) -> NormalizedExpr {
+        self.0.to_expr(ToExprOptions {
+            alpha: true,
+            normalize: true,
+        })
     }
     pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
@@ -163,10 +176,10 @@ impl Normalized {
     }
 
     pub(crate) fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr()
+        self.0.normalize_to_expr()
     }
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.to_expr_alpha()
+        self.0.normalize_to_expr_alpha()
     }
     pub(crate) fn into_typed(self) -> Typed {
         self.0

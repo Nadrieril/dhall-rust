@@ -149,7 +149,7 @@ pub mod value {
             Ok(Value(typed))
         }
         pub(crate) fn to_expr(&self) -> NormalizedExpr {
-            self.0.to_expr()
+            self.0.normalize_to_expr()
         }
         pub(crate) fn as_typed(&self) -> &Typed {
             &self.0
