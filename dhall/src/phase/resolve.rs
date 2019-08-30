@@ -109,13 +109,22 @@ pub(crate) fn skip_resolve_expr(
 mod spec_tests {
     macro_rules! import_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Import, Success, $name, &("../dhall-lang/tests/import/success/".to_owned() + $path));
+            make_spec_test!(
+                ImportSuccess(
+                    &("../dhall-lang/tests/import/success/".to_owned() + $path + "A.dhall"),
+                    &("../dhall-lang/tests/import/success/".to_owned() + $path + "B.dhall")
+                ),
+                $name
+            );
         };
     }
 
     // macro_rules! import_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(Import, Failure, $name, &("../dhall-lang/tests/import/failure/".to_owned() + $path));
+    //         make_spec_test!(
+    //             ImportFailure(&("../dhall-lang/tests/import/failure/".to_owned() + $path + ".dhall")),
+    //             $name
+    //         );
     //     };
     // }
 
