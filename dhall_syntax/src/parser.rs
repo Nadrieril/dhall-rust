@@ -18,10 +18,10 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
+pub(crate) type ParsedRawExpr = RawExpr<!>;
 pub(crate) type ParsedExpr = Expr<!>;
-pub(crate) type ParsedSubExpr = SubExpr<!>;
-type ParsedText = InterpolatedText<ParsedSubExpr>;
-type ParsedTextContents = InterpolatedTextContents<ParsedSubExpr>;
+type ParsedText = InterpolatedText<ParsedExpr>;
+type ParsedTextContents = InterpolatedTextContents<ParsedExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
@@ -551,7 +551,7 @@ make_parser! {
     rule!(escaped_interpolation<&'a str>;
         captured_str!(_) => "${"
     );
-    rule!(interpolation<ParsedSubExpr>; children!(
+    rule!(interpolation<ParsedExpr>; children!(
         [expression(e)] => e
     ));
 
@@ -593,7 +593,7 @@ make_parser! {
         },
     ));
 
-    rule!(builtin<ParsedSubExpr>; span;
+    rule!(builtin<ParsedExpr>; span;
         captured_str!(s) => {
             spanned(span, match crate::Builtin::parse(s) {
                 Some(b) => Builtin(b),
@@ -650,7 +650,7 @@ make_parser! {
         }
     );
 
-    rule!(identifier<ParsedSubExpr>; span; children!(
+    rule!(identifier<ParsedExpr>; span; children!(
         [variable(v)] => {
             spanned(span, Var(v))
         },
@@ -708,7 +708,7 @@ make_parser! {
         _ => unreachable!(),
     });
 
-    rule!(http_raw<URL<ParsedSubExpr>>; children!(
+    rule!(http_raw<URL<ParsedExpr>>; children!(
         [scheme(sch), authority(auth), path(p)] => URL {
             scheme: sch,
             authority: auth,
@@ -729,7 +729,7 @@ make_parser! {
 
     rule!(query<String>; captured_str!(s) => s.to_owned());
 
-    rule!(http<URL<ParsedSubExpr>>; children!(
+    rule!(http<URL<ParsedExpr>>; children!(
         [http_raw(url)] => url,
         [http_raw(url), import_expression(e)] =>
             URL { headers: Some(e), ..url },
@@ -764,7 +764,7 @@ make_parser! {
 
     rule!(missing<()>);
 
-    rule!(import_type<ImportLocation<ParsedSubExpr>>; children!(
+    rule!(import_type<ImportLocation<ParsedExpr>>; children!(
         [missing(_)] => {
             ImportLocation::Missing
         },
@@ -789,7 +789,7 @@ make_parser! {
         Hash::SHA256(hex::decode(hash).unwrap())
     });
 
-    rule!(import_hashed<crate::Import<ParsedSubExpr>>; children!(
+    rule!(import_hashed<crate::Import<ParsedExpr>>; children!(
         [import_type(location)] =>
             crate::Import {mode: ImportMode::Code, location, hash: None },
         [import_type(location), hash(h)] =>
@@ -799,7 +799,7 @@ make_parser! {
     rule!(Text<()>);
     rule!(Location<()>);
 
-    rule!(import<ParsedSubExpr>; span; children!(
+    rule!(import<ParsedExpr>; span; children!(
         [import_hashed(imp)] => {
             spanned(span, Import(crate::Import {
                 mode: ImportMode::Code,
@@ -828,13 +828,13 @@ make_parser! {
     rule!(if_<()>);
     rule!(in_<()>);
 
-    rule!(empty_list_literal<ParsedSubExpr>; span; children!(
+    rule!(empty_list_literal<ParsedExpr>; span; children!(
         [application_expression(e)] => {
             spanned(span, EmptyListLit(e))
         },
     ));
 
-    rule!(expression<ParsedSubExpr>; span; children!(
+    rule!(expression<ParsedExpr>; span; children!(
         [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
             spanned(span, Lam(l, typ, body))
@@ -869,7 +869,7 @@ make_parser! {
         },
     ));
 
-    rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>;
+    rule!(let_binding<(Label, Option<ParsedExpr>, ParsedExpr)>;
             children!(
         [label(name), expression(annot), expression(expr)] =>
             (name, Some(annot), expr),
@@ -880,7 +880,7 @@ make_parser! {
     rule!(List<()>);
     rule!(Optional<()>);
 
-    rule!(operator_expression<ParsedSubExpr>; prec_climb!(
+    rule!(operator_expression<ParsedExpr>; prec_climb!(
         application_expression,
         {
             use Rule::*;
@@ -936,14 +936,14 @@ make_parser! {
     rule!(Some_<()>);
     rule!(toMap<()>);
 
-    rule!(application_expression<ParsedSubExpr>; children!(
+    rule!(application_expression<ParsedExpr>; children!(
         [first_application_expression(e)] => e,
         [first_application_expression(first), import_expression(rest)..] => {
             rest.fold(first, |acc, e| unspanned(App(acc, e)))
         },
     ));
 
-    rule!(first_application_expression<ParsedSubExpr>; span;
+    rule!(first_application_expression<ParsedExpr>; span;
             children!(
         [Some_(()), import_expression(e)] => {
             spanned(span, SomeLit(e))
@@ -954,13 +954,13 @@ make_parser! {
         [import_expression(e)] => e,
     ));
 
-    rule!(import_expression<ParsedSubExpr>; span;
+    rule!(import_expression<ParsedExpr>; span;
             children!(
         [selector_expression(e)] => e,
         [import(e)] => e,
     ));
 
-    rule!(selector_expression<ParsedSubExpr>; children!(
+    rule!(selector_expression<ParsedExpr>; children!(
         [primitive_expression(e)] => e,
         [primitive_expression(first), selector(rest)..] => {
             rest.fold(first, |acc, e| unspanned(match e {
@@ -980,7 +980,7 @@ make_parser! {
         [label(ls)..] => ls.collect(),
     ));
 
-    rule!(primitive_expression<ParsedSubExpr>; span; children!(
+    rule!(primitive_expression<ParsedExpr>; span; children!(
         [double_literal(n)] => spanned(span, DoubleLit(n)),
         [natural_literal(n)] => spanned(span, NaturalLit(n)),
         [integer_literal(n)] => spanned(span, IntegerLit(n)),
@@ -995,15 +995,15 @@ make_parser! {
         [expression(e)] => e,
     ));
 
-    rule!(empty_record_literal<ParsedSubExpr>; span;
+    rule!(empty_record_literal<ParsedExpr>; span;
         captured_str!(_) => spanned(span, RecordLit(Default::default()))
     );
 
-    rule!(empty_record_type<ParsedSubExpr>; span;
+    rule!(empty_record_type<ParsedExpr>; span;
         captured_str!(_) => spanned(span, RecordType(Default::default()))
     );
 
-    rule!(non_empty_record_type_or_literal<ParsedSubExpr>; span;
+    rule!(non_empty_record_type_or_literal<ParsedExpr>; span;
           children!(
         [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
@@ -1018,28 +1018,28 @@ make_parser! {
     ));
 
     rule!(non_empty_record_type
-          <(ParsedSubExpr, DupTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedExpr, DupTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_type_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
-    rule!(record_type_entry<(Label, ParsedSubExpr)>; children!(
+    rule!(record_type_entry<(Label, ParsedExpr)>; children!(
         [label(name), expression(expr)] => (name, expr)
     ));
 
     rule!(non_empty_record_literal
-          <(ParsedSubExpr, DupTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedExpr, DupTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_literal_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
-    rule!(record_literal_entry<(Label, ParsedSubExpr)>; children!(
+    rule!(record_literal_entry<(Label, ParsedExpr)>; children!(
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type<ParsedSubExpr>; span; children!(
+    rule!(union_type<ParsedExpr>; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(Default::default()))
         },
@@ -1050,12 +1050,12 @@ make_parser! {
 
     rule!(empty_union_type<()>);
 
-    rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
+    rule!(union_type_entry<(Label, Option<ParsedExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
     ));
 
-    rule!(non_empty_list_literal<ParsedSubExpr>; span;
+    rule!(non_empty_list_literal<ParsedExpr>; span;
           children!(
         [expression(items)..] => spanned(
             span,
@@ -1063,12 +1063,12 @@ make_parser! {
         )
     ));
 
-    rule!(final_expression<ParsedSubExpr>; children!(
+    rule!(final_expression<ParsedExpr>; children!(
         [expression(e), EOI(_)] => e
     ));
 }
 
-pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
+pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let rc_input = s.to_string().into();
     let expr = EntryPoint::final_expression(rc_input, pairs.next().unwrap())?;

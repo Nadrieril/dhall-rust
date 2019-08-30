@@ -4,28 +4,26 @@ use std::iter::FromIterator;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
-    rc, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode, Integer,
-    InterpolatedText, Label, Natural, Scheme, SubExpr, URL, V,
+    rc, Expr, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode,
+    Integer, InterpolatedText, Label, Natural, Scheme, URL, V,
 };
 
 use crate::error::{DecodeError, EncodeError};
-use crate::phase::DecodedSubExpr;
+use crate::phase::DecodedExpr;
 
-pub(crate) fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
+pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {
         Ok(v) => cbor_value_to_dhall(&v),
         Err(e) => Err(DecodeError::CBORError(e)),
     }
 }
 
-pub(crate) fn encode<E>(expr: &SubExpr<E>) -> Result<Vec<u8>, EncodeError> {
+pub(crate) fn encode<E>(expr: &Expr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
 }
 
-fn cbor_value_to_dhall(
-    data: &cbor::Value,
-) -> Result<DecodedSubExpr, DecodeError> {
+fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
     use cbor::Value::*;
     use dhall_syntax::{BinOp, Builtin, Const};
     use ExprF::*;
@@ -382,7 +380,7 @@ fn cbor_map_to_dhall_map<'a, T>(
     map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
 ) -> Result<T, DecodeError>
 where
-    T: FromIterator<(Label, DecodedSubExpr)>,
+    T: FromIterator<(Label, DecodedExpr)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
@@ -399,7 +397,7 @@ fn cbor_map_to_dhall_opt_map<'a, T>(
     map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
 ) -> Result<T, DecodeError>
 where
-    T: FromIterator<(Label, Option<DecodedSubExpr>)>,
+    T: FromIterator<(Label, Option<DecodedExpr>)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
@@ -416,10 +414,10 @@ where
 }
 
 enum Serialize<'a, E> {
-    Expr(&'a SubExpr<E>),
+    Expr(&'a Expr<E>),
     CBOR(cbor::Value),
-    RecordMap(&'a DupTreeMap<Label, SubExpr<E>>),
-    UnionMap(&'a DupTreeMap<Label, Option<SubExpr<E>>>),
+    RecordMap(&'a DupTreeMap<Label, Expr<E>>),
+    UnionMap(&'a DupTreeMap<Label, Option<Expr<E>>>),
 }
 
 macro_rules! count {
@@ -439,7 +437,7 @@ macro_rules! ser_seq {
     }};
 }
 
-fn serialize_subexpr<S, E>(ser: S, e: &SubExpr<E>) -> Result<S::Ok, S::Error>
+fn serialize_subexpr<S, E>(ser: S, e: &Expr<E>) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -449,7 +447,7 @@ where
     use std::iter::once;
 
     use self::Serialize::{RecordMap, UnionMap};
-    fn expr<E>(x: &SubExpr<E>) -> self::Serialize<'_, E> {
+    fn expr<E>(x: &Expr<E>) -> self::Serialize<'_, E> {
         self::Serialize::Expr(x)
     }
     let cbor =
@@ -566,7 +564,7 @@ where
 
 fn serialize_import<S, E>(
     ser: S,
-    import: &Import<SubExpr<E>>,
+    import: &Import<Expr<E>>,
 ) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
@@ -675,12 +673,9 @@ impl<'a, E> serde::ser::Serialize for Serialize<'a, E> {
 }
 
 fn collect_nested_applications<'a, E>(
-    e: &'a SubExpr<E>,
-) -> (&'a SubExpr<E>, Vec<&'a SubExpr<E>>) {
-    fn go<'a, E>(
-        e: &'a SubExpr<E>,
-        vec: &mut Vec<&'a SubExpr<E>>,
-    ) -> &'a SubExpr<E> {
+    e: &'a Expr<E>,
+) -> (&'a Expr<E>, Vec<&'a Expr<E>>) {
+    fn go<'a, E>(e: &'a Expr<E>, vec: &mut Vec<&'a Expr<E>>) -> &'a Expr<E> {
         match e.as_ref() {
             ExprF::App(f, a) => {
                 vec.push(a);
@@ -694,15 +689,15 @@ fn collect_nested_applications<'a, E>(
     (e, vec)
 }
 
-type LetBinding<'a, E> = (&'a Label, &'a Option<SubExpr<E>>, &'a SubExpr<E>);
+type LetBinding<'a, E> = (&'a Label, &'a Option<Expr<E>>, &'a Expr<E>);
 
 fn collect_nested_lets<'a, E>(
-    e: &'a SubExpr<E>,
-) -> (&'a SubExpr<E>, Vec<LetBinding<'a, E>>) {
+    e: &'a Expr<E>,
+) -> (&'a Expr<E>, Vec<LetBinding<'a, E>>) {
     fn go<'a, E>(
-        e: &'a SubExpr<E>,
+        e: &'a Expr<E>,
         vec: &mut Vec<LetBinding<'a, E>>,
-    ) -> &'a SubExpr<E> {
+    ) -> &'a Expr<E> {
         match e.as_ref() {
             ExprF::Let(l, t, v, e) => {
                 vec.push((l, t, v));

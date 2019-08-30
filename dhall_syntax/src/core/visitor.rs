@@ -247,18 +247,17 @@ where
 
 pub struct ResolveVisitor<F1>(pub F1);
 
-impl<'a, 'b, E, E2, Err, F1>
-    ExprFFallibleVisitor<'a, SubExpr<E>, SubExpr<E2>, E, E2>
+impl<'a, 'b, E, E2, Err, F1> ExprFFallibleVisitor<'a, Expr<E>, Expr<E2>, E, E2>
     for &'b mut ResolveVisitor<F1>
 where
-    F1: FnMut(&Import<SubExpr<E2>>) -> Result<E2, Err>,
+    F1: FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(
         &mut self,
-        subexpr: &'a SubExpr<E>,
-    ) -> Result<SubExpr<E2>, Self::Error> {
+        subexpr: &'a Expr<E>,
+    ) -> Result<Expr<E2>, Self::Error> {
         Ok(subexpr.rewrap(
             subexpr
                 .as_ref()

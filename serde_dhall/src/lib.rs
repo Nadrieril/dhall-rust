@@ -124,7 +124,7 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::phase::{NormalizedSubExpr, Parsed, Typed};
+    use dhall::phase::{NormalizedExpr, Parsed, Typed};
     use dhall_syntax::Builtin;
 
     use super::de::{Error, Result};
@@ -148,7 +148,7 @@ pub mod value {
             };
             Ok(Value(typed))
         }
-        pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+        pub(crate) fn to_expr(&self) -> NormalizedExpr {
             self.0.to_expr()
         }
         pub(crate) fn as_typed(&self) -> &Typed {

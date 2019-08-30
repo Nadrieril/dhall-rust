@@ -2,7 +2,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, SubExpr,
+    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label,
 };
 
 use crate::core::context::TypecheckContext;
@@ -200,7 +200,7 @@ macro_rules! make_type {
 
 fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
     use dhall_syntax::Builtin::*;
-    match b {
+    rc(match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
         List | Optional => make_type!(
             Type -> Type
@@ -280,14 +280,14 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
         OptionalNone => make_type!(
             forall (a: Type) -> Optional a
         ),
-    }
+    })
 }
 
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
     let ctx = TypecheckContext::new();
     Value::from_valuef_and_type(
         ValueF::from_builtin(b),
-        type_with(&ctx, rc(type_of_builtin(b))).unwrap(),
+        type_with(&ctx, type_of_builtin(b)).unwrap(),
     )
 }
 
@@ -297,7 +297,7 @@ pub(crate) fn builtin_to_value(b: Builtin) -> Value {
 /// normalized as well.
 fn type_with(
     ctx: &TypecheckContext,
-    e: SubExpr<Normalized>,
+    e: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
 
@@ -791,13 +791,13 @@ fn type_last_layer(
 /// `type_of` is the same as `type_with` with an empty context, meaning that the
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
-pub(crate) fn typecheck(e: SubExpr<Normalized>) -> Result<Value, TypeError> {
+pub(crate) fn typecheck(e: Expr<Normalized>) -> Result<Value, TypeError> {
     type_with(&TypecheckContext::new(), e)
 }
 
 pub(crate) fn typecheck_with(
-    expr: SubExpr<Normalized>,
-    ty: SubExpr<Normalized>,
+    expr: Expr<Normalized>,
+    ty: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
     typecheck(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
 }

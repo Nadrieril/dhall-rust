@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Builtin, Const, SubExpr};
+use dhall_syntax::{Builtin, Const, Expr};
 
 use crate::core::value::Value;
 use crate::core::valuef::ValueF;
@@ -16,19 +16,19 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedSubExpr = SubExpr<!>;
-pub type DecodedSubExpr = SubExpr<!>;
-pub type ResolvedSubExpr = SubExpr<Normalized>;
-pub type NormalizedSubExpr = SubExpr<Normalized>;
+pub type ParsedExpr = Expr<!>;
+pub type DecodedExpr = Expr<!>;
+pub type ResolvedExpr = Expr<Normalized>;
+pub type NormalizedExpr = Expr<Normalized>;
 
 #[derive(Debug, Clone)]
-pub struct Parsed(ParsedSubExpr, ImportRoot);
+pub struct Parsed(ParsedExpr, ImportRoot);
 
 /// An expression where all imports have been resolved
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub struct Resolved(ResolvedSubExpr);
+pub struct Resolved(ResolvedExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
@@ -102,10 +102,10 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
-    pub fn to_expr(&self) -> NormalizedSubExpr {
+    pub fn to_expr(&self) -> NormalizedExpr {
         self.0.to_expr()
     }
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr_alpha()
     }
     pub(crate) fn to_value(&self) -> Value {
@@ -162,10 +162,10 @@ impl Normalized {
         crate::phase::binary::encode(&self.to_expr())
     }
 
-    pub(crate) fn to_expr(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr(&self) -> NormalizedExpr {
         self.0.to_expr()
     }
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedSubExpr {
+    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr_alpha()
     }
     pub(crate) fn into_typed(self) -> Typed {

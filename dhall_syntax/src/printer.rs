@@ -112,7 +112,7 @@ enum PrintPhase {
 // Wraps an Expr with a phase, so that phase selsction can be done
 // separate from the actual printing
 #[derive(Clone)]
-struct PhasedExpr<'a, A>(&'a SubExpr<A>, PrintPhase);
+struct PhasedExpr<'a, A>(&'a Expr<A>, PrintPhase);
 
 impl<'a, A: Display + Clone> Display for PhasedExpr<'a, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -126,7 +126,7 @@ impl<'a, A: Display + Clone> PhasedExpr<'a, A> {
     }
 }
 
-impl<A: Display + Clone> Expr<A> {
+impl<A: Display + Clone> RawExpr<A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
@@ -202,7 +202,7 @@ impl<A: Display + Clone> Expr<A> {
     }
 }
 
-impl<A: Display + Clone> Display for SubExpr<A> {
+impl<A: Display + Clone> Display for Expr<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
