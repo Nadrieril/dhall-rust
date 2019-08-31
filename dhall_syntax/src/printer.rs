@@ -360,15 +360,9 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
         use FilePrefix::*;
         use ImportLocation::*;
         use ImportMode::*;
-        let fmt_remote_path_component = |s: &str| -> String {
-            use percent_encoding::{
-                utf8_percent_encode, PATH_SEGMENT_ENCODE_SET,
-            };
-            utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
-        };
-        let fmt_local_path_component = |s: &str| -> String {
+        let quote_if_needed = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
-                s.to_owned()
+                s.to_string()
             } else {
                 format!("\"{}\"", s)
             }
@@ -383,19 +377,13 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                     Absolute => "",
                 };
                 write!(f, "{}/", prefix)?;
-                let path: String = path
-                    .iter()
-                    .map(|c| fmt_local_path_component(c.as_ref()))
-                    .join("/");
+                let path: String =
+                    path.iter().map(|c| quote_if_needed(&*c)).join("/");
                 f.write_str(&path)?;
             }
             Remote(url) => {
                 write!(f, "{}://{}/", url.scheme, url.authority,)?;
-                let path: String = url
-                    .path
-                    .iter()
-                    .map(|c| fmt_remote_path_component(c.as_ref()))
-                    .join("/");
+                let path: String = url.path.iter().join("/");
                 f.write_str(&path)?;
                 if let Some(q) = &url.query {
                     write!(f, "?{}", q)?

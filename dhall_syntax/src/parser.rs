@@ -669,12 +669,29 @@ make_parser! {
     rule!(unquoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(quoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(path_component<String>; children!(
-        [unquoted_path_component(s)] => {
-            percent_encoding::percent_decode(s.as_bytes())
-                .decode_utf8_lossy()
-                .into_owned()
+        [unquoted_path_component(s)] => s.to_string(),
+        [quoted_path_component(s)] => {
+            const RESERVED: &percent_encoding::AsciiSet =
+                &percent_encoding::CONTROLS
+                .add(b'=').add(b':').add(b'/').add(b'?')
+                .add(b'#').add(b'[').add(b']').add(b'@')
+                .add(b'!').add(b'$').add(b'&').add(b'\'')
+                .add(b'(').add(b')').add(b'*').add(b'+')
+                .add(b',').add(b';');
+            s.chars()
+                .map(|c| {
+                    // Percent-encode ascii chars
+                    if c.is_ascii() {
+                        percent_encoding::utf8_percent_encode(
+                            &c.to_string(),
+                            RESERVED,
+                        ).to_string()
+                    } else {
+                        c.to_string()
+                    }
+                })
+                .collect()
         },
-        [quoted_path_component(s)] => s.to_string(),
     ));
     rule!(path<Vec<String>>; children!(
         [path_component(components)..] => {
