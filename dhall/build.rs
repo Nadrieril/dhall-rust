@@ -133,8 +133,6 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: toMap
-                    || path == "toMap"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -172,8 +170,6 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: toMap
-                    || path == "toMap"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -203,8 +199,6 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: toMap
-                    || path == "toMap"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -222,9 +216,6 @@ fn main() -> std::io::Result<()> {
                     // TODO: projection by expression
                     || path == "unit/RecordProjectFields"
                     || path == "unit/recordProjectionByExpression"
-                    // TODO: toMap
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapAnnotated"
             },
             input_type: FileType::Binary,
             output_type: Some(FileType::Text),

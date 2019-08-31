@@ -366,6 +366,15 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
+            [U64(27), x] => {
+                let x = cbor_value_to_dhall(&x)?;
+                ToMap(x, None)
+            }
+            [U64(27), x, y] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                ToMap(x, Some(y))
+            }
             [U64(28), x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 EmptyListLit(x)
@@ -550,6 +559,8 @@ where
         Merge(x, y, Some(z)) => {
             ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
         }
+        ToMap(x, None) => ser_seq!(ser; tag(27), expr(x)),
+        ToMap(x, Some(y)) => ser_seq!(ser; tag(27), expr(x), expr(y)),
         Projection(x, ls) => ser.collect_seq(
             once(tag(10))
                 .chain(once(expr(x)))

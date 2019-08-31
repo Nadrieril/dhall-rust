@@ -41,6 +41,12 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                     write!(f, " : {}", c)?;
                 }
             }
+            ToMap(a, b) => {
+                write!(f, "toMap {}", a)?;
+                if let Some(b) = b {
+                    write!(f, " : {}", b)?;
+                }
+            }
             Annot(a, b) => {
                 write!(f, "{} : {}", a, b)?;
             }
@@ -144,6 +150,7 @@ impl<A: Display + Clone> RawExpr<A> {
             | NEListLit(_)
             | SomeLit(_)
             | Merge(_, _, _)
+            | ToMap(_, _)
             | Annot(_, _)
                 if phase > Base =>
             {
@@ -171,6 +178,10 @@ impl<A: Display + Clone> RawExpr<A> {
                 a.phase(PrintPhase::Import),
                 b.phase(PrintPhase::Import),
                 c.map(|x| x.phase(PrintPhase::App)),
+            ),
+            ToMap(a, b) => ToMap(
+                a.phase(PrintPhase::Import),
+                b.map(|x| x.phase(PrintPhase::App)),
             ),
             Annot(a, b) => Annot(a.phase(Operator), b),
             ExprF::BinOp(op, a, b) => ExprF::BinOp(

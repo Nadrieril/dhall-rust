@@ -243,6 +243,8 @@ pub enum ExprF<SubExpr, Embed> {
     UnionType(DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
     Merge(SubExpr, SubExpr, Option<SubExpr>),
+    ///  `toMap x : t`
+    ToMap(SubExpr, Option<SubExpr>),
     ///  `e.x`
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`

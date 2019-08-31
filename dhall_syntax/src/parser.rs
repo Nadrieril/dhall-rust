@@ -827,6 +827,7 @@ make_parser! {
     rule!(assert<()>);
     rule!(if_<()>);
     rule!(in_<()>);
+    rule!(toMap<()>);
 
     rule!(empty_list_literal<ParsedExpr>; span; children!(
         [application_expression(e)] => {
@@ -862,6 +863,9 @@ make_parser! {
         [empty_list_literal(e)] => e,
         [assert(()), expression(x)] => {
             spanned(span, Assert(x))
+        },
+        [toMap(()), import_expression(x), application_expression(y)] => {
+            spanned(span, ToMap(x, Some(y)))
         },
         [operator_expression(e)] => e,
         [operator_expression(e), expression(annot)] => {
@@ -934,7 +938,6 @@ make_parser! {
     ));
 
     rule!(Some_<()>);
-    rule!(toMap<()>);
 
     rule!(application_expression<ParsedExpr>; children!(
         [first_application_expression(e)] => e,
@@ -950,6 +953,9 @@ make_parser! {
         },
         [merge(()), import_expression(x), import_expression(y)] => {
             spanned(span, Merge(x, y, None))
+        },
+        [toMap(()), import_expression(x)] => {
+            spanned(span, ToMap(x, None))
         },
         [import_expression(e)] => e,
     ));

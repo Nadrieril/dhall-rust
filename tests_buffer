@@ -10,6 +10,8 @@ success/
     LetNoAnnot let x = y in e
     LetAnnot let x: T = y in e
     EmptyRecordLiteral {=}
+    ToMap toMap x
+    ToMapAnnot toMap x : T
 failure/
     AssertNoAnnotation assert
 
