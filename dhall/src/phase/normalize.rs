@@ -765,6 +765,7 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
+        ExprF::ToMap(_, _) => unimplemented!("toMap"),
     };
 
     match ret {

@@ -757,6 +757,7 @@ fn type_last_layer(
                 (None, None) => return mkerr(MergeEmptyNeedsAnnotation),
             }
         }
+        ToMap(_, _) => unimplemented!("toMap"),
         Projection(record, labels) => {
             let record_type = record.get_type()?;
             let record_borrow = record_type.as_whnf();

@@ -150,6 +150,9 @@ where
                 v.visit_subexpr(y)?,
                 opt(t, |e| v.visit_subexpr(e))?,
             ),
+            ToMap(x, t) => {
+                ToMap(v.visit_subexpr(x)?, opt(t, |e| v.visit_subexpr(e))?)
+            }
             Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
             Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
             Assert(e) => Assert(v.visit_subexpr(e)?),
