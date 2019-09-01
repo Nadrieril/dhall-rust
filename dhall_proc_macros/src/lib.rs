@@ -22,3 +22,11 @@ pub fn make_parser(input: TokenStream) -> TokenStream {
         Err(err) => err.to_compile_error(),
     })
 }
+
+#[proc_macro]
+pub fn parse_children(input: TokenStream) -> TokenStream {
+    TokenStream::from(match parser::parse_children(input) {
+        Ok(tokens) => tokens,
+        Err(err) => err.to_compile_error(),
+    })
+}

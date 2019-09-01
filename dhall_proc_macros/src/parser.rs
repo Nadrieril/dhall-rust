@@ -2,7 +2,11 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
-use syn::{bracketed, parenthesized, token, Expr, Ident, Pat, Token, Type};
+use syn::spanned::Spanned;
+use syn::{
+    bracketed, parenthesized, parse_quote, token, Error, Expr, Ident, ItemFn,
+    Pat, ReturnType, Token, Type,
+};
 
 mod rule_kw {
     syn::custom_keyword!(rule);
@@ -16,73 +20,40 @@ struct Rules(Vec<Rule>);
 
 #[derive(Debug, Clone)]
 struct Rule {
-    rule_token: rule_kw::rule,
-    bang_token: Token![!],
-    paren_token: token::Paren,
     name: Ident,
-    lt_token: token::Lt,
     output_type: Type,
-    gt_token: token::Gt,
     contents: RuleContents,
-    semi_token: Token![;],
 }
 
 #[derive(Debug, Clone)]
 enum RuleContents {
-    Empty,
-    CapturedString {
-        span: Option<Ident>,
-        captured_str_token: rule_kw::captured_str,
-        bang_token: Token![!],
-        paren_token: token::Paren,
-        pattern: Pat,
-        fat_arrow_token: Token![=>],
-        body: Expr,
-    },
-    Children {
-        span: Option<Ident>,
-        children_token: rule_kw::children,
-        bang_token: Token![!],
-        paren_token: token::Paren,
-        branches: Punctuated<ChildrenBranch, Token![,]>,
-    },
     PrecClimb {
-        span: Option<Ident>,
-        prec_climb_token: rule_kw::prec_climb,
-        bang_token: Token![!],
-        paren_token: token::Paren,
         child_rule: Ident,
-        comma_token: Token![,],
         climber: Expr,
-        comma_token2: Token![,],
-        pattern: Pat,
-        fat_arrow_token: Token![=>],
-        body: Expr,
+        function: ItemFn,
+    },
+    Function {
+        function: ItemFn,
     },
 }
 
 #[derive(Debug, Clone)]
 struct ChildrenBranch {
-    bracket_token: token::Bracket,
-    pattern_unparsed: TokenStream,
+    pattern_span: Span,
     pattern: Punctuated<ChildrenBranchPatternItem, Token![,]>,
-    fat_arrow_token: Token![=>],
     body: Expr,
 }
 
 #[derive(Debug, Clone)]
 enum ChildrenBranchPatternItem {
-    Single {
-        rule_name: Ident,
-        paren_token: token::Paren,
-        binder: Pat,
-    },
-    Multiple {
-        rule_name: Ident,
-        paren_token: token::Paren,
-        binder: Ident,
-        slice_token: Token![..],
-    },
+    Single { rule_name: Ident, binder: Pat },
+    Multiple { rule_name: Ident, binder: Ident },
+}
+
+#[derive(Debug, Clone)]
+struct ParseChildrenInput {
+    input_expr: Expr,
+    branches: Punctuated<ChildrenBranch, Token![,]>,
 }
 
 impl Parse for Rules {
@@ -97,73 +68,50 @@ impl Parse for Rules {
 
 impl Parse for Rule {
     fn parse(input: ParseStream) -> Result<Self> {
-        let contents;
-        Ok(Rule {
-            rule_token: input.parse()?,
-            bang_token: input.parse()?,
-            paren_token: parenthesized!(contents in input),
-            name: contents.parse()?,
-            lt_token: contents.parse()?,
-            output_type: contents.parse()?,
-            gt_token: contents.parse()?,
-            contents: contents.parse()?,
-            semi_token: input.parse()?,
-        })
-    }
-}
-
-impl Parse for RuleContents {
-    fn parse(input: ParseStream) -> Result<Self> {
-        if input.is_empty() {
-            return Ok(RuleContents::Empty);
-        }
-        let _: Token![;] = input.parse()?;
-        let span = if input.peek(Ident) && input.peek2(Token![;]) {
-            let span: Ident = input.parse()?;
-            let _: Token![;] = input.parse()?;
-            Some(span)
-        } else {
-            None
+        let function: ItemFn = input.parse()?;
+        let (recognized_attrs, remaining_attrs) = function
+            .attrs
+            .iter()
+            .cloned()
+            .partition::<Vec<_>, _>(|attr| attr.path.is_ident("prec_climb"));
+        let function = ItemFn {
+            attrs: remaining_attrs,
+            ..(function.clone())
         };
 
-        let lookahead = input.lookahead1();
-        if lookahead.peek(rule_kw::captured_str) {
-            let contents;
-            Ok(RuleContents::CapturedString {
-                span,
-                captured_str_token: input.parse()?,
-                bang_token: input.parse()?,
-                paren_token: parenthesized!(contents in input),
-                pattern: contents.parse()?,
-                fat_arrow_token: input.parse()?,
-                body: input.parse()?,
+        let name = function.sig.ident.clone();
+        let output_type = match &function.sig.output {
+            ReturnType::Default => parse_quote!(()),
+            ReturnType::Type(_, t) => (**t).clone(),
+        };
+
+        if recognized_attrs.is_empty() {
+            Ok(Rule {
+                name,
+                output_type,
+                contents: RuleContents::Function { function },
             })
-        } else if lookahead.peek(rule_kw::children) {
-            let contents;
-            Ok(RuleContents::Children {
-                span,
-                children_token: input.parse()?,
-                bang_token: input.parse()?,
-                paren_token: parenthesized!(contents in input),
-                branches: Punctuated::parse_terminated(&contents)?,
-            })
-        } else if lookahead.peek(rule_kw::prec_climb) {
-            let contents;
-            Ok(RuleContents::PrecClimb {
-                span,
-                prec_climb_token: input.parse()?,
-                bang_token: input.parse()?,
-                paren_token: parenthesized!(contents in input),
-                child_rule: contents.parse()?,
-                comma_token: contents.parse()?,
-                climber: contents.parse()?,
-                comma_token2: contents.parse()?,
-                pattern: contents.parse()?,
-                fat_arrow_token: contents.parse()?,
-                body: contents.parse()?,
-            })
+        } else if recognized_attrs.len() != 1 {
+            Err(input.error("expected a prec_climb attribute"))
         } else {
-            Err(lookahead.error())
+            let attr = recognized_attrs.into_iter().next().unwrap();
+            let (child_rule, climber) =
+                attr.parse_args_with(|input: ParseStream| {
+                    let child_rule: Ident = input.parse()?;
+                    let _: Token![,] = input.parse()?;
+                    let climber: Expr = input.parse()?;
+                    Ok((child_rule, climber))
+                })?;
+
+            Ok(Rule {
+                name,
+                output_type,
+                contents: RuleContents::PrecClimb {
+                    child_rule,
+                    climber,
+                    function,
+                },
+            })
         }
     }
 }
@@ -171,37 +119,49 @@ impl Parse for RuleContents {
 impl Parse for ChildrenBranch {
     fn parse(input: ParseStream) -> Result<Self> {
         let contents;
+        let _: token::Bracket = bracketed!(contents in input);
+        let pattern_unparsed: TokenStream = contents.fork().parse()?;
+        let pattern_span = pattern_unparsed.span();
+        let pattern = Punctuated::parse_terminated(&contents)?;
+        let _: Token![=>] = input.parse()?;
+        let body = input.parse()?;
+
         Ok(ChildrenBranch {
-            bracket_token: bracketed!(contents in input),
-            pattern_unparsed: contents.fork().parse()?,
-            pattern: Punctuated::parse_terminated(&contents)?,
-            fat_arrow_token: input.parse()?,
-            body: input.parse()?,
+            pattern_span,
+            pattern,
+            body,
         })
     }
 }
 
 impl Parse for ChildrenBranchPatternItem {
     fn parse(input: ParseStream) -> Result<Self> {
-        let rule_name = input.parse()?;
         let contents;
-        let paren_token = parenthesized!(contents in input);
+        let rule_name = input.parse()?;
+        parenthesized!(contents in input);
         if input.peek(Token![..]) {
-            Ok(ChildrenBranchPatternItem::Multiple {
-                rule_name,
-                paren_token,
-                binder: contents.parse()?,
-                slice_token: input.parse()?,
-            })
+            let binder = contents.parse()?;
+            let _: Token![..] = input.parse()?;
+            Ok(ChildrenBranchPatternItem::Multiple { rule_name, binder })
         } else if input.is_empty() || input.peek(Token![,]) {
-            Ok(ChildrenBranchPatternItem::Single {
-                rule_name,
-                paren_token,
-                binder: contents.parse()?,
-            })
+            let binder = contents.parse()?;
+            Ok(ChildrenBranchPatternItem::Single { rule_name, binder })
         } else {
             Err(input.error("expected `..` or nothing"))
         }
+    }
+}
+
+impl Parse for ParseChildrenInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let input_expr = input.parse()?;
+        let _: Token![;] = input.parse()?;
+        let branches = Punctuated::parse_terminated(input)?;
+
+        Ok(ParseChildrenInput {
+            input_expr,
+            branches,
+        })
     }
 }
 
@@ -233,11 +193,16 @@ fn make_entrypoints(rules: &Rules) -> Result<TokenStream> {
         entries.push(quote!(
             #[allow(non_snake_case, dead_code)]
             fn #name<'a>(
-                input: Rc<str>,
+                input_str: &str,
                 pair: Pair<'a, Rule>,
-            ) -> ParseResult<#output_type> {
+            ) -> #output_type {
                 let climbers = construct_precclimbers();
-                Parsers::#name((&climbers, input), pair)
+                let input = ParseInput {
+                    climbers: &climbers,
+                    original_input_str: input_str.to_string().into(),
+                    pair
+                };
+                Parsers::#name(input)
             }
         ))
     }
@@ -250,128 +215,37 @@ fn make_entrypoints(rules: &Rules) -> Result<TokenStream> {
     ))
 }
 
-fn make_parser_branch(branch: &ChildrenBranch) -> TokenStream {
-    let ChildrenBranch {
-        pattern,
-        body,
-        pattern_unparsed,
-        ..
-    } = branch;
-    let variable_pattern = Ident::new("variable_pattern", Span::call_site());
-    let match_pat = pattern.iter().map(|item| match item {
-        ChildrenBranchPatternItem::Single { rule_name, .. } => {
-            quote!(Rule::#rule_name)
-        }
-        ChildrenBranchPatternItem::Multiple { .. } => {
-            quote!(#variable_pattern..)
-        }
-    });
-    let match_filter = pattern.iter().map(|item| match item {
-        ChildrenBranchPatternItem::Single { .. } => quote!(true &&),
-        ChildrenBranchPatternItem::Multiple { rule_name, .. } => {
-            quote!(#variable_pattern.iter().all(|r| r == &Rule::#rule_name) &&)
-        }
-    });
-    quote!(
-        [#(#match_pat),*] if #(#match_filter)* true => {
-            parse_children!((climbers, input.clone()), iter;
-                [#pattern_unparsed] => {
-                    #[allow(unused_variables)]
-                    let res: Result<_, String> = try { #body };
-                    res.map_err(|msg|
-                        custom_parse_error(&pair, msg)
-                    )
-                }
-            )
-        }
-    )
-}
-
-fn make_parser_expr(rule: &Rule) -> Result<TokenStream> {
-    let name = &rule.name;
-    let expr = match &rule.contents {
-        RuleContents::Empty => quote!(Ok(())),
-        RuleContents::CapturedString { pattern, body, .. } => quote!(
-            let #pattern = pair.as_str();
-            let res: Result<_, String> = try { #body };
-            res.map_err(|msg| custom_parse_error(&pair, msg))
-        ),
-        RuleContents::PrecClimb {
-            child_rule,
-            pattern,
-            body,
-            ..
-        } => quote!(
-            let climber = climbers.get(&Rule::#name).unwrap();
-            climber.climb(
-                pair.clone().into_inner(),
-                |p| Parsers::#child_rule((climbers, input.clone()), p),
-                |l, op, r| {
-                    let #pattern = (l?, op, r?);
-                    let res: Result<_, String> = try { #body };
-                    res.map_err(|msg| custom_parse_error(&pair, msg))
-                },
-            )
-        ),
-        RuleContents::Children { branches, .. } => {
-            let branches = branches.iter().map(make_parser_branch);
-            quote!(
-                let children_rules: Vec<Rule> = pair
-                    .clone()
-                    .into_inner()
-                    .map(|p| p.as_rule())
-                    .collect();
-
-                #[allow(unused_mut)]
-                let mut iter = pair.clone().into_inner();
-
-                #[allow(unreachable_code)]
-                match children_rules.as_slice() {
-                    #(#branches,)*
-                    [..] => Err(custom_parse_error(
-                        &pair,
-                        format!("Unexpected children: {:?}", children_rules)
-                    )),
-                }
-            )
-        }
-    };
-    Ok(expr)
-}
-
 fn make_parsers(rules: &Rules) -> Result<TokenStream> {
-    let mut entries: Vec<TokenStream> = Vec::new();
-    for rule in &rules.0 {
-        let span_def = match &rule.contents {
-            RuleContents::CapturedString {
-                span: Some(span), ..
-            }
-            | RuleContents::Children {
-                span: Some(span), ..
-            }
-            | RuleContents::PrecClimb {
-                span: Some(span), ..
-            } => Some(quote!(
-                let #span = Span::make(input.clone(), pair.as_span());
-            )),
-            _ => None,
-        };
-
+    let entries = rules.0.iter().map(|rule| {
         let name = &rule.name;
         let output_type = &rule.output_type;
-        let expr = make_parser_expr(rule)?;
-
-        entries.push(quote!(
-            #[allow(non_snake_case, dead_code)]
-            fn #name<'a>(
-                (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
-                pair: Pair<'a, Rule>,
-            ) -> ParseResult<#output_type> {
-                #span_def
-                #expr
-            }
-        ))
-    }
+        match &rule.contents {
+            RuleContents::PrecClimb {
+                child_rule,
+                function,
+                ..
+            } => quote!(
+                #[allow(non_snake_case, dead_code)]
+                fn #name<'a, 'climbers>(
+                    input: ParseInput<'a, 'climbers, Rule>,
+                ) -> #output_type {
+                    #function
+                    let climber = input.climbers.get(&Rule::#name).unwrap();
+                    climber.climb(
+                        input.pair.clone().into_inner(),
+                        |p| Parsers::#child_rule(input.with_pair(p)),
+                        |l, op, r| {
+                            #name(input.clone(), l?, op, r?)
+                        },
+                    )
+                }
+            ),
+            RuleContents::Function { function } => quote!(
+                #[allow(non_snake_case, dead_code)]
+                #function
+            ),
+        }
+    });
 
     Ok(quote!(
         struct Parsers;
@@ -384,7 +258,7 @@ fn make_parsers(rules: &Rules) -> Result<TokenStream> {
 pub fn make_parser(
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
-    let rules: Rules = syn::parse_macro_input::parse(input.clone())?;
+    let rules: Rules = syn::parse(input.clone())?;
 
     let construct_precclimbers = make_construct_precclimbers(&rules)?;
     let entrypoints = make_entrypoints(&rules)?;
@@ -395,4 +269,124 @@ pub fn make_parser(
         #entrypoints
         #parsers
     ))
+}
+
+fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
+    use ChildrenBranchPatternItem::{Multiple, Single};
+
+    let body = &branch.body;
+
+    // Convert the input pattern into a pattern-match on the Rules of the children. This uses
+    // slice_patterns.
+    // A single pattern just checks that the rule matches; a variable-length pattern binds the
+    // subslice and checks that they all match the chosen Rule in the `if`-condition.
+    let variable_pattern_ident =
+        Ident::new("variable_pattern", Span::call_site());
+    let match_pat = branch.pattern.iter().map(|item| match item {
+        Single { rule_name, .. } => quote!(Rule::#rule_name),
+        Multiple { .. } => quote!(#variable_pattern_ident..),
+    });
+    let match_filter = branch.pattern.iter().map(|item| match item {
+        Single { .. } => quote!(),
+        Multiple { rule_name, .. } => quote!(
+            #variable_pattern_ident.iter().all(|r| r == &Rule::#rule_name) &&
+        ),
+    });
+
+    // Once we have found a branch that matches, we need to parse the children.
+    let mut singles_before_multiple = Vec::new();
+    let mut multiple = None;
+    let mut singles_after_multiple = Vec::new();
+    for item in &branch.pattern {
+        match item {
+            Single {
+                rule_name, binder, ..
+            } => {
+                if multiple.is_none() {
+                    singles_before_multiple.push((rule_name, binder))
+                } else {
+                    singles_after_multiple.push((rule_name, binder))
+                }
+            }
+            Multiple {
+                rule_name, binder, ..
+            } => {
+                if multiple.is_none() {
+                    multiple = Some((rule_name, binder))
+                } else {
+                    return Err(Error::new(
+                        branch.pattern_span.clone(),
+                        "multiple variable-length patterns are not allowed",
+                    ));
+                }
+            }
+        }
+    }
+    let mut parses = Vec::new();
+    for (rule_name, binder) in singles_before_multiple.into_iter() {
+        parses.push(quote!(
+            let #binder = Parsers::#rule_name(
+                inputs.next().unwrap()
+            )?;
+        ))
+    }
+    // Note the `rev()`: we are taking inputs from the end of the iterator in reverse order, so that
+    // only the unmatched inputs are left for the variable-length pattern, if any.
+    for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
+        parses.push(quote!(
+            let #binder = Parsers::#rule_name(
+                inputs.next_back().unwrap()
+            )?;
+        ))
+    }
+    if let Some((rule_name, binder)) = multiple {
+        parses.push(quote!(
+            let #binder = inputs
+                .map(|i| Parsers::#rule_name(i))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter();
+        ))
+    }
+
+    Ok(quote!(
+        [#(#match_pat),*] if #(#match_filter)* true => {
+            #(#parses)*
+            #body
+        }
+    ))
+}
+
+pub fn parse_children(
+    input: proc_macro::TokenStream,
+) -> Result<proc_macro2::TokenStream> {
+    let input: ParseChildrenInput = syn::parse(input)?;
+
+    let input_expr = &input.input_expr;
+    let branches = input
+        .branches
+        .iter()
+        .map(make_parser_branch)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(quote!({
+        let children_rules: Vec<Rule> = #input_expr.pair
+            .clone()
+            .into_inner()
+            .map(|p| p.as_rule())
+            .collect();
+
+        #[allow(unused_mut)]
+        let mut inputs = #input_expr
+            .pair
+            .clone()
+            .into_inner()
+            .map(|p| #input_expr.with_pair(p));
+
+        #[allow(unreachable_code)]
+        match children_rules.as_slice() {
+            #(#branches,)*
+            [..] => return Err(#input_expr.error(
+                format!("Unexpected children: {:?}", children_rules)
+            )),
+        }
+    }))
 }
