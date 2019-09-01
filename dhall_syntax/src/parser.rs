@@ -189,203 +189,6 @@ macro_rules! parse_children {
     };
 }
 
-macro_rules! make_parser {
-    (@children_pattern,
-        $varpat:ident,
-        ($($acc:tt)*),
-        [$variant:ident ($x:pat), $($rest:tt)*]
-    ) => (
-        make_parser!(@children_pattern,
-            $varpat,
-            ($($acc)* , Rule::$variant),
-            [$($rest)*]
-        )
-    );
-    (@children_pattern,
-        $varpat:ident,
-        ($($acc:tt)*),
-        [$variant:ident ($x:ident).., $($rest:tt)*]
-    ) => (
-        make_parser!(@children_pattern,
-            $varpat,
-            ($($acc)* , $varpat..),
-            [$($rest)*]
-        )
-    );
-    (@children_pattern,
-        $varpat:ident,
-        (, $($acc:tt)*), [$(,)*]
-    ) => ([$($acc)*]);
-    (@children_pattern,
-        $varpat:ident,
-        ($($acc:tt)*), [$(,)*]
-    ) => ([$($acc)*]);
-
-    (@children_filter,
-        $varpat:ident,
-        [$variant:ident ($x:pat), $($rest:tt)*]
-    ) => (
-        make_parser!(@children_filter, $varpat, [$($rest)*])
-    );
-    (@children_filter,
-        $varpat:ident,
-        [$variant:ident ($x:ident).., $($rest:tt)*]
-    ) => (
-        $varpat.iter().all(|r| r == &Rule::$variant) &&
-        make_parser!(@children_filter, $varpat, [$($rest)*])
-    );
-    (@children_filter, $varpat:ident, [$(,)*]) => (true);
-
-    (@body,
-        ($climbers:expr, $input:expr, $pair:expr),
-        rule!(
-            $name:ident<$o:ty>;
-            $span:ident;
-            captured_str!($x:pat) => $body:expr
-        )
-    ) => ({
-        let $span = Span::make($input.clone(), $pair.as_span());
-        let $x = $pair.as_str();
-        let res: Result<_, String> = try { $body };
-        res.map_err(|msg| custom_parse_error(&$pair, msg))
-    });
-    (@body,
-        ($climbers:expr, $input:expr, $pair:expr),
-        rule!(
-            $name:ident<$o:ty>;
-            $span:ident;
-            children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
-        )
-    ) => ({
-        let children_rules: Vec<Rule> = $pair
-            .clone()
-            .into_inner()
-            .map(|p| p.as_rule())
-            .collect();
-
-        let $span = Span::make($input.clone(), $pair.as_span());
-        #[allow(unused_mut)]
-        let mut iter = $pair.clone().into_inner();
-
-        #[allow(unreachable_code)]
-        match children_rules.as_slice() {
-            $(
-                make_parser!(@children_pattern, x, (), [$($args)*,])
-                if make_parser!(@children_filter, x, [$($args)*,])
-                => {
-                    parse_children!(($climbers, $input.clone()), iter;
-                        [$($args)*] => {
-                            let res: Result<_, String> = try { $body };
-                            res.map_err(|msg| custom_parse_error(&$pair, msg))
-                        }
-                    )
-                }
-                ,
-            )*
-            [..] => Err(custom_parse_error(
-                &$pair,
-                format!("Unexpected children: {:?}", children_rules)
-            )),
-        }
-    });
-    (@body,
-        ($climbers:expr, $input:expr, $pair:expr),
-        rule!(
-            $name:ident<$o:ty>;
-            prec_climb!(
-                $other_rule:ident,
-                $_climber:expr,
-                $args:pat => $body:expr $(,)*
-            )
-        )
-    ) => ({
-        let climber = $climbers.get(&Rule::$name).unwrap();
-        climber.climb(
-            $pair.clone().into_inner(),
-            |p| Parsers::$other_rule(($climbers, $input.clone()), p),
-            |l, op, r| {
-                let $args = (l?, op, r?);
-                let res: Result<_, String> = try { $body };
-                res.map_err(|msg| custom_parse_error(&$pair, msg))
-            },
-        )
-    });
-    (@body,
-        ($($things:tt)*),
-        rule!(
-            $name:ident<$o:ty>;
-            $($args:tt)*
-        )
-    ) => ({
-        make_parser!(@body,
-            ($($things)*),
-            rule!(
-                $name<$o>;
-                _span;
-                $($args)*
-            )
-        )
-    });
-    (@body,
-        ($($things:tt)*),
-        rule!($name:ident<$o:ty>)
-    ) => ({
-        Ok(())
-    });
-
-    (@construct_climber,
-        ($map:expr),
-        rule!(
-            $name:ident<$o:ty>;
-            prec_climb!($other_rule:ident, $climber:expr, $($_rest:tt)* )
-        )
-    ) => ({
-        $map.insert(Rule::$name, $climber)
-    });
-    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
-
-    ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
-        struct Parsers;
-
-        impl Parsers {
-            $(
-            #[allow(non_snake_case, unused_variables, clippy::let_unit_value)]
-            fn $name<'a>(
-                (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
-                pair: Pair<'a, Rule>,
-            ) -> ParseResult<$o> {
-                make_parser!(@body, (climbers, input, pair),
-                               $submac!( $name<$o> $($args)* ))
-            }
-            )*
-        }
-
-        fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
-            let mut map = HashMap::new();
-            $(
-                make_parser!(@construct_climber, (map),
-                        $submac!( $name<$o> $($args)* ));
-            )*
-            map
-        }
-
-        struct EntryPoint;
-
-        impl EntryPoint {
-            $(
-            #[allow(non_snake_case, dead_code)]
-            fn $name<'a>(
-                input: Rc<str>,
-                pair: Pair<'a, Rule>,
-            ) -> ParseResult<$o> {
-                let climbers = construct_precclimbers();
-                Parsers::$name((&climbers, input), pair)
-            }
-            )*
-        }
-    );
-}
-
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
 // literals.
 fn trim_indent(lines: &mut Vec<ParsedText>) {
@@ -427,7 +230,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
     }
 }
 
-make_parser! {
+dhall_proc_macros::make_parser! {
     rule!(EOI<()>);
 
     rule!(simple_label<Label>;
@@ -629,9 +432,9 @@ make_parser! {
 
     rule!(double_literal<core::Double>; children!(
         [numeric_double_literal(n)] => n,
-        [minus_infinity_literal(n)] => std::f64::NEG_INFINITY.into(),
-        [plus_infinity_literal(n)] => std::f64::INFINITY.into(),
-        [NaN(n)] => std::f64::NAN.into(),
+        [minus_infinity_literal(_)] => std::f64::NEG_INFINITY.into(),
+        [plus_infinity_literal(_)] => std::f64::INFINITY.into(),
+        [NaN(_)] => std::f64::NAN.into(),
     ));
 
     rule!(natural_literal<core::Natural>;
@@ -977,7 +780,7 @@ make_parser! {
         [import_expression(e)] => e,
     ));
 
-    rule!(import_expression<ParsedExpr>; span;
+    rule!(import_expression<ParsedExpr>;
             children!(
         [selector_expression(e)] => e,
         [import(e)] => e,
@@ -996,7 +799,7 @@ make_parser! {
     rule!(selector<Either<Label, DupTreeSet<Label>>>; children!(
         [label(l)] => Either::Left(l),
         [labels(ls)] => Either::Right(ls),
-        [expression(e)] => unimplemented!("selection by expression"), // TODO
+        [expression(_e)] => unimplemented!("selection by expression"), // TODO
     ));
 
     rule!(labels<DupTreeSet<Label>>; children!(

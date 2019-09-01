@@ -6,10 +6,19 @@
 extern crate proc_macro;
 
 mod derive;
+mod parser;
 
 use proc_macro::TokenStream;
 
 #[proc_macro_derive(StaticType)]
 pub fn derive_static_type(input: TokenStream) -> TokenStream {
     derive::derive_static_type(input)
+}
+
+#[proc_macro]
+pub fn make_parser(input: TokenStream) -> TokenStream {
+    TokenStream::from(match parser::make_parser(input) {
+        Ok(tokens) => tokens,
+        Err(err) => err.to_compile_error(),
+    })
 }

@@ -16,3 +16,4 @@ either = "1.5.2"
 take_mut = "0.2.2"
 hex = "0.3.2"
 dhall_generated_parser = { path = "../dhall_generated_parser" }
+dhall_proc_macros = { path = "../dhall_proc_macros" }
