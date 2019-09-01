@@ -4,8 +4,8 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    bracketed, parenthesized, parse_quote, token, Error, Expr, Ident, ItemFn,
-    Pat, ReturnType, Token, Type,
+    braced, bracketed, parenthesized, parse_quote, token, Error, Expr, Ident,
+    ItemFn, Pat, ReturnType, Token, Type,
 };
 
 mod rule_kw {
@@ -58,9 +58,13 @@ struct ParseChildrenInput {
 
 impl Parse for Rules {
     fn parse(input: ParseStream) -> Result<Self> {
+        let _: Token![impl ] = input.parse()?;
+        let _: Token![_] = input.parse()?;
+        let contents;
+        braced!(contents in input);
         let mut rules = Vec::new();
-        while !input.is_empty() {
-            rules.push(input.parse()?)
+        while !contents.is_empty() {
+            rules.push(contents.parse()?)
         }
         Ok(Rules(rules))
     }

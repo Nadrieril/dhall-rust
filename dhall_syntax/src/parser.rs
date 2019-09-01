@@ -215,7 +215,8 @@ fn make_precclimber() -> PrecClimber<Rule> {
     )
 }
 
-make_parser! {
+#[make_parser]
+impl _ {
     fn EOI(_: ParseInput<Rule>) -> ParseResult<()> {
         Ok(())
     }
