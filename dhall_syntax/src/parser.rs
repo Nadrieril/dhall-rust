@@ -1,7 +1,10 @@
 use itertools::Itertools;
 use pest::iterators::Pair;
+use pest::prec_climber as pcl;
+use pest::prec_climber::PrecClimber;
 use pest::Parser;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -15,45 +18,14 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-type ParsedExpr = Expr<Span, Import>;
-type ParsedSubExpr = SubExpr<Span, Import>;
-type ParsedText = InterpolatedText<SubExpr<Span, Import>>;
-type ParsedTextContents = InterpolatedTextContents<SubExpr<Span, Import>>;
+pub(crate) type ParsedRawExpr = RawExpr<!>;
+pub(crate) type ParsedExpr = Expr<!>;
+type ParsedText = InterpolatedText<ParsedExpr>;
+type ParsedTextContents = InterpolatedTextContents<ParsedExpr>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
-
-fn unspanned(x: ParsedExpr) -> ParsedSubExpr {
-    SubExpr::from_expr_no_note(x)
-}
-
-#[derive(Debug, Clone)]
-pub struct Span {
-    input: Rc<str>,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    start: usize,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    end: usize,
-}
-
-impl Span {
-    fn make(input: Rc<str>, sp: pest::Span) -> Self {
-        Span {
-            input,
-            start: sp.start(),
-            end: sp.end(),
-        }
-    }
-}
-
-fn spanned(span: Span, x: ParsedExpr) -> ParsedSubExpr {
-    SubExpr::new(x, span)
-}
 
 #[derive(Debug)]
 enum Either<A, B> {
@@ -147,177 +119,271 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-macro_rules! make_parser {
-    (@pattern, rule, $name:ident) => (Rule::$name);
-    (@pattern, token_rule, $name:ident) => (Rule::$name);
-    (@pattern, rule_group, $name:ident) => (_);
-    (@filter, rule) => (true);
-    (@filter, token_rule) => (true);
-    (@filter, rule_group) => (false);
+macro_rules! parse_children {
+    // Variable length pattern with a common unary variant
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:ident)..,
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards,
+            $parse_args, $iter,
+            ({
+                let $x = $iter
+                    .map(|x| Parsers::$variant($parse_args, x))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter();
+                $body
+            }),
+            $($rest)*
+        )
+    };
+    // Single item pattern
+    (@match_forwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {{
+        let p = $iter.next().unwrap();
+        let $x = Parsers::$variant($parse_args, p)?;
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($rest)*
+        )
+    }};
+    // Single item pattern after a variable length one: declare reversed and take from the end
+    (@match_backwards,
+        $parse_args:expr,
+        $iter:expr,
+        ($body:expr),
+        $variant:ident ($x:pat),
+        $($rest:tt)*
+    ) => {
+        parse_children!(@match_backwards, $parse_args, $iter, ({
+            let p = $iter.next_back().unwrap();
+            let $x = Parsers::$variant($parse_args, p)?;
+            $body
+        }), $($rest)*)
+    };
 
-    (@body,
-        ($($things:tt)*),
-        rule!( $name:ident<$o:ty>; $($args:tt)* )
+    // Check no elements remain
+    (@match_forwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+    // After a variable length pattern, everything has already been consumed
+    (@match_backwards, $parse_args:expr, $iter:expr, ($body:expr) $(,)*) => {
+        $body
+    };
+
+    ($parse_args:expr, $iter:expr; [$($args:tt)*] => $body:expr) => {
+        parse_children!(@match_forwards,
+            $parse_args, $iter,
+            ($body),
+            $($args)*,
+        )
+    };
+}
+
+macro_rules! make_parser {
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:pat), $($rest:tt)*]
     ) => (
-        make_parser!(@body,
-            ($($things)*),
-            rule!( $name<$o> as $name; $($args)* )
+        make_parser!(@children_pattern,
+            $varpat,
+            ($($acc)* , Rule::$variant),
+            [$($rest)*]
         )
     );
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*),
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        make_parser!(@children_pattern,
+            $varpat,
+            ($($acc)* , $varpat..),
+            [$($rest)*]
+        )
+    );
+    (@children_pattern,
+        $varpat:ident,
+        (, $($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+    (@children_pattern,
+        $varpat:ident,
+        ($($acc:tt)*), [$(,)*]
+    ) => ([$($acc)*]);
+
+    (@children_filter,
+        $varpat:ident,
+        [$variant:ident ($x:pat), $($rest:tt)*]
+    ) => (
+        make_parser!(@children_filter, $varpat, [$($rest)*])
+    );
+    (@children_filter,
+        $varpat:ident,
+        [$variant:ident ($x:ident).., $($rest:tt)*]
+    ) => (
+        $varpat.iter().all(|r| r == &Rule::$variant) &&
+        make_parser!(@children_filter, $varpat, [$($rest)*])
+    );
+    (@children_filter, $varpat:ident, [$(,)*]) => (true);
+
     (@body,
-        ($_input:expr, $pair:expr, $_children:expr),
+        ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
+            $name:ident<$o:ty>;
+            $span:ident;
             captured_str!($x:pat) => $body:expr
         )
     ) => ({
+        let $span = Span::make($input.clone(), $pair.as_span());
         let $x = $pair.as_str();
-        let res: $o = $body;
-        Ok(ParsedValue::$group(res))
+        let res: Result<_, String> = try { $body };
+        res.map_err(|msg| custom_parse_error(&$pair, msg))
     });
     (@body,
-        ($_input:expr, $_pair:expr, $children:expr),
+        ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
+            $name:ident<$o:ty>;
+            $span:ident;
             children!( $( [$($args:tt)*] => $body:expr ),* $(,)* )
         )
     ) => ({
-        #[allow(unused_imports)]
-        use ParsedValue::*;
+        let children_rules: Vec<Rule> = $pair
+            .clone()
+            .into_inner()
+            .map(|p| p.as_rule())
+            .collect();
+
+        let $span = Span::make($input.clone(), $pair.as_span());
+        #[allow(unused_mut)]
+        let mut iter = $pair.clone().into_inner();
+
         #[allow(unreachable_code)]
-        let res: $o = improved_slice_patterns::match_vec!($children;
-            $( [$($args)*] => $body, )*
-            [x..] => Err(
-                format!("Unexpected children: {:?}", x.collect::<Vec<_>>())
-            )?,
-        ).map_err(|_| -> String { unreachable!() })?;
-        Ok(ParsedValue::$group(res))
+        match children_rules.as_slice() {
+            $(
+                make_parser!(@children_pattern, x, (), [$($args)*,])
+                if make_parser!(@children_filter, x, [$($args)*,])
+                => {
+                    parse_children!(($climbers, $input.clone()), iter;
+                        [$($args)*] => {
+                            let res: Result<_, String> = try { $body };
+                            res.map_err(|msg| custom_parse_error(&$pair, msg))
+                        }
+                    )
+                }
+                ,
+            )*
+            [..] => Err(custom_parse_error(
+                &$pair,
+                format!("Unexpected children: {:?}", children_rules)
+            )),
+        }
     });
     (@body,
-        ($input:expr, $pair:expr, $children:expr),
+        ($climbers:expr, $input:expr, $pair:expr),
         rule!(
-            $name:ident<$o:ty>
-            as $group:ident;
-            $span:ident;
+            $name:ident<$o:ty>;
+            prec_climb!(
+                $other_rule:ident,
+                $_climber:expr,
+                $args:pat => $body:expr $(,)*
+            )
+        )
+    ) => ({
+        let climber = $climbers.get(&Rule::$name).unwrap();
+        climber.climb(
+            $pair.clone().into_inner(),
+            |p| Parsers::$other_rule(($climbers, $input.clone()), p),
+            |l, op, r| {
+                let $args = (l?, op, r?);
+                let res: Result<_, String> = try { $body };
+                res.map_err(|msg| custom_parse_error(&$pair, msg))
+            },
+        )
+    });
+    (@body,
+        ($($things:tt)*),
+        rule!(
+            $name:ident<$o:ty>;
             $($args:tt)*
         )
     ) => ({
-        let $span = Span::make($input, $pair.as_span());
         make_parser!(@body,
-            ($input, $pair, $children),
+            ($($things)*),
             rule!(
-                $name<$o>
-                as $group;
+                $name<$o>;
+                _span;
                 $($args)*
             )
         )
     });
     (@body,
         ($($things:tt)*),
-        token_rule!($name:ident<$o:ty>)
+        rule!($name:ident<$o:ty>)
     ) => ({
-        Ok(ParsedValue::$name(()))
+        Ok(())
     });
-    (@body, ($($things:tt)*), rule_group!( $name:ident<$o:ty> )) => (
-        unreachable!()
-    );
+
+    (@construct_climber,
+        ($map:expr),
+        rule!(
+            $name:ident<$o:ty>;
+            prec_climb!($other_rule:ident, $climber:expr, $($_rest:tt)* )
+        )
+    ) => ({
+        $map.insert(Rule::$name, $climber)
+    });
+    (@construct_climber, ($($things:tt)*), $($args:tt)*) => (());
 
     ($( $submac:ident!( $name:ident<$o:ty> $($args:tt)* ); )*) => (
-        #[allow(non_camel_case_types, dead_code, clippy::large_enum_variant)]
-        #[derive(Debug)]
-        enum ParsedValue<'a> {
-            $( $name($o), )*
+        struct Parsers;
+
+        impl Parsers {
+            $(
+            #[allow(non_snake_case, unused_variables, clippy::let_unit_value)]
+            fn $name<'a>(
+                (climbers, input): (&HashMap<Rule, PrecClimber<Rule>>, Rc<str>),
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<$o> {
+                make_parser!(@body, (climbers, input, pair),
+                               $submac!( $name<$o> $($args)* ))
+            }
+            )*
         }
 
-        fn parse_any<'a>(
-            input: Rc<str>,
-            pair: Pair<'a, Rule>,
-            children: Vec<ParsedValue<'a>>,
-        ) -> Result<ParsedValue<'a>, String> {
-            match pair.as_rule() {
-                $(
-                    make_parser!(@pattern, $submac, $name)
-                    if make_parser!(@filter, $submac)
-                    => make_parser!(@body, (input, pair, children),
-                                           $submac!( $name<$o> $($args)* ))
-                    ,
-                )*
-                r => Err(format!("Unexpected {:?}", r)),
+        fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
+            let mut map = HashMap::new();
+            $(
+                make_parser!(@construct_climber, (map),
+                        $submac!( $name<$o> $($args)* ));
+            )*
+            map
+        }
+
+        struct EntryPoint;
+
+        impl EntryPoint {
+            $(
+            #[allow(non_snake_case, dead_code)]
+            fn $name<'a>(
+                input: Rc<str>,
+                pair: Pair<'a, Rule>,
+            ) -> ParseResult<$o> {
+                let climbers = construct_precclimbers();
+                Parsers::$name((&climbers, input), pair)
             }
+            )*
         }
     );
-}
-
-// Non-recursive implementation to avoid stack overflows
-fn do_parse<'a>(
-    input: Rc<str>,
-    initial_pair: Pair<'a, Rule>,
-) -> ParseResult<ParsedValue<'a>> {
-    enum StackFrame<'a> {
-        Unprocessed(Pair<'a, Rule>),
-        Processed(Pair<'a, Rule>, usize),
-    }
-    use StackFrame::*;
-    let mut pairs_stack: Vec<StackFrame> =
-        vec![Unprocessed(initial_pair.clone())];
-    let mut values_stack: Vec<ParsedValue> = vec![];
-    while let Some(p) = pairs_stack.pop() {
-        match p {
-            Unprocessed(mut pair) => loop {
-                let mut pairs: Vec<_> = pair.clone().into_inner().collect();
-                let n_children = pairs.len();
-                if n_children == 1 && can_be_shortcutted(pair.as_rule()) {
-                    pair = pairs.pop().unwrap();
-                    continue;
-                } else {
-                    pairs_stack.push(Processed(pair, n_children));
-                    pairs_stack
-                        .extend(pairs.into_iter().map(StackFrame::Unprocessed));
-                    break;
-                }
-            },
-            Processed(pair, n) => {
-                let mut children: Vec<_> =
-                    values_stack.split_off(values_stack.len() - n);
-                children.reverse();
-                let val = match parse_any(input.clone(), pair.clone(), children)
-                {
-                    Ok(v) => v,
-                    Err(msg) => Err(custom_parse_error(&pair, msg))?,
-                };
-                values_stack.push(val);
-            }
-        }
-    }
-    Ok(values_stack.pop().unwrap())
-}
-
-// List of rules that can be shortcutted if they have a single child
-fn can_be_shortcutted(rule: Rule) -> bool {
-    use Rule::*;
-    match rule {
-        expression
-        | import_alt_expression
-        | or_expression
-        | plus_expression
-        | text_append_expression
-        | list_append_expression
-        | and_expression
-        | combine_expression
-        | prefer_expression
-        | combine_types_expression
-        | times_expression
-        | equal_expression
-        | not_equal_expression
-        | equivalent_expression
-        | application_expression
-        | first_application_expression
-        | selector_expression
-        | annotated_expression => true,
-        _ => false,
-    }
 }
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
@@ -362,7 +428,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
 }
 
 make_parser! {
-    token_rule!(EOI<()>);
+    rule!(EOI<()>);
 
     rule!(simple_label<Label>;
         captured_str!(s) => Label::from(s.trim().to_owned())
@@ -442,7 +508,7 @@ make_parser! {
                         0xAFFFE..=0xAFFFF | 0xBFFFE..=0xBFFFF |
                         0xCFFFE..=0xCFFFF | 0xDFFFE..=0xDFFFF |
                         0xEFFFE..=0xEFFFF | 0xFFFFE..=0xFFFFF |
-                        0x10FFFE..=0x10FFFF => {
+                        0x10_FFFE..=0x10_FFFF => {
                             let c_ecapsed = c.escape_unicode();
                             Err(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed))?
                         },
@@ -479,13 +545,13 @@ make_parser! {
     rule!(single_quote_char<&'a str>;
         captured_str!(s) => s
     );
-    rule!(escaped_quote_pair<&'a str> as single_quote_char;
+    rule!(escaped_quote_pair<&'a str>;
         captured_str!(_) => "''"
     );
-    rule!(escaped_interpolation<&'a str> as single_quote_char;
+    rule!(escaped_interpolation<&'a str>;
         captured_str!(_) => "${"
     );
-    rule!(interpolation<ParsedSubExpr>; children!(
+    rule!(interpolation<ParsedExpr>; children!(
         [expression(e)] => e
     ));
 
@@ -497,21 +563,29 @@ make_parser! {
             lines.last_mut().unwrap().push(c);
             lines
         },
-        [single_quote_char("\n"), single_quote_continue(lines)] => {
+        [escaped_quote_pair(c), single_quote_continue(lines)] => {
             let mut lines = lines;
-            lines.push(vec![]);
+            // TODO: don't allocate for every char
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            lines.last_mut().unwrap().push(c);
             lines
         },
-        [single_quote_char("\r\n"), single_quote_continue(lines)] => {
+        [escaped_interpolation(c), single_quote_continue(lines)] => {
             let mut lines = lines;
-            lines.push(vec![]);
+            // TODO: don't allocate for every char
+            let c = InterpolatedTextContents::Text(c.to_owned());
+            lines.last_mut().unwrap().push(c);
             lines
         },
         [single_quote_char(c), single_quote_continue(lines)] => {
-            // TODO: don't allocate for every char
-            let c = InterpolatedTextContents::Text(c.to_owned());
             let mut lines = lines;
-            lines.last_mut().unwrap().push(c);
+            if c == "\n" || c == "\r\n" {
+                lines.push(vec![]);
+            } else {
+                // TODO: don't allocate for every char
+                let c = InterpolatedTextContents::Text(c.to_owned());
+                lines.last_mut().unwrap().push(c);
+            }
             lines
         },
         [] => {
@@ -519,7 +593,7 @@ make_parser! {
         },
     ));
 
-    rule!(builtin<ParsedSubExpr>; span;
+    rule!(builtin<ParsedExpr>; span;
         captured_str!(s) => {
             spanned(span, match crate::Builtin::parse(s) {
                 Some(b) => Builtin(b),
@@ -537,9 +611,9 @@ make_parser! {
         }
     );
 
-    token_rule!(NaN<()>);
-    token_rule!(minus_infinity_literal<()>);
-    token_rule!(plus_infinity_literal<()>);
+    rule!(NaN<()>);
+    rule!(minus_infinity_literal<()>);
+    rule!(plus_infinity_literal<()>);
 
     rule!(numeric_double_literal<core::Double>;
         captured_str!(s) => {
@@ -576,7 +650,7 @@ make_parser! {
         }
     );
 
-    rule!(identifier<ParsedSubExpr> as expression; span; children!(
+    rule!(identifier<ParsedExpr>; span; children!(
         [variable(v)] => {
             spanned(span, Var(v))
         },
@@ -595,12 +669,29 @@ make_parser! {
     rule!(unquoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(quoted_path_component<&'a str>; captured_str!(s) => s);
     rule!(path_component<String>; children!(
-        [unquoted_path_component(s)] => {
-            percent_encoding::percent_decode(s.as_bytes())
-                .decode_utf8_lossy()
-                .into_owned()
+        [unquoted_path_component(s)] => s.to_string(),
+        [quoted_path_component(s)] => {
+            const RESERVED: &percent_encoding::AsciiSet =
+                &percent_encoding::CONTROLS
+                .add(b'=').add(b':').add(b'/').add(b'?')
+                .add(b'#').add(b'[').add(b']').add(b'@')
+                .add(b'!').add(b'$').add(b'&').add(b'\'')
+                .add(b'(').add(b')').add(b'*').add(b'+')
+                .add(b',').add(b';');
+            s.chars()
+                .map(|c| {
+                    // Percent-encode ascii chars
+                    if c.is_ascii() {
+                        percent_encoding::utf8_percent_encode(
+                            &c.to_string(),
+                            RESERVED,
+                        ).to_string()
+                    } else {
+                        c.to_string()
+                    }
+                })
+                .collect()
         },
-        [quoted_path_component(s)] => s.to_string(),
     ));
     rule!(path<Vec<String>>; children!(
         [path_component(components)..] => {
@@ -608,18 +699,23 @@ make_parser! {
         }
     ));
 
-    rule_group!(local<(FilePrefix, Vec<String>)>);
+    rule!(local<(FilePrefix, Vec<String>)>; children!(
+        [parent_path(l)] => l,
+        [here_path(l)] => l,
+        [home_path(l)] => l,
+        [absolute_path(l)] => l,
+    ));
 
-    rule!(parent_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(parent_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Parent, p)
     ));
-    rule!(here_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(here_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Here, p)
     ));
-    rule!(home_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(home_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Home, p)
     ));
-    rule!(absolute_path<(FilePrefix, Vec<String>)> as local; children!(
+    rule!(absolute_path<(FilePrefix, Vec<String>)>; children!(
         [path(p)] => (FilePrefix::Absolute, p)
     ));
 
@@ -629,15 +725,13 @@ make_parser! {
         _ => unreachable!(),
     });
 
-    rule!(http_raw<URL>; children!(
-        [scheme(sch), authority(auth), path(file_path)] => {
-            URL {
-                scheme: sch,
-                authority: auth,
-                path: File { file_path },
-                query: None,
-                headers: None,
-            }
+    rule!(http_raw<URL<ParsedExpr>>; children!(
+        [scheme(sch), authority(auth), path(file_path)] => URL {
+            scheme: sch,
+            authority: auth,
+            path: File { file_path },
+            query: None,
+            headers: None,
         },
         [scheme(sch), authority(auth), path(file_path), query(q)] => {
             URL {
@@ -654,10 +748,10 @@ make_parser! {
 
     rule!(query<String>; captured_str!(s) => s.to_owned());
 
-    rule!(http<URL>; children!(
+    rule!(http<URL<ParsedExpr>>; children!(
         [http_raw(url)] => url,
-        [http_raw(url), import_hashed(ih)] =>
-            URL { headers: Some(Box::new(ih)), ..url },
+        [http_raw(url), import_expression(e)] =>
+            URL { headers: Some(e), ..url },
     ));
 
     rule!(env<String>; children!(
@@ -687,9 +781,9 @@ make_parser! {
         }
     );
 
-    token_rule!(missing<()>);
+    rule!(missing<()>);
 
-    rule!(import_type<ImportLocation>; children!(
+    rule!(import_type<ImportLocation<ParsedExpr>>; children!(
         [missing(_)] => {
             ImportLocation::Missing
         },
@@ -714,52 +808,53 @@ make_parser! {
         Hash::SHA256(hex::decode(hash).unwrap())
     });
 
-    rule!(import_hashed<ImportHashed>; children!(
+    rule!(import_hashed<crate::Import<ParsedExpr>>; children!(
         [import_type(location)] =>
-            ImportHashed { location, hash: None },
+            crate::Import {mode: ImportMode::Code, location, hash: None },
         [import_type(location), hash(h)] =>
-            ImportHashed { location, hash: Some(h) },
+            crate::Import {mode: ImportMode::Code, location, hash: Some(h) },
     ));
 
-    token_rule!(Text<()>);
-    token_rule!(Location<()>);
+    rule!(Text<()>);
+    rule!(Location<()>);
 
-    rule!(import<ParsedSubExpr> as expression; span; children!(
-        [import_hashed(location_hashed)] => {
-            spanned(span, Embed(Import {
+    rule!(import<ParsedExpr>; span; children!(
+        [import_hashed(imp)] => {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::Code,
-                location_hashed
+                ..imp
             }))
         },
-        [import_hashed(location_hashed), Text(_)] => {
-            spanned(span, Embed(Import {
+        [import_hashed(imp), Text(_)] => {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::RawText,
-                location_hashed
+                ..imp
             }))
         },
-        [import_hashed(location_hashed), Location(_)] => {
-            spanned(span, Embed(Import {
+        [import_hashed(imp), Location(_)] => {
+            spanned(span, Import(crate::Import {
                 mode: ImportMode::Location,
-                location_hashed
+                ..imp
             }))
         },
     ));
 
-    token_rule!(lambda<()>);
-    token_rule!(forall<()>);
-    token_rule!(arrow<()>);
-    token_rule!(merge<()>);
-    token_rule!(assert<()>);
-    token_rule!(if_<()>);
-    token_rule!(in_<()>);
+    rule!(lambda<()>);
+    rule!(forall<()>);
+    rule!(arrow<()>);
+    rule!(merge<()>);
+    rule!(assert<()>);
+    rule!(if_<()>);
+    rule!(in_<()>);
+    rule!(toMap<()>);
 
-    rule!(empty_list_literal<ParsedSubExpr> as expression; span; children!(
-        [expression(e)] => {
+    rule!(empty_list_literal<ParsedExpr>; span; children!(
+        [application_expression(e)] => {
             spanned(span, EmptyListLit(e))
         },
     ));
 
-    rule!(expression<ParsedSubExpr> as expression; span; children!(
+    rule!(expression<ParsedExpr>; span; children!(
         [lambda(()), label(l), expression(typ),
                 arrow(()), expression(body)] => {
             spanned(span, Lam(l, typ, body))
@@ -777,19 +872,27 @@ make_parser! {
                 arrow(()), expression(body)] => {
             spanned(span, Pi(l, typ, body))
         },
-        [expression(typ), arrow(()), expression(body)] => {
+        [operator_expression(typ), arrow(()), expression(body)] => {
             spanned(span, Pi("_".into(), typ, body))
         },
-        [merge(()), expression(x), expression(y), expression(z)] => {
+        [merge(()), import_expression(x), import_expression(y),
+                application_expression(z)] => {
             spanned(span, Merge(x, y, Some(z)))
         },
+        [empty_list_literal(e)] => e,
         [assert(()), expression(x)] => {
             spanned(span, Assert(x))
         },
-        [expression(e)] => e,
+        [toMap(()), import_expression(x), application_expression(y)] => {
+            spanned(span, ToMap(x, Some(y)))
+        },
+        [operator_expression(e)] => e,
+        [operator_expression(e), expression(annot)] => {
+            spanned(span, Annot(e, annot))
+        },
     ));
 
-    rule!(let_binding<(Label, Option<ParsedSubExpr>, ParsedSubExpr)>;
+    rule!(let_binding<(Label, Option<ParsedExpr>, ParsedExpr)>;
             children!(
         [label(name), expression(annot), expression(expr)] =>
             (name, Some(annot), expr),
@@ -797,137 +900,99 @@ make_parser! {
             (name, None, expr),
     ));
 
-    token_rule!(List<()>);
-    token_rule!(Optional<()>);
+    rule!(List<()>);
+    rule!(Optional<()>);
 
-    rule!(import_alt_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ImportAlt;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
+    rule!(operator_expression<ParsedExpr>; prec_climb!(
+        application_expression,
+        {
+            use Rule::*;
+            // In order of precedence
+            let operators = vec![
+                import_alt,
+                bool_or,
+                natural_plus,
+                text_append,
+                list_append,
+                bool_and,
+                combine,
+                prefer,
+                combine_types,
+                natural_times,
+                bool_eq,
+                bool_ne,
+                equivalent,
+            ];
+            PrecClimber::new(
+                operators
+                    .into_iter()
+                    .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+                    .collect(),
+            )
         },
-    ));
-    rule!(or_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolOr;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(plus_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalPlus;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(text_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::TextAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(list_append_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::ListAppend;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(and_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolAnd;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(prefer_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RightBiasedRecordMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(combine_types_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::RecursiveRecordTypeMerge;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(times_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::NaturalTimes;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolEQ;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(not_equal_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::BoolNE;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
-    ));
-    rule!(equivalent_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
-            let o = crate::BinOp::Equivalence;
-            rest.fold(first, |acc, e| unspanned(BinOp(o, acc, e)))
-        },
+        (l, op, r) => {
+            use crate::BinOp::*;
+            use Rule::*;
+            let op = match op.as_rule() {
+                import_alt => ImportAlt,
+                bool_or => BoolOr,
+                natural_plus => NaturalPlus,
+                text_append => TextAppend,
+                list_append => ListAppend,
+                bool_and => BoolAnd,
+                combine => RecursiveRecordMerge,
+                prefer => RightBiasedRecordMerge,
+                combine_types => RecursiveRecordTypeMerge,
+                natural_times => NaturalTimes,
+                bool_eq => BoolEQ,
+                bool_ne => BoolNE,
+                equivalent => Equivalence,
+                r => Err(
+                    format!("Rule {:?} isn't an operator", r),
+                )?,
+            };
+
+            unspanned(BinOp(op, l, r))
+        }
     ));
 
-    rule!(annotated_expression<ParsedSubExpr> as expression; span; children!(
-        [expression(e)] => e,
-        [expression(e), expression(annot)] => {
-            spanned(span, Annot(e, annot))
-        },
-    ));
+    rule!(Some_<()>);
 
-    token_rule!(Some_<()>);
-    token_rule!(toMap<()>);
-
-    rule!(application_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), expression(rest)..] => {
+    rule!(application_expression<ParsedExpr>; children!(
+        [first_application_expression(e)] => e,
+        [first_application_expression(first), import_expression(rest)..] => {
             rest.fold(first, |acc, e| unspanned(App(acc, e)))
         },
     ));
 
-    rule!(first_application_expression<ParsedSubExpr> as expression; span;
+    rule!(first_application_expression<ParsedExpr>; span;
             children!(
-        [expression(e)] => e,
-        [Some_(()), expression(e)] => {
+        [Some_(()), import_expression(e)] => {
             spanned(span, SomeLit(e))
         },
-        [merge(()), expression(x), expression(y)] => {
+        [merge(()), import_expression(x), import_expression(y)] => {
             spanned(span, Merge(x, y, None))
         },
+        [toMap(()), import_expression(x)] => {
+            spanned(span, ToMap(x, None))
+        },
+        [import_expression(e)] => e,
     ));
 
-    rule!(selector_expression<ParsedSubExpr> as expression; children!(
-        [expression(e)] => e,
-        [expression(first), selector(rest)..] => {
+    rule!(import_expression<ParsedExpr>; span;
+            children!(
+        [selector_expression(e)] => e,
+        [import(e)] => e,
+    ));
+
+    rule!(selector_expression<ParsedExpr>; children!(
+        [primitive_expression(e)] => e,
+        [primitive_expression(first), selector(rest)..] => {
             rest.fold(first, |acc, e| unspanned(match e {
                 Either::Left(l) => Field(acc, l),
                 Either::Right(ls) => Projection(acc, ls),
             }))
-        }
+        },
     ));
 
     rule!(selector<Either<Label, DupTreeSet<Label>>>; children!(
@@ -940,24 +1005,30 @@ make_parser! {
         [label(ls)..] => ls.collect(),
     ));
 
-    rule!(primitive_expression<ParsedSubExpr> as expression; span; children!(
+    rule!(primitive_expression<ParsedExpr>; span; children!(
         [double_literal(n)] => spanned(span, DoubleLit(n)),
         [natural_literal(n)] => spanned(span, NaturalLit(n)),
         [integer_literal(n)] => spanned(span, IntegerLit(n)),
         [double_quote_literal(s)] => spanned(span, TextLit(s)),
         [single_quote_literal(s)] => spanned(span, TextLit(s)),
+        [empty_record_type(e)] => e,
+        [empty_record_literal(e)] => e,
+        [non_empty_record_type_or_literal(e)] => e,
+        [union_type(e)] => e,
+        [non_empty_list_literal(e)] => e,
+        [identifier(e)] => e,
         [expression(e)] => e,
     ));
 
-    rule!(empty_record_literal<ParsedSubExpr> as expression; span;
+    rule!(empty_record_literal<ParsedExpr>; span;
         captured_str!(_) => spanned(span, RecordLit(Default::default()))
     );
 
-    rule!(empty_record_type<ParsedSubExpr> as expression; span;
+    rule!(empty_record_type<ParsedExpr>; span;
         captured_str!(_) => spanned(span, RecordType(Default::default()))
     );
 
-    rule!(non_empty_record_type_or_literal<ParsedSubExpr> as expression; span;
+    rule!(non_empty_record_type_or_literal<ParsedExpr>; span;
           children!(
         [label(first_label), non_empty_record_type(rest)] => {
             let (first_expr, mut map) = rest;
@@ -972,28 +1043,28 @@ make_parser! {
     ));
 
     rule!(non_empty_record_type
-          <(ParsedSubExpr, DupTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedExpr, DupTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_type_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
-    rule!(record_type_entry<(Label, ParsedSubExpr)>; children!(
+    rule!(record_type_entry<(Label, ParsedExpr)>; children!(
         [label(name), expression(expr)] => (name, expr)
     ));
 
     rule!(non_empty_record_literal
-          <(ParsedSubExpr, DupTreeMap<Label, ParsedSubExpr>)>; children!(
+          <(ParsedExpr, DupTreeMap<Label, ParsedExpr>)>; children!(
         [expression(expr), record_literal_entry(entries)..] => {
             (expr, entries.collect())
         }
     ));
 
-    rule!(record_literal_entry<(Label, ParsedSubExpr)>; children!(
+    rule!(record_literal_entry<(Label, ParsedExpr)>; children!(
         [label(name), expression(expr)] => (name, expr)
     ));
 
-    rule!(union_type<ParsedSubExpr> as expression; span; children!(
+    rule!(union_type<ParsedExpr>; span; children!(
         [empty_union_type(_)] => {
             spanned(span, UnionType(Default::default()))
         },
@@ -1002,14 +1073,14 @@ make_parser! {
         },
     ));
 
-    token_rule!(empty_union_type<()>);
+    rule!(empty_union_type<()>);
 
-    rule!(union_type_entry<(Label, Option<ParsedSubExpr>)>; children!(
+    rule!(union_type_entry<(Label, Option<ParsedExpr>)>; children!(
         [label(name), expression(expr)] => (name, Some(expr)),
         [label(name)] => (name, None),
     ));
 
-    rule!(non_empty_list_literal<ParsedSubExpr> as expression; span;
+    rule!(non_empty_list_literal<ParsedExpr>; span;
           children!(
         [expression(items)..] => spanned(
             span,
@@ -1017,35 +1088,15 @@ make_parser! {
         )
     ));
 
-    rule!(final_expression<ParsedSubExpr> as expression; children!(
-        [expression(e), EOI(_eoi)] => e
+    rule!(final_expression<ParsedExpr>; children!(
+        [expression(e), EOI(_)] => e
     ));
 }
 
-pub fn parse_expr(s: &str) -> ParseResult<ParsedSubExpr> {
+pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
     let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
     let rc_input = s.to_string().into();
-    let expr = do_parse(rc_input, pairs.next().unwrap())?;
+    let expr = EntryPoint::final_expression(rc_input, pairs.next().unwrap())?;
     assert_eq!(pairs.next(), None);
-    match expr {
-        ParsedValue::expression(e) => Ok(e),
-        _ => unreachable!(),
-    }
-    // Ok(BoolLit(false))
-}
-
-#[test]
-fn test_parse() {
-    // let expr = r#"{ x = "foo", y = 4 }.x"#;
-    // let expr = r#"(1 + 2) * 3"#;
-    let expr = r#"(1) + 3 * 5"#;
-    println!("{:?}", parse_expr(expr));
-    match parse_expr(expr) {
-        Err(e) => {
-            println!("{:?}", e);
-            println!("{}", e);
-        }
-        ok => println!("{:?}", ok),
-    };
-    // assert!(false);
+    Ok(expr)
 }

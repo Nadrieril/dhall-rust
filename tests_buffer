@@ -3,12 +3,16 @@ parser:
 ./"a%20b"
 text interpolation and escapes
 projection by expression unit tests
+fix fakeurlencode test
 success/
     operators/
         PrecedenceAll1 a ? b || c + d ++ e # f && g ∧ h ⫽ i ⩓ j * k == l != m n.o
         PrecedenceAll2 a b != c == d * e ⩓ f ⫽ g ∧ h && i # j ++ k + l || m ? n
     LetNoAnnot let x = y in e
     LetAnnot let x: T = y in e
+    EmptyRecordLiteral {=}
+    ToMap toMap x
+    ToMapAnnot toMap x : T
 failure/
     AssertNoAnnotation assert
 
@@ -28,11 +32,18 @@ variables across import boundaries
     TextLitNested1 "${""}${x}"
     TextLitNested2 "${"${x}"}"
     TextLitNested3 "${"${""}"}${x}"
+    regression/
+        NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
 
 typecheck:
 something that involves destructuring a recordtype after merge
 add some of the more complicated Prelude tests back, like List/enumerate
-failure on old-style optional literal
+success/
+    regression/
+        RecursiveRecordTypeMergeTripleCollision { x : { a : Bool } } ⩓ { x : { b : Bool } } ⩓ { x : { c : Bool } }
+        somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
+        somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
+        somehow test types added to the Foo/build closures
 failure/
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
@@ -41,5 +52,6 @@ failure/
     merge {x=...,y=...} <x:T>.x
     MergeBoolIsNotUnion merge x True
     MergeOptionalIsNotUnion merge x (Some 1)
+    SortInLet let x = Sort in 1
 
 equivalence:

@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterpolatedText<SubExpr> {
     head: String,
     tail: Vec<(SubExpr, String)>,

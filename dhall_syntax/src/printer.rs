@@ -41,6 +41,12 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                     write!(f, " : {}", c)?;
                 }
             }
+            ToMap(a, b) => {
+                write!(f, "toMap {}", a)?;
+                if let Some(b) = b {
+                    write!(f, " : {}", b)?;
+                }
+            }
             Annot(a, b) => {
                 write!(f, "{} : {}", a, b)?;
             }
@@ -88,6 +94,7 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 }
                 Ok(())
             })?,
+            Import(a) => a.fmt(f)?,
             Embed(a) => a.fmt(f)?,
         }
         Ok(())
@@ -111,21 +118,21 @@ enum PrintPhase {
 // Wraps an Expr with a phase, so that phase selsction can be done
 // separate from the actual printing
 #[derive(Clone)]
-struct PhasedExpr<'a, S, A>(&'a SubExpr<S, A>, PrintPhase);
+struct PhasedExpr<'a, A>(&'a Expr<A>, PrintPhase);
 
-impl<'a, S: Clone, A: Display + Clone> Display for PhasedExpr<'a, S, A> {
+impl<'a, A: Display + Clone> Display for PhasedExpr<'a, A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.as_ref().fmt_phase(f, self.1)
     }
 }
 
-impl<'a, S: Clone, A: Display + Clone> PhasedExpr<'a, S, A> {
-    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, S, A> {
+impl<'a, A: Display + Clone> PhasedExpr<'a, A> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, A> {
         PhasedExpr(self.0, phase)
     }
 }
 
-impl<S: Clone, A: Display + Clone> Expr<S, A> {
+impl<A: Display + Clone> RawExpr<A> {
     fn fmt_phase(
         &self,
         f: &mut fmt::Formatter,
@@ -143,6 +150,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             | NEListLit(_)
             | SomeLit(_)
             | Merge(_, _, _)
+            | ToMap(_, _)
             | Annot(_, _)
                 if phase > Base =>
             {
@@ -151,12 +159,14 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
             // Precedence is magically handled by the ordering of BinOps.
             ExprF::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
             ExprF::App(_, _) if phase > PrintPhase::App => true,
-            Field(_, _) | Projection(_, _) if phase > Import => true,
+            Field(_, _) | Projection(_, _) if phase > PrintPhase::Import => {
+                true
+            }
             _ => false,
         };
 
         // Annotate subexpressions with the appropriate phase, defaulting to Base
-        let phased_self = match self.map_ref_simple(|e| PhasedExpr(e, Base)) {
+        let phased_self = match self.map_ref(|e| PhasedExpr(e, Base)) {
             Pi(a, b, c) => {
                 if &String::from(&a) == "_" {
                     Pi(a, b.phase(Operator), c)
@@ -165,9 +175,13 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
                 }
             }
             Merge(a, b, c) => Merge(
-                a.phase(Import),
-                b.phase(Import),
+                a.phase(PrintPhase::Import),
+                b.phase(PrintPhase::Import),
                 c.map(|x| x.phase(PrintPhase::App)),
+            ),
+            ToMap(a, b) => ToMap(
+                a.phase(PrintPhase::Import),
+                b.map(|x| x.phase(PrintPhase::App)),
             ),
             Annot(a, b) => Annot(a.phase(Operator), b),
             ExprF::BinOp(op, a, b) => ExprF::BinOp(
@@ -175,8 +189,11 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
                 a.phase(PrintPhase::BinOp(op)),
                 b.phase(PrintPhase::BinOp(op)),
             ),
-            SomeLit(e) => SomeLit(e.phase(Import)),
-            ExprF::App(f, a) => ExprF::App(f.phase(Import), a.phase(Import)),
+            SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
+            ExprF::App(f, a) => ExprF::App(
+                f.phase(PrintPhase::Import),
+                a.phase(PrintPhase::Import),
+            ),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             e => e,
@@ -196,7 +213,7 @@ impl<S: Clone, A: Display + Clone> Expr<S, A> {
     }
 }
 
-impl<S: Clone, A: Display + Clone> Display for SubExpr<S, A> {
+impl<A: Display + Clone> Display for Expr<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
@@ -224,7 +241,7 @@ where
     f.write_str(close)
 }
 
-impl<SubExpr: Display + Clone> Display for InterpolatedText<SubExpr> {
+impl<SubExpr: Display> Display for InterpolatedText<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         f.write_str("\"")?;
         for x in self.iter() {
@@ -338,19 +355,14 @@ impl Display for Hash {
         }
     }
 }
-impl Display for ImportHashed {
+impl<SubExpr: Display> Display for Import<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use FilePrefix::*;
         use ImportLocation::*;
-        let fmt_remote_path_component = |s: &str| -> String {
-            use percent_encoding::{
-                utf8_percent_encode, PATH_SEGMENT_ENCODE_SET,
-            };
-            utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
-        };
-        let fmt_local_path_component = |s: &str| -> String {
+        use ImportMode::*;
+        let quote_if_needed = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
-                s.to_owned()
+                s.to_string()
             } else {
                 format!("\"{}\"", s)
             }
@@ -365,21 +377,13 @@ impl Display for ImportHashed {
                     Absolute => "",
                 };
                 write!(f, "{}/", prefix)?;
-                let full_path: String = path
-                    .clone()
-                    .into_iter()
-                    .map(|c| fmt_local_path_component(c.as_ref()))
-                    .join("/");
-                f.write_str(&full_path)?;
+                let path: String =
+                    path.file_path.iter().map(|c| quote_if_needed(&*c)).join("/");
+                f.write_str(&path)?;
             }
             Remote(url) => {
                 write!(f, "{}://{}/", url.scheme, url.authority,)?;
-                let path: String = url
-                    .path
-                    .clone()
-                    .into_iter()
-                    .map(|c| fmt_remote_path_component(c.as_ref()))
-                    .join("/");
+                let path: String = url.path.file_path.iter().join("/");
                 f.write_str(&path)?;
                 if let Some(q) = &url.query {
                     write!(f, "?{}", q)?
@@ -419,14 +423,6 @@ impl Display for ImportHashed {
             write!(f, " ")?;
             hash.fmt(f)?;
         }
-        Ok(())
-    }
-}
-
-impl Display for Import {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.location_hashed.fmt(f)?;
-        use ImportMode::*;
         match self.mode {
             Code => {}
             RawText => write!(f, " as Text")?,
@@ -491,11 +487,5 @@ impl<Label: Display> Display for V<Label> {
             write!(f, "@{}", n)?;
         }
         Ok(())
-    }
-}
-
-impl Display for X {
-    fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {}
     }
 }

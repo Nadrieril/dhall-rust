@@ -5,30 +5,26 @@ use std::vec;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
-    rc, ExprF, FilePrefix, Hash, Import, ImportHashed, ImportLocation,
-    ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, SubExpr,
-    URL, V, File,
+    rc, Expr, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode,
+    Integer, InterpolatedText, Label, Natural, Scheme, URL, V, File
 };
 
 use crate::error::{DecodeError, EncodeError};
-use crate::phase::{DecodedSubExpr, ParsedSubExpr};
+use crate::phase::DecodedExpr;
 
-pub fn decode(data: &[u8]) -> Result<DecodedSubExpr, DecodeError> {
+pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {
         Ok(v) => cbor_value_to_dhall(&v),
         Err(e) => Err(DecodeError::CBORError(e)),
     }
 }
 
-//TODO: encode normalized expression too
-pub fn encode(expr: &ParsedSubExpr) -> Result<Vec<u8>, EncodeError> {
+pub(crate) fn encode<E>(expr: &Expr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
 }
 
-fn cbor_value_to_dhall(
-    data: &cbor::Value,
-) -> Result<DecodedSubExpr, DecodeError> {
+fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
     use cbor::Value::*;
     use dhall_syntax::{BinOp, Builtin, Const};
     use ExprF::*;
@@ -262,20 +258,12 @@ fn cbor_value_to_dhall(
                         };
                         let headers = match rest.next() {
                             Some(Null) => None,
-                            // TODO
-                            // Some(x) => {
-                            //     match cbor_value_to_dhall(&x)?.as_ref() {
-                            //         Embed(import) => Some(Box::new(
-                            //             import.location_hashed.clone(),
-                            //         )),
-                            //         _ => Err(DecodeError::WrongFormatError(
-                            //             "import/remote/headers".to_owned(),
-                            //         ))?,
-                            //     }
-                            // }
+                            Some(x) => {
+                                let x = cbor_value_to_dhall(&x)?;
+                                Some(x)
+                            }
                             _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers is unimplemented"
-                                    .to_owned(),
+                                "import/remote/headers".to_owned(),
                             ))?,
                         };
                         let authority = match rest.next() {
@@ -343,9 +331,10 @@ fn cbor_value_to_dhall(
                         "import/type".to_owned(),
                     ))?,
                 };
-                Embed(Import {
+                Import(dhall_syntax::Import {
                     mode,
-                    location_hashed: ImportHashed { hash, location },
+                    hash,
+                    location,
                 })
             }
             [U64(25), bindings..] => {
@@ -380,6 +369,15 @@ fn cbor_value_to_dhall(
                 let y = cbor_value_to_dhall(&y)?;
                 Annot(x, y)
             }
+            [U64(27), x] => {
+                let x = cbor_value_to_dhall(&x)?;
+                ToMap(x, None)
+            }
+            [U64(27), x, y] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                ToMap(x, Some(y))
+            }
             [U64(28), x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 EmptyListLit(x)
@@ -394,7 +392,7 @@ fn cbor_map_to_dhall_map<'a, T>(
     map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
 ) -> Result<T, DecodeError>
 where
-    T: FromIterator<(Label, DecodedSubExpr)>,
+    T: FromIterator<(Label, DecodedExpr)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
@@ -411,7 +409,7 @@ fn cbor_map_to_dhall_opt_map<'a, T>(
     map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
 ) -> Result<T, DecodeError>
 where
-    T: FromIterator<(Label, Option<DecodedSubExpr>)>,
+    T: FromIterator<(Label, Option<DecodedExpr>)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
@@ -427,11 +425,11 @@ where
         .collect::<Result<_, _>>()
 }
 
-enum Serialize<'a> {
-    Expr(&'a ParsedSubExpr),
+enum Serialize<'a, E> {
+    Expr(&'a Expr<E>),
     CBOR(cbor::Value),
-    RecordMap(&'a DupTreeMap<Label, ParsedSubExpr>),
-    UnionMap(&'a DupTreeMap<Label, Option<ParsedSubExpr>>),
+    RecordMap(&'a DupTreeMap<Label, Expr<E>>),
+    UnionMap(&'a DupTreeMap<Label, Option<Expr<E>>>),
 }
 
 macro_rules! count {
@@ -451,7 +449,7 @@ macro_rules! ser_seq {
     }};
 }
 
-fn serialize_subexpr<S>(ser: S, e: &ParsedSubExpr) -> Result<S::Ok, S::Error>
+fn serialize_subexpr<S, E>(ser: S, e: &Expr<E>) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -461,21 +459,14 @@ where
     use std::iter::once;
 
     use self::Serialize::{RecordMap, UnionMap};
-    fn expr(x: &ParsedSubExpr) -> self::Serialize<'_> {
+    fn expr<E>(x: &Expr<E>) -> self::Serialize<'_, E> {
         self::Serialize::Expr(x)
     }
-    fn cbor<'a>(v: cbor::Value) -> self::Serialize<'a> {
-        self::Serialize::CBOR(v)
-    }
-    fn tag<'a>(x: u64) -> self::Serialize<'a> {
-        cbor(U64(x))
-    }
-    fn null<'a>() -> self::Serialize<'a> {
-        cbor(cbor::Value::Null)
-    }
-    fn label<'a>(l: &Label) -> self::Serialize<'a> {
-        cbor(cbor::Value::String(l.into()))
-    }
+    let cbor =
+        |v: cbor::Value| -> self::Serialize<'_, E> { self::Serialize::CBOR(v) };
+    let tag = |x: u64| cbor(U64(x));
+    let null = || cbor(cbor::Value::Null);
+    let label = |l: &Label| cbor(cbor::Value::String(l.into()));
 
     match e.as_ref() {
         Const(c) => ser.serialize_str(&c.to_string()),
@@ -571,25 +562,33 @@ where
         Merge(x, y, Some(z)) => {
             ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
         }
+        ToMap(x, None) => ser_seq!(ser; tag(27), expr(x)),
+        ToMap(x, Some(y)) => ser_seq!(ser; tag(27), expr(x), expr(y)),
         Projection(x, ls) => ser.collect_seq(
             once(tag(10))
                 .chain(once(expr(x)))
                 .chain(ls.iter().map(label)),
         ),
-        Embed(import) => serialize_import(ser, import),
+        Import(import) => serialize_import(ser, import),
+        Embed(_) => unimplemented!(
+            "An expression with resolved imports cannot be binary-encoded"
+        ),
     }
 }
 
-fn serialize_import<S>(ser: S, import: &Import) -> Result<S::Ok, S::Error>
+fn serialize_import<S, E>(
+    ser: S,
+    import: &Import<Expr<E>>,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
     use cbor::Value::{Bytes, Null, U64};
     use serde::ser::SerializeSeq;
 
-    let count = 4 + match &import.location_hashed.location {
-        ImportLocation::Remote(url) => 3 + url.path.clone().into_iter().len(),
-        ImportLocation::Local(_, path) => path.clone().into_iter().len(),
+    let count = 4 + match &import.location {
+        ImportLocation::Remote(url) => 3 + url.path.file_path.len(),
+        ImportLocation::Local(_, path) => path.file_path.len(),
         ImportLocation::Env(_) => 1,
         ImportLocation::Missing => 0,
     };
@@ -597,7 +596,7 @@ where
 
     ser_seq.serialize_element(&U64(24))?;
 
-    let hash = match &import.location_hashed.hash {
+    let hash = match &import.hash {
         None => Null,
         Some(Hash::SHA256(h)) => {
             let mut bytes = vec![18, 32];
@@ -614,7 +613,7 @@ where
     };
     ser_seq.serialize_element(&U64(mode))?;
 
-    let scheme = match &import.location_hashed.location {
+    let scheme = match &import.location {
         ImportLocation::Remote(url) => match url.scheme {
             Scheme::HTTP => 0,
             Scheme::HTTPS => 1,
@@ -630,21 +629,16 @@ where
     };
     ser_seq.serialize_element(&U64(scheme))?;
 
-    match &import.location_hashed.location {
+    match &import.location {
         ImportLocation::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
-                Some(location_hashed) => {
-                    ser_seq.serialize_element(&self::Serialize::Expr(
-                        &SubExpr::from_expr_no_note(ExprF::Embed(Import {
-                            mode: ImportMode::Code,
-                            location_hashed: location_hashed.as_ref().clone(),
-                        })),
-                    ))?
+                Some(e) => {
+                    ser_seq.serialize_element(&self::Serialize::Expr(e))?
                 }
             };
             ser_seq.serialize_element(&url.authority)?;
-            for p in url.path.clone().into_iter() {
+            for p in url.path.file_path.iter() {
                 ser_seq.serialize_element(&p)?;
             }
             match &url.query {
@@ -653,7 +647,7 @@ where
             };
         }
         ImportLocation::Local(_, path) => {
-            for p in path.clone().into_iter() {
+            for p in path.file_path.iter() {
                 ser_seq.serialize_element(&p)?;
             }
         }
@@ -666,7 +660,7 @@ where
     ser_seq.end()
 }
 
-impl<'a> serde::ser::Serialize for Serialize<'a> {
+impl<'a, E> serde::ser::Serialize for Serialize<'a, E> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::ser::Serializer,
@@ -692,13 +686,10 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
     }
 }
 
-fn collect_nested_applications<'a, N, E>(
-    e: &'a SubExpr<N, E>,
-) -> (&'a SubExpr<N, E>, Vec<&'a SubExpr<N, E>>) {
-    fn go<'a, N, E>(
-        e: &'a SubExpr<N, E>,
-        vec: &mut Vec<&'a SubExpr<N, E>>,
-    ) -> &'a SubExpr<N, E> {
+fn collect_nested_applications<'a, E>(
+    e: &'a Expr<E>,
+) -> (&'a Expr<E>, Vec<&'a Expr<E>>) {
+    fn go<'a, E>(e: &'a Expr<E>, vec: &mut Vec<&'a Expr<E>>) -> &'a Expr<E> {
         match e.as_ref() {
             ExprF::App(f, a) => {
                 vec.push(a);
@@ -712,16 +703,15 @@ fn collect_nested_applications<'a, N, E>(
     (e, vec)
 }
 
-type LetBinding<'a, N, E> =
-    (&'a Label, &'a Option<SubExpr<N, E>>, &'a SubExpr<N, E>);
+type LetBinding<'a, E> = (&'a Label, &'a Option<Expr<E>>, &'a Expr<E>);
 
-fn collect_nested_lets<'a, N, E>(
-    e: &'a SubExpr<N, E>,
-) -> (&'a SubExpr<N, E>, Vec<LetBinding<'a, N, E>>) {
-    fn go<'a, N, E>(
-        e: &'a SubExpr<N, E>,
-        vec: &mut Vec<LetBinding<'a, N, E>>,
-    ) -> &'a SubExpr<N, E> {
+fn collect_nested_lets<'a, E>(
+    e: &'a Expr<E>,
+) -> (&'a Expr<E>, Vec<LetBinding<'a, E>>) {
+    fn go<'a, E>(
+        e: &'a Expr<E>,
+        vec: &mut Vec<LetBinding<'a, E>>,
+    ) -> &'a Expr<E> {
         match e.as_ref() {
             ExprF::Let(l, t, v, e) => {
                 vec.push((l, t, v));

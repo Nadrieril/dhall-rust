@@ -2,21 +2,21 @@ use std::collections::HashMap;
 
 use dhall_syntax::{Label, V};
 
-/// Stores a pair of variables: a normal one and if relevant one
+/// Stores a pair of variables: a normal one and one
 /// that corresponds to the alpha-normalized version of the first one.
-/// Equality is up to alpha-equivalence.
-#[derive(Debug, Clone, Eq)]
+/// Equality is up to alpha-equivalence (compares on the second one only).
+#[derive(Clone, Eq)]
 pub struct AlphaVar {
     normal: V<Label>,
-    alpha: Option<V<()>>,
+    alpha: V<()>,
 }
 
 // Exactly like a Label, but equality returns always true.
-// This is so that Value equality is exactly alpha-equivalence.
-#[derive(Debug, Clone, Eq)]
+// This is so that ValueF equality is exactly alpha-equivalence.
+#[derive(Clone, Eq)]
 pub struct AlphaLabel(Label);
 
-pub trait Shift: Sized {
+pub(crate) trait Shift: Sized {
     // Shift an expression to move it around binders without changing the meaning of its free
     // variables. Shift by 1 to move an expression under a binder. Shift by -1 to extract an
     // expression from under a binder, if the expression does not refer to that bound variable.
@@ -50,34 +50,35 @@ pub trait Shift: Sized {
     }
 }
 
-pub trait Subst<T> {
-    fn subst_shift(&self, var: &AlphaVar, val: &T) -> Self;
+pub(crate) trait Subst<S> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self;
 }
 
 impl AlphaVar {
-    pub fn to_var(&self, alpha: bool) -> V<Label> {
-        match (alpha, &self.alpha) {
-            (true, Some(x)) => V("_".into(), x.1),
-            _ => self.normal.clone(),
+    pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
+        if alpha {
+            V("_".into(), self.alpha.1)
+        } else {
+            self.normal.clone()
         }
     }
-    pub fn from_var(normal: V<Label>) -> Self {
+    pub(crate) fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
         AlphaVar {
             normal,
-            alpha: None,
+            alpha: V((), alpha),
         }
     }
 }
 
 impl AlphaLabel {
-    pub fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
+    pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
             "_".into()
         } else {
             self.to_label()
         }
     }
-    pub fn to_label(&self) -> Label {
+    pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
     }
 }
@@ -86,31 +87,15 @@ impl Shift for AlphaVar {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(AlphaVar {
             normal: self.normal.shift(delta, &var.normal)?,
-            alpha: match (&self.alpha, &var.alpha) {
-                (Some(x), Some(v)) => Some(x.shift(delta, v)?),
-                _ => None,
-            },
+            alpha: self.alpha.shift(delta, &var.alpha)?,
         })
     }
 }
 
-impl Shift for () {
-    fn shift(&self, _delta: isize, _var: &AlphaVar) -> Option<Self> {
-        Some(())
-    }
-}
-
-impl<T> Subst<T> for () {
-    fn subst_shift(&self, _var: &AlphaVar, _val: &T) -> Self {}
-}
-
+/// Equality up to alpha-equivalence
 impl std::cmp::PartialEq for AlphaVar {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.alpha, &other.alpha) {
-            (Some(x), Some(y)) => x == y,
-            (None, None) => self.normal == other.normal,
-            _ => false,
-        }
+        self.alpha == other.alpha
     }
 }
 impl std::cmp::PartialEq for AlphaLabel {
@@ -119,11 +104,23 @@ impl std::cmp::PartialEq for AlphaLabel {
     }
 }
 
+impl std::fmt::Debug for AlphaVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AlphaVar({}, {})", self.normal, self.alpha.1)
+    }
+}
+
+impl std::fmt::Debug for AlphaLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AlphaLabel({})", &self.0)
+    }
+}
+
 impl From<Label> for AlphaVar {
     fn from(x: Label) -> AlphaVar {
         AlphaVar {
             normal: V(x, 0),
-            alpha: Some(V((), 0)),
+            alpha: V((), 0),
         }
     }
 }
@@ -152,5 +149,155 @@ impl From<Label> for AlphaLabel {
 impl From<AlphaLabel> for Label {
     fn from(x: AlphaLabel) -> Label {
         x.0
+    }
+}
+impl Shift for () {
+    fn shift(&self, _delta: isize, _var: &AlphaVar) -> Option<Self> {
+        Some(())
+    }
+}
+
+impl<A: Shift, B: Shift> Shift for (A, B) {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some((self.0.shift(delta, var)?, self.1.shift(delta, var)?))
+    }
+}
+
+impl<T: Shift> Shift for Option<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
+            None => None,
+            Some(x) => Some(x.shift(delta, var)?),
+        })
+    }
+}
+
+impl<T: Shift> Shift for Box<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(Box::new(self.as_ref().shift(delta, var)?))
+    }
+}
+
+impl<T: Shift> Shift for std::rc::Rc<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(std::rc::Rc::new(self.as_ref().shift(delta, var)?))
+    }
+}
+
+impl<T: Shift> Shift for std::cell::RefCell<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(std::cell::RefCell::new(self.borrow().shift(delta, var)?))
+    }
+}
+
+impl<T: Shift, E: Clone> Shift for dhall_syntax::ExprF<T, E> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(self.traverse_ref_with_special_handling_of_binders(
+            |v| Ok(v.shift(delta, var)?),
+            |x, v| Ok(v.shift(delta, &var.under_binder(x))?),
+        )?)
+    }
+}
+
+impl<T: Shift> Shift for Vec<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(
+            self.iter()
+                .map(|v| Ok(v.shift(delta, var)?))
+                .collect::<Result<_, _>>()?,
+        )
+    }
+}
+
+impl<K, T: Shift> Shift for HashMap<K, T>
+where
+    K: Clone + std::hash::Hash + Eq,
+{
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(
+            self.iter()
+                .map(|(k, v)| Ok((k.clone(), v.shift(delta, var)?)))
+                .collect::<Result<_, _>>()?,
+        )
+    }
+}
+
+impl<T: Shift> Shift for dhall_syntax::InterpolatedTextContents<T> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        use dhall_syntax::InterpolatedTextContents::{Expr, Text};
+        Some(match self {
+            Expr(x) => Expr(x.shift(delta, var)?),
+            Text(s) => Text(s.clone()),
+        })
+    }
+}
+
+impl<S> Subst<S> for () {
+    fn subst_shift(&self, _var: &AlphaVar, _val: &S) -> Self {}
+}
+
+impl<S, A: Subst<S>, B: Subst<S>> Subst<S> for (A, B) {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        (self.0.subst_shift(var, val), self.1.subst_shift(var, val))
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for Option<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        self.as_ref().map(|x| x.subst_shift(var, val))
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for Box<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        Box::new(self.as_ref().subst_shift(var, val))
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for std::rc::Rc<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        std::rc::Rc::new(self.as_ref().subst_shift(var, val))
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for std::cell::RefCell<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        std::cell::RefCell::new(self.borrow().subst_shift(var, val))
+    }
+}
+
+impl<S: Shift, T: Subst<S>, E: Clone> Subst<S> for dhall_syntax::ExprF<T, E> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        self.map_ref_with_special_handling_of_binders(
+            |v| v.subst_shift(var, val),
+            |x, v| v.subst_shift(&var.under_binder(x), &val.under_binder(x)),
+        )
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for Vec<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        self.iter().map(|v| v.subst_shift(var, val)).collect()
+    }
+}
+
+impl<S, T: Subst<S>> Subst<S> for dhall_syntax::InterpolatedTextContents<T> {
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        use dhall_syntax::InterpolatedTextContents::{Expr, Text};
+        match self {
+            Expr(x) => Expr(x.subst_shift(var, val)),
+            Text(s) => Text(s.clone()),
+        }
+    }
+}
+
+impl<S, K, T: Subst<S>> Subst<S> for HashMap<K, T>
+where
+    K: Clone + std::hash::Hash + Eq,
+{
+    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
+        self.iter()
+            .map(|(k, v)| (k.clone(), v.subst_shift(var, val)))
+            .collect()
     }
 }

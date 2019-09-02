@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use dhall_syntax::Import;
-
 use crate::error::{Error, ImportError};
-use crate::phase::{Normalized, Parsed, Resolved};
+use crate::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
+
+type Import = dhall_syntax::Import<NormalizedExpr>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImportRoot {
+pub(crate) enum ImportRoot {
     LocalDir(PathBuf),
 }
 
 type ImportCache = HashMap<Import, Normalized>;
 
-pub type ImportStack = Vec<Import>;
+pub(crate) type ImportStack = Vec<Import>;
 
 
 fn resolve_import(
@@ -29,9 +29,9 @@ fn resolve_import(
     let cwd = match root {
         LocalDir(cwd) => cwd,
     };
-    match &import.location_hashed.location {
+    match &import.location {
         Local(prefix, path) => {
-            let path_buf: PathBuf = path.clone().into_iter().collect();
+            let path_buf: PathBuf = path.file_path.iter().collect();
             let path_buf = match prefix {
                 // TODO: fail gracefully
                 Parent => cwd.parent().unwrap().join(path_buf),
@@ -91,11 +91,11 @@ fn do_resolve_expr(
     Ok(Resolved(expr))
 }
 
-pub fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
+pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
     do_resolve_expr(e, &mut HashMap::new(), &Vec::new())
 }
 
-pub fn skip_resolve_expr(
+pub(crate) fn skip_resolve_expr(
     Parsed(expr, _root): Parsed,
 ) -> Result<Resolved, ImportError> {
     let resolve = |import: &Import| -> Result<Normalized, ImportError> {
@@ -106,18 +106,26 @@ pub fn skip_resolve_expr(
 }
 
 #[cfg(test)]
+#[rustfmt::skip]
 mod spec_tests {
-    #![rustfmt::skip]
-
     macro_rules! import_success {
         ($name:ident, $path:expr) => {
-            make_spec_test!(Import, Success, $name, &("../dhall-lang/tests/import/success/".to_owned() + $path));
+            make_spec_test!(
+                ImportSuccess(
+                    &("../dhall-lang/tests/import/success/".to_owned() + $path + "A.dhall"),
+                    &("../dhall-lang/tests/import/success/".to_owned() + $path + "B.dhall")
+                ),
+                $name
+            );
         };
     }
 
     // macro_rules! import_failure {
     //     ($name:ident, $path:expr) => {
-    //         make_spec_test!(Import, Failure, $name, &("../dhall-lang/tests/import/failure/".to_owned() + $path));
+    //         make_spec_test!(
+    //             ImportFailure(&("../dhall-lang/tests/import/failure/".to_owned() + $path + ".dhall")),
+    //             $name
+    //         );
     //     };
     // }
 

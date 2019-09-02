@@ -26,16 +26,15 @@ fn main() -> std::io::Result<()> {
             rules.get_mut(&line[2..]).map(|x| x.silent = true);
         }
     }
-    rules.remove("http");
-    rules.remove("url_path");
-    rules.remove("simple_label");
-    rules.remove("nonreserved_label");
 
     let mut file = File::create(pest_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
-    writeln!(&mut file, "{}", render_rules_to_pest(rules).pretty(80))?;
 
-    writeln!(&mut file)?;
+    // TODO: this is a cheat; properly support RFC3986 URLs instead
+    rules.remove("url_path");
+    writeln!(&mut file, "url_path = _{{ path }}")?;
+
+    rules.remove("simple_label");
     writeln!(
         &mut file,
         "simple_label = {{
@@ -43,29 +42,53 @@ fn main() -> std::io::Result<()> {
             | !keyword ~ simple_label_first_char ~ simple_label_next_char*
     }}"
     )?;
-    // TODO: this is a cheat; actually implement inline headers instead
-    writeln!(
-        &mut file,
-        "http = {{
-            http_raw
-            ~ (whsp
-                ~ using
-                ~ whsp1
-                ~ (import_hashed | ^\"(\" ~ whsp ~ import_hashed ~ whsp ~ ^\")\"))?
-    }}"
-    )?;
-    // TODO: this is a cheat; properly support RFC3986 URLs instead
-    writeln!(&mut file, "url_path = _{{ path }}")?;
+
+    rules.remove("nonreserved_label");
     writeln!(
         &mut file,
         "nonreserved_label = _{{
             !(builtin ~ !simple_label_next_char) ~ label
     }}"
     )?;
+
+    // Setup grammar for precedence climbing
+    rules.remove("operator_expression");
+    writeln!(&mut file, r##"
+        import_alt = {{ "?" ~ whsp1 }}
+        bool_or = {{ "||" }}
+        natural_plus = {{ "+" ~ whsp1 }}
+        text_append = {{ "++" }}
+        list_append = {{ "#" }}
+        bool_and = {{ "&&" }}
+        natural_times = {{ "*" }}
+        bool_eq = {{ "==" }}
+        bool_ne = {{ "!=" }}
+
+        operator = _{{
+            equivalent |
+            bool_ne |
+            bool_eq |
+            natural_times |
+            combine_types |
+            prefer |
+            combine |
+            bool_and |
+            list_append |
+            text_append |
+            natural_plus |
+            bool_or |
+            import_alt
+        }}
+        operator_expression = {{ application_expression ~ (whsp ~ operator ~ whsp ~ application_expression)* }}
+    "##)?;
+
     writeln!(
         &mut file,
         "final_expression = ${{ SOI ~ complete_expression ~ EOI }}"
     )?;
+
+    writeln!(&mut file)?;
+    writeln!(&mut file, "{}", render_rules_to_pest(rules).pretty(80))?;
 
     // Generate pest parser manually to avoid spurious recompilations
     let derived = {

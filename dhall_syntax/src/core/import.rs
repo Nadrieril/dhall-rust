@@ -16,32 +16,22 @@ pub struct File {
     pub file_path: Vec<String>,
 }
 
-impl IntoIterator for File {
-    type Item = String;
-    type IntoIter = ::std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.file_path.into_iter()
-    }
-}
-
 /// The location of import (i.e. local vs. remote vs. environment)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ImportLocation {
+pub enum ImportLocation<SubExpr> {
     Local(FilePrefix, File),
-    Remote(URL),
+    Remote(URL<SubExpr>),
     Env(String),
     Missing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct URL {
+pub struct URL<SubExpr> {
     pub scheme: Scheme,
     pub authority: String,
     pub path: File,
     pub query: Option<String>,
-    // TODO: implement inline headers
-    pub headers: Option<Box<ImportHashed>>,
+    pub headers: Option<SubExpr>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -63,17 +53,56 @@ pub enum Hash {
     SHA256(Vec<u8>),
 }
 
+/// Reference to an external resource
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ImportHashed {
-    pub location: ImportLocation,
+pub struct Import<SubExpr> {
+    pub mode: ImportMode,
+    pub location: ImportLocation<SubExpr>,
     pub hash: Option<Hash>,
 }
 
-/// Reference to an external resource
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Import {
-    pub mode: ImportMode,
-    pub location_hashed: ImportHashed,
+impl<SE> URL<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<URL<SE2>, Err> {
+        let headers = self.headers.as_ref().map(f).transpose()?;
+        Ok(URL {
+            scheme: self.scheme,
+            authority: self.authority.clone(),
+            path: self.path.clone(),
+            query: self.query.clone(),
+            headers,
+        })
+    }
+}
+
+impl<SE> ImportLocation<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<ImportLocation<SE2>, Err> {
+        use ImportLocation::*;
+        Ok(match self {
+            Local(prefix, path) => Local(*prefix, path.clone()),
+            Remote(url) => Remote(url.visit_subexpr(f)?),
+            Env(env) => Env(env.clone()),
+            Missing => Missing,
+        })
+    }
+}
+
+impl<SE> Import<SE> {
+    pub fn visit_subexpr<'a, Err, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<Import<SE2>, Err> {
+        Ok(Import {
+            mode: self.mode,
+            location: self.location.visit_subexpr(f)?,
+            hash: self.hash.clone(),
+        })
+    }
 }
 
 pub trait Canonicalize {
@@ -83,7 +112,7 @@ pub trait Canonicalize {
 impl Canonicalize for File {
     fn canonicalize(&self) -> File {
         let mut file_path = Vec::new();
-        let mut file_path_components = self.clone().into_iter();
+        let mut file_path_components = self.file_path.clone().into_iter();
 
         loop {
            let component = file_path_components.next();
@@ -128,8 +157,8 @@ impl Canonicalize for File {
     }
 }
 
-impl Canonicalize for ImportLocation {
-    fn canonicalize(&self) -> ImportLocation {
+impl<SubExpr: Copy> Canonicalize for ImportLocation<SubExpr>  {
+    fn canonicalize(&self) -> ImportLocation<SubExpr> {
         match self {
             ImportLocation::Local(prefix, file) => ImportLocation::Local(*prefix, file.canonicalize()),
             ImportLocation::Remote(url) => ImportLocation::Remote(URL {
@@ -137,22 +166,10 @@ impl Canonicalize for ImportLocation {
                     authority: url.authority.clone(),
                     path: url.path.canonicalize(),
                     query: url.query.clone(),
-                    headers: url.headers.clone().map(|boxed_hash| Box::new(boxed_hash.canonicalize())),
+                    headers: url.headers.clone(),
             }),
             ImportLocation::Env(name) => ImportLocation::Env(name.to_string()),
             ImportLocation::Missing => ImportLocation::Missing,
         }
-    }
-}
-
-impl Canonicalize for ImportHashed {
-    fn canonicalize(&self) -> ImportHashed {
-        ImportHashed { hash: self.hash.clone(), location: self.location.canonicalize() }
-    }
-}
-
-impl Canonicalize for Import {
-    fn canonicalize(&self) -> Import {
-        Import { mode: self.mode, location_hashed: self.location_hashed.canonicalize() }
     }
 }
