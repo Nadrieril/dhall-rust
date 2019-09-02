@@ -7,7 +7,8 @@
 extern crate proc_macro;
 
 mod derive;
-mod parser;
+mod make_parser;
+mod parse_children;
 
 use proc_macro::TokenStream;
 
@@ -18,7 +19,7 @@ pub fn derive_static_type(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn make_parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
-    TokenStream::from(match parser::make_parser(attrs, input) {
+    TokenStream::from(match make_parser::make_parser(attrs, input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })
@@ -26,7 +27,7 @@ pub fn make_parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn parse_children(input: TokenStream) -> TokenStream {
-    TokenStream::from(match parser::parse_children(input) {
+    TokenStream::from(match parse_children::parse_children(input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })
