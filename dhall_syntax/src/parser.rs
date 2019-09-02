@@ -224,8 +224,10 @@ lazy_static::lazy_static! {
     };
 }
 
+struct Parsers;
+
 #[make_parser]
-impl _ {
+impl Parsers {
     fn EOI(_: ParseInput<Rule>) -> ParseResult<()> {
         Ok(())
     }

@@ -4,24 +4,9 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    braced, bracketed, parenthesized, parse_quote, token, Error, Expr, Ident,
-    ItemFn, Pat, ReturnType, Token,
+    bracketed, parenthesized, parse_quote, token, Error, Expr, Ident, ImplItem,
+    ImplItemMethod, ItemImpl, Pat, ReturnType, Token,
 };
-
-mod rule_kw {
-    syn::custom_keyword!(rule);
-    syn::custom_keyword!(captured_str);
-    syn::custom_keyword!(children);
-    syn::custom_keyword!(prec_climb);
-}
-
-#[derive(Debug, Clone)]
-struct Rules(Vec<Rule>);
-
-#[derive(Debug, Clone)]
-struct Rule {
-    function: ItemFn,
-}
 
 #[derive(Debug, Clone)]
 struct ChildrenBranch {
@@ -40,70 +25,6 @@ enum ChildrenBranchPatternItem {
 struct ParseChildrenInput {
     input_expr: Expr,
     branches: Punctuated<ChildrenBranch, Token![,]>,
-}
-
-impl Parse for Rules {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let _: Token![impl ] = input.parse()?;
-        let _: Token![_] = input.parse()?;
-        let contents;
-        braced!(contents in input);
-        let mut rules = Vec::new();
-        while !contents.is_empty() {
-            rules.push(contents.parse()?)
-        }
-        Ok(Rules(rules))
-    }
-}
-
-impl Parse for Rule {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let mut function: ItemFn = input.parse()?;
-        let recognized_attrs: Vec<_> = function
-            .attrs
-            .drain_filter(|attr| attr.path.is_ident("prec_climb"))
-            .collect();
-
-        let name = function.sig.ident.clone();
-        let output_type = match &function.sig.output {
-            ReturnType::Default => parse_quote!(()),
-            ReturnType::Type(_, t) => (**t).clone(),
-        };
-
-        if recognized_attrs.is_empty() {
-            Ok(Rule { function })
-        } else if recognized_attrs.len() != 1 {
-            Err(input.error("expected a prec_climb attribute"))
-        } else {
-            let attr = recognized_attrs.into_iter().next().unwrap();
-            let (child_rule, climber) =
-                attr.parse_args_with(|input: ParseStream| {
-                    let child_rule: Ident = input.parse()?;
-                    let _: Token![,] = input.parse()?;
-                    let climber: Expr = input.parse()?;
-                    Ok((child_rule, climber))
-                })?;
-
-            let function = parse_quote!(
-                fn #name<'a>(
-                    input: ParseInput<'a, Rule>,
-                ) -> #output_type {
-                    #[allow(non_snake_case, dead_code)]
-                    #function
-
-                    #climber.climb(
-                        input.pair.clone().into_inner(),
-                        |p| Parsers::#child_rule(input.with_pair(p)),
-                        |l, op, r| {
-                            #name(input.clone(), l?, op, r?)
-                        },
-                    )
-                }
-            );
-
-            Ok(Rule { function })
-        }
-    }
 }
 
 impl Parse for ChildrenBranch {
@@ -155,30 +76,72 @@ impl Parse for ParseChildrenInput {
     }
 }
 
-fn make_parsers(rules: &Rules) -> Result<TokenStream> {
-    let entries = rules.0.iter().map(|rule| {
-        let function = &rule.function;
-        quote!(
-            #[allow(non_snake_case, dead_code)]
-            #function
-        )
-    });
+fn apply_special_attrs(function: &mut ImplItemMethod) -> Result<()> {
+    let recognized_attrs: Vec<_> = function
+        .attrs
+        .drain_filter(|attr| attr.path.is_ident("prec_climb"))
+        .collect();
 
-    Ok(quote!(
-        struct Parsers;
-        impl Parsers {
-            #(#entries)*
-        }
-    ))
+    let name = function.sig.ident.clone();
+    let output_type = match &function.sig.output {
+        ReturnType::Default => parse_quote!(()),
+        ReturnType::Type(_, t) => (**t).clone(),
+    };
+
+    if recognized_attrs.is_empty() {
+    } else if recognized_attrs.len() > 1 {
+        return Err(Error::new(
+            recognized_attrs[1].span(),
+            "expected a single prec_climb attribute",
+        ));
+    } else {
+        let attr = recognized_attrs.into_iter().next().unwrap();
+        let (child_rule, climber) =
+            attr.parse_args_with(|input: ParseStream| {
+                let child_rule: Ident = input.parse()?;
+                let _: Token![,] = input.parse()?;
+                let climber: Expr = input.parse()?;
+                Ok((child_rule, climber))
+            })?;
+
+        *function = parse_quote!(
+            fn #name<'a>(
+                input: ParseInput<'a, Rule>,
+            ) -> #output_type {
+                #[allow(non_snake_case, dead_code)]
+                #function
+
+                #climber.climb(
+                    input.pair.clone().into_inner(),
+                    |p| Parsers::#child_rule(input.with_pair(p)),
+                    |l, op, r| {
+                        #name(input.clone(), l?, op, r?)
+                    },
+                )
+            }
+        );
+    }
+
+    *function = parse_quote!(
+        #[allow(non_snake_case, dead_code)]
+        #function
+    );
+
+    Ok(())
 }
 
 pub fn make_parser(
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
-    let rules: Rules = syn::parse(input.clone())?;
-    let parsers = make_parsers(&rules)?;
-
-    Ok(quote!( #parsers ))
+    let mut imp: ItemImpl = syn::parse(input)?;
+    imp.items
+        .iter_mut()
+        .map(|item| match item {
+            ImplItem::Method(m) => apply_special_attrs(m),
+            _ => Ok(()),
+        })
+        .collect::<Result<()>>()?;
+    Ok(quote!( #imp ))
 }
 
 fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
