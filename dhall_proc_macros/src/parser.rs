@@ -76,7 +76,10 @@ impl Parse for ParseChildrenInput {
     }
 }
 
-fn apply_special_attrs(function: &mut ImplItemMethod) -> Result<()> {
+fn apply_special_attrs(
+    rule_enum: &Ident,
+    function: &mut ImplItemMethod,
+) -> Result<()> {
     let recognized_attrs: Vec<_> = function
         .attrs
         .drain_filter(|attr| attr.path.is_ident("prec_climb"))
@@ -106,14 +109,14 @@ fn apply_special_attrs(function: &mut ImplItemMethod) -> Result<()> {
 
         *function = parse_quote!(
             fn #name<'a>(
-                input: ParseInput<'a, Rule>,
+                input: ParseInput<'a, #rule_enum>,
             ) -> #output_type {
                 #[allow(non_snake_case, dead_code)]
                 #function
 
                 #climber.climb(
                     input.pair.clone().into_inner(),
-                    |p| Parsers::#child_rule(input.with_pair(p)),
+                    |p| Self::#child_rule(input.with_pair(p)),
                     |l, op, r| {
                         #name(input.clone(), l?, op, r?)
                     },
@@ -131,17 +134,29 @@ fn apply_special_attrs(function: &mut ImplItemMethod) -> Result<()> {
 }
 
 pub fn make_parser(
+    attrs: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
+    let rule_enum: Ident = syn::parse(attrs)?;
+
     let mut imp: ItemImpl = syn::parse(input)?;
     imp.items
         .iter_mut()
         .map(|item| match item {
-            ImplItem::Method(m) => apply_special_attrs(m),
+            ImplItem::Method(m) => apply_special_attrs(&rule_enum, m),
             _ => Ok(()),
         })
         .collect::<Result<()>>()?;
-    Ok(quote!( #imp ))
+
+    let ty = &imp.self_ty;
+    let (impl_generics, _, where_clause) = imp.generics.split_for_impl();
+    Ok(quote!(
+        impl #impl_generics PestConsumer for #ty #where_clause {
+            type RuleEnum = #rule_enum;
+        }
+
+        #imp
+    ))
 }
 
 fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
@@ -156,18 +171,22 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     let variable_pattern_ident =
         Ident::new("variable_pattern", Span::call_site());
     let match_pat = branch.pattern.iter().map(|item| match item {
-        Single { rule_name, .. } => quote!(Rule::#rule_name),
+        Single { rule_name, .. } => {
+            quote!(<<Self as PestConsumer>::RuleEnum>::#rule_name)
+        }
         Multiple { .. } => quote!(#variable_pattern_ident..),
     });
     let match_filter = branch.pattern.iter().map(|item| match item {
         Single { .. } => quote!(),
         Multiple { rule_name, .. } => quote!(
             {
-                // We can't use .all() directly in the pattern guard without the
-                // bind_by_move_pattern_guards feature.
-                fn all_match(slice: &[Rule]) -> bool {
-                    slice.iter().all(|r| r == &Rule::#rule_name)
-                }
+                // We can't use .all() directly in the pattern guard; see
+                // https://github.com/rust-lang/rust/issues/59803.
+                let all_match = |slice: &[_]| {
+                    slice.iter().all(|r|
+                        r == &<<Self as PestConsumer>::RuleEnum>::#rule_name
+                    )
+                };
                 all_match(#variable_pattern_ident)
             } &&
         ),
@@ -205,7 +224,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     let mut parses = Vec::new();
     for (rule_name, binder) in singles_before_multiple.into_iter() {
         parses.push(quote!(
-            let #binder = Parsers::#rule_name(
+            let #binder = Self::#rule_name(
                 inputs.next().unwrap()
             )?;
         ))
@@ -214,7 +233,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     // only the unmatched inputs are left for the variable-length pattern, if any.
     for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
         parses.push(quote!(
-            let #binder = Parsers::#rule_name(
+            let #binder = Self::#rule_name(
                 inputs.next_back().unwrap()
             )?;
         ))
@@ -222,7 +241,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     if let Some((rule_name, binder)) = multiple {
         parses.push(quote!(
             let #binder = inputs
-                .map(|i| Parsers::#rule_name(i))
+                .map(|i| Self::#rule_name(i))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter();
         ))
@@ -248,7 +267,7 @@ pub fn parse_children(
         .map(make_parser_branch)
         .collect::<Result<Vec<_>>>()?;
     Ok(quote!({
-        let children_rules: Vec<Rule> = #input_expr.pair
+        let children_rules: Vec<_> = #input_expr.pair
             .clone()
             .into_inner()
             .map(|p| p.as_rule())

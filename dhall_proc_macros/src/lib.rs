@@ -17,8 +17,8 @@ pub fn derive_static_type(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn make_parser(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    TokenStream::from(match parser::make_parser(input) {
+pub fn make_parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
+    TokenStream::from(match parser::make_parser(attrs, input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })

@@ -30,7 +30,7 @@ pub type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug, Clone)]
 struct ParseInput<'input, Rule>
 where
-    Rule: std::fmt::Debug + Copy + std::hash::Hash + Ord,
+    Rule: pest::RuleType,
 {
     pair: Pair<'input, Rule>,
     original_input_str: Rc<str>,
@@ -68,6 +68,11 @@ impl<'input> ParseInput<'input, Rule> {
     fn as_str(&self) -> &'input str {
         self.pair.as_str()
     }
+}
+
+// Used to retrieve the `Rule` enum associated with the `Self` type in `parse_children`.
+trait PestConsumer {
+    type RuleEnum: pest::RuleType;
 }
 
 fn debug_pair(pair: Pair<Rule>) -> String {
@@ -226,7 +231,7 @@ lazy_static::lazy_static! {
 
 struct Parsers;
 
-#[make_parser]
+#[make_parser(Rule)]
 impl Parsers {
     fn EOI(_: ParseInput<Rule>) -> ParseResult<()> {
         Ok(())
