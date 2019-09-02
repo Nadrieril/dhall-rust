@@ -2,26 +2,25 @@ use quote::quote;
 use syn::parse::{ParseStream, Result};
 use syn::spanned::Spanned;
 use syn::{
-    parse_quote, Error, Expr, Ident, ImplItem, ImplItemMethod, ItemImpl,
-    ReturnType, Token,
+    parse_quote, Error, Expr, FnArg, Ident, ImplItem, ImplItemMethod, ItemImpl,
+    Pat, Token,
 };
 
-fn apply_special_attrs(
-    rule_enum: &Ident,
-    function: &mut ImplItemMethod,
-) -> Result<()> {
+fn apply_special_attrs(function: &mut ImplItemMethod) -> Result<()> {
+    *function = parse_quote!(
+        #[allow(non_snake_case, dead_code)]
+        #function
+    );
+
     let recognized_attrs: Vec<_> = function
         .attrs
         .drain_filter(|attr| attr.path.is_ident("prec_climb"))
         .collect();
 
     let name = function.sig.ident.clone();
-    let output_type = match &function.sig.output {
-        ReturnType::Default => parse_quote!(()),
-        ReturnType::Type(_, t) => (**t).clone(),
-    };
 
     if recognized_attrs.is_empty() {
+        // do nothing
     } else if recognized_attrs.len() > 1 {
         return Err(Error::new(
             recognized_attrs[1].span(),
@@ -37,28 +36,50 @@ fn apply_special_attrs(
                 Ok((child_rule, climber))
             })?;
 
-        *function = parse_quote!(
-            fn #name<'a>(
-                input: ParseInput<'a, #rule_enum>,
-            ) -> #output_type {
-                #[allow(non_snake_case, dead_code)]
-                #function
-
-                #climber.climb(
-                    input.pair.clone().into_inner(),
-                    |p| Self::#child_rule(input.with_pair(p)),
-                    |l, op, r| {
-                        #name(input.clone(), l?, op, r?)
-                    },
-                )
+        // Get the name of the first (`input`) function argument
+        let first_arg = function.sig.inputs.first().ok_or_else(|| {
+            Error::new(
+                function.sig.inputs.span(),
+                "a prec_climb function needs 4 arguments",
+            )
+        })?;
+        let first_arg = match &first_arg {
+            FnArg::Receiver(_) => return Err(Error::new(
+                first_arg.span(),
+                "a prec_climb function should not have a `self` argument",
+            )),
+            FnArg::Typed(first_arg) =>   match &*first_arg.pat{
+                Pat::Ident(ident) => &ident.ident,
+                _ => return Err(Error::new(
+                    first_arg.span(),
+                    "this argument should be a plain identifier instead of a pattern",
+                )),
             }
-        );
-    }
+        };
 
-    *function = parse_quote!(
-        #[allow(non_snake_case, dead_code)]
-        #function
-    );
+        function.block = parse_quote!({
+            #function
+
+            #climber.climb(
+                #first_arg.pair.clone().into_inner(),
+                |p| Self::#child_rule(#first_arg.with_pair(p)),
+                |l, op, r| {
+                    #name(#first_arg.clone(), l?, op, r?)
+                },
+            )
+        });
+        // Remove the 3 last arguments to keep only the `input` one
+        function.sig.inputs.pop();
+        function.sig.inputs.pop();
+        function.sig.inputs.pop();
+        // Check that an argument remains
+        function.sig.inputs.first().ok_or_else(|| {
+            Error::new(
+                function.sig.inputs.span(),
+                "a prec_climb function needs 4 arguments",
+            )
+        })?;
+    }
 
     Ok(())
 }
@@ -73,7 +94,7 @@ pub fn make_parser(
     imp.items
         .iter_mut()
         .map(|item| match item {
-            ImplItem::Method(m) => apply_special_attrs(&rule_enum, m),
+            ImplItem::Method(m) => apply_special_attrs(m),
             _ => Ok(()),
         })
         .collect::<Result<()>>()?;

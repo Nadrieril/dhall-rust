@@ -18,10 +18,8 @@ use crate::*;
 // their own crate because they are quite general and useful. For now they
 // are here and hopefully you can figure out how they work.
 
-pub(crate) type ParsedRawExpr = RawExpr<!>;
-pub(crate) type ParsedExpr = Expr<!>;
-type ParsedText = InterpolatedText<ParsedExpr>;
-type ParsedTextContents = InterpolatedTextContents<ParsedExpr>;
+type ParsedText<E> = InterpolatedText<Expr<E>>;
+type ParsedTextContents<E> = InterpolatedTextContents<Expr<E>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 
@@ -162,7 +160,7 @@ impl crate::Builtin {
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
 // literals.
-fn trim_indent(lines: &mut Vec<ParsedText>) {
+fn trim_indent<E: Clone>(lines: &mut Vec<ParsedText<E>>) {
     let is_indent = |c: char| c == ' ' || c == '\t';
 
     // There is at least one line so this is safe
@@ -250,9 +248,9 @@ impl Parsers {
         ))
     }
 
-    fn double_quote_literal(
+    fn double_quote_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedText> {
+    ) -> ParseResult<ParsedText<E>> {
         Ok(parse_children!(input;
             [double_quote_chunk(chunks)..] => {
                 chunks.collect()
@@ -260,9 +258,9 @@ impl Parsers {
         ))
     }
 
-    fn double_quote_chunk(
+    fn double_quote_chunk<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedTextContents> {
+    ) -> ParseResult<ParsedTextContents<E>> {
         Ok(parse_children!(input;
             [interpolation(e)] => {
                 InterpolatedTextContents::Expr(e)
@@ -351,17 +349,17 @@ impl Parsers {
         Ok(input.as_str())
     }
 
-    fn single_quote_literal(
+    fn single_quote_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedText> {
+    ) -> ParseResult<ParsedText<E>> {
         Ok(parse_children!(input;
             [single_quote_continue(lines)] => {
-                let newline: ParsedText = "\n".to_string().into();
+                let newline: ParsedText<E> = "\n".to_string().into();
 
-                let mut lines: Vec<ParsedText> = lines
+                let mut lines: Vec<ParsedText<E>> = lines
                     .into_iter()
                     .rev()
-                    .map(|l| l.into_iter().rev().collect::<ParsedText>())
+                    .map(|l| l.into_iter().rev().collect::<ParsedText<E>>())
                     .collect();
 
                 trim_indent(&mut lines);
@@ -370,7 +368,7 @@ impl Parsers {
                     .into_iter()
                     .intersperse(newline)
                     .flat_map(InterpolatedText::into_iter)
-                    .collect::<ParsedText>()
+                    .collect::<ParsedText<E>>()
             }
         ))
     }
@@ -387,16 +385,18 @@ impl Parsers {
     ) -> ParseResult<&'a str> {
         Ok("${")
     }
-    fn interpolation(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn interpolation<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(e)] => e
         ))
     }
 
     // Returns a vec of lines in reversed order, where each line is also in reversed order.
-    fn single_quote_continue(
+    fn single_quote_continue<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<Vec<Vec<ParsedTextContents>>> {
+    ) -> ParseResult<Vec<Vec<ParsedTextContents<E>>>> {
         Ok(parse_children!(input;
             [interpolation(c), single_quote_continue(lines)] => {
                 let c = InterpolatedTextContents::Expr(c);
@@ -435,7 +435,7 @@ impl Parsers {
         ))
     }
 
-    fn builtin(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn builtin<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         let s = input.as_str();
         let span = input.as_span();
         Ok(spanned(
@@ -506,7 +506,7 @@ impl Parsers {
             .map_err(|e| input.error(format!("{}", e)))
     }
 
-    fn identifier(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn identifier<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [variable(v)] => {
@@ -620,7 +620,9 @@ impl Parsers {
         })
     }
 
-    fn http_raw(input: ParseInput<Rule>) -> ParseResult<URL<ParsedExpr>> {
+    fn http_raw<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<URL<Expr<E>>> {
         Ok(parse_children!(input;
             [scheme(sch), authority(auth), path(p)] => URL {
                 scheme: sch,
@@ -647,7 +649,7 @@ impl Parsers {
         Ok(input.as_str().to_owned())
     }
 
-    fn http(input: ParseInput<Rule>) -> ParseResult<URL<ParsedExpr>> {
+    fn http<E: Clone>(input: ParseInput<Rule>) -> ParseResult<URL<Expr<E>>> {
         Ok(parse_children!(input;
         [http_raw(url)] => url,
         [http_raw(url), import_expression(e)] =>
@@ -696,9 +698,9 @@ impl Parsers {
         Ok(())
     }
 
-    fn import_type(
+    fn import_type<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ImportLocation<ParsedExpr>> {
+    ) -> ParseResult<ImportLocation<Expr<E>>> {
         Ok(parse_children!(input;
             [missing(_)] => {
                 ImportLocation::Missing
@@ -725,9 +727,9 @@ impl Parsers {
         Ok(Hash::SHA256(hex::decode(hash).unwrap()))
     }
 
-    fn import_hashed(
+    fn import_hashed<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<crate::Import<ParsedExpr>> {
+    ) -> ParseResult<crate::Import<Expr<E>>> {
         Ok(parse_children!(input;
         [import_type(location)] =>
             crate::Import {mode: ImportMode::Code, location, hash: None },
@@ -743,7 +745,7 @@ impl Parsers {
         Ok(())
     }
 
-    fn import(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn import<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [import_hashed(imp)] => {
@@ -792,7 +794,9 @@ impl Parsers {
         Ok(())
     }
 
-    fn empty_list_literal(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn empty_list_literal<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [application_expression(e)] => {
@@ -801,7 +805,7 @@ impl Parsers {
         ))
     }
 
-    fn expression(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn expression<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [lambda(()), label(l), expression(typ),
@@ -843,9 +847,9 @@ impl Parsers {
         ))
     }
 
-    fn let_binding(
+    fn let_binding<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(Label, Option<ParsedExpr>, ParsedExpr)> {
+    ) -> ParseResult<(Label, Option<Expr<E>>, Expr<E>)> {
         Ok(parse_children!(input;
             [label(name), expression(annot), expression(expr)] =>
                 (name, Some(annot), expr),
@@ -862,12 +866,12 @@ impl Parsers {
     }
 
     #[prec_climb(application_expression, PRECCLIMBER)]
-    fn operator_expression(
+    fn operator_expression<E: Clone>(
         input: ParseInput<Rule>,
-        l: ParsedExpr,
+        l: Expr<E>,
         op: Pair<Rule>,
-        r: ParsedExpr,
-    ) -> ParseResult<ParsedExpr> {
+        r: Expr<E>,
+    ) -> ParseResult<Expr<E>> {
         use crate::BinOp::*;
         use Rule::*;
         let op = match op.as_rule() {
@@ -894,9 +898,9 @@ impl Parsers {
         Ok(())
     }
 
-    fn application_expression(
+    fn application_expression<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [first_application_expression(e)] => e,
             [first_application_expression(first),
@@ -906,9 +910,9 @@ impl Parsers {
         ))
     }
 
-    fn first_application_expression(
+    fn first_application_expression<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [Some_(()), import_expression(e)] => {
@@ -924,14 +928,18 @@ impl Parsers {
         ))
     }
 
-    fn import_expression(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn import_expression<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [selector_expression(e)] => e,
             [import(e)] => e,
         ))
     }
 
-    fn selector_expression(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn selector_expression<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [primitive_expression(e)] => e,
             [primitive_expression(first), selector(rest)..] => {
@@ -949,7 +957,7 @@ impl Parsers {
         Ok(parse_children!(input;
             [label(l)] => Either::Left(l),
             [labels(ls)] => Either::Right(ls),
-            [expression(_e)] => unimplemented!("selection by expression"), // TODO
+            // [expression(_e)] => unimplemented!("selection by expression"), // TODO
         ))
     }
 
@@ -959,9 +967,9 @@ impl Parsers {
         ))
     }
 
-    fn primitive_expression(
+    fn primitive_expression<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [double_literal(n)] => spanned(span, DoubleLit(n)),
@@ -979,21 +987,23 @@ impl Parsers {
         ))
     }
 
-    fn empty_record_literal(
+    fn empty_record_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(spanned(span, RecordLit(Default::default())))
     }
 
-    fn empty_record_type(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn empty_record_type<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(spanned(span, RecordType(Default::default())))
     }
 
-    fn non_empty_record_type_or_literal(
+    fn non_empty_record_type_or_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [label(first_label), non_empty_record_type(rest)] => {
@@ -1009,9 +1019,9 @@ impl Parsers {
         ))
     }
 
-    fn non_empty_record_type(
+    fn non_empty_record_type<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(ParsedExpr, DupTreeMap<Label, ParsedExpr>)> {
+    ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
         Ok(parse_children!(input;
             [expression(expr), record_type_entry(entries)..] => {
                 (expr, entries.collect())
@@ -1019,17 +1029,17 @@ impl Parsers {
         ))
     }
 
-    fn record_type_entry(
+    fn record_type_entry<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(Label, ParsedExpr)> {
+    ) -> ParseResult<(Label, Expr<E>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, expr)
         ))
     }
 
-    fn non_empty_record_literal(
+    fn non_empty_record_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(ParsedExpr, DupTreeMap<Label, ParsedExpr>)> {
+    ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
         Ok(parse_children!(input;
             [expression(expr), record_literal_entry(entries)..] => {
                 (expr, entries.collect())
@@ -1037,15 +1047,15 @@ impl Parsers {
         ))
     }
 
-    fn record_literal_entry(
+    fn record_literal_entry<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(Label, ParsedExpr)> {
+    ) -> ParseResult<(Label, Expr<E>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, expr)
         ))
     }
 
-    fn union_type(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn union_type<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [empty_union_type(_)] => {
@@ -1061,18 +1071,18 @@ impl Parsers {
         Ok(())
     }
 
-    fn union_type_entry(
+    fn union_type_entry<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(Label, Option<ParsedExpr>)> {
+    ) -> ParseResult<(Label, Option<Expr<E>>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, Some(expr)),
             [label(name)] => (name, None),
         ))
     }
 
-    fn non_empty_list_literal(
+    fn non_empty_list_literal<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<ParsedExpr> {
+    ) -> ParseResult<Expr<E>> {
         let span = input.as_span();
         Ok(parse_children!(input;
             [expression(items)..] => spanned(
@@ -1082,14 +1092,16 @@ impl Parsers {
         ))
     }
 
-    fn final_expression(input: ParseInput<Rule>) -> ParseResult<ParsedExpr> {
+    fn final_expression<E: Clone>(
+        input: ParseInput<Rule>,
+    ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(e), EOI(_)] => e
         ))
     }
 }
 
-pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
+pub fn parse_expr<E: Clone>(s: &str) -> ParseResult<Expr<E>> {
     let input = ParseInput::parse(s, Rule::final_expression)?;
     Parsers::final_expression(input)
 }

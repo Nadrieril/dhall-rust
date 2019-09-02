@@ -381,15 +381,10 @@ pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
     Expr::from_expr_no_span(x)
 }
 
-pub(crate) fn spanned(
-    span: Span,
-    x: crate::parser::ParsedRawExpr,
-) -> crate::parser::ParsedExpr {
+pub(crate) fn spanned<E>(span: Span, x: RawExpr<E>) -> Expr<E> {
     Expr::new(x, span)
 }
-pub(crate) fn unspanned(
-    x: crate::parser::ParsedRawExpr,
-) -> crate::parser::ParsedExpr {
+pub(crate) fn unspanned<E>(x: RawExpr<E>) -> Expr<E> {
     Expr::from_expr_no_span(x)
 }
 
