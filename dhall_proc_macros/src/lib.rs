@@ -1,3 +1,4 @@
+#![feature(drain_filter)]
 //! This crate contains the code-generation primitives for the [dhall-rust][dhall-rust] crate.
 //! This is highly unstable and breaks regularly; use at your own risk.
 //!

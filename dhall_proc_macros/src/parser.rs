@@ -5,7 +5,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
     braced, bracketed, parenthesized, parse_quote, token, Error, Expr, Ident,
-    ItemFn, Pat, ReturnType, Token, Type,
+    ItemFn, Pat, ReturnType, Token,
 };
 
 mod rule_kw {
@@ -20,21 +20,7 @@ struct Rules(Vec<Rule>);
 
 #[derive(Debug, Clone)]
 struct Rule {
-    name: Ident,
-    output_type: Type,
-    contents: RuleContents,
-}
-
-#[derive(Debug, Clone)]
-enum RuleContents {
-    PrecClimb {
-        child_rule: Ident,
-        climber: Expr,
-        function: ItemFn,
-    },
-    Function {
-        function: ItemFn,
-    },
+    function: ItemFn,
 }
 
 #[derive(Debug, Clone)]
@@ -72,16 +58,11 @@ impl Parse for Rules {
 
 impl Parse for Rule {
     fn parse(input: ParseStream) -> Result<Self> {
-        let function: ItemFn = input.parse()?;
-        let (recognized_attrs, remaining_attrs) = function
+        let mut function: ItemFn = input.parse()?;
+        let recognized_attrs: Vec<_> = function
             .attrs
-            .iter()
-            .cloned()
-            .partition::<Vec<_>, _>(|attr| attr.path.is_ident("prec_climb"));
-        let function = ItemFn {
-            attrs: remaining_attrs,
-            ..(function.clone())
-        };
+            .drain_filter(|attr| attr.path.is_ident("prec_climb"))
+            .collect();
 
         let name = function.sig.ident.clone();
         let output_type = match &function.sig.output {
@@ -90,11 +71,7 @@ impl Parse for Rule {
         };
 
         if recognized_attrs.is_empty() {
-            Ok(Rule {
-                name,
-                output_type,
-                contents: RuleContents::Function { function },
-            })
+            Ok(Rule { function })
         } else if recognized_attrs.len() != 1 {
             Err(input.error("expected a prec_climb attribute"))
         } else {
@@ -107,15 +84,24 @@ impl Parse for Rule {
                     Ok((child_rule, climber))
                 })?;
 
-            Ok(Rule {
-                name,
-                output_type,
-                contents: RuleContents::PrecClimb {
-                    child_rule,
-                    climber,
-                    function,
-                },
-            })
+            let function = parse_quote!(
+                fn #name<'a>(
+                    input: ParseInput<'a, Rule>,
+                ) -> #output_type {
+                    #[allow(non_snake_case, dead_code)]
+                    #function
+
+                    #climber.climb(
+                        input.pair.clone().into_inner(),
+                        |p| Parsers::#child_rule(input.with_pair(p)),
+                        |l, op, r| {
+                            #name(input.clone(), l?, op, r?)
+                        },
+                    )
+                }
+            );
+
+            Ok(Rule { function })
         }
     }
 }
@@ -169,86 +155,13 @@ impl Parse for ParseChildrenInput {
     }
 }
 
-fn make_construct_precclimbers(rules: &Rules) -> Result<TokenStream> {
-    let mut entries: Vec<TokenStream> = Vec::new();
-    for rule in &rules.0 {
-        if let RuleContents::PrecClimb { climber, .. } = &rule.contents {
-            let name = &rule.name;
-            entries.push(quote!(
-                map.insert(Rule::#name, #climber);
-            ))
-        }
-    }
-
-    Ok(quote!(
-        fn construct_precclimbers() -> HashMap<Rule, PrecClimber<Rule>> {
-            let mut map = HashMap::new();
-            #(#entries)*
-            map
-        }
-    ))
-}
-
-fn make_entrypoints(rules: &Rules) -> Result<TokenStream> {
-    let mut entries: Vec<TokenStream> = Vec::new();
-    for rule in &rules.0 {
-        let name = &rule.name;
-        let output_type = &rule.output_type;
-        entries.push(quote!(
-            #[allow(non_snake_case, dead_code)]
-            fn #name<'a>(
-                input_str: &str,
-                pair: Pair<'a, Rule>,
-            ) -> #output_type {
-                let climbers = construct_precclimbers();
-                let input = ParseInput {
-                    climbers: &climbers,
-                    original_input_str: input_str.to_string().into(),
-                    pair
-                };
-                Parsers::#name(input)
-            }
-        ))
-    }
-
-    Ok(quote!(
-        struct EntryPoint;
-        impl EntryPoint {
-            #(#entries)*
-        }
-    ))
-}
-
 fn make_parsers(rules: &Rules) -> Result<TokenStream> {
     let entries = rules.0.iter().map(|rule| {
-        let name = &rule.name;
-        let output_type = &rule.output_type;
-        match &rule.contents {
-            RuleContents::PrecClimb {
-                child_rule,
-                function,
-                ..
-            } => quote!(
-                #[allow(non_snake_case, dead_code)]
-                fn #name<'a, 'climbers>(
-                    input: ParseInput<'a, 'climbers, Rule>,
-                ) -> #output_type {
-                    #function
-                    let climber = input.climbers.get(&Rule::#name).unwrap();
-                    climber.climb(
-                        input.pair.clone().into_inner(),
-                        |p| Parsers::#child_rule(input.with_pair(p)),
-                        |l, op, r| {
-                            #name(input.clone(), l?, op, r?)
-                        },
-                    )
-                }
-            ),
-            RuleContents::Function { function } => quote!(
-                #[allow(non_snake_case, dead_code)]
-                #function
-            ),
-        }
+        let function = &rule.function;
+        quote!(
+            #[allow(non_snake_case, dead_code)]
+            #function
+        )
     });
 
     Ok(quote!(
@@ -263,16 +176,9 @@ pub fn make_parser(
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
     let rules: Rules = syn::parse(input.clone())?;
-
-    let construct_precclimbers = make_construct_precclimbers(&rules)?;
-    let entrypoints = make_entrypoints(&rules)?;
     let parsers = make_parsers(&rules)?;
 
-    Ok(quote!(
-        #construct_precclimbers
-        #entrypoints
-        #parsers
-    ))
+    Ok(quote!( #parsers ))
 }
 
 fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {

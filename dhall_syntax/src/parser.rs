@@ -4,7 +4,6 @@ use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use pest::Parser;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -29,16 +28,15 @@ pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug, Clone)]
-struct ParseInput<'input, 'climbers, Rule>
+struct ParseInput<'input, Rule>
 where
     Rule: std::fmt::Debug + Copy + std::hash::Hash + Ord,
 {
     pair: Pair<'input, Rule>,
-    climbers: &'climbers HashMap<Rule, PrecClimber<Rule>>,
     original_input_str: Rc<str>,
 }
 
-impl<'input, 'climbers> ParseInput<'input, 'climbers, Rule> {
+impl<'input> ParseInput<'input, Rule> {
     fn error(&self, message: String) -> ParseError {
         let message = format!(
             "{} while matching on:\n{}",
@@ -48,10 +46,19 @@ impl<'input, 'climbers> ParseInput<'input, 'climbers, Rule> {
         let e = pest::error::ErrorVariant::CustomError { message };
         pest::error::Error::new_from_span(e, self.pair.as_span())
     }
+    fn parse(input_str: &'input str, rule: Rule) -> ParseResult<Self> {
+        let mut pairs = DhallParser::parse(rule, input_str)?;
+        // TODO: proper errors
+        let pair = pairs.next().unwrap();
+        assert_eq!(pairs.next(), None);
+        Ok(ParseInput {
+            original_input_str: input_str.to_string().into(),
+            pair,
+        })
+    }
     fn with_pair(&self, new_pair: Pair<'input, Rule>) -> Self {
         ParseInput {
             pair: new_pair,
-            climbers: self.climbers,
             original_input_str: self.original_input_str.clone(),
         }
     }
@@ -189,30 +196,32 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
     }
 }
 
-fn make_precclimber() -> PrecClimber<Rule> {
-    use Rule::*;
-    // In order of precedence
-    let operators = vec![
-        import_alt,
-        bool_or,
-        natural_plus,
-        text_append,
-        list_append,
-        bool_and,
-        combine,
-        prefer,
-        combine_types,
-        natural_times,
-        bool_eq,
-        bool_ne,
-        equivalent,
-    ];
-    PrecClimber::new(
-        operators
-            .into_iter()
-            .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
-            .collect(),
-    )
+lazy_static::lazy_static! {
+    static ref PRECCLIMBER: PrecClimber<Rule> = {
+        use Rule::*;
+        // In order of precedence
+        let operators = vec![
+            import_alt,
+            bool_or,
+            natural_plus,
+            text_append,
+            list_append,
+            bool_and,
+            combine,
+            prefer,
+            combine_types,
+            natural_times,
+            bool_eq,
+            bool_ne,
+            equivalent,
+        ];
+        PrecClimber::new(
+            operators
+                .into_iter()
+                .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+                .collect(),
+        )
+    };
 }
 
 #[make_parser]
@@ -330,7 +339,7 @@ impl _ {
         })
     }
     fn double_quote_char<'a>(
-        input: ParseInput<'a, '_, Rule>,
+        input: ParseInput<'a, Rule>,
     ) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
@@ -359,17 +368,15 @@ impl _ {
         ))
     }
     fn single_quote_char<'a>(
-        input: ParseInput<'a, '_, Rule>,
+        input: ParseInput<'a, Rule>,
     ) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
-    fn escaped_quote_pair<'a>(
-        _: ParseInput<'a, '_, Rule>,
-    ) -> ParseResult<&'a str> {
+    fn escaped_quote_pair<'a>(_: ParseInput<'a, Rule>) -> ParseResult<&'a str> {
         Ok("''")
     }
     fn escaped_interpolation<'a>(
-        _: ParseInput<'a, '_, Rule>,
+        _: ParseInput<'a, Rule>,
     ) -> ParseResult<&'a str> {
         Ok("${")
     }
@@ -514,12 +521,12 @@ impl _ {
     }
 
     fn unquoted_path_component<'a>(
-        input: ParseInput<'a, '_, Rule>,
+        input: ParseInput<'a, Rule>,
     ) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
     fn quoted_path_component<'a>(
-        input: ParseInput<'a, '_, Rule>,
+        input: ParseInput<'a, Rule>,
     ) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
@@ -662,7 +669,7 @@ impl _ {
         ))
     }
     fn posix_environment_variable_character<'a>(
-        input: ParseInput<'a, '_, Rule>,
+        input: ParseInput<'a, Rule>,
     ) -> ParseResult<Cow<'a, str>> {
         Ok(match input.as_str() {
             "\\\"" => Cow::Owned("\"".to_owned()),
@@ -847,7 +854,7 @@ impl _ {
         Ok(())
     }
 
-    #[prec_climb(application_expression, make_precclimber())]
+    #[prec_climb(application_expression, PRECCLIMBER)]
     fn operator_expression(
         input: ParseInput<Rule>,
         l: ParsedExpr,
@@ -1076,8 +1083,6 @@ impl _ {
 }
 
 pub fn parse_expr(s: &str) -> ParseResult<ParsedExpr> {
-    let mut pairs = DhallParser::parse(Rule::final_expression, s)?;
-    let expr = EntryPoint::final_expression(s, pairs.next().unwrap())?;
-    assert_eq!(pairs.next(), None);
-    Ok(expr)
+    let input = ParseInput::parse(s, Rule::final_expression)?;
+    Parsers::final_expression(input)
 }
