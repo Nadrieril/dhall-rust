@@ -73,7 +73,10 @@ impl Parse for ParseChildrenInput {
     }
 }
 
-fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
+fn make_parser_branch(
+    branch: &ChildrenBranch,
+    i_inputs: &Ident,
+) -> Result<TokenStream> {
     use ChildrenBranchPatternItem::{Multiple, Single};
 
     let body = &branch.body;
@@ -82,13 +85,13 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     // slice_patterns.
     // A single pattern just checks that the rule matches; a variable-length pattern binds the
     // subslice and checks, in the if-guard, that its elements all match the chosen Rule.
-    let variable_pattern_ident =
-        Ident::new("variable_pattern", Span::call_site());
+    let i_variable_pattern =
+        Ident::new("___variable_pattern", Span::call_site());
     let match_pat = branch.pattern.iter().map(|item| match item {
         Single { rule_name, .. } => {
             quote!(<<Self as PestConsumer>::RuleEnum>::#rule_name)
         }
-        Multiple { .. } => quote!(#variable_pattern_ident..),
+        Multiple { .. } => quote!(#i_variable_pattern..),
     });
     let match_filter = branch.pattern.iter().map(|item| match item {
         Single { .. } => quote!(),
@@ -101,7 +104,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
                         r == &<<Self as PestConsumer>::RuleEnum>::#rule_name
                     )
                 };
-                all_match(#variable_pattern_ident)
+                all_match(#i_variable_pattern)
             } &&
         ),
     });
@@ -139,7 +142,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     for (rule_name, binder) in singles_before_multiple.into_iter() {
         parses.push(quote!(
             let #binder = Self::#rule_name(
-                inputs.next().unwrap()
+                #i_inputs.next().unwrap()
             )?;
         ))
     }
@@ -148,13 +151,13 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
         parses.push(quote!(
             let #binder = Self::#rule_name(
-                inputs.next_back().unwrap()
+                #i_inputs.next_back().unwrap()
             )?;
         ))
     }
     if let Some((rule_name, binder)) = multiple {
         parses.push(quote!(
-            let #binder = inputs
+            let #binder = #i_inputs
                 .map(|i| Self::#rule_name(i))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter();
@@ -174,31 +177,35 @@ pub fn parse_children(
 ) -> Result<proc_macro2::TokenStream> {
     let input: ParseChildrenInput = syn::parse(input)?;
 
+    let i_children_rules = Ident::new("___children_rules", Span::call_site());
+    let i_inputs = Ident::new("___inputs", Span::call_site());
+
     let input_expr = &input.input_expr;
     let branches = input
         .branches
         .iter()
-        .map(make_parser_branch)
+        .map(|br| make_parser_branch(br, &i_inputs))
         .collect::<Result<Vec<_>>>()?;
+
     Ok(quote!({
-        let children_rules: Vec<_> = #input_expr.pair
+        let #i_children_rules: Vec<_> = #input_expr.pair
             .clone()
             .into_inner()
             .map(|p| p.as_rule())
             .collect();
 
         #[allow(unused_mut)]
-        let mut inputs = #input_expr
+        let mut #i_inputs = #input_expr
             .pair
             .clone()
             .into_inner()
             .map(|p| #input_expr.with_pair(p));
 
         #[allow(unreachable_code)]
-        match children_rules.as_slice() {
+        match #i_children_rules.as_slice() {
             #(#branches,)*
             [..] => return Err(#input_expr.error(
-                format!("Unexpected children: {:?}", children_rules)
+                format!("Unexpected children: {:?}", #i_children_rules)
             )),
         }
     }))
