@@ -250,24 +250,25 @@ where
 
 pub struct ResolveVisitor<F1>(pub F1);
 
-impl<'a, 'b, E, E2, Err, F1> ExprFFallibleVisitor<'a, Expr<E>, Expr<E2>, E, E2>
+impl<'a, 'b, E, Err, F1> ExprFFallibleVisitor<'a, Expr<E>, Expr<E>, E, E>
     for &'b mut ResolveVisitor<F1>
 where
-    F1: FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
+    E: Clone,
+    F1: FnMut(&Import<Expr<E>>) -> Result<E, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(
         &mut self,
         subexpr: &'a Expr<E>,
-    ) -> Result<Expr<E2>, Self::Error> {
+    ) -> Result<Expr<E>, Self::Error> {
         Ok(subexpr.rewrap(
             subexpr
                 .as_ref()
                 .traverse_resolve_with_visitor(&mut **self)?,
         ))
     }
-    fn visit_embed(self, _embed: &'a E) -> Result<E2, Self::Error> {
-        unimplemented!()
+    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
+        Ok(embed.clone())
     }
 }

@@ -313,21 +313,25 @@ impl<SE, E> ExprF<SE, E> {
 }
 
 impl<E> RawExpr<E> {
-    pub fn traverse_resolve<E2, Err>(
+    pub fn traverse_resolve<Err>(
         &self,
-        visit_import: impl FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
-    ) -> Result<RawExpr<E2>, Err> {
+        visit_import: impl FnMut(&Import<Expr<E>>) -> Result<E, Err>,
+    ) -> Result<RawExpr<E>, Err>
+    where
+        E: Clone,
+    {
         self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
             visit_import,
         ))
     }
 
-    pub(crate) fn traverse_resolve_with_visitor<E2, Err, F1>(
+    pub(crate) fn traverse_resolve_with_visitor<Err, F1>(
         &self,
         visitor: &mut visitor::ResolveVisitor<F1>,
-    ) -> Result<RawExpr<E2>, Err>
+    ) -> Result<RawExpr<E>, Err>
     where
-        F1: FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
+        E: Clone,
+        F1: FnMut(&Import<Expr<E>>) -> Result<E, Err>,
     {
         match self {
             ExprF::BinOp(BinOp::ImportAlt, l, r) => l
@@ -368,10 +372,13 @@ impl<E> Expr<E> {
 }
 
 impl<E> Expr<E> {
-    pub fn traverse_resolve<E2, Err>(
+    pub fn traverse_resolve<Err>(
         &self,
-        visit_import: impl FnMut(&Import<Expr<E2>>) -> Result<E2, Err>,
-    ) -> Result<Expr<E2>, Err> {
+        visit_import: impl FnMut(&Import<Expr<E>>) -> Result<E, Err>,
+    ) -> Result<Expr<E>, Err>
+    where
+        E: Clone,
+    {
         Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
     }
 }
