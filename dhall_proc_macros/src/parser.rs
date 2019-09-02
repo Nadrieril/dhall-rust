@@ -283,7 +283,7 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     // Convert the input pattern into a pattern-match on the Rules of the children. This uses
     // slice_patterns.
     // A single pattern just checks that the rule matches; a variable-length pattern binds the
-    // subslice and checks that they all match the chosen Rule in the `if`-condition.
+    // subslice and checks, in the if-guard, that its elements all match the chosen Rule.
     let variable_pattern_ident =
         Ident::new("variable_pattern", Span::call_site());
     let match_pat = branch.pattern.iter().map(|item| match item {
@@ -293,7 +293,14 @@ fn make_parser_branch(branch: &ChildrenBranch) -> Result<TokenStream> {
     let match_filter = branch.pattern.iter().map(|item| match item {
         Single { .. } => quote!(),
         Multiple { rule_name, .. } => quote!(
-            #variable_pattern_ident.iter().all(|r| r == &Rule::#rule_name) &&
+            {
+                // We can't use .all() directly in the pattern guard without the
+                // bind_by_move_pattern_guards feature.
+                fn all_match(slice: &[Rule]) -> bool {
+                    slice.iter().all(|r| r == &Rule::#rule_name)
+                }
+                all_match(#variable_pattern_ident)
+            } &&
         ),
     });
 
