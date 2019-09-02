@@ -147,14 +147,6 @@ fn debug_pair(pair: Pair<Rule>) -> String {
     s
 }
 
-fn to_file(path: Vec<String>) -> Result<File, String> {
-    let mut path = path;
-    let file_name: Option<String> = path.pop();
-    let file = file_name.ok_or("Empty file path was provided")?;
-    let directory = Directory { components: path };
-    Ok(File { directory: directory, file: file })
-}
-
 macro_rules! make_parser {
     (@pattern, rule, $name:ident) => (Rule::$name);
     (@pattern, token_rule, $name:ident) => (Rule::$name);
@@ -638,22 +630,20 @@ make_parser! {
     });
 
     rule!(http_raw<URL>; children!(
-        [scheme(sch), authority(auth), path(p)] => {
-            let file = to_file(p)?;
+        [scheme(sch), authority(auth), path(file_path)] => {
             URL {
                 scheme: sch,
                 authority: auth,
-                path: file,
+                path: File { file_path },
                 query: None,
                 headers: None,
             }
         },
-        [scheme(sch), authority(auth), path(p), query(q)] => {
-            let file = to_file(p)?;
+        [scheme(sch), authority(auth), path(file_path), query(q)] => {
             URL {
                 scheme: sch,
                 authority: auth,
-                path: file,
+                path: File { file_path },
                 query: Some(q),
                 headers: None,
             }
@@ -709,9 +699,8 @@ make_parser! {
         [http(url)] => {
             ImportLocation::Remote(url)
         },
-        [local((prefix, p))] => {
-            let file = to_file(p)?;
-            ImportLocation::Local(prefix, file)
+        [local((prefix, file_path))] => {
+            ImportLocation::Local(prefix, File { file_path })
         },
     ));
 

@@ -7,7 +7,7 @@ use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
     rc, ExprF, FilePrefix, Hash, Import, ImportHashed, ImportLocation,
     ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, SubExpr,
-    URL, V, Directory, File,
+    URL, V, File,
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -291,7 +291,7 @@ fn cbor_value_to_dhall(
                                 "import/remote/query".to_owned(),
                             ))?,
                         };
-                        let mut components: Vec<_> = rest
+                        let file_path: Vec<_> = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -299,11 +299,7 @@ fn cbor_value_to_dhall(
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
-                        let file = components.pop().ok_or(
-                                DecodeError::WrongFormatError(
-                                    "import/remote/path".to_owned(),
-                                ))?;
-                        let path = File { directory: Directory { components: components }, file: file };
+                        let path = File { file_path };
                         ImportLocation::Remote(URL {
                             scheme,
                             authority,
@@ -322,7 +318,7 @@ fn cbor_value_to_dhall(
                                 "import/local/prefix".to_owned(),
                             ))?,
                         };
-                        let mut components: Vec<_> = rest
+                        let file_path: Vec<_> = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -330,11 +326,7 @@ fn cbor_value_to_dhall(
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
-                        let file = components.pop().ok_or(
-                                DecodeError::WrongFormatError(
-                                    "import/remote/path".to_owned(),
-                                ))?;
-                        let path = File { directory: Directory { components: components }, file: file };
+                        let path = File { file_path };
                         ImportLocation::Local(prefix, path)
                     }
                     6 => {

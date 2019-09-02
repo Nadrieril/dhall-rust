@@ -12,23 +12,8 @@ pub enum FilePrefix {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Directory {
-    pub components: Vec<String>,
-}
-
-impl IntoIterator for Directory {
-    type Item = String;
-    type IntoIter = ::std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.components.into_iter()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct File {
-    pub directory: Directory,
-    pub file: String,
+    pub file_path: Vec<String>,
 }
 
 impl IntoIterator for File {
@@ -36,9 +21,7 @@ impl IntoIterator for File {
     type IntoIter = ::std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut paths = self.directory.components;
-        paths.push(self.file);
-        paths.into_iter()
+        self.file_path.into_iter()
     }
 }
 
@@ -97,13 +80,13 @@ pub trait Canonicalize {
     fn canonicalize(&self) -> Self;
 }
 
-impl Canonicalize for Directory {
-    fn canonicalize(&self) -> Directory {
-        let mut components = Vec::new();
-        let mut dir_components = self.clone().into_iter();
+impl Canonicalize for File {
+    fn canonicalize(&self) -> File {
+        let mut file_path = Vec::new();
+        let mut file_path_components = self.clone().into_iter();
 
         loop {
-           let component = dir_components.next();
+           let component = file_path_components.next();
            match component.as_ref() {
                // ───────────────────
                // canonicalize(ε) = ε
@@ -114,18 +97,18 @@ impl Canonicalize for Directory {
                // canonicalize(directory₀/.) = directory₁
                Some(c) if c == "." => continue,
 
-               Some(c) if c == ".." => match dir_components.next() {
+               Some(c) if c == ".." => match file_path_components.next() {
                    // canonicalize(directory₀) = ε
                    // ────────────────────────────
                    // canonicalize(directory₀/..) = /..
-                   None => components.push("..".to_string()),
+                   None => file_path.push("..".to_string()),
 
                    // canonicalize(directory₀) = directory₁/..
                    // ──────────────────────────────────────────────
                    // canonicalize(directory₀/..) = directory₁/../..
                    Some(ref c) if c == ".." => {
-                       components.push("..".to_string());
-                       components.push("..".to_string());
+                       file_path.push("..".to_string());
+                       file_path.push("..".to_string());
                    },
 
                    // canonicalize(directory₀) = directory₁/component
@@ -137,17 +120,11 @@ impl Canonicalize for Directory {
                // canonicalize(directory₀) = directory₁
                // ─────────────────────────────────────────────────────────  ; If no other
                // canonicalize(directory₀/component) = directory₁/component  ; rule matches
-               Some(c) => components.push(c.clone()),
+               Some(c) => file_path.push(c.clone()),
            }
         }
 
-        Directory { components: components }
-    }
-}
-
-impl Canonicalize for File {
-    fn canonicalize(&self) -> File {
-        File { directory: self.directory.canonicalize(), file: self.file.clone() }
+        File { file_path }
     }
 }
 
