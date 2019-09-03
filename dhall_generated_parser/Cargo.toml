@@ -13,7 +13,7 @@ doctest = false
 [build-dependencies]
 abnf_to_pest = { version = "0.1.1", path = "../abnf_to_pest" }
 pest_generator = "2.1"
-quote = "0.6.11"
+quote = "1.0.2"
 
 [dependencies]
 pest = "2.1"
