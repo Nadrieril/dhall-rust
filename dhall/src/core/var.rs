@@ -224,11 +224,7 @@ where
 
 impl<T: Shift> Shift for dhall_syntax::InterpolatedTextContents<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        use dhall_syntax::InterpolatedTextContents::{Expr, Text};
-        Some(match self {
-            Expr(x) => Expr(x.shift(delta, var)?),
-            Text(s) => Text(s.clone()),
-        })
+        Some(self.traverse_ref(|x| Ok(x.shift(delta, var)?))?)
     }
 }
 
@@ -283,11 +279,7 @@ impl<S, T: Subst<S>> Subst<S> for Vec<T> {
 
 impl<S, T: Subst<S>> Subst<S> for dhall_syntax::InterpolatedTextContents<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
-        use dhall_syntax::InterpolatedTextContents::{Expr, Text};
-        match self {
-            Expr(x) => Expr(x.subst_shift(var, val)),
-            Text(s) => Text(s.clone()),
-        }
+        self.map_ref(|x| x.subst_shift(var, val))
     }
 }
 
