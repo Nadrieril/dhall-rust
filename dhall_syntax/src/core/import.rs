@@ -116,7 +116,7 @@ impl Canonicalize for File {
 
         loop {
            let component = file_path_components.next();
-           match component.as_ref() {
+           match component {
                // ───────────────────
                // canonicalize(ε) = ε
                None => break,
