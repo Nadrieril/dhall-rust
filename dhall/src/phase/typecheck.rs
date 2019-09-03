@@ -249,9 +249,7 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
             list
         ),
         ListLength => make_type!(forall (a: Type) -> (List a) -> Natural),
-        ListHead | ListLast => {
-            make_type!(forall (a: Type) -> (List a) -> Optional a)
-        }
+        ListHead | ListLast => make_type!(forall (a: Type) -> (List a) -> Optional a),
         ListIndexed => make_type!(
             forall (a: Type) ->
             (List a) ->
@@ -375,9 +373,7 @@ fn type_last_layer(
         Import(_) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
-        Lam(_, _, _) | Pi(_, _, _) | Let(_, _, _, _) | Embed(_) | Var(_) => {
-            unreachable!()
-        }
+        Lam(_, _, _) | Pi(_, _, _) | Let(_, _, _, _) | Embed(_) | Var(_) => unreachable!(),
         App(f, a) => {
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();

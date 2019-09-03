@@ -91,7 +91,7 @@ fn make_parser_branch(
         Single { rule_name, .. } => {
             quote!(<<Self as PestConsumer>::RuleEnum>::#rule_name)
         }
-        Multiple { .. } => quote!(#i_variable_pattern..),
+        Multiple { .. } => quote!(#i_variable_pattern @ ..),
     });
     let match_filter = branch.pattern.iter().map(|item| match item {
         Single { .. } => quote!(),

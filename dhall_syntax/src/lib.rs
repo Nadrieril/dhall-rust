@@ -2,7 +2,6 @@
 #![feature(slice_patterns)]
 #![feature(never_type)]
 #![feature(proc_macro_hygiene)]
-#![feature(type_alias_enum_variants)]
 #![allow(
     clippy::many_single_char_names,
     clippy::should_implement_trait,
