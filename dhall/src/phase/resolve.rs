@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ImportError};
 use crate::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
+use dhall_syntax::{FilePath, ImportLocation, URL};
 
 type Import = dhall_syntax::Import<NormalizedExpr>;
 
@@ -103,6 +104,75 @@ pub(crate) fn skip_resolve_expr(
     };
     let expr = expr.traverse_resolve(resolve)?;
     Ok(Resolved(expr))
+}
+
+pub trait Canonicalize {
+    fn canonicalize(&self) -> Self;
+}
+
+impl Canonicalize for FilePath {
+    fn canonicalize(&self) -> FilePath {
+        let mut file_path = Vec::new();
+        let mut file_path_components = self.file_path.clone().into_iter();
+
+        loop {
+           let component = file_path_components.next();
+           match component.as_ref() {
+               // ───────────────────
+               // canonicalize(ε) = ε
+               None => break,
+
+               // canonicalize(directory₀) = directory₁
+               // ───────────────────────────────────────
+               // canonicalize(directory₀/.) = directory₁
+               Some(c) if c == "." => continue,
+
+               Some(c) if c == ".." => match file_path_components.next() {
+                   // canonicalize(directory₀) = ε
+                   // ────────────────────────────
+                   // canonicalize(directory₀/..) = /..
+                   None => file_path.push("..".to_string()),
+
+                   // canonicalize(directory₀) = directory₁/..
+                   // ──────────────────────────────────────────────
+                   // canonicalize(directory₀/..) = directory₁/../..
+                   Some(ref c) if c == ".." => {
+                       file_path.push("..".to_string());
+                       file_path.push("..".to_string());
+                   },
+
+                   // canonicalize(directory₀) = directory₁/component
+                   // ───────────────────────────────────────────────  ; If "component" is not
+                   // canonicalize(directory₀/..) = directory₁         ; ".."
+                   Some(_) => continue,
+               },
+
+               // canonicalize(directory₀) = directory₁
+               // ─────────────────────────────────────────────────────────  ; If no other
+               // canonicalize(directory₀/component) = directory₁/component  ; rule matches
+               Some(c) => file_path.push(c.clone()),
+           }
+        }
+
+        FilePath { file_path }
+    }
+}
+
+impl<SE: Copy> Canonicalize for ImportLocation<SE>  {
+    fn canonicalize(&self) -> ImportLocation<SE> {
+        match self {
+            ImportLocation::Local(prefix, file) => ImportLocation::Local(*prefix, file.canonicalize()),
+            ImportLocation::Remote(url) => ImportLocation::Remote(URL {
+                    scheme: url.scheme,
+                    authority: url.authority.clone(),
+                    path: url.path.canonicalize(),
+                    query: url.query.clone(),
+                    headers: url.headers.clone(),
+            }),
+            ImportLocation::Env(name) => ImportLocation::Env(name.to_string()),
+            ImportLocation::Missing => ImportLocation::Missing,
+        }
+    }
 }
 
 #[cfg(test)]

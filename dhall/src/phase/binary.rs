@@ -6,7 +6,7 @@ use std::vec;
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
     rc, Expr, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode,
-    Integer, InterpolatedText, Label, Natural, Scheme, URL, V, File
+    Integer, InterpolatedText, Label, Natural, Scheme, URL, V, FilePath
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -279,7 +279,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 "import/remote/query".to_owned(),
                             ))?,
                         };
-                        let file_path: Vec<_> = rest
+                        let file_path = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -287,7 +287,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
-                        let path = File { file_path };
+                        let path = FilePath { file_path };
                         ImportLocation::Remote(URL {
                             scheme,
                             authority,
@@ -306,7 +306,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 "import/local/prefix".to_owned(),
                             ))?,
                         };
-                        let file_path: Vec<_> = rest
+                        let file_path = rest
                             .map(|s| match s.as_string() {
                                 Some(s) => Ok(s.clone()),
                                 None => Err(DecodeError::WrongFormatError(
@@ -314,7 +314,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 )),
                             })
                             .collect::<Result<_, _>>()?;
-                        let path = File { file_path };
+                        let path = FilePath { file_path };
                         ImportLocation::Local(prefix, path)
                     }
                     6 => {

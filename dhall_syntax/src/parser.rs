@@ -729,7 +729,7 @@ make_parser! {
         [scheme(sch), authority(auth), path(file_path)] => URL {
             scheme: sch,
             authority: auth,
-            path: File { file_path },
+            path: FilePath { file_path },
             query: None,
             headers: None,
         },
@@ -737,7 +737,7 @@ make_parser! {
             URL {
                 scheme: sch,
                 authority: auth,
-                path: File { file_path },
+                path: FilePath { file_path },
                 query: Some(q),
                 headers: None,
             }
@@ -794,7 +794,7 @@ make_parser! {
             ImportLocation::Remote(url)
         },
         [local((prefix, file_path))] => {
-            ImportLocation::Local(prefix, File { file_path })
+            ImportLocation::Local(prefix, FilePath { file_path })
         },
     ));
 
