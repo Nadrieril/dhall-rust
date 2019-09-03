@@ -783,7 +783,12 @@ impl Parsers {
             [let_binding(bindings).., expression(final_expr)] => {
                 bindings.rev().fold(
                     final_expr,
-                    |acc, x| unspanned(Let(x.0, x.1, x.2, acc))
+                    |acc, x| {
+                        spanned(
+                            acc.span().unwrap().union(&x.3),
+                            Let(x.0, x.1, x.2, acc)
+                        )
+                    }
                 )
             },
             [forall(()), label(l), expression(typ),
@@ -811,12 +816,12 @@ impl Parsers {
 
     fn let_binding<E: Clone>(
         input: ParseInput<Rule>,
-    ) -> ParseResult<(Label, Option<Expr<E>>, Expr<E>)> {
+    ) -> ParseResult<(Label, Option<Expr<E>>, Expr<E>, Span)> {
         Ok(parse_children!(input;
             [label(name), expression(annot), expression(expr)] =>
-                (name, Some(annot), expr),
+                (name, Some(annot), expr, input.as_span()),
             [label(name), expression(expr)] =>
-                (name, None, expr),
+                (name, None, expr, input.as_span()),
         ))
     }
 
@@ -847,7 +852,10 @@ impl Parsers {
             r => Err(input.error(format!("Rule {:?} isn't an operator", r)))?,
         };
 
-        Ok(unspanned(BinOp(op, l, r)))
+        Ok(spanned(
+            l.span().unwrap().union(r.span().unwrap()),
+            BinOp(op, l, r),
+        ))
     }
 
     fn Some_(_input: ParseInput<Rule>) -> ParseResult<()> {
@@ -861,7 +869,15 @@ impl Parsers {
         Ok(parse_children!(input;
             [expression(e)] => e,
             [expression(first), expression(rest)..] => {
-                rest.fold(first, |acc, e| unspanned(App(acc, e)))
+                rest.fold(
+                    first,
+                    |acc, e| {
+                        spanned(
+                            acc.span().unwrap().union(e.span().unwrap()),
+                            App(acc, e)
+                        )
+                    }
+                )
             },
         ))
     }
@@ -892,20 +908,28 @@ impl Parsers {
         Ok(parse_children!(input;
             [expression(e)] => e,
             [expression(first), selector(rest)..] => {
-                rest.fold(first, |acc, e| unspanned(match e {
-                    Either::Left(l) => Field(acc, l),
-                    Either::Right(ls) => Projection(acc, ls),
-                }))
+                rest.fold(
+                    first,
+                    |acc, e| {
+                        spanned(
+                            acc.span().unwrap().union(&e.1),
+                            match e.0 {
+                                Either::Left(l) => Field(acc, l),
+                                Either::Right(ls) => Projection(acc, ls),
+                            }
+                        )
+                    }
+                )
             },
         ))
     }
 
     fn selector(
         input: ParseInput<Rule>,
-    ) -> ParseResult<Either<Label, DupTreeSet<Label>>> {
+    ) -> ParseResult<(Either<Label, DupTreeSet<Label>>, Span)> {
         Ok(parse_children!(input;
-            [label(l)] => Either::Left(l),
-            [labels(ls)] => Either::Right(ls),
+            [label(l)] => (Either::Left(l), input.as_span()),
+            [labels(ls)] => (Either::Right(ls), input.as_span()),
             // [expression(_e)] => unimplemented!("selection by expression"), // TODO
         ))
     }
