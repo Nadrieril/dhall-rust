@@ -189,7 +189,7 @@ impl ValueF {
                 for x in elts.iter_mut() {
                     use InterpolatedTextContents::{Expr, Text};
                     match x {
-                        Expr(n) => n.normalize_mut(),
+                        Expr(v) => v.normalize_mut(),
                         Text(_) => {}
                     }
                 }
@@ -199,10 +199,7 @@ impl ValueF {
                 y.normalize_mut();
             }
             ValueF::PartialExpr(e) => {
-                // TODO: need map_mut
-                e.map_ref(|v| {
-                    v.normalize_nf();
-                });
+                e.map_mut(Value::normalize_mut);
             }
         }
     }
