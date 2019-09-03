@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::map::{DupTreeMap, DupTreeSet};
-use crate::visitor;
+use crate::visitor::{self, ExprFMutVisitor, ExprFVisitor};
 use crate::*;
 
 pub type Integer = isize;
@@ -256,13 +256,6 @@ pub enum ExprF<SubExpr, Embed> {
 }
 
 impl<SE, E> ExprF<SE, E> {
-    pub(crate) fn visit<'a, V, Return>(&'a self, v: V) -> Return
-    where
-        V: visitor::GenericVisitor<&'a ExprF<SE, E>, Return>,
-    {
-        v.visit(self)
-    }
-
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
@@ -271,10 +264,11 @@ impl<SE, E> ExprF<SE, E> {
     where
         E: Clone,
     {
-        self.visit(visitor::TraverseRefWithBindersVisitor {
+        visitor::TraverseRefWithBindersVisitor {
             visit_subexpr,
             visit_under_binder,
-        })
+        }
+        .visit(self)
     }
 
     fn traverse_ref<'a, SE2, Err>(
@@ -284,7 +278,14 @@ impl<SE, E> ExprF<SE, E> {
     where
         E: Clone,
     {
-        self.visit(visitor::TraverseRefVisitor { visit_subexpr })
+        visitor::TraverseRefVisitor { visit_subexpr }.visit(self)
+    }
+
+    fn traverse_mut<'a, Err>(
+        &'a mut self,
+        visit_subexpr: impl FnMut(&'a mut SE) -> Result<(), Err>,
+    ) -> Result<(), Err> {
+        visitor::TraverseMutVisitor { visit_subexpr }.visit(self)
     }
 
     pub fn map_ref_with_special_handling_of_binders<'a, SE2>(
@@ -310,48 +311,18 @@ impl<SE, E> ExprF<SE, E> {
     {
         trivial_result(self.traverse_ref(|x| Ok(map_subexpr(x))))
     }
-}
 
-impl<E> RawExpr<E> {
-    pub fn traverse_resolve<Err>(
-        &self,
-        visit_import: impl FnMut(&Import<Expr<E>>) -> Result<E, Err>,
-    ) -> Result<RawExpr<E>, Err>
-    where
-        E: Clone,
-    {
-        self.traverse_resolve_with_visitor(&mut visitor::ResolveVisitor(
-            visit_import,
-        ))
-    }
-
-    pub(crate) fn traverse_resolve_with_visitor<Err, F1>(
-        &self,
-        visitor: &mut visitor::ResolveVisitor<F1>,
-    ) -> Result<RawExpr<E>, Err>
-    where
-        E: Clone,
-        F1: FnMut(&Import<Expr<E>>) -> Result<E, Err>,
-    {
-        match self {
-            ExprF::BinOp(BinOp::ImportAlt, l, r) => l
-                .as_ref()
-                .traverse_resolve_with_visitor(visitor)
-                .or_else(|_| r.as_ref().traverse_resolve_with_visitor(visitor)),
-            _ => {
-                let e = self.visit(&mut *visitor)?;
-                Ok(match &e {
-                    ExprF::Import(import) => ExprF::Embed((visitor.0)(import)?),
-                    _ => e,
-                })
-            }
-        }
+    pub fn map_mut<'a>(&'a mut self, mut map_subexpr: impl FnMut(&'a mut SE)) {
+        trivial_result(self.traverse_mut(|x| Ok(map_subexpr(x))))
     }
 }
 
 impl<E> Expr<E> {
     pub fn as_ref(&self) -> &RawExpr<E> {
         &self.0.as_ref().0
+    }
+    pub fn as_mut(&mut self) -> &mut RawExpr<E> {
+        &mut self.0.as_mut().0
     }
 
     pub fn new(x: RawExpr<E>, n: Span) -> Self {
@@ -369,17 +340,42 @@ impl<E> Expr<E> {
     pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
         Expr(Box::new((x, (self.0).1.clone())))
     }
-}
 
-impl<E> Expr<E> {
-    pub fn traverse_resolve<Err>(
-        &self,
-        visit_import: impl FnMut(&Import<Expr<E>>) -> Result<E, Err>,
-    ) -> Result<Expr<E>, Err>
+    pub fn traverse_resolve_mut<Err, F1>(
+        &mut self,
+        f: &mut F1,
+    ) -> Result<(), Err>
     where
         E: Clone,
+        F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
     {
-        Ok(self.rewrap(self.as_ref().traverse_resolve(visit_import)?))
+        match self.as_mut() {
+            ExprF::BinOp(BinOp::ImportAlt, l, r) => {
+                let garbage_expr = ExprF::BoolLit(false);
+                let new_self = if l.traverse_resolve_mut(f).is_ok() {
+                    l
+                } else {
+                    r.traverse_resolve_mut(f)?;
+                    r
+                };
+                *self.as_mut() =
+                    std::mem::replace(new_self.as_mut(), garbage_expr);
+            }
+            _ => {
+                self.as_mut().traverse_mut(|e| e.traverse_resolve_mut(f))?;
+                if let ExprF::Import(import) = self.as_mut() {
+                    let garbage_import = Import {
+                        mode: ImportMode::Code,
+                        location: ImportLocation::Missing,
+                        hash: None,
+                    };
+                    // Move out of &mut import
+                    let import = std::mem::replace(import, garbage_import);
+                    *self.as_mut() = ExprF::Embed(f(import)?);
+                }
+            }
+        }
+        Ok(())
     }
 }
 

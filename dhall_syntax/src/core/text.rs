@@ -76,6 +76,16 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         })
     }
 
+    pub fn traverse_mut<'a, E, F>(&'a mut self, mut f: F) -> Result<(), E>
+    where
+        F: FnMut(&'a mut SubExpr) -> Result<(), E>,
+    {
+        for (e, _) in &mut self.tail {
+            f(e)?
+        }
+        Ok(())
+    }
+
     pub fn iter<'a>(
         &'a self,
     ) -> impl Iterator<Item = InterpolatedTextContents<&'a SubExpr>> + 'a {
