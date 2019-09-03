@@ -16,7 +16,6 @@ type ImportCache = HashMap<Import, Normalized>;
 
 pub(crate) type ImportStack = Vec<Import>;
 
-
 fn resolve_import(
     import: &Import,
     root: &ImportRoot,

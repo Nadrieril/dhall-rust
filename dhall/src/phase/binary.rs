@@ -53,7 +53,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let l = Label::from(l.as_str());
                 Var(V(l, *n as usize))
             }
-            [U64(0), f, args..] => {
+            [U64(0), f, args @ ..] => {
                 if args.is_empty() {
                     Err(DecodeError::WrongFormatError(
                         "Function application must have at least one argument"
@@ -127,7 +127,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let t = cbor_value_to_dhall(&t)?;
                 EmptyListLit(rc(App(rc(ExprF::Builtin(Builtin::List)), t)))
             }
-            [U64(4), Null, rest..] => {
+            [U64(4), Null, rest @ ..] => {
                 let rest = rest
                     .iter()
                     .map(cbor_value_to_dhall)
@@ -175,7 +175,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let l = Label::from(l.as_str());
                 Field(x, l)
             }
-            [U64(10), x, rest..] => {
+            [U64(10), x, rest @ ..] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let labels = rest
                     .iter()
@@ -204,7 +204,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             [U64(15), U64(x)] => NaturalLit(*x as Natural),
             [U64(16), U64(x)] => IntegerLit(*x as Integer),
             [U64(16), I64(x)] => IntegerLit(*x as Integer),
-            [U64(18), String(first), rest..] => {
+            [U64(18), String(first), rest @ ..] => {
                 TextLit(InterpolatedText::from((
                     first.clone(),
                     rest.iter()
@@ -226,7 +226,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let t = cbor_value_to_dhall(&t)?;
                 Assert(t)
             }
-            [U64(24), hash, U64(mode), U64(scheme), rest..] => {
+            [U64(24), hash, U64(mode), U64(scheme), rest @ ..] => {
                 let mode = match mode {
                     0 => ImportMode::Code,
                     1 => ImportMode::RawText,
@@ -239,7 +239,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let hash = match hash {
                     Null => None,
                     Bytes(bytes) => match bytes.as_slice() {
-                        [18, 32, rest..] => Some(Hash::SHA256(rest.to_vec())),
+                        [18, 32, rest @ ..] => {
+                            Some(Hash::SHA256(rest.to_vec()))
+                        }
                         _ => Err(DecodeError::WrongFormatError(format!(
                             "import/hash/unknown_multihash: {:?}",
                             bytes
@@ -337,7 +339,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     location,
                 })
             }
-            [U64(25), bindings..] => {
+            [U64(25), bindings @ ..] => {
                 let mut tuples = bindings.iter().tuples();
                 let bindings = (&mut tuples)
                     .map(|(x, t, v)| {
@@ -481,13 +483,9 @@ where
         BoolIf(x, y, z) => ser_seq!(ser; tag(14), expr(x), expr(y), expr(z)),
         Var(V(l, n)) if l == &"_".into() => ser.serialize_u64(*n as u64),
         Var(V(l, n)) => ser_seq!(ser; label(l), U64(*n as u64)),
-        Lam(l, x, y) if l == &"_".into() => {
-            ser_seq!(ser; tag(1), expr(x), expr(y))
-        }
+        Lam(l, x, y) if l == &"_".into() => ser_seq!(ser; tag(1), expr(x), expr(y)),
         Lam(l, x, y) => ser_seq!(ser; tag(1), label(l), expr(x), expr(y)),
-        Pi(l, x, y) if l == &"_".into() => {
-            ser_seq!(ser; tag(2), expr(x), expr(y))
-        }
+        Pi(l, x, y) if l == &"_".into() => ser_seq!(ser; tag(2), expr(x), expr(y)),
         Pi(l, x, y) => ser_seq!(ser; tag(2), label(l), expr(x), expr(y)),
         Let(_, _, _, _) => {
             let (bound_e, bindings) = collect_nested_lets(e);
@@ -559,9 +557,7 @@ where
             ser_seq!(ser; tag(3), U64(op), expr(x), expr(y))
         }
         Merge(x, y, None) => ser_seq!(ser; tag(6), expr(x), expr(y)),
-        Merge(x, y, Some(z)) => {
-            ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
-        }
+        Merge(x, y, Some(z)) => ser_seq!(ser; tag(6), expr(x), expr(y), expr(z)),
         ToMap(x, None) => ser_seq!(ser; tag(27), expr(x)),
         ToMap(x, Some(y)) => ser_seq!(ser; tag(27), expr(x), expr(y)),
         Projection(x, ls) => ser.collect_seq(
