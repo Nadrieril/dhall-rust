@@ -2,53 +2,122 @@ use std::collections::HashMap;
 use std::iter;
 
 use quote::quote;
-use syn::parse::{ParseStream, Result};
+use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
 use syn::{
     parse_quote, Error, Expr, FnArg, Ident, ImplItem, ImplItemMethod, ItemImpl,
-    Pat, Signature, Token,
+    LitBool, Pat, Token,
 };
+
+mod kw {
+    syn::custom_keyword!(shortcut);
+}
+
+struct AliasArgs {
+    target: Ident,
+    is_shortcut: bool,
+}
+
+struct PrecClimbArgs {
+    child_rule: Ident,
+    climber: Expr,
+}
+
+struct AliasSrc {
+    ident: Ident,
+    is_shortcut: bool,
+}
+
+struct ParsedFn<'a> {
+    // Body of the function
+    function: &'a mut ImplItemMethod,
+    // Name of the function.
+    fn_name: Ident,
+    // Name of the first argument of the function, which should be of type `ParseInput`.
+    input_arg: Ident,
+    // List of aliases pointing to this function
+    alias_srcs: Vec<AliasSrc>,
+}
+
+impl Parse for AliasArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let target = input.parse()?;
+        let is_shortcut = if input.peek(Token![,]) {
+            // #[alias(rule, shortcut = true)]
+            let _: Token![,] = input.parse()?;
+            let _: kw::shortcut = input.parse()?;
+            let _: Token![=] = input.parse()?;
+            let b: LitBool = input.parse()?;
+            b.value
+        } else {
+            // #[alias(rule)]
+            false
+        };
+        Ok(AliasArgs {
+            target,
+            is_shortcut,
+        })
+    }
+}
+
+impl Parse for PrecClimbArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let child_rule = input.parse()?;
+        let _: Token![,] = input.parse()?;
+        let climber = input.parse()?;
+        Ok(PrecClimbArgs {
+            child_rule,
+            climber,
+        })
+    }
+}
 
 fn collect_aliases(
     imp: &mut ItemImpl,
-) -> Result<HashMap<Ident, (Signature, Vec<Ident>)>> {
+) -> Result<HashMap<Ident, Vec<AliasSrc>>> {
+    let functions = imp.items.iter_mut().flat_map(|item| match item {
+        ImplItem::Method(m) => Some(m),
+        _ => None,
+    });
+
     let mut alias_map = HashMap::new();
+    for function in functions {
+        let fn_name = function.sig.ident.clone();
+        let mut alias_attrs = function
+            .attrs
+            .drain_filter(|attr| attr.path.is_ident("alias"))
+            .collect::<Vec<_>>()
+            .into_iter();
 
-    for item in &mut imp.items {
-        if let ImplItem::Method(function) = item {
-            let fn_name = function.sig.ident.clone();
-            let mut alias_attrs = function
-                .attrs
-                .drain_filter(|attr| attr.path.is_ident("alias"))
-                .collect::<Vec<_>>()
-                .into_iter();
-
-            if let Some(attr) = alias_attrs.next() {
-                let tgt: Ident = attr.parse_args()?;
-                alias_map
-                    .entry(tgt)
-                    .or_insert_with(|| (function.sig.clone(), Vec::new()))
-                    .1
-                    .push(fn_name);
-            }
-            if let Some(attr) = alias_attrs.next() {
-                return Err(Error::new(
-                    attr.span(),
-                    "expected at most one alias attribute",
-                ));
-            }
+        if let Some(attr) = alias_attrs.next() {
+            let args: AliasArgs = attr.parse_args()?;
+            alias_map.entry(args.target).or_insert_with(Vec::new).push(
+                AliasSrc {
+                    ident: fn_name,
+                    is_shortcut: args.is_shortcut,
+                },
+            );
+        }
+        if let Some(attr) = alias_attrs.next() {
+            return Err(Error::new(
+                attr.span(),
+                "expected at most one alias attribute",
+            ));
         }
     }
 
     Ok(alias_map)
 }
 
-fn parse_rulefn_sig(sig: &Signature) -> Result<(Ident, Ident)> {
-    let fn_name = sig.ident.clone();
+fn parse_fn<'a>(
+    function: &'a mut ImplItemMethod,
+    alias_map: &mut HashMap<Ident, Vec<AliasSrc>>,
+) -> Result<ParsedFn<'a>> {
+    let fn_name = function.sig.ident.clone();
     // Get the name of the first (`input`) function argument
-    let input_arg = sig.inputs.first().ok_or_else(|| {
+    let input_arg = function.sig.inputs.first().ok_or_else(|| {
         Error::new(
-            sig.inputs.span(),
+            function.sig.inputs.span(),
             "a rule function needs an `input` argument",
         )
     })?;
@@ -66,20 +135,25 @@ fn parse_rulefn_sig(sig: &Signature) -> Result<(Ident, Ident)> {
         }
     };
 
-    Ok((fn_name, input_arg))
+    let alias_srcs = alias_map.remove(&fn_name).unwrap_or_else(Vec::new);
+
+    Ok(ParsedFn {
+        function,
+        fn_name,
+        input_arg,
+        alias_srcs,
+    })
 }
 
-fn apply_special_attrs(
-    function: &mut ImplItemMethod,
-    alias_map: &mut HashMap<Ident, (Signature, Vec<Ident>)>,
-    rule_enum: &Ident,
-) -> Result<()> {
+fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
+    let function = &mut *f.function;
+    let fn_name = &f.fn_name;
+    let input_arg = &f.input_arg;
+
     *function = parse_quote!(
-        #[allow(non_snake_case, dead_code)]
+        #[allow(non_snake_case)]
         #function
     );
-
-    let (fn_name, input_arg) = parse_rulefn_sig(&function.sig)?;
 
     // `prec_climb` attr
     let prec_climb_attrs: Vec<_> = function
@@ -96,13 +170,10 @@ fn apply_special_attrs(
         // do nothing
     } else {
         let attr = prec_climb_attrs.into_iter().next().unwrap();
-        let (child_rule, climber) =
-            attr.parse_args_with(|input: ParseStream| {
-                let child_rule: Ident = input.parse()?;
-                let _: Token![,] = input.parse()?;
-                let climber: Expr = input.parse()?;
-                Ok((child_rule, climber))
-            })?;
+        let PrecClimbArgs {
+            child_rule,
+            climber,
+        } = attr.parse_args()?;
 
         function.block = parse_quote!({
             #function
@@ -129,9 +200,24 @@ fn apply_special_attrs(
     }
 
     // `alias` attr
-    if let Some((_, aliases)) = alias_map.remove(&fn_name) {
+    if !f.alias_srcs.is_empty() {
+        let aliases = f.alias_srcs.iter().map(|src| &src.ident);
         let block = &function.block;
         function.block = parse_quote!({
+            let mut #input_arg = #input_arg;
+            // While the current rule allows shortcutting, and there is a single child, and the
+            // child can still be parsed by the current function, then skip to that child.
+            while <Self as PestConsumer>::allows_shortcut(#input_arg.as_rule()) {
+                if let Some(child) = #input_arg.single_child() {
+                    if &<Self as PestConsumer>::rule_alias(child.as_rule())
+                            == stringify!(#fn_name) {
+                        #input_arg = child;
+                        continue;
+                    }
+                }
+                break
+            }
+
             match #input_arg.as_rule() {
                 #(#rule_enum::#aliases => Self::#aliases(#input_arg),)*
                 #rule_enum::#fn_name => #block,
@@ -157,36 +243,56 @@ pub fn make_parser(
     let mut alias_map = collect_aliases(&mut imp)?;
     let rule_alias_branches: Vec<_> = alias_map
         .iter()
-        .flat_map(|(tgt, (_, srcs))| iter::repeat(tgt).zip(srcs))
+        .flat_map(|(tgt, srcs)| iter::repeat(tgt).zip(srcs))
         .map(|(tgt, src)| {
+            let ident = &src.ident;
             quote!(
-                #rule_enum::#src => stringify!(#tgt).to_string(),
+                #rule_enum::#ident => stringify!(#tgt).to_string(),
+            )
+        })
+        .collect();
+    let shortcut_branches: Vec<_> = alias_map
+        .iter()
+        .flat_map(|(_tgt, srcs)| srcs)
+        .map(|AliasSrc { ident, is_shortcut }| {
+            quote!(
+                #rule_enum::#ident => #is_shortcut,
             )
         })
         .collect();
 
-    imp.items
+    let fn_map: HashMap<Ident, ParsedFn> = imp
+        .items
         .iter_mut()
-        .map(|item| match item {
-            ImplItem::Method(m) => {
-                apply_special_attrs(m, &mut alias_map, &rule_enum)
-            }
-            _ => Ok(()),
+        .flat_map(|item| match item {
+            ImplItem::Method(m) => Some(m),
+            _ => None,
         })
-        .collect::<Result<()>>()?;
+        .map(|method| {
+            let mut f = parse_fn(method, &mut alias_map)?;
+            apply_special_attrs(&mut f, &rule_enum)?;
+            Ok((f.fn_name.clone(), f))
+        })
+        .collect::<Result<_>>()?;
 
     // Entries that remain in the alias map don't have a matching method, so we create one.
     let extra_fns: Vec<_> = alias_map
         .iter()
-        .map(|(tgt, (sig, srcs))| {
-            let mut sig = sig.clone();
+        .map(|(tgt, srcs)| {
+            // Get the signature of one of the functions that has this alias. They should all have
+            // essentially the same signature anyways.
+            let f = fn_map.get(&srcs.first().unwrap().ident).unwrap();
+            let input_arg = f.input_arg.clone();
+            let mut sig = f.function.sig.clone();
             sig.ident = tgt.clone();
+            let srcs = srcs.iter().map(|src| &src.ident);
 
-            let (_, input_arg) = parse_rulefn_sig(&sig)?;
-            Ok(ImplItem::Method(parse_quote!(
+            Ok(parse_quote!(
                 #sig {
                     match #input_arg.as_rule() {
                         #(#rule_enum::#srcs => Self::#srcs(#input_arg),)*
+                        // We can't match on #rule_enum::#tgt since `tgt` might be an arbitrary
+                        // identifier.
                         r if &format!("{:?}", r) == stringify!(#tgt) =>
                             return Err(#input_arg.error(format!(
                                 "make_parser: missing method for rule {}",
@@ -199,7 +305,7 @@ pub fn make_parser(
                         )
                     }
                 }
-            )))
+            ))
         })
         .collect::<Result<_>>()?;
     imp.items.extend(extra_fns);
@@ -213,6 +319,12 @@ pub fn make_parser(
                 match rule {
                     #(#rule_alias_branches)*
                     r => format!("{:?}", r),
+                }
+            }
+            fn allows_shortcut(rule: Self::Rule) -> bool {
+                match rule {
+                    #(#shortcut_branches)*
+                    _ => false,
                 }
             }
         }

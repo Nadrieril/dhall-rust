@@ -60,6 +60,16 @@ impl<'input> ParseInput<'input, Rule> {
             original_input_str: self.original_input_str.clone(),
         }
     }
+    /// If the contained pair has exactly one child, return a new Self containing it.
+    fn single_child(&self) -> Option<Self> {
+        let mut children = self.pair.clone().into_inner();
+        if let Some(child) = children.next() {
+            if children.next().is_none() {
+                return Some(self.with_pair(child));
+            }
+        }
+        None
+    }
     fn as_span(&self) -> Span {
         Span::make(self.original_input_str.clone(), self.pair.as_span())
     }
@@ -75,6 +85,7 @@ impl<'input> ParseInput<'input, Rule> {
 trait PestConsumer {
     type Rule: pest::RuleType;
     fn rule_alias(rule: Self::Rule) -> String;
+    fn allows_shortcut(rule: Self::Rule) -> bool;
 }
 
 fn debug_pair(pair: Pair<Rule>) -> String {
@@ -482,7 +493,7 @@ impl Parsers {
             .map_err(|e| input.error(format!("{}", e)))
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     fn identifier<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [variable(v)] => {
@@ -809,7 +820,7 @@ impl Parsers {
         ))
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     #[prec_climb(expression, PRECCLIMBER)]
     fn operator_expression<E: Clone>(
         input: ParseInput<Rule>,
@@ -843,7 +854,7 @@ impl Parsers {
         Ok(())
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     fn application_expression<E: Clone>(
         input: ParseInput<Rule>,
     ) -> ParseResult<Expr<E>> {
@@ -855,7 +866,7 @@ impl Parsers {
         ))
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     fn first_application_expression<E: Clone>(
         input: ParseInput<Rule>,
     ) -> ParseResult<Expr<E>> {
@@ -874,7 +885,7 @@ impl Parsers {
         ))
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     fn selector_expression<E: Clone>(
         input: ParseInput<Rule>,
     ) -> ParseResult<Expr<E>> {
@@ -905,7 +916,7 @@ impl Parsers {
         ))
     }
 
-    #[alias(expression)]
+    #[alias(expression, shortcut = true)]
     fn primitive_expression<E: Clone>(
         input: ParseInput<Rule>,
     ) -> ParseResult<Expr<E>> {
