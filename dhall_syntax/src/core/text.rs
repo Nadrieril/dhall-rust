@@ -40,6 +40,52 @@ impl<SubExpr> InterpolatedTextContents<SubExpr> {
             Text(s) => s.is_empty(),
         }
     }
+
+    pub fn traverse_ref<'a, SubExpr2, E, F>(
+        &'a self,
+        mut f: F,
+    ) -> Result<InterpolatedTextContents<SubExpr2>, E>
+    where
+        F: FnMut(&'a SubExpr) -> Result<SubExpr2, E>,
+    {
+        use InterpolatedTextContents::{Expr, Text};
+        Ok(match self {
+            Expr(e) => Expr(f(e)?),
+            Text(s) => Text(s.clone()),
+        })
+    }
+    pub fn traverse_mut<'a, E, F>(&'a mut self, mut f: F) -> Result<(), E>
+    where
+        F: FnMut(&'a mut SubExpr) -> Result<(), E>,
+    {
+        use InterpolatedTextContents::Expr;
+        if let Expr(e) = self {
+            f(e)?;
+        }
+        Ok(())
+    }
+    pub fn map_ref<'a, SubExpr2, F>(
+        &'a self,
+        mut f: F,
+    ) -> InterpolatedTextContents<SubExpr2>
+    where
+        F: FnMut(&'a SubExpr) -> SubExpr2,
+    {
+        use InterpolatedTextContents::{Expr, Text};
+        match self {
+            Expr(e) => Expr(f(e)),
+            Text(s) => Text(s.clone()),
+        }
+    }
+    pub fn map_mut<'a, F>(&'a mut self, mut f: F)
+    where
+        F: FnMut(&'a mut SubExpr),
+    {
+        use InterpolatedTextContents::Expr;
+        if let Expr(e) = self {
+            f(e);
+        }
+    }
 }
 
 impl<SubExpr> InterpolatedText<SubExpr> {
@@ -74,6 +120,16 @@ impl<SubExpr> InterpolatedText<SubExpr> {
                 .map(|(e, s)| Ok((f(e)?, s.clone())))
                 .collect::<Result<_, _>>()?,
         })
+    }
+
+    pub fn traverse_mut<'a, E, F>(&'a mut self, mut f: F) -> Result<(), E>
+    where
+        F: FnMut(&'a mut SubExpr) -> Result<(), E>,
+    {
+        for (e, _) in &mut self.tail {
+            f(e)?
+        }
+        Ok(())
     }
 
     pub fn iter<'a>(

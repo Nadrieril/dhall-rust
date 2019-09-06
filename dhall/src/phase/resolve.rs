@@ -59,18 +59,16 @@ fn load_import(
 }
 
 fn do_resolve_expr(
-    Parsed(expr, root): Parsed,
+    parsed: Parsed,
     import_cache: &mut ImportCache,
     import_stack: &ImportStack,
 ) -> Result<Resolved, ImportError> {
-    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
-        if import_stack.contains(import) {
-            return Err(ImportError::ImportCycle(
-                import_stack.clone(),
-                import.clone(),
-            ));
+    let Parsed(mut expr, root) = parsed;
+    let mut resolve = |import: Import| -> Result<Normalized, ImportError> {
+        if import_stack.contains(&import) {
+            return Err(ImportError::ImportCycle(import_stack.clone(), import));
         }
-        match import_cache.get(import) {
+        match import_cache.get(&import) {
             Some(expr) => Ok(expr.clone()),
             None => {
                 // Copy the import stack and push the current import
@@ -78,16 +76,20 @@ fn do_resolve_expr(
                 import_stack.push(import.clone());
 
                 // Resolve the import recursively
-                let expr =
-                    resolve_import(import, &root, import_cache, &import_stack)?;
+                let expr = resolve_import(
+                    &import,
+                    &root,
+                    import_cache,
+                    &import_stack,
+                )?;
 
                 // Add the import to the cache
-                import_cache.insert(import.clone(), expr.clone());
+                import_cache.insert(import, expr.clone());
                 Ok(expr)
             }
         }
     };
-    let expr = expr.traverse_resolve(resolve)?;
+    expr.traverse_resolve_mut(&mut resolve)?;
     Ok(Resolved(expr))
 }
 
@@ -96,12 +98,13 @@ pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
 }
 
 pub(crate) fn skip_resolve_expr(
-    Parsed(expr, _root): Parsed,
+    parsed: Parsed,
 ) -> Result<Resolved, ImportError> {
-    let resolve = |import: &Import| -> Result<Normalized, ImportError> {
-        Err(ImportError::UnexpectedImport(import.clone()))
+    let mut expr = parsed.0;
+    let mut resolve = |import: Import| -> Result<Normalized, ImportError> {
+        Err(ImportError::UnexpectedImport(import))
     };
-    let expr = expr.traverse_resolve(resolve)?;
+    expr.traverse_resolve_mut(&mut resolve)?;
     Ok(Resolved(expr))
 }
 
@@ -201,9 +204,9 @@ mod spec_tests {
     // import_success!(success_alternativeEnvNatural, "alternativeEnvNatural");
     // import_success!(success_alternativeEnvSimple, "alternativeEnvSimple");
     // import_success!(success_alternativeHashMismatch, "alternativeHashMismatch");
-    // import_success!(success_alternativeNatural, "alternativeNatural");
-    // import_success!(success_alternativeParseError, "alternativeParseError");
-    // import_success!(success_alternativeTypeError, "alternativeTypeError");
+    import_success!(success_alternativeNatural, "alternativeNatural");
+    import_success!(success_alternativeParseError, "alternativeParseError");
+    import_success!(success_alternativeTypeError, "alternativeTypeError");
     // import_success!(success_asLocation, "asLocation");
     // import_success!(success_asText, "asText");
     // import_success!(success_customHeaders, "customHeaders");

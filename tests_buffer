@@ -4,6 +4,7 @@ parser:
 text interpolation and escapes
 projection by expression unit tests
 fix fakeurlencode test
+s/QuotedVariable/VariableQuoted/
 success/
     operators/
         PrecedenceAll1 a ? b || c + d ++ e # f && g ∧ h ⫽ i ⩓ j * k == l != m n.o
@@ -13,6 +14,7 @@ success/
     EmptyRecordLiteral {=}
     ToMap toMap x
     ToMapAnnot toMap x : T
+    VariableQuotedSpace ` x `
 failure/
     AssertNoAnnotation assert
 

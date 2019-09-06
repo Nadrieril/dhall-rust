@@ -110,17 +110,11 @@ impl ValueF {
                 ValueF::UnionConstructor(l.clone(), kts.clone()).to_expr(opts),
                 v.to_expr(opts),
             )),
-            ValueF::TextLit(elts) => {
-                use InterpolatedTextContents::{Expr, Text};
-                rc(ExprF::TextLit(
-                    elts.iter()
-                        .map(|contents| match contents {
-                            Expr(e) => Expr(e.to_expr(opts)),
-                            Text(s) => Text(s.clone()),
-                        })
-                        .collect(),
-                ))
-            }
+            ValueF::TextLit(elts) => rc(ExprF::TextLit(
+                elts.iter()
+                    .map(|contents| contents.map_ref(|e| e.to_expr(opts)))
+                    .collect(),
+            )),
             ValueF::Equivalence(x, y) => rc(ExprF::BinOp(
                 dhall_syntax::BinOp::Equivalence,
                 x.to_expr(opts),
@@ -187,11 +181,7 @@ impl ValueF {
             }
             ValueF::TextLit(elts) => {
                 for x in elts.iter_mut() {
-                    use InterpolatedTextContents::{Expr, Text};
-                    match x {
-                        Expr(n) => n.normalize_mut(),
-                        Text(_) => {}
-                    }
+                    x.map_mut(Value::normalize_mut);
                 }
             }
             ValueF::Equivalence(x, y) => {
@@ -199,10 +189,7 @@ impl ValueF {
                 y.normalize_mut();
             }
             ValueF::PartialExpr(e) => {
-                // TODO: need map_mut
-                e.map_ref(|v| {
-                    v.normalize_nf();
-                });
+                e.map_mut(Value::normalize_mut);
             }
         }
     }

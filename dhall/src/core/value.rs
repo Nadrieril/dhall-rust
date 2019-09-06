@@ -212,17 +212,6 @@ impl Value {
             WHNF | NF => {}
         }
     }
-    pub(crate) fn normalize_nf(&self) {
-        let borrow = self.as_internal();
-        match borrow.form {
-            Unevaled | WHNF => {
-                drop(borrow);
-                self.as_internal_mut().normalize_nf();
-            }
-            // Already in NF
-            NF => {}
-        }
-    }
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {

@@ -16,8 +16,8 @@ pub(crate) mod parse;
 pub(crate) mod resolve;
 pub(crate) mod typecheck;
 
-pub type ParsedExpr = Expr<!>;
-pub type DecodedExpr = Expr<!>;
+pub type ParsedExpr = Expr<Normalized>;
+pub type DecodedExpr = Expr<Normalized>;
 pub type ResolvedExpr = Expr<Normalized>;
 pub type NormalizedExpr = Expr<Normalized>;
 

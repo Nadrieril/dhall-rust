@@ -62,7 +62,7 @@ pub struct Import<SubExpr> {
 }
 
 impl<SE> URL<SE> {
-    pub fn visit_subexpr<'a, Err, SE2>(
+    pub fn traverse_ref<'a, Err, SE2>(
         &'a self,
         f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
     ) -> Result<URL<SE2>, Err> {
@@ -75,32 +75,56 @@ impl<SE> URL<SE> {
             headers,
         })
     }
+    pub fn traverse_mut<'a, Err>(
+        &'a mut self,
+        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
+    ) -> Result<(), Err> {
+        if let Some(header) = &mut self.headers {
+            f(header)?;
+        }
+        Ok(())
+    }
 }
 
 impl<SE> ImportLocation<SE> {
-    pub fn visit_subexpr<'a, Err, SE2>(
+    pub fn traverse_ref<'a, Err, SE2>(
         &'a self,
         f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ImportLocation<SE2>, Err> {
         use ImportLocation::*;
         Ok(match self {
             Local(prefix, path) => Local(*prefix, path.clone()),
-            Remote(url) => Remote(url.visit_subexpr(f)?),
+            Remote(url) => Remote(url.traverse_ref(f)?),
             Env(env) => Env(env.clone()),
             Missing => Missing,
         })
     }
+    pub fn traverse_mut<'a, Err>(
+        &'a mut self,
+        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
+    ) -> Result<(), Err> {
+        if let ImportLocation::Remote(url) = self {
+            url.traverse_mut(f)?;
+        }
+        Ok(())
+    }
 }
 
 impl<SE> Import<SE> {
-    pub fn visit_subexpr<'a, Err, SE2>(
+    pub fn traverse_ref<'a, Err, SE2>(
         &'a self,
         f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
     ) -> Result<Import<SE2>, Err> {
         Ok(Import {
             mode: self.mode,
-            location: self.location.visit_subexpr(f)?,
+            location: self.location.traverse_ref(f)?,
             hash: self.hash.clone(),
         })
+    }
+    pub fn traverse_mut<'a, Err>(
+        &'a mut self,
+        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
+    ) -> Result<(), Err> {
+        self.location.traverse_mut(f)
     }
 }

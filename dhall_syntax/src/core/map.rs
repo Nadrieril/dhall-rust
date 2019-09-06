@@ -13,6 +13,8 @@ mod one_or_more {
     }
 
     pub type Iter<'a, T> = Either<slice::Iter<'a, T>, iter::Once<&'a T>>;
+    pub type IterMut<'a, T> =
+        Either<slice::IterMut<'a, T>, iter::Once<&'a mut T>>;
     pub type IntoIter<T> = Either<vec::IntoIter<T>, iter::Once<T>>;
 
     impl<T> OneOrMore<T> {
@@ -33,6 +35,13 @@ mod one_or_more {
         pub fn iter(&self) -> Iter<'_, T> {
             match self {
                 OneOrMore::More(vec) => Either::Left(vec.iter()),
+                OneOrMore::One(x) => Either::Right(iter::once(x)),
+            }
+        }
+
+        pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+            match self {
+                OneOrMore::More(vec) => Either::Left(vec.iter_mut()),
                 OneOrMore::One(x) => Either::Right(iter::once(x)),
             }
         }
@@ -74,6 +83,19 @@ mod dup_tree_map {
     >;
     pub struct Iter<'a, K, V> {
         iter: IterInternal<'a, K, V>,
+        size: usize,
+    }
+    pub type IterMutInternalIntermediate<'a, K, V> =
+        iter::Zip<iter::Repeat<&'a K>, one_or_more::IterMut<'a, V>>;
+    pub type IterMutInternal<'a, K, V> = iter::FlatMap<
+        btree_map::IterMut<'a, K, OneOrMore<V>>,
+        IterMutInternalIntermediate<'a, K, V>,
+        for<'b> fn(
+            (&'b K, &'b mut OneOrMore<V>),
+        ) -> IterMutInternalIntermediate<'b, K, V>,
+    >;
+    pub struct IterMut<'a, K, V> {
+        iter: IterMutInternal<'a, K, V>,
         size: usize,
     }
     pub type IntoIterInternalIntermediate<K, V> =
@@ -134,6 +156,21 @@ mod dup_tree_map {
                 size: self.size,
             }
         }
+
+        pub fn iter_mut(&mut self) -> IterMut<'_, K, V>
+        where
+            K: Ord,
+        {
+            fn foo<'a, K, V>(
+                (k, oom): (&'a K, &'a mut OneOrMore<V>),
+            ) -> IterMutInternalIntermediate<'a, K, V> {
+                iter::repeat(k).zip(oom.iter_mut())
+            }
+            IterMut {
+                iter: self.map.iter_mut().flat_map(foo),
+                size: self.size,
+            }
+        }
     }
 
     impl<K, V> Default for DupTreeMap<K, V>
@@ -180,6 +217,18 @@ mod dup_tree_map {
         }
     }
 
+    impl<'a, K, V> IntoIterator for &'a mut DupTreeMap<K, V>
+    where
+        K: Ord,
+    {
+        type Item = (&'a K, &'a mut V);
+        type IntoIter = IterMut<'a, K, V>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            self.iter_mut()
+        }
+    }
+
     impl<K, V> iter::FromIterator<(K, V)> for DupTreeMap<K, V>
     where
         K: Ord,
@@ -198,6 +247,22 @@ mod dup_tree_map {
 
     impl<'a, K, V> Iterator for Iter<'a, K, V> {
         type Item = (&'a K, &'a V);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = self.iter.next();
+            if next.is_some() {
+                self.size -= 1;
+            }
+            next
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.size, Some(self.size))
+        }
+    }
+
+    impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+        type Item = (&'a K, &'a mut V);
 
         fn next(&mut self) -> Option<Self::Item> {
             let next = self.iter.next();
