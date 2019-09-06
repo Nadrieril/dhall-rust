@@ -186,11 +186,11 @@ pub fn parse_children(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(quote!({
-        let #i_children_rules: Vec<_> = #input_expr.pair
+        let #i_children_rules: Vec<_> = #input_expr.as_pair()
             .clone()
             .into_inner()
             .map(|p| p.as_rule())
-            .map(<Self as PestConsumer>::rule_alias)
+            .map(<Self as pest_consume::PestConsumer>::rule_alias)
             .collect();
         let #i_children_rules: Vec<&str> = #i_children_rules
             .iter()
@@ -199,7 +199,7 @@ pub fn parse_children(
 
         #[allow(unused_mut)]
         let mut #i_inputs = #input_expr
-            .pair
+            .as_pair()
             .clone()
             .into_inner()
             .map(|p| #input_expr.with_pair(p));

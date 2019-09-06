@@ -179,7 +179,7 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
             #function
 
             #climber.climb(
-                #input_arg.pair.clone().into_inner(),
+                #input_arg.as_pair().clone().into_inner(),
                 |p| Self::#child_rule(#input_arg.with_pair(p)),
                 |l, op, r| {
                     #fn_name(#input_arg.clone(), l?, op, r?)
@@ -207,9 +207,9 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
             let mut #input_arg = #input_arg;
             // While the current rule allows shortcutting, and there is a single child, and the
             // child can still be parsed by the current function, then skip to that child.
-            while <Self as PestConsumer>::allows_shortcut(#input_arg.as_rule()) {
+            while <Self as pest_consume::PestConsumer>::allows_shortcut(#input_arg.as_rule()) {
                 if let Some(child) = #input_arg.single_child() {
-                    if &<Self as PestConsumer>::rule_alias(child.as_rule())
+                    if &<Self as pest_consume::PestConsumer>::rule_alias(child.as_rule())
                             == stringify!(#fn_name) {
                         #input_arg = child;
                         continue;
@@ -313,7 +313,7 @@ pub fn make_parser(
     let ty = &imp.self_ty;
     let (impl_generics, _, where_clause) = imp.generics.split_for_impl();
     Ok(quote!(
-        impl #impl_generics PestConsumer for #ty #where_clause {
+        impl #impl_generics pest_consume::PestConsumer for #ty #where_clause {
             type Rule = #rule_enum;
             fn rule_alias(rule: Self::Rule) -> String {
                 match rule {

@@ -3,7 +3,6 @@ use pest::iterators::Pair;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use pest::Parser;
-use std::borrow::Cow;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
@@ -25,109 +24,132 @@ pub type ParseError = pest::error::Error<Rule>;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
-#[derive(Debug, Clone)]
-struct ParseInput<'input, Rule>
-where
-    Rule: pest::RuleType,
-{
-    pair: Pair<'input, Rule>,
-    original_input_str: Rc<str>,
-}
+pub mod pest_consume {
+    use pest::error::{Error, ErrorVariant};
+    use pest::iterators::Pair;
+    use pest::Span;
 
-impl<'input> ParseInput<'input, Rule> {
-    fn error(&self, message: String) -> ParseError {
-        let message = format!(
-            "{} while matching on:\n{}",
-            message,
-            debug_pair(self.pair.clone())
-        );
-        let e = pest::error::ErrorVariant::CustomError { message };
-        pest::error::Error::new_from_span(e, self.pair.as_span())
+    /// Carries a pest Pair alongside custom user data.
+    #[derive(Debug, Clone)]
+    pub struct ParseInput<'input, 'data, Rule, Data>
+    where
+        Rule: pest::RuleType,
+    {
+        pair: Pair<'input, Rule>,
+        user_data: &'data Data,
     }
-    fn parse(input_str: &'input str, rule: Rule) -> ParseResult<Self> {
-        let mut pairs = DhallParser::parse(rule, input_str)?;
-        // TODO: proper errors
-        let pair = pairs.next().unwrap();
-        assert_eq!(pairs.next(), None);
-        Ok(ParseInput {
-            original_input_str: input_str.to_string().into(),
-            pair,
-        })
-    }
-    fn with_pair(&self, new_pair: Pair<'input, Rule>) -> Self {
-        ParseInput {
-            pair: new_pair,
-            original_input_str: self.original_input_str.clone(),
+
+    impl<'input, 'data, Rule, Data> ParseInput<'input, 'data, Rule, Data>
+    where
+        Rule: pest::RuleType,
+    {
+        pub fn new(pair: Pair<'input, Rule>, user_data: &'data Data) -> Self {
+            ParseInput { pair, user_data }
         }
-    }
-    /// If the contained pair has exactly one child, return a new Self containing it.
-    fn single_child(&self) -> Option<Self> {
-        let mut children = self.pair.clone().into_inner();
-        if let Some(child) = children.next() {
-            if children.next().is_none() {
-                return Some(self.with_pair(child));
+        /// Create an error that points to the span of the input.
+        pub fn error(&self, message: String) -> Error<Rule> {
+            let message = format!(
+                "{} while matching on:\n{}",
+                message,
+                debug_pair(self.pair.clone())
+            );
+            Error::new_from_span(
+                ErrorVariant::CustomError { message },
+                self.as_span(),
+            )
+        }
+        /// Reconstruct the input with a new pair, passing the user data along.
+        pub fn with_pair(&self, new_pair: Pair<'input, Rule>) -> Self {
+            ParseInput {
+                pair: new_pair,
+                user_data: self.user_data,
             }
         }
-        None
-    }
-    fn as_span(&self) -> Span {
-        Span::make(self.original_input_str.clone(), self.pair.as_span())
-    }
-    fn as_str(&self) -> &'input str {
-        self.pair.as_str()
-    }
-    fn as_rule(&self) -> Rule {
-        self.pair.as_rule()
-    }
-}
-
-// Used by the macros.
-trait PestConsumer {
-    type Rule: pest::RuleType;
-    fn rule_alias(rule: Self::Rule) -> String;
-    fn allows_shortcut(rule: Self::Rule) -> bool;
-}
-
-fn debug_pair(pair: Pair<Rule>) -> String {
-    use std::fmt::Write;
-    let mut s = String::new();
-    fn aux(s: &mut String, indent: usize, prefix: String, pair: Pair<Rule>) {
-        let indent_str = "| ".repeat(indent);
-        let rule = pair.as_rule();
-        let contents = pair.as_str();
-        let mut inner = pair.into_inner();
-        let mut first = true;
-        while let Some(p) = inner.next() {
-            if first {
-                first = false;
-                let last = inner.peek().is_none();
-                if last && p.as_str() == contents {
-                    let prefix = format!("{}{:?} > ", prefix, rule);
-                    aux(s, indent, prefix, p);
-                    continue;
-                } else {
-                    writeln!(
-                        s,
-                        r#"{}{}{:?}: "{}""#,
-                        indent_str, prefix, rule, contents
-                    )
-                    .unwrap();
+        /// If the contained pair has exactly one child, return a new Self containing it.
+        pub fn single_child(&self) -> Option<Self> {
+            let mut children = self.pair.clone().into_inner();
+            if let Some(child) = children.next() {
+                if children.next().is_none() {
+                    return Some(self.with_pair(child));
                 }
             }
-            aux(s, indent + 1, "".into(), p);
+            None
         }
-        if first {
-            writeln!(
-                s,
-                r#"{}{}{:?}: "{}""#,
-                indent_str, prefix, rule, contents
-            )
-            .unwrap();
+
+        pub fn user_data(&self) -> &'data Data {
+            self.user_data
+        }
+        pub fn as_pair(&self) -> &Pair<'input, Rule> {
+            &self.pair
+        }
+        pub fn as_span(&self) -> Span<'input> {
+            self.pair.as_span()
+        }
+        pub fn as_str(&self) -> &'input str {
+            self.pair.as_str()
+        }
+        pub fn as_rule(&self) -> Rule {
+            self.pair.as_rule()
         }
     }
-    aux(&mut s, 0, "".into(), pair);
-    s
+
+    /// Used by the macros.
+    pub trait PestConsumer {
+        type Rule: pest::RuleType;
+        fn rule_alias(rule: Self::Rule) -> String;
+        fn allows_shortcut(rule: Self::Rule) -> bool;
+    }
+
+    /// Pretty-print a pair and its nested children.
+    fn debug_pair<Rule: pest::RuleType>(pair: Pair<Rule>) -> String {
+        use std::fmt::Write;
+        let mut s = String::new();
+        fn aux<Rule: pest::RuleType>(
+            s: &mut String,
+            indent: usize,
+            prefix: String,
+            pair: Pair<Rule>,
+        ) {
+            let indent_str = "| ".repeat(indent);
+            let rule = pair.as_rule();
+            let contents = pair.as_str();
+            let mut inner = pair.into_inner();
+            let mut first = true;
+            while let Some(p) = inner.next() {
+                if first {
+                    first = false;
+                    let last = inner.peek().is_none();
+                    if last && p.as_str() == contents {
+                        let prefix = format!("{}{:?} > ", prefix, rule);
+                        aux(s, indent, prefix, p);
+                        continue;
+                    } else {
+                        writeln!(
+                            s,
+                            r#"{}{}{:?}: "{}""#,
+                            indent_str, prefix, rule, contents
+                        )
+                        .unwrap();
+                    }
+                }
+                aux(s, indent + 1, "".into(), p);
+            }
+            if first {
+                writeln!(
+                    s,
+                    r#"{}{}{:?}: "{}""#,
+                    indent_str, prefix, rule, contents
+                )
+                .unwrap();
+            }
+        }
+        aux(&mut s, 0, "".into(), pair);
+        s
+    }
 }
+
+type ParseInput<'input, 'data> =
+    pest_consume::ParseInput<'input, 'data, Rule, Rc<str>>;
 
 #[derive(Debug)]
 enum Either<A, B> {
@@ -171,6 +193,16 @@ impl crate::Builtin {
             _ => None,
         }
     }
+}
+
+fn input_to_span(input: ParseInput) -> Span {
+    Span::make(input.user_data().clone(), input.as_pair().as_span())
+}
+fn spanned<E>(input: ParseInput, x: RawExpr<E>) -> Expr<E> {
+    Expr::new(x, input_to_span(input))
+}
+fn spanned_union<E>(span1: Span, span2: Span, x: RawExpr<E>) -> Expr<E> {
+    Expr::new(x, span1.union(&span2))
 }
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
@@ -246,21 +278,21 @@ struct Parsers;
 
 #[make_parser(Rule)]
 impl Parsers {
-    fn EOI(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
     #[alias(label)]
-    fn simple_label(input: ParseInput<Rule>) -> ParseResult<Label> {
+    fn simple_label(input: ParseInput) -> ParseResult<Label> {
         Ok(Label::from(input.as_str()))
     }
     #[alias(label)]
-    fn quoted_label(input: ParseInput<Rule>) -> ParseResult<Label> {
+    fn quoted_label(input: ParseInput) -> ParseResult<Label> {
         Ok(Label::from(input.as_str()))
     }
 
     fn double_quote_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
         Ok(parse_children!(input;
             [double_quote_chunk(chunks)..] => {
@@ -270,7 +302,7 @@ impl Parsers {
     }
 
     fn double_quote_chunk<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ParsedTextContents<E>> {
         Ok(parse_children!(input;
             [expression(e)] => {
@@ -282,7 +314,7 @@ impl Parsers {
         ))
     }
     #[alias(double_quote_char)]
-    fn double_quote_escaped(input: ParseInput<Rule>) -> ParseResult<String> {
+    fn double_quote_escaped(input: ParseInput) -> ParseResult<String> {
         Ok(match input.as_str() {
             "\"" => "\"".to_owned(),
             "$" => "$".to_owned(),
@@ -352,14 +384,12 @@ impl Parsers {
             }
         })
     }
-    fn double_quote_char<'a>(
-        input: ParseInput<'a, Rule>,
-    ) -> ParseResult<String> {
+    fn double_quote_char(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_owned())
     }
 
     fn single_quote_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
         Ok(parse_children!(input;
             [single_quote_continue(lines)] => {
@@ -383,26 +413,26 @@ impl Parsers {
         ))
     }
     fn single_quote_char<'a>(
-        input: ParseInput<'a, Rule>,
+        input: ParseInput<'a, '_>,
     ) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
     #[alias(single_quote_char)]
     fn escaped_quote_pair<'a>(
-        _input: ParseInput<'a, Rule>,
+        _input: ParseInput<'a, '_>,
     ) -> ParseResult<&'a str> {
         Ok("''")
     }
     #[alias(single_quote_char)]
     fn escaped_interpolation<'a>(
-        _input: ParseInput<'a, Rule>,
+        _input: ParseInput<'a, '_>,
     ) -> ParseResult<&'a str> {
         Ok("${")
     }
 
     // Returns a vec of lines in reversed order, where each line is also in reversed order.
     fn single_quote_continue<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Vec<Vec<ParsedTextContents<E>>>> {
         Ok(parse_children!(input;
             [expression(e), single_quote_continue(lines)] => {
@@ -429,7 +459,7 @@ impl Parsers {
     }
 
     #[alias(expression)]
-    fn builtin<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
+    fn builtin<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         let s = input.as_str();
         let e = match crate::Builtin::parse(s) {
             Some(b) => Builtin(b),
@@ -442,30 +472,24 @@ impl Parsers {
                 _ => Err(input.error(format!("Unrecognized builtin: '{}'", s)))?,
             },
         };
-        Ok(spanned(input.as_span(), e))
+        Ok(spanned(input, e))
     }
 
     #[alias(double_literal)]
-    fn NaN(_input: ParseInput<Rule>) -> ParseResult<core::Double> {
+    fn NaN(_input: ParseInput) -> ParseResult<core::Double> {
         Ok(std::f64::NAN.into())
     }
     #[alias(double_literal)]
-    fn minus_infinity_literal(
-        _input: ParseInput<Rule>,
-    ) -> ParseResult<core::Double> {
+    fn minus_infinity_literal(_input: ParseInput) -> ParseResult<core::Double> {
         Ok(std::f64::NEG_INFINITY.into())
     }
     #[alias(double_literal)]
-    fn plus_infinity_literal(
-        _input: ParseInput<Rule>,
-    ) -> ParseResult<core::Double> {
+    fn plus_infinity_literal(_input: ParseInput) -> ParseResult<core::Double> {
         Ok(std::f64::INFINITY.into())
     }
 
     #[alias(double_literal)]
-    fn numeric_double_literal(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<core::Double> {
+    fn numeric_double_literal(input: ParseInput) -> ParseResult<core::Double> {
         let s = input.as_str().trim();
         match s.parse::<f64>() {
             Ok(x) if x.is_infinite() => Err(input.error(format!(
@@ -477,7 +501,7 @@ impl Parsers {
         }
     }
 
-    fn natural_literal(input: ParseInput<Rule>) -> ParseResult<core::Natural> {
+    fn natural_literal(input: ParseInput) -> ParseResult<core::Natural> {
         input
             .as_str()
             .trim()
@@ -485,7 +509,7 @@ impl Parsers {
             .map_err(|e| input.error(format!("{}", e)))
     }
 
-    fn integer_literal(input: ParseInput<Rule>) -> ParseResult<core::Integer> {
+    fn integer_literal(input: ParseInput) -> ParseResult<core::Integer> {
         input
             .as_str()
             .trim()
@@ -494,16 +518,16 @@ impl Parsers {
     }
 
     #[alias(expression, shortcut = true)]
-    fn identifier<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
+    fn identifier<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [variable(v)] => {
-                spanned(input.as_span(), Var(v))
+                spanned(input, Var(v))
             },
             [expression(e)] => e,
         ))
     }
 
-    fn variable(input: ParseInput<Rule>) -> ParseResult<V<Label>> {
+    fn variable(input: ParseInput) -> ParseResult<V<Label>> {
         Ok(parse_children!(input;
             [label(l), natural_literal(idx)] => {
                 V(l, idx)
@@ -515,15 +539,11 @@ impl Parsers {
     }
 
     #[alias(path_component)]
-    fn unquoted_path_component<'a>(
-        input: ParseInput<'a, Rule>,
-    ) -> ParseResult<String> {
+    fn unquoted_path_component(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_string())
     }
     #[alias(path_component)]
-    fn quoted_path_component<'a>(
-        input: ParseInput<'a, Rule>,
-    ) -> ParseResult<String> {
+    fn quoted_path_component(input: ParseInput) -> ParseResult<String> {
         #[rustfmt::skip]
         const RESERVED: &percent_encoding::AsciiSet =
             &percent_encoding::CONTROLS
@@ -549,7 +569,7 @@ impl Parsers {
             })
             .collect())
     }
-    fn path(input: ParseInput<Rule>) -> ParseResult<Vec<String>> {
+    fn path(input: ParseInput) -> ParseResult<Vec<String>> {
         Ok(parse_children!(input;
             [path_component(components)..] => {
                 components.collect()
@@ -559,7 +579,7 @@ impl Parsers {
 
     #[alias(import_type)]
     fn local<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
         Ok(parse_children!(input;
             [local_path((prefix, p))] => ImportLocation::Local(prefix, p),
@@ -568,38 +588,34 @@ impl Parsers {
 
     #[alias(local_path)]
     fn parent_path(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
         Ok(parse_children!(input;
             [path(p)] => (FilePrefix::Parent, p)
         ))
     }
     #[alias(local_path)]
-    fn here_path(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<(FilePrefix, Vec<String>)> {
+    fn here_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
         Ok(parse_children!(input;
             [path(p)] => (FilePrefix::Here, p)
         ))
     }
     #[alias(local_path)]
-    fn home_path(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<(FilePrefix, Vec<String>)> {
+    fn home_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
         Ok(parse_children!(input;
             [path(p)] => (FilePrefix::Home, p)
         ))
     }
     #[alias(local_path)]
     fn absolute_path(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
         Ok(parse_children!(input;
             [path(p)] => (FilePrefix::Absolute, p)
         ))
     }
 
-    fn scheme(input: ParseInput<Rule>) -> ParseResult<Scheme> {
+    fn scheme(input: ParseInput) -> ParseResult<Scheme> {
         Ok(match input.as_str() {
             "http" => Scheme::HTTP,
             "https" => Scheme::HTTPS,
@@ -607,9 +623,7 @@ impl Parsers {
         })
     }
 
-    fn http_raw<E: Clone>(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<URL<Expr<E>>> {
+    fn http_raw<E: Clone>(input: ParseInput) -> ParseResult<URL<Expr<E>>> {
         Ok(parse_children!(input;
             [scheme(sch), authority(auth), path(p)] => URL {
                 scheme: sch,
@@ -628,17 +642,17 @@ impl Parsers {
         ))
     }
 
-    fn authority(input: ParseInput<Rule>) -> ParseResult<String> {
+    fn authority(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_owned())
     }
 
-    fn query(input: ParseInput<Rule>) -> ParseResult<String> {
+    fn query(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_owned())
     }
 
     #[alias(import_type)]
     fn http<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
         Ok(ImportLocation::Remote(parse_children!(input;
             [http_raw(url)] => url,
@@ -648,22 +662,18 @@ impl Parsers {
 
     #[alias(import_type)]
     fn env<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
         Ok(parse_children!(input;
             [environment_variable(v)] => ImportLocation::Env(v),
         ))
     }
     #[alias(environment_variable)]
-    fn bash_environment_variable(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<String> {
+    fn bash_environment_variable(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_owned())
     }
     #[alias(environment_variable)]
-    fn posix_environment_variable(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<String> {
+    fn posix_environment_variable(input: ParseInput) -> ParseResult<String> {
         Ok(parse_children!(input;
             [posix_environment_variable_character(chars)..] => {
                 chars.collect()
@@ -671,30 +681,30 @@ impl Parsers {
         ))
     }
     fn posix_environment_variable_character<'a>(
-        input: ParseInput<'a, Rule>,
-    ) -> ParseResult<Cow<'a, str>> {
+        input: ParseInput<'a, '_>,
+    ) -> ParseResult<&'a str> {
         Ok(match input.as_str() {
-            "\\\"" => Cow::Owned("\"".to_owned()),
-            "\\\\" => Cow::Owned("\\".to_owned()),
-            "\\a" => Cow::Owned("\u{0007}".to_owned()),
-            "\\b" => Cow::Owned("\u{0008}".to_owned()),
-            "\\f" => Cow::Owned("\u{000C}".to_owned()),
-            "\\n" => Cow::Owned("\n".to_owned()),
-            "\\r" => Cow::Owned("\r".to_owned()),
-            "\\t" => Cow::Owned("\t".to_owned()),
-            "\\v" => Cow::Owned("\u{000B}".to_owned()),
-            s => Cow::Borrowed(s),
+            "\\\"" => "\"",
+            "\\\\" => "\\",
+            "\\a" => "\u{0007}",
+            "\\b" => "\u{0008}",
+            "\\f" => "\u{000C}",
+            "\\n" => "\n",
+            "\\r" => "\r",
+            "\\t" => "\t",
+            "\\v" => "\u{000B}",
+            s => s,
         })
     }
 
     #[alias(import_type)]
     fn missing<E: Clone>(
-        _input: ParseInput<Rule>,
+        _input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
         Ok(ImportLocation::Missing)
     }
 
-    fn hash(input: ParseInput<Rule>) -> ParseResult<Hash> {
+    fn hash(input: ParseInput) -> ParseResult<Hash> {
         let s = input.as_str().trim();
         let protocol = &s[..6];
         let hash = &s[7..];
@@ -705,7 +715,7 @@ impl Parsers {
     }
 
     fn import_hashed<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<crate::Import<Expr<E>>> {
         use crate::Import;
         let mode = ImportMode::Code;
@@ -716,16 +726,16 @@ impl Parsers {
     }
 
     #[alias(import_mode)]
-    fn Text(_input: ParseInput<Rule>) -> ParseResult<ImportMode> {
+    fn Text(_input: ParseInput) -> ParseResult<ImportMode> {
         Ok(ImportMode::RawText)
     }
     #[alias(import_mode)]
-    fn Location(_input: ParseInput<Rule>) -> ParseResult<ImportMode> {
+    fn Location(_input: ParseInput) -> ParseResult<ImportMode> {
         Ok(ImportMode::Location)
     }
 
     #[alias(expression)]
-    fn import<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
+    fn import<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         use crate::Import;
         let import = parse_children!(input;
             [import_hashed(imp)] => {
@@ -735,57 +745,55 @@ impl Parsers {
                 Import { mode, ..imp }
             },
         );
-        Ok(spanned(input.as_span(), Import(import)))
+        Ok(spanned(input, Import(import)))
     }
 
-    fn lambda(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn lambda(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn forall(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn forall(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn arrow(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn arrow(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn merge(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn merge(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn assert(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn assert(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn if_(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn if_(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn toMap(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn toMap(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
     #[alias(expression)]
-    fn empty_list_literal<E: Clone>(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<Expr<E>> {
+    fn empty_list_literal<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
-            [expression(e)] => spanned(input.as_span(), EmptyListLit(e)),
+            [expression(e)] => spanned(input, EmptyListLit(e)),
         ))
     }
 
-    fn expression<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
-        let span = input.as_span();
+    fn expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [lambda(()), label(l), expression(typ),
                     arrow(()), expression(body)] => {
-                spanned(span, Lam(l, typ, body))
+                spanned(input, Lam(l, typ, body))
             },
             [if_(()), expression(cond), expression(left),
                     expression(right)] => {
-                spanned(span, BoolIf(cond, left, right))
+                spanned(input, BoolIf(cond, left, right))
             },
             [let_binding(bindings).., expression(final_expr)] => {
                 bindings.rev().fold(
                     final_expr,
                     |acc, x| {
-                        spanned(
-                            acc.span().unwrap().union(&x.3),
+                        spanned_union(
+                            acc.span().unwrap(),
+                            x.3,
                             Let(x.0, x.1, x.2, acc)
                         )
                     }
@@ -793,42 +801,42 @@ impl Parsers {
             },
             [forall(()), label(l), expression(typ),
                     arrow(()), expression(body)] => {
-                spanned(span, Pi(l, typ, body))
+                spanned(input, Pi(l, typ, body))
             },
             [expression(typ), arrow(()), expression(body)] => {
-                spanned(span, Pi("_".into(), typ, body))
+                spanned(input, Pi("_".into(), typ, body))
             },
             [merge(()), expression(x), expression(y), expression(z)] => {
-                spanned(span, Merge(x, y, Some(z)))
+                spanned(input, Merge(x, y, Some(z)))
             },
             [assert(()), expression(x)] => {
-                spanned(span, Assert(x))
+                spanned(input, Assert(x))
             },
             [toMap(()), expression(x), expression(y)] => {
-                spanned(span, ToMap(x, Some(y)))
+                spanned(input, ToMap(x, Some(y)))
             },
             [expression(e), expression(annot)] => {
-                spanned(span, Annot(e, annot))
+                spanned(input, Annot(e, annot))
             },
             [expression(e)] => e,
         ))
     }
 
     fn let_binding<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Label, Option<Expr<E>>, Expr<E>, Span)> {
         Ok(parse_children!(input;
             [label(name), expression(annot), expression(expr)] =>
-                (name, Some(annot), expr, input.as_span()),
+                (name, Some(annot), expr, input_to_span(input)),
             [label(name), expression(expr)] =>
-                (name, None, expr, input.as_span()),
+                (name, None, expr, input_to_span(input)),
         ))
     }
 
     #[alias(expression, shortcut = true)]
     #[prec_climb(expression, PRECCLIMBER)]
     fn operator_expression<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
         l: Expr<E>,
         op: Pair<Rule>,
         r: Expr<E>,
@@ -852,19 +860,20 @@ impl Parsers {
             r => Err(input.error(format!("Rule {:?} isn't an operator", r)))?,
         };
 
-        Ok(spanned(
-            l.span().unwrap().union(r.span().unwrap()),
+        Ok(spanned_union(
+            l.span().unwrap(),
+            r.span().unwrap(),
             BinOp(op, l, r),
         ))
     }
 
-    fn Some_(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn Some_(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
     #[alias(expression, shortcut = true)]
     fn application_expression<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(e)] => e,
@@ -872,8 +881,9 @@ impl Parsers {
                 rest.fold(
                     first,
                     |acc, e| {
-                        spanned(
-                            acc.span().unwrap().union(e.span().unwrap()),
+                        spanned_union(
+                            acc.span().unwrap(),
+                            e.span().unwrap(),
                             App(acc, e)
                         )
                     }
@@ -884,18 +894,17 @@ impl Parsers {
 
     #[alias(expression, shortcut = true)]
     fn first_application_expression<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        let span = input.as_span();
         Ok(parse_children!(input;
             [Some_(()), expression(e)] => {
-                spanned(span, SomeLit(e))
+                spanned(input, SomeLit(e))
             },
             [merge(()), expression(x), expression(y)] => {
-                spanned(span, Merge(x, y, None))
+                spanned(input, Merge(x, y, None))
             },
             [toMap(()), expression(x)] => {
-                spanned(span, ToMap(x, None))
+                spanned(input, ToMap(x, None))
             },
             [expression(e)] => e,
         ))
@@ -903,7 +912,7 @@ impl Parsers {
 
     #[alias(expression, shortcut = true)]
     fn selector_expression<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(e)] => e,
@@ -911,8 +920,9 @@ impl Parsers {
                 rest.fold(
                     first,
                     |acc, e| {
-                        spanned(
-                            acc.span().unwrap().union(&e.1),
+                        spanned_union(
+                            acc.span().unwrap(),
+                            e.1,
                             match e.0 {
                                 Either::Left(l) => Field(acc, l),
                                 Either::Right(ls) => Projection(acc, ls),
@@ -925,16 +935,16 @@ impl Parsers {
     }
 
     fn selector(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Either<Label, DupTreeSet<Label>>, Span)> {
         Ok(parse_children!(input;
-            [label(l)] => (Either::Left(l), input.as_span()),
-            [labels(ls)] => (Either::Right(ls), input.as_span()),
+            [label(l)] => (Either::Left(l), input_to_span(input)),
+            [labels(ls)] => (Either::Right(ls), input_to_span(input)),
             // [expression(_e)] => unimplemented!("selection by expression"), // TODO
         ))
     }
 
-    fn labels(input: ParseInput<Rule>) -> ParseResult<DupTreeSet<Label>> {
+    fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {
         Ok(parse_children!(input;
             [label(ls)..] => ls.collect(),
         ))
@@ -942,36 +952,33 @@ impl Parsers {
 
     #[alias(expression, shortcut = true)]
     fn primitive_expression<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        let span = input.as_span();
         Ok(parse_children!(input;
-            [double_literal(n)] => spanned(span, DoubleLit(n)),
-            [natural_literal(n)] => spanned(span, NaturalLit(n)),
-            [integer_literal(n)] => spanned(span, IntegerLit(n)),
-            [double_quote_literal(s)] => spanned(span, TextLit(s)),
-            [single_quote_literal(s)] => spanned(span, TextLit(s)),
+            [double_literal(n)] => spanned(input, DoubleLit(n)),
+            [natural_literal(n)] => spanned(input, NaturalLit(n)),
+            [integer_literal(n)] => spanned(input, IntegerLit(n)),
+            [double_quote_literal(s)] => spanned(input, TextLit(s)),
+            [single_quote_literal(s)] => spanned(input, TextLit(s)),
             [expression(e)] => e,
         ))
     }
 
     #[alias(expression)]
     fn empty_record_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(spanned(input.as_span(), RecordLit(Default::default())))
+        Ok(spanned(input, RecordLit(Default::default())))
     }
 
     #[alias(expression)]
-    fn empty_record_type<E: Clone>(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<Expr<E>> {
-        Ok(spanned(input.as_span(), RecordType(Default::default())))
+    fn empty_record_type<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
+        Ok(spanned(input, RecordType(Default::default())))
     }
 
     #[alias(expression)]
     fn non_empty_record_type_or_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
         let e = parse_children!(input;
             [label(first_label), non_empty_record_type(rest)] => {
@@ -985,11 +992,11 @@ impl Parsers {
                 RecordLit(map)
             },
         );
-        Ok(spanned(input.as_span(), e))
+        Ok(spanned(input, e))
     }
 
     fn non_empty_record_type<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
         Ok(parse_children!(input;
             [expression(expr), record_type_entry(entries)..] => {
@@ -999,7 +1006,7 @@ impl Parsers {
     }
 
     fn record_type_entry<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, expr)
@@ -1007,7 +1014,7 @@ impl Parsers {
     }
 
     fn non_empty_record_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
         Ok(parse_children!(input;
             [expression(expr), record_literal_entry(entries)..] => {
@@ -1017,7 +1024,7 @@ impl Parsers {
     }
 
     fn record_literal_entry<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, expr)
@@ -1025,20 +1032,20 @@ impl Parsers {
     }
 
     #[alias(expression)]
-    fn union_type<E: Clone>(input: ParseInput<Rule>) -> ParseResult<Expr<E>> {
+    fn union_type<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         let map = parse_children!(input;
             [empty_union_type(_)] => Default::default(),
             [union_type_entry(entries)..] => entries.collect(),
         );
-        Ok(spanned(input.as_span(), UnionType(map)))
+        Ok(spanned(input, UnionType(map)))
     }
 
-    fn empty_union_type(_input: ParseInput<Rule>) -> ParseResult<()> {
+    fn empty_union_type(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
     fn union_type_entry<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<(Label, Option<Expr<E>>)> {
         Ok(parse_children!(input;
             [label(name), expression(expr)] => (name, Some(expr)),
@@ -1048,26 +1055,29 @@ impl Parsers {
 
     #[alias(expression)]
     fn non_empty_list_literal<E: Clone>(
-        input: ParseInput<Rule>,
+        input: ParseInput,
     ) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(items)..] => spanned(
-                input.as_span(),
+                input,
                 NEListLit(items.collect())
             )
         ))
     }
 
-    fn final_expression<E: Clone>(
-        input: ParseInput<Rule>,
-    ) -> ParseResult<Expr<E>> {
+    fn final_expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(parse_children!(input;
             [expression(e), EOI(_)] => e
         ))
     }
 }
 
-pub fn parse_expr<E: Clone>(s: &str) -> ParseResult<Expr<E>> {
-    let input = ParseInput::parse(s, Rule::final_expression)?;
+pub fn parse_expr<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
+    let mut pairs = DhallParser::parse(Rule::final_expression, input_str)?;
+    // TODO: proper errors
+    let pair = pairs.next().unwrap();
+    assert_eq!(pairs.next(), None);
+    let rc_input_str = input_str.to_string().into();
+    let input = ParseInput::new(pair, &rc_input_str);
     Parsers::final_expression(input)
 }

@@ -334,8 +334,8 @@ impl<E> Expr<E> {
     pub fn as_mut(&mut self) -> &mut RawExpr<E> {
         &mut self.0.as_mut().0
     }
-    pub fn span(&self) -> Option<&Span> {
-        self.0.as_ref().1.as_ref()
+    pub fn span(&self) -> Option<Span> {
+        self.0.as_ref().1.clone()
     }
 
     pub(crate) fn new(x: RawExpr<E>, n: Span) -> Self {
@@ -395,10 +395,6 @@ impl<E> Expr<E> {
 // Should probably rename this
 pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
     Expr::from_expr_no_span(x)
-}
-
-pub(crate) fn spanned<E>(span: Span, x: RawExpr<E>) -> Expr<E> {
-    Expr::new(x, span)
 }
 
 /// Add an isize to an usize
