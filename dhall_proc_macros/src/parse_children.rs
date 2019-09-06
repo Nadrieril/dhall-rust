@@ -88,9 +88,7 @@ fn make_parser_branch(
     let i_variable_pattern =
         Ident::new("___variable_pattern", Span::call_site());
     let match_pat = branch.pattern.iter().map(|item| match item {
-        Single { rule_name, .. } => {
-            quote!(<<Self as PestConsumer>::RuleEnum>::#rule_name)
-        }
+        Single { rule_name, .. } => quote!(stringify!(#rule_name)),
         Multiple { .. } => quote!(#i_variable_pattern @ ..),
     });
     let match_filter = branch.pattern.iter().map(|item| match item {
@@ -101,7 +99,7 @@ fn make_parser_branch(
                 // https://github.com/rust-lang/rust/issues/59803.
                 let all_match = |slice: &[_]| {
                     slice.iter().all(|r|
-                        r == &<<Self as PestConsumer>::RuleEnum>::#rule_name
+                        *r == stringify!(#rule_name)
                     )
                 };
                 all_match(#i_variable_pattern)
@@ -192,6 +190,11 @@ pub fn parse_children(
             .clone()
             .into_inner()
             .map(|p| p.as_rule())
+            .map(<Self as PestConsumer>::rule_alias)
+            .collect();
+        let #i_children_rules: Vec<&str> = #i_children_rules
+            .iter()
+            .map(String::as_str)
             .collect();
 
         #[allow(unused_mut)]

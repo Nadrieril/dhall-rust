@@ -18,7 +18,7 @@
 simple_label
 # quoted_label_char
 quoted_label
-label
+# label
 # nonreserved_label
 # any_label
 double_quote_chunk
@@ -31,13 +31,13 @@ escaped_quote_pair
 escaped_interpolation
 single_quote_char
 single_quote_literal
-interpolation
+# interpolation
 # text_literal
 if_
 # then
 # else_
 # let_
-in_
+# in_
 # as_
 # using
 merge
@@ -49,9 +49,9 @@ toMap
 assert
 # keyword
 builtin
-Optional
+# Optional
 Text
-List
+# List
 Location
 # Bool
 # True
@@ -95,7 +95,7 @@ arrow
 numeric_double_literal
 minus_infinity_literal
 plus_infinity_literal
-double_literal
+# double_literal
 natural_literal
 integer_literal
 identifier
@@ -104,7 +104,7 @@ variable
 # quoted_path_character
 unquoted_path_component
 quoted_path_component
-path_component
+# path_component
 path
 local
 parent_path
@@ -136,7 +136,7 @@ env
 bash_environment_variable
 posix_environment_variable
 posix_environment_variable_character
-import_type
+# import_type
 hash
 import_hashed
 import
@@ -160,7 +160,7 @@ not_equal_expression
 equivalent_expression
 application_expression
 first_application_expression
-import_expression
+# import_expression
 selector_expression
 selector
 labels
