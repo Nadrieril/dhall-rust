@@ -290,7 +290,7 @@ pub(crate) fn apply_builtin(
                 )
             }
         },
-        (ListFold, [_, l, _, cons, nil, r..]) => match &*l.as_whnf() {
+        (ListFold, [_, l, _, cons, nil, r @ ..]) => match &*l.as_whnf() {
             EmptyListLit(_) => Ret::ValueWithRemainingArgs(r, nil.clone()),
             NEListLit(xs) => {
                 let mut v = nil.clone();
@@ -326,7 +326,8 @@ pub(crate) fn apply_builtin(
                 )
             }
         },
-        (OptionalFold, [_, v, _, just, nothing, r..]) => match &*v.as_whnf() {
+        (OptionalFold, [_, v, _, just, nothing, r @ ..]) => match &*v.as_whnf()
+        {
             EmptyOptionalLit(_) => {
                 Ret::ValueWithRemainingArgs(r, nothing.clone())
             }
@@ -356,7 +357,7 @@ pub(crate) fn apply_builtin(
                     ),
             ),
         },
-        (NaturalFold, [n, t, succ, zero, r..]) => match &*n.as_whnf() {
+        (NaturalFold, [n, t, succ, zero, r @ ..]) => match &*n.as_whnf() {
             NaturalLit(0) => Ret::ValueWithRemainingArgs(r, zero.clone()),
             NaturalLit(n) => {
                 let fold = Value::from_builtin(NaturalFold)

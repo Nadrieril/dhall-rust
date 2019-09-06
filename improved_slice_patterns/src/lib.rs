@@ -15,7 +15,7 @@
 /// Contrary to slice_patterns, this allows moving out
 /// of the iterator.
 ///
-/// A variable length pattern (`x..`) is only allowed as the last
+/// A variable length pattern (`x @ ..`) is only allowed as the last
 /// pattern, unless the iterator is double-ended.
 ///
 /// Example:
@@ -25,7 +25,7 @@
 /// let vec = vec![Some(1), Some(2), Some(3), None];
 ///
 /// let res = destructure_iter!(vec.into_iter();
-///     [Some(x), y.., z] => {
+///     [Some(x), y @ .., z] => {
 ///         // x: usize
 ///         // y: impl Iterator<Option<usize>>
 ///         // z: Option<usize>
@@ -42,7 +42,8 @@
 #[macro_export]
 macro_rules! destructure_iter {
     // Variable length pattern
-    (@match_forwards, $iter:expr, ($body:expr), $x:ident.., $($rest:tt)*) => {
+    (@match_forwards, $iter:expr, ($body:expr),
+            $x:ident @ .., $($rest:tt)*) => {
         $crate::destructure_iter!(@match_backwards,
             $iter,
             ({
@@ -133,7 +134,7 @@ macro_rules! destructure_iter {
 /// Contrary to slice_patterns, this allows moving out
 /// of the `Vec`.
 ///
-/// A variable length pattern (`x..`) returns an iterator.
+/// A variable length pattern (`x @ ..`) returns an iterator.
 ///
 /// Example:
 /// ```edition2018
@@ -143,7 +144,7 @@ macro_rules! destructure_iter {
 /// let vec = vec![Some(1), Some(2), Some(3), None];
 ///
 /// let res = match_vec!(vec;
-///     [Some(_), y.., None] => {
+///     [Some(_), y @ .., None] => {
 ///         y.collect::<Vec<_>>()
 ///     },
 ///     [None, None] => {
@@ -158,7 +159,7 @@ macro_rules! destructure_iter {
 /// let vec = vec![Some(1), Some(2), Some(3), None];
 ///
 /// let res = match_vec!(vec;
-///     [Some(_), y.., Some(_)] => {
+///     [Some(_), y @ .., Some(_)] => {
 ///         y.collect::<Vec<_>>()
 ///     },
 ///     [None, None] => {
@@ -175,16 +176,16 @@ macro_rules! destructure_iter {
 #[macro_export]
 macro_rules! match_vec {
     // Variable length pattern
-    (@make_pat; ($($acc:tt)*), $x:ident.., $($rest:tt)*) => {
+    (@make_pat; ($($acc:tt)*), $x:ident @ .., $($rest:tt)*) => {
         $crate::match_vec!(@make_pat;
-            ($($acc)*, $x..),
+            ($($acc)*, $x @ ..),
             $($rest)*
         )
     };
     // Special variable length pattern with a common unary variant
     (@make_pat; ($($acc:tt)*), $variant:ident ($x:ident).., $($rest:tt)*) => {
         $crate::match_vec!(@make_pat;
-            ($($acc)*, $x..),
+            ($($acc)*, $x @ ..),
             $($rest)*
         )
     };
@@ -209,7 +210,7 @@ macro_rules! match_vec {
         [$($acc)*]
     };
 
-    (@make_filter; $x:ident.., $($rest:tt)*) => {
+    (@make_filter; $x:ident @ .., $($rest:tt)*) => {
         $crate::match_vec!(@make_filter;
             $($rest)*
         )
@@ -282,8 +283,8 @@ fn test() {
             [Some(_x), None, None] => 4,
             [Some(_x), None] => 2,
             [None, Some(y)] => 1,
-            [None, _y..] => 3,
-            [_x.., Some(y), Some(z), None] => y - z,
+            [None, _y @ ..] => 3,
+            [_x @ .., Some(y), Some(z), None] => y - z,
             [Some(ys)..] => ys.sum(),
             [] => 0,
             [..] => -1,
