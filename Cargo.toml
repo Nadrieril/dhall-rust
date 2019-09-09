@@ -9,6 +9,7 @@ members = [
     "dhall_proc_macros",
     "improved_slice_patterns",
     "pest_consume",
+    "pest_consume_macros",
     "serde_dhall"
 ]
 

@@ -242,8 +242,17 @@ dependencies = [
 name = "pest_consume"
 version = "0.1.0"
 dependencies = [
- "dhall_proc_macros 0.1.0",
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pest_consume_macros 0.1.0",
+]
+
+[[package]]
+name = "pest_consume_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

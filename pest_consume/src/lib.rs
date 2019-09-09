@@ -2,7 +2,7 @@ use pest::error::{Error, ErrorVariant};
 use pest::iterators::Pair;
 use pest::Span;
 
-pub use dhall_proc_macros::{make_parser, parse_children};
+pub use pest_consume_macros::{make_parser, parse_children};
 
 /// Carries a pest Pair alongside custom user data.
 #[derive(Debug, Clone)]
