@@ -1,0 +1,13 @@
+[package]
+name = "pest_consume"
+version = "0.1.0"  # remember to update html_root_url
+authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+edition = "2018"
+description = "A framework for processing the output of a pest-generated parser"
+readme = "README.md"
+repository = "https://github.com/Nadrieril/dhall-rust"
+
+[dependencies]
+pest = "2.1"
+dhall_proc_macros = { path = "../dhall_proc_macros" }

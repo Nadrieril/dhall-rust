@@ -8,6 +8,7 @@ members = [
     "dhall_syntax",
     "dhall_proc_macros",
     "improved_slice_patterns",
+    "pest_consume",
     "serde_dhall"
 ]
 

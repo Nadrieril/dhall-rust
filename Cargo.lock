@@ -117,6 +117,7 @@ dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pest_consume 0.1.0",
  "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -235,6 +236,14 @@ version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "ucd-trie 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pest_consume"
+version = "0.1.0"
+dependencies = [
+ "dhall_proc_macros 0.1.0",
+ "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
