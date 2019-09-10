@@ -1,46 +1,37 @@
 use pest::error::{Error, ErrorVariant};
 use pest::iterators::{Pair, Pairs};
-use pest::Span;
+use pest::{RuleType, Span};
 
 pub use pest_consume_macros::{make_parser, match_inputs};
 
 /// Carries a pest Pair alongside custom user data.
 #[derive(Debug)]
-pub struct ParseInput<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+pub struct ParseInput<'input, 'data, Rule: RuleType, Data> {
     pair: Pair<'input, Rule>,
     user_data: &'data Data,
 }
 
-/// Iterator over `ParseInput`s. It is created by `ParseInput::children`.
+/// Iterator over `ParseInput`s. It is created by `ParseInput::children` or `ParseInputs::new`.
 #[derive(Debug)]
-pub struct ParseInputs<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+pub struct ParseInputs<'input, 'data, Rule: RuleType, Data> {
     pairs: Pairs<'input, Rule>,
     span: Span<'input>,
     user_data: &'data Data,
 }
 
-impl<'input, 'data, Rule, Data> ParseInput<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
-    pub fn new(pair: Pair<'input, Rule>, user_data: &'data Data) -> Self {
+impl<'i, 'd, R: RuleType, D> ParseInput<'i, 'd, R, D> {
+    pub fn new(pair: Pair<'i, R>, user_data: &'d D) -> Self {
         ParseInput { pair, user_data }
     }
     /// Create an error that points to the span of the input.
-    pub fn error(&self, message: String) -> Error<Rule> {
+    pub fn error(&self, message: String) -> Error<R> {
         Error::new_from_span(
             ErrorVariant::CustomError { message },
             self.as_span(),
         )
     }
     /// Reconstruct the input with a new pair, passing the user data along.
-    pub fn with_pair(&self, new_pair: Pair<'input, Rule>) -> Self {
+    pub fn with_pair(&self, new_pair: Pair<'i, R>) -> Self {
         ParseInput {
             pair: new_pair,
             user_data: self.user_data,
@@ -59,7 +50,7 @@ where
     /// Return an iterator over the children of this input
     // Can't use `-> impl Iterator` because of weird lifetime limitations
     // (see https://github.com/rust-lang/rust/issues/61997).
-    pub fn children(&self) -> ParseInputs<'input, 'data, Rule, Data> {
+    pub fn children(&self) -> ParseInputs<'i, 'd, R, D> {
         ParseInputs {
             pairs: self.as_pair().clone().into_inner(),
             span: self.as_span(),
@@ -67,39 +58,32 @@ where
         }
     }
 
-    pub fn user_data(&self) -> &'data Data {
+    pub fn user_data(&self) -> &'d D {
         self.user_data
     }
-    pub fn as_pair(&self) -> &Pair<'input, Rule> {
+    pub fn as_pair(&self) -> &Pair<'i, R> {
         &self.pair
     }
-    pub fn as_span(&self) -> Span<'input> {
+    pub fn as_span(&self) -> Span<'i> {
         self.pair.as_span()
     }
-    pub fn as_str(&self) -> &'input str {
+    pub fn as_str(&self) -> &'i str {
         self.pair.as_str()
     }
-    pub fn as_rule(&self) -> Rule {
+    pub fn as_rule(&self) -> R {
         self.pair.as_rule()
     }
-    pub fn as_rule_alias<T>(&self) -> String
+    pub fn as_rule_alias<C>(&self) -> String
     where
-        T: PestConsumer<Rule = Rule>,
+        C: PestConsumer<Rule = R>,
     {
-        T::rule_alias(self.as_rule())
+        C::rule_alias(self.as_rule())
     }
 }
 
-impl<'input, 'data, Rule, Data> ParseInputs<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+impl<'i, 'd, R: RuleType, D> ParseInputs<'i, 'd, R, D> {
     /// `input` must be the _original_ input that `pairs` is pointing to.
-    pub fn new(
-        input: &'input str,
-        pairs: Pairs<'input, Rule>,
-        user_data: &'data Data,
-    ) -> Self {
+    pub fn new(input: &'i str, pairs: Pairs<'i, R>, user_data: &'d D) -> Self {
         let span = Span::new(input, 0, input.len()).unwrap();
         ParseInputs {
             pairs,
@@ -108,40 +92,33 @@ where
         }
     }
     /// Create an error that points to the span of the input.
-    pub fn error(&self, message: String) -> Error<Rule> {
+    pub fn error(&self, message: String) -> Error<R> {
         Error::new_from_span(
             ErrorVariant::CustomError { message },
             self.span.clone(),
         )
     }
-    pub fn aliased_rules<T>(&self) -> Vec<String>
+    pub fn aliased_rules<C>(&self) -> Vec<String>
     where
-        T: PestConsumer<Rule = Rule>,
+        C: PestConsumer<Rule = R>,
     {
-        self.clone().map(|p| p.as_rule_alias::<T>()).collect()
+        self.clone().map(|p| p.as_rule_alias::<C>()).collect()
     }
     /// Reconstruct the input with a new pair, passing the user data along.
-    fn with_pair(
-        &self,
-        new_pair: Pair<'input, Rule>,
-    ) -> ParseInput<'input, 'data, Rule, Data> {
+    fn with_pair(&self, new_pair: Pair<'i, R>) -> ParseInput<'i, 'd, R, D> {
         ParseInput::new(new_pair, self.user_data)
     }
 }
 
 /// Used by the macros.
 pub trait PestConsumer {
-    type Rule: pest::RuleType;
+    type Rule: RuleType;
     fn rule_alias(rule: Self::Rule) -> String;
     fn allows_shortcut(rule: Self::Rule) -> bool;
 }
 
-impl<'input, 'data, Rule, Data> Iterator
-    for ParseInputs<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
-    type Item = ParseInput<'input, 'data, Rule, Data>;
+impl<'i, 'd, R: RuleType, D> Iterator for ParseInputs<'i, 'd, R, D> {
+    type Item = ParseInput<'i, 'd, R, D>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let child_pair = self.pairs.next()?;
@@ -150,11 +127,7 @@ where
     }
 }
 
-impl<'input, 'data, Rule, Data> DoubleEndedIterator
-    for ParseInputs<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+impl<'i, 'd, R: RuleType, D> DoubleEndedIterator for ParseInputs<'i, 'd, R, D> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let child_pair = self.pairs.next_back()?;
         let child = self.with_pair(child_pair);
@@ -162,11 +135,8 @@ where
     }
 }
 
-// Manual impl to avoid stupid `Data: Clone` trait bound
-impl<'input, 'data, Rule, Data> Clone for ParseInput<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+// Manual impl to avoid stupid `D: Clone` trait bound
+impl<'i, 'd, R: RuleType, D> Clone for ParseInput<'i, 'd, R, D> {
     fn clone(&self) -> Self {
         ParseInput {
             pair: self.pair.clone(),
@@ -175,11 +145,8 @@ where
     }
 }
 
-// Manual impl to avoid stupid `Data: Clone` trait bound
-impl<'input, 'data, Rule, Data> Clone for ParseInputs<'input, 'data, Rule, Data>
-where
-    Rule: pest::RuleType,
-{
+// Manual impl to avoid stupid `D: Clone` trait bound
+impl<'i, 'd, R: RuleType, D> Clone for ParseInputs<'i, 'd, R, D> {
     fn clone(&self) -> Self {
         ParseInputs {
             pairs: self.pairs.clone(),
