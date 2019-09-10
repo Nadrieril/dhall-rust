@@ -9,6 +9,32 @@ use syn::{
     LitBool, Pat, Path, Token,
 };
 
+/// Ext. trait adding `partition_filter` to `Vec`. Would like to use `Vec::drain_filter`
+/// but it's unstable for now.
+pub trait VecPartitionFilterExt<Item> {
+    fn partition_filter<F>(&mut self, predicate: F) -> Vec<Item>
+    where
+        F: FnMut(&mut Item) -> bool;
+}
+
+impl<Item> VecPartitionFilterExt<Item> for Vec<Item> {
+    fn partition_filter<F>(&mut self, mut predicate: F) -> Vec<Item>
+    where
+        F: FnMut(&mut Item) -> bool,
+    {
+        let mut ret = Vec::new();
+        let mut i = 0;
+        while i != self.len() {
+            if predicate(&mut self[i]) {
+                ret.push(self.remove(i))
+            } else {
+                i += 1;
+            }
+        }
+        ret
+    }
+}
+
 mod kw {
     syn::custom_keyword!(shortcut);
 }
@@ -99,8 +125,7 @@ fn collect_aliases(
         let fn_name = function.sig.ident.clone();
         let mut alias_attrs = function
             .attrs
-            .drain_filter(|attr| attr.path.is_ident("alias"))
-            .collect::<Vec<_>>()
+            .partition_filter(|attr| attr.path.is_ident("alias"))
             .into_iter();
 
         if let Some(attr) = alias_attrs.next() {
@@ -172,8 +197,7 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
     // `prec_climb` attr
     let prec_climb_attrs: Vec<_> = function
         .attrs
-        .drain_filter(|attr| attr.path.is_ident("prec_climb"))
-        .collect();
+        .partition_filter(|attr| attr.path.is_ident("prec_climb"));
 
     if prec_climb_attrs.len() > 1 {
         return Err(Error::new(
