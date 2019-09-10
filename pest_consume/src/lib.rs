@@ -2,7 +2,7 @@ use pest::error::{Error, ErrorVariant};
 use pest::iterators::Pair;
 use pest::Span;
 
-pub use pest_consume_macros::{make_parser, parse_children};
+pub use pest_consume_macros::{make_parser, match_inputs};
 
 /// Carries a pest Pair alongside custom user data.
 #[derive(Debug)]
