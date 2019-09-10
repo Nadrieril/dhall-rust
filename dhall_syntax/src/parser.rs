@@ -168,7 +168,7 @@ impl Parsers {
     fn double_quote_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [double_quote_chunk(chunks)..] => {
                 chunks.collect()
             }
@@ -178,7 +178,7 @@ impl Parsers {
     fn double_quote_chunk<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedTextContents<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e)] => {
                 InterpolatedTextContents::Expr(e)
             },
@@ -265,7 +265,7 @@ impl Parsers {
     fn single_quote_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [single_quote_continue(lines)] => {
                 let newline: ParsedText<E> = "\n".to_string().into();
 
@@ -308,7 +308,7 @@ impl Parsers {
     fn single_quote_continue<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Vec<Vec<ParsedTextContents<E>>>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e), single_quote_continue(lines)] => {
                 let c = InterpolatedTextContents::Expr(e);
                 let mut lines = lines;
@@ -393,7 +393,7 @@ impl Parsers {
 
     #[alias(expression, shortcut = true)]
     fn identifier<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [variable(v)] => {
                 spanned(input, Var(v))
             },
@@ -402,7 +402,7 @@ impl Parsers {
     }
 
     fn variable(input: ParseInput) -> ParseResult<V<Label>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(l), natural_literal(idx)] => {
                 V(l, idx)
             },
@@ -444,7 +444,7 @@ impl Parsers {
             .collect())
     }
     fn path(input: ParseInput) -> ParseResult<Vec<String>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [path_component(components)..] => {
                 components.collect()
             }
@@ -455,7 +455,7 @@ impl Parsers {
     fn local<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [local_path((prefix, p))] => ImportLocation::Local(prefix, p),
         ))
     }
@@ -464,19 +464,19 @@ impl Parsers {
     fn parent_path(
         input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [path(p)] => (FilePrefix::Parent, p)
         ))
     }
     #[alias(local_path)]
     fn here_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [path(p)] => (FilePrefix::Here, p)
         ))
     }
     #[alias(local_path)]
     fn home_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [path(p)] => (FilePrefix::Home, p)
         ))
     }
@@ -484,7 +484,7 @@ impl Parsers {
     fn absolute_path(
         input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [path(p)] => (FilePrefix::Absolute, p)
         ))
     }
@@ -498,7 +498,7 @@ impl Parsers {
     }
 
     fn http_raw<E: Clone>(input: ParseInput) -> ParseResult<URL<Expr<E>>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [scheme(sch), authority(auth), path(p)] => URL {
                 scheme: sch,
                 authority: auth,
@@ -528,7 +528,7 @@ impl Parsers {
     fn http<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(ImportLocation::Remote(parse_children!(input;
+        Ok(ImportLocation::Remote(parse_children!(input.children();
             [http_raw(url)] => url,
             [http_raw(url), expression(e)] => URL { headers: Some(e), ..url },
         )))
@@ -538,7 +538,7 @@ impl Parsers {
     fn env<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [environment_variable(v)] => ImportLocation::Env(v),
         ))
     }
@@ -548,7 +548,7 @@ impl Parsers {
     }
     #[alias(environment_variable)]
     fn posix_environment_variable(input: ParseInput) -> ParseResult<String> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [posix_environment_variable_character(chars)..] => {
                 chars.collect()
             },
@@ -593,7 +593,7 @@ impl Parsers {
     ) -> ParseResult<crate::Import<Expr<E>>> {
         use crate::Import;
         let mode = ImportMode::Code;
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [import_type(location)] => Import { mode, location, hash: None },
             [import_type(location), hash(h)] => Import { mode, location, hash: Some(h) },
         ))
@@ -611,7 +611,7 @@ impl Parsers {
     #[alias(expression)]
     fn import<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         use crate::Import;
-        let import = parse_children!(input;
+        let import = parse_children!(input.children();
             [import_hashed(imp)] => {
                 Import { mode: ImportMode::Code, ..imp }
             },
@@ -646,13 +646,13 @@ impl Parsers {
 
     #[alias(expression)]
     fn empty_list_literal<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e)] => spanned(input, EmptyListLit(e)),
         ))
     }
 
     fn expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [lambda(()), label(l), expression(typ),
                     arrow(()), expression(body)] => {
                 spanned(input, Lam(l, typ, body))
@@ -699,7 +699,7 @@ impl Parsers {
     fn let_binding<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Option<Expr<E>>, Expr<E>, Span)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(name), expression(annot), expression(expr)] =>
                 (name, Some(annot), expr, input_to_span(input)),
             [label(name), expression(expr)] =>
@@ -749,7 +749,7 @@ impl Parsers {
     fn application_expression<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e)] => e,
             [expression(first), expression(rest)..] => {
                 rest.fold(
@@ -770,7 +770,7 @@ impl Parsers {
     fn first_application_expression<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [Some_(()), expression(e)] => {
                 spanned(input, SomeLit(e))
             },
@@ -788,7 +788,7 @@ impl Parsers {
     fn selector_expression<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e)] => e,
             [expression(first), selector(rest)..] => {
                 rest.fold(
@@ -811,7 +811,7 @@ impl Parsers {
     fn selector(
         input: ParseInput,
     ) -> ParseResult<(Either<Label, DupTreeSet<Label>>, Span)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(l)] => (Either::Left(l), input_to_span(input)),
             [labels(ls)] => (Either::Right(ls), input_to_span(input)),
             // [expression(_e)] => unimplemented!("selection by expression"), // TODO
@@ -819,7 +819,7 @@ impl Parsers {
     }
 
     fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(ls)..] => ls.collect(),
         ))
     }
@@ -828,7 +828,7 @@ impl Parsers {
     fn primitive_expression<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [double_literal(n)] => spanned(input, DoubleLit(n)),
             [natural_literal(n)] => spanned(input, NaturalLit(n)),
             [integer_literal(n)] => spanned(input, IntegerLit(n)),
@@ -854,7 +854,7 @@ impl Parsers {
     fn non_empty_record_type_or_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        let e = parse_children!(input;
+        let e = parse_children!(input.children();
             [label(first_label), non_empty_record_type(rest)] => {
                 let (first_expr, mut map) = rest;
                 map.insert(first_label, first_expr);
@@ -872,7 +872,7 @@ impl Parsers {
     fn non_empty_record_type<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(expr), record_type_entry(entries)..] => {
                 (expr, entries.collect())
             }
@@ -882,7 +882,7 @@ impl Parsers {
     fn record_type_entry<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(name), expression(expr)] => (name, expr)
         ))
     }
@@ -890,7 +890,7 @@ impl Parsers {
     fn non_empty_record_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(expr), record_literal_entry(entries)..] => {
                 (expr, entries.collect())
             }
@@ -900,14 +900,14 @@ impl Parsers {
     fn record_literal_entry<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(name), expression(expr)] => (name, expr)
         ))
     }
 
     #[alias(expression)]
     fn union_type<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        let map = parse_children!(input;
+        let map = parse_children!(input.children();
             [empty_union_type(_)] => Default::default(),
             [union_type_entry(entries)..] => entries.collect(),
         );
@@ -921,7 +921,7 @@ impl Parsers {
     fn union_type_entry<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Option<Expr<E>>)> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [label(name), expression(expr)] => (name, Some(expr)),
             [label(name)] => (name, None),
         ))
@@ -931,7 +931,7 @@ impl Parsers {
     fn non_empty_list_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(items)..] => spanned(
                 input,
                 NEListLit(items.collect())
@@ -940,7 +940,7 @@ impl Parsers {
     }
 
     fn final_expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        Ok(parse_children!(input;
+        Ok(parse_children!(input.children();
             [expression(e), EOI(_)] => e
         ))
     }

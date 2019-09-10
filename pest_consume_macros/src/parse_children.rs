@@ -175,7 +175,7 @@ pub fn parse_children(
 ) -> Result<proc_macro2::TokenStream> {
     let input: ParseChildrenInput = syn::parse(input)?;
 
-    let i_children_rules = Ident::new("___children_rules", Span::call_site());
+    let i_input_rules = Ident::new("___input_rules", Span::call_site());
     let i_inputs = Ident::new("___inputs", Span::call_site());
 
     let input_expr = &input.input_expr;
@@ -186,29 +186,20 @@ pub fn parse_children(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(quote!({
-        let #i_children_rules: Vec<_> = #input_expr.as_pair()
-            .clone()
-            .into_inner()
-            .map(|p| p.as_rule())
-            .map(<Self as pest_consume::PestConsumer>::rule_alias)
-            .collect();
-        let #i_children_rules: Vec<&str> = #i_children_rules
+        #[allow(unused_mut)]
+        let mut #i_inputs = #input_expr;
+
+        let #i_input_rules = #i_inputs.aliased_rules::<Self>();
+        let #i_input_rules: Vec<&str> = #i_input_rules
             .iter()
             .map(String::as_str)
             .collect();
 
-        #[allow(unused_mut)]
-        let mut #i_inputs = #input_expr
-            .as_pair()
-            .clone()
-            .into_inner()
-            .map(|p| #input_expr.with_pair(p));
-
         #[allow(unreachable_code)]
-        match #i_children_rules.as_slice() {
+        match #i_input_rules.as_slice() {
             #(#branches,)*
-            [..] => return Err(#input_expr.error(
-                format!("Unexpected children: {:?}", #i_children_rules)
+            [..] => return Err(#i_inputs.error(
+                format!("Unexpected children: {:?}", #i_input_rules)
             )),
         }
     }))
