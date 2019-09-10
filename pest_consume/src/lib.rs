@@ -78,7 +78,7 @@ impl<'i, 'd, R: RuleType, D> ParseInput<'i, 'd, R, D> {
     pub fn as_rule(&self) -> R {
         self.pair.as_rule()
     }
-    pub fn as_rule_alias<C>(&self) -> String
+    pub fn as_rule_alias<C>(&self) -> C::AliasedRule
     where
         C: PestConsumer<Rule = R>,
         <C as PestConsumer>::Parser: PestParser<R>,
@@ -104,7 +104,7 @@ impl<'i, 'd, R: RuleType, D> ParseInputs<'i, 'd, R, D> {
             self.span.clone(),
         )
     }
-    pub fn aliased_rules<C>(&self) -> Vec<String>
+    pub fn aliased_rules<C>(&self) -> Vec<C::AliasedRule>
     where
         C: PestConsumer<Rule = R>,
         <C as PestConsumer>::Parser: PestParser<R>,
@@ -120,8 +120,9 @@ impl<'i, 'd, R: RuleType, D> ParseInputs<'i, 'd, R, D> {
 /// Used by the macros.
 pub trait PestConsumer {
     type Rule: RuleType;
+    type AliasedRule: RuleType;
     type Parser: PestParser<Self::Rule>;
-    fn rule_alias(rule: Self::Rule) -> String;
+    fn rule_alias(rule: Self::Rule) -> Self::AliasedRule;
     fn allows_shortcut(rule: Self::Rule) -> bool;
 
     fn parse_with_userdata<'i, 'd, D>(

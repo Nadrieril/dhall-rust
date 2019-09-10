@@ -136,6 +136,15 @@ fn collect_aliases(
                     is_shortcut: args.is_shortcut,
                 },
             );
+        } else {
+            // Self entry
+            alias_map
+                .entry(fn_name.clone())
+                .or_insert_with(Vec::new)
+                .push(AliasSrc {
+                    ident: fn_name,
+                    is_shortcut: false,
+                });
         }
         if let Some(attr) = alias_attrs.next() {
             return Err(Error::new(
@@ -238,17 +247,22 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
     }
 
     // `alias` attr
-    if !f.alias_srcs.is_empty() {
-        let aliases = f.alias_srcs.iter().map(|src| &src.ident);
+    // f.alias_srcs has always at least 1 element because it has an entry pointing from itself.
+    if f.alias_srcs.len() > 1 {
+        let aliases = f
+            .alias_srcs
+            .iter()
+            .map(|src| &src.ident)
+            .filter(|i| i != &fn_name);
         let block = &function.block;
+        let self_ty = quote!(<Self as ::pest_consume::PestConsumer>);
         function.block = parse_quote!({
             let mut #input_arg = #input_arg;
             // While the current rule allows shortcutting, and there is a single child, and the
             // child can still be parsed by the current function, then skip to that child.
-            while <Self as pest_consume::PestConsumer>::allows_shortcut(#input_arg.as_rule()) {
+            while #self_ty::allows_shortcut(#input_arg.as_rule()) {
                 if let Some(child) = #input_arg.single_child() {
-                    if &<Self as pest_consume::PestConsumer>::rule_alias(child.as_rule())
-                            == stringify!(#fn_name) {
+                    if child.as_rule_alias::<Self>() == #self_ty::AliasedRule::#fn_name {
                         #input_arg = child;
                         continue;
                     }
@@ -287,10 +301,12 @@ pub fn make_parser(
         .map(|(tgt, src)| {
             let ident = &src.ident;
             quote!(
-                #rule_enum::#ident => stringify!(#tgt).to_string(),
+                #rule_enum::#ident => Self::AliasedRule::#tgt,
             )
         })
         .collect();
+    let aliased_rule_variants: Vec<_> =
+        alias_map.iter().map(|(tgt, _)| tgt.clone()).collect();
     let shortcut_branches: Vec<_> = alias_map
         .iter()
         .flat_map(|(_tgt, srcs)| srcs)
@@ -353,13 +369,21 @@ pub fn make_parser(
     let ty = &imp.self_ty;
     let (impl_generics, _, where_clause) = imp.generics.split_for_impl();
     Ok(quote!(
-        impl #impl_generics pest_consume::PestConsumer for #ty #where_clause {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[allow(non_camel_case_types)]
+        enum AliasedRule {
+            #(#aliased_rule_variants,)*
+        }
+
+        impl #impl_generics ::pest_consume::PestConsumer for #ty #where_clause {
             type Rule = #rule_enum;
+            type AliasedRule = AliasedRule;
             type Parser = #parser;
-            fn rule_alias(rule: Self::Rule) -> String {
+            fn rule_alias(rule: Self::Rule) -> Self::AliasedRule {
                 match rule {
                     #(#rule_alias_branches)*
-                    r => format!("{:?}", r),
+                    // TODO: return a proper error ?
+                    r => unreachable!("Rule {:?} does not have a corresponding parsing method", r),
                 }
             }
             fn allows_shortcut(rule: Self::Rule) -> bool {

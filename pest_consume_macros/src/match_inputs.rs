@@ -95,6 +95,8 @@ fn make_parser_branch(
     use ChildrenBranchPatternItem::{Multiple, Single};
 
     let body = &branch.body;
+    let aliased_rule =
+        quote!(<#consumer as ::pest_consume::PestConsumer>::AliasedRule);
 
     // Convert the input pattern into a pattern-match on the Rules of the children. This uses
     // slice_patterns.
@@ -103,7 +105,7 @@ fn make_parser_branch(
     let i_variable_pattern =
         Ident::new("___variable_pattern", Span::call_site());
     let match_pat = branch.pattern.iter().map(|item| match item {
-        Single { rule_name, .. } => quote!(stringify!(#rule_name)),
+        Single { rule_name, .. } => quote!(#aliased_rule::#rule_name),
         Multiple { .. } => quote!(#i_variable_pattern @ ..),
     });
     let match_filter = branch.pattern.iter().map(|item| match item {
@@ -114,7 +116,7 @@ fn make_parser_branch(
                 // https://github.com/rust-lang/rust/issues/59803.
                 let all_match = |slice: &[_]| {
                     slice.iter().all(|r|
-                        *r == stringify!(#rule_name)
+                        *r == #aliased_rule::#rule_name
                     )
                 };
                 all_match(#i_variable_pattern)
@@ -204,12 +206,7 @@ pub fn match_inputs(
     Ok(quote!({
         #[allow(unused_mut)]
         let mut #i_inputs = #input_expr;
-
         let #i_input_rules = #i_inputs.aliased_rules::<#consumer>();
-        let #i_input_rules: Vec<&str> = #i_input_rules
-            .iter()
-            .map(String::as_str)
-            .collect();
 
         #[allow(unreachable_code)]
         match #i_input_rules.as_slice() {
