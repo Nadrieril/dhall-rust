@@ -19,8 +19,7 @@ use crate::*;
 
 type ParsedText<E> = InterpolatedText<Expr<E>>;
 type ParsedTextContents<E> = InterpolatedTextContents<Expr<E>>;
-type ParseInput<'input, 'data> =
-    pest_consume::Node<'input, 'data, Rule, Rc<str>>;
+type ParseInput<'input> = pest_consume::Node<'input, Rule, Rc<str>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -286,20 +285,16 @@ impl DhallParser {
             }
         ))
     }
-    fn single_quote_char<'a>(
-        input: ParseInput<'a, '_>,
-    ) -> ParseResult<&'a str> {
+    fn single_quote_char<'a>(input: ParseInput<'a>) -> ParseResult<&'a str> {
         Ok(input.as_str())
     }
     #[alias(single_quote_char)]
-    fn escaped_quote_pair<'a>(
-        _input: ParseInput<'a, '_>,
-    ) -> ParseResult<&'a str> {
+    fn escaped_quote_pair<'a>(_input: ParseInput<'a>) -> ParseResult<&'a str> {
         Ok("''")
     }
     #[alias(single_quote_char)]
     fn escaped_interpolation<'a>(
-        _input: ParseInput<'a, '_>,
+        _input: ParseInput<'a>,
     ) -> ParseResult<&'a str> {
         Ok("${")
     }
@@ -555,7 +550,7 @@ impl DhallParser {
         ))
     }
     fn posix_environment_variable_character<'a>(
-        input: ParseInput<'a, '_>,
+        input: ParseInput<'a>,
     ) -> ParseResult<&'a str> {
         Ok(match input.as_str() {
             "\\\"" => "\"",
@@ -952,7 +947,7 @@ pub fn parse_expr<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
     let inputs = DhallParser::parse_with_userdata(
         Rule::final_expression,
         input_str,
-        &rc_input_str,
+        rc_input_str,
     )?;
     Ok(match_inputs!(<DhallParser>; inputs;
         [expression(e)] => e,
