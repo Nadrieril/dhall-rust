@@ -3,7 +3,9 @@ use pest::iterators::{Pair, Pairs};
 use pest::Parser as PestParser;
 use pest::{RuleType, Span};
 
-pub use pest_consume_macros::{make_parser, match_inputs};
+pub use pest_consume_macros::make_parser;
+#[proc_macro_hack::proc_macro_hack]
+pub use pest_consume_macros::match_inputs;
 
 static UNIT: () = ();
 

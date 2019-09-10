@@ -10,4 +10,5 @@ repository = "https://github.com/Nadrieril/dhall-rust"
 
 [dependencies]
 pest = "2.1"
+proc-macro-hack = "0.5.9"
 pest_consume_macros = { path = "../pest_consume_macros" }

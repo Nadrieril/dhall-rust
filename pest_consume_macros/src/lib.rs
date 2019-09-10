@@ -19,7 +19,7 @@ pub fn make_parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
     })
 }
 
-#[proc_macro]
+#[proc_macro_hack::proc_macro_hack]
 pub fn match_inputs(input: TokenStream) -> TokenStream {
     TokenStream::from(match match_inputs::match_inputs(input) {
         Ok(tokens) => tokens,
