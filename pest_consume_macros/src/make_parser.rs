@@ -156,6 +156,13 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
     );
 
     // `prec_climb` attr
+    let _: () = function
+        .attrs
+        .drain_filter(|attr| attr.path.is_ident("entrypoint"))
+        .map(|_| ())
+        .collect();
+
+    // `prec_climb` attr
     let prec_climb_attrs: Vec<_> = function
         .attrs
         .drain_filter(|attr| attr.path.is_ident("prec_climb"))

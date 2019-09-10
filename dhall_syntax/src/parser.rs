@@ -154,6 +154,7 @@ struct Parsers;
 
 #[make_parser(Rule)]
 impl Parsers {
+    #[entrypoint]
     fn entrypoint<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
         let pairs = DhallParser::parse(Rule::final_expression, input_str)?;
         let rc_input_str = input_str.to_string().into();
