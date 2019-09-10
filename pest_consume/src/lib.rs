@@ -1,8 +1,11 @@
 use pest::error::{Error, ErrorVariant};
 use pest::iterators::{Pair, Pairs};
+use pest::Parser as PestParser;
 use pest::{RuleType, Span};
 
 pub use pest_consume_macros::{make_parser, match_inputs};
+
+static UNIT: () = ();
 
 /// Carries a pest Pair alongside custom user data.
 #[derive(Debug)]
@@ -76,6 +79,7 @@ impl<'i, 'd, R: RuleType, D> ParseInput<'i, 'd, R, D> {
     pub fn as_rule_alias<C>(&self) -> String
     where
         C: PestConsumer<Rule = R>,
+        <C as PestConsumer>::Parser: PestParser<R>,
     {
         C::rule_alias(self.as_rule())
     }
@@ -101,6 +105,7 @@ impl<'i, 'd, R: RuleType, D> ParseInputs<'i, 'd, R, D> {
     pub fn aliased_rules<C>(&self) -> Vec<String>
     where
         C: PestConsumer<Rule = R>,
+        <C as PestConsumer>::Parser: PestParser<R>,
     {
         self.clone().map(|p| p.as_rule_alias::<C>()).collect()
     }
@@ -113,8 +118,26 @@ impl<'i, 'd, R: RuleType, D> ParseInputs<'i, 'd, R, D> {
 /// Used by the macros.
 pub trait PestConsumer {
     type Rule: RuleType;
+    type Parser: PestParser<Self::Rule>;
     fn rule_alias(rule: Self::Rule) -> String;
     fn allows_shortcut(rule: Self::Rule) -> bool;
+
+    fn parse_with_userdata<'i, 'd, D>(
+        rule: Self::Rule,
+        input_str: &'i str,
+        user_data: &'d D,
+    ) -> Result<ParseInputs<'i, 'd, Self::Rule, D>, Error<Self::Rule>> {
+        let pairs = Self::Parser::parse(rule, input_str)?;
+        Ok(ParseInputs::new(input_str, pairs, user_data))
+    }
+
+    fn parse<'i>(
+        rule: Self::Rule,
+        input_str: &'i str,
+    ) -> Result<ParseInputs<'i, 'static, Self::Rule, ()>, Error<Self::Rule>>
+    {
+        Self::parse_with_userdata(rule, input_str, &UNIT)
+    }
 }
 
 impl<'i, 'd, R: RuleType, D> Iterator for ParseInputs<'i, 'd, R, D> {

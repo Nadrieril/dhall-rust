@@ -13,6 +13,11 @@ mod kw {
     syn::custom_keyword!(shortcut);
 }
 
+struct MakeParserAttrs {
+    parser: Ident,
+    rule_enum: Ident,
+}
+
 struct AliasArgs {
     target: Ident,
     is_shortcut: bool,
@@ -37,6 +42,15 @@ struct ParsedFn<'a> {
     input_arg: Ident,
     // List of aliases pointing to this function
     alias_srcs: Vec<AliasSrc>,
+}
+
+impl Parse for MakeParserAttrs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let parser = input.parse()?;
+        let _: Token![,] = input.parse()?;
+        let rule_enum = input.parse()?;
+        Ok(MakeParserAttrs { parser, rule_enum })
+    }
 }
 
 impl Parse for AliasArgs {
@@ -244,7 +258,9 @@ pub fn make_parser(
     attrs: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
-    let rule_enum: Ident = syn::parse(attrs)?;
+    let attrs: MakeParserAttrs = syn::parse(attrs)?;
+    let parser = &attrs.parser;
+    let rule_enum = &attrs.rule_enum;
     let mut imp: ItemImpl = syn::parse(input)?;
 
     let mut alias_map = collect_aliases(&mut imp)?;
@@ -322,6 +338,7 @@ pub fn make_parser(
     Ok(quote!(
         impl #impl_generics pest_consume::PestConsumer for #ty #where_clause {
             type Rule = #rule_enum;
+            type Parser = #parser;
             fn rule_alias(rule: Self::Rule) -> String {
                 match rule {
                     #(#rule_alias_branches)*

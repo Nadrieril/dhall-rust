@@ -2,11 +2,10 @@ use itertools::Itertools;
 use pest::iterators::Pair;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
-use pest::Parser;
 use std::rc::Rc;
 
 use dhall_generated_parser::{DhallParser, Rule};
-use pest_consume::{make_parser, match_inputs};
+use pest_consume::{make_parser, match_inputs, PestConsumer};
 
 use crate::map::{DupTreeMap, DupTreeSet};
 use crate::ExprF::*;
@@ -21,8 +20,6 @@ type ParsedText<E> = InterpolatedText<Expr<E>>;
 type ParsedTextContents<E> = InterpolatedTextContents<Expr<E>>;
 type ParseInput<'input, 'data> =
     pest_consume::ParseInput<'input, 'data, Rule, Rc<str>>;
-type ParseInputs<'input, 'data> =
-    pest_consume::ParseInputs<'input, 'data, Rule, Rc<str>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -152,13 +149,16 @@ lazy_static::lazy_static! {
 
 struct Parsers;
 
-#[make_parser(Rule)]
+#[make_parser(DhallParser, Rule)]
 impl Parsers {
     #[entrypoint]
     fn entrypoint<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
-        let pairs = DhallParser::parse(Rule::final_expression, input_str)?;
         let rc_input_str = input_str.to_string().into();
-        let inputs = ParseInputs::new(input_str, pairs, &rc_input_str);
+        let inputs = Self::parse_with_userdata(
+            Rule::final_expression,
+            input_str,
+            &rc_input_str,
+        )?;
         Ok(match_inputs!(inputs;
             [expression(e)] => e,
         ))
