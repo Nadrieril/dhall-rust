@@ -6,7 +6,7 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
 use syn::{
     parse_quote, Error, Expr, FnArg, Ident, ImplItem, ImplItemMethod, ItemImpl,
-    LitBool, Pat, Token,
+    LitBool, Pat, Path, Token,
 };
 
 mod kw {
@@ -14,8 +14,8 @@ mod kw {
 }
 
 struct MakeParserAttrs {
-    parser: Ident,
-    rule_enum: Ident,
+    parser: Path,
+    rule_enum: Path,
 }
 
 struct AliasArgs {
@@ -159,7 +159,7 @@ fn parse_fn<'a>(
     })
 }
 
-fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
+fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
     let function = &mut *f.function;
     let fn_name = &f.fn_name;
     let input_arg = &f.input_arg;
@@ -168,13 +168,6 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Ident) -> Result<()> {
         #[allow(non_snake_case)]
         #function
     );
-
-    // `prec_climb` attr
-    let _: () = function
-        .attrs
-        .drain_filter(|attr| attr.path.is_ident("entrypoint"))
-        .map(|_| ())
-        .collect();
 
     // `prec_climb` attr
     let prec_climb_attrs: Vec<_> = function

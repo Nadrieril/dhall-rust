@@ -3,7 +3,10 @@ use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{bracketed, parenthesized, token, Error, Expr, Ident, Pat, Token};
+use syn::{
+    bracketed, parenthesized, parse_quote, token, Error, Expr, Ident, Pat,
+    Token, Type,
+};
 
 #[derive(Debug, Clone)]
 struct ChildrenBranch {
@@ -20,6 +23,7 @@ enum ChildrenBranchPatternItem {
 
 #[derive(Debug, Clone)]
 struct ParseChildrenInput {
+    consumer: Type,
     input_expr: Expr,
     branches: Punctuated<ChildrenBranch, Token![,]>,
 }
@@ -62,11 +66,21 @@ impl Parse for ChildrenBranchPatternItem {
 
 impl Parse for ParseChildrenInput {
     fn parse(input: ParseStream) -> Result<Self> {
+        let consumer = if input.peek(token::Lt) {
+            let _: token::Lt = input.parse()?;
+            let consumer = input.parse()?;
+            let _: token::Gt = input.parse()?;
+            let _: Token![;] = input.parse()?;
+            consumer
+        } else {
+            parse_quote!(Self)
+        };
         let input_expr = input.parse()?;
         let _: Token![;] = input.parse()?;
         let branches = Punctuated::parse_terminated(input)?;
 
         Ok(ParseChildrenInput {
+            consumer,
             input_expr,
             branches,
         })
@@ -76,6 +90,7 @@ impl Parse for ParseChildrenInput {
 fn make_parser_branch(
     branch: &ChildrenBranch,
     i_inputs: &Ident,
+    consumer: &Type,
 ) -> Result<TokenStream> {
     use ChildrenBranchPatternItem::{Multiple, Single};
 
@@ -139,7 +154,7 @@ fn make_parser_branch(
     let mut parses = Vec::new();
     for (rule_name, binder) in singles_before_multiple.into_iter() {
         parses.push(quote!(
-            let #binder = Self::#rule_name(
+            let #binder = #consumer::#rule_name(
                 #i_inputs.next().unwrap()
             )?;
         ))
@@ -148,7 +163,7 @@ fn make_parser_branch(
     // only the unmatched inputs are left for the variable-length pattern, if any.
     for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
         parses.push(quote!(
-            let #binder = Self::#rule_name(
+            let #binder = #consumer::#rule_name(
                 #i_inputs.next_back().unwrap()
             )?;
         ))
@@ -156,7 +171,7 @@ fn make_parser_branch(
     if let Some((rule_name, binder)) = multiple {
         parses.push(quote!(
             let #binder = #i_inputs
-                .map(|i| Self::#rule_name(i))
+                .map(|i| #consumer::#rule_name(i))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter();
         ))
@@ -179,17 +194,18 @@ pub fn match_inputs(
     let i_inputs = Ident::new("___inputs", Span::call_site());
 
     let input_expr = &input.input_expr;
+    let consumer = &input.consumer;
     let branches = input
         .branches
         .iter()
-        .map(|br| make_parser_branch(br, &i_inputs))
+        .map(|br| make_parser_branch(br, &i_inputs, consumer))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(quote!({
         #[allow(unused_mut)]
         let mut #i_inputs = #input_expr;
 
-        let #i_input_rules = #i_inputs.aliased_rules::<Self>();
+        let #i_input_rules = #i_inputs.aliased_rules::<#consumer>();
         let #i_input_rules: Vec<&str> = #i_input_rules
             .iter()
             .map(String::as_str)

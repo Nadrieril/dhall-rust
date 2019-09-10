@@ -4,7 +4,8 @@ use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use std::rc::Rc;
 
-use dhall_generated_parser::{DhallParser, Rule};
+use dgp::Rule;
+use dhall_generated_parser as dgp;
 use pest_consume::{make_parser, match_inputs, PestConsumer};
 
 use crate::map::{DupTreeMap, DupTreeSet};
@@ -147,23 +148,10 @@ lazy_static::lazy_static! {
     };
 }
 
-struct Parsers;
+struct DhallParser;
 
-#[make_parser(DhallParser, Rule)]
-impl Parsers {
-    #[entrypoint]
-    fn entrypoint<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
-        let rc_input_str = input_str.to_string().into();
-        let inputs = Self::parse_with_userdata(
-            Rule::final_expression,
-            input_str,
-            &rc_input_str,
-        )?;
-        Ok(match_inputs!(inputs;
-            [expression(e)] => e,
-        ))
-    }
-
+#[make_parser(dgp::DhallParser, dgp::Rule)]
+impl DhallParser {
     fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
@@ -960,5 +948,13 @@ impl Parsers {
 }
 
 pub fn parse_expr<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
-    Parsers::entrypoint(input_str)
+    let rc_input_str = input_str.to_string().into();
+    let inputs = DhallParser::parse_with_userdata(
+        Rule::final_expression,
+        input_str,
+        &rc_input_str,
+    )?;
+    Ok(match_inputs!(<DhallParser>; inputs;
+        [expression(e)] => e,
+    ))
 }
