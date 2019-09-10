@@ -64,7 +64,7 @@ struct ParsedFn<'a> {
     function: &'a mut ImplItemMethod,
     // Name of the function.
     fn_name: Ident,
-    // Name of the first argument of the function, which should be of type `ParseInput`.
+    // Name of the first argument of the function, which should be of type `Node`.
     input_arg: Ident,
     // List of aliases pointing to this function
     alias_srcs: Vec<AliasSrc>,
@@ -255,14 +255,14 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
             .map(|src| &src.ident)
             .filter(|i| i != &fn_name);
         let block = &function.block;
-        let self_ty = quote!(<Self as ::pest_consume::PestConsumer>);
+        let self_ty = quote!(<Self as ::pest_consume::Parser>);
         function.block = parse_quote!({
             let mut #input_arg = #input_arg;
             // While the current rule allows shortcutting, and there is a single child, and the
             // child can still be parsed by the current function, then skip to that child.
             while #self_ty::allows_shortcut(#input_arg.as_rule()) {
                 if let Some(child) = #input_arg.single_child() {
-                    if child.as_rule_alias::<Self>() == #self_ty::AliasedRule::#fn_name {
+                    if child.as_aliased_rule::<Self>() == #self_ty::AliasedRule::#fn_name {
                         #input_arg = child;
                         continue;
                     }
@@ -375,7 +375,7 @@ pub fn make_parser(
             #(#aliased_rule_variants,)*
         }
 
-        impl #impl_generics ::pest_consume::PestConsumer for #ty #where_clause {
+        impl #impl_generics ::pest_consume::Parser for #ty #where_clause {
             type Rule = #rule_enum;
             type AliasedRule = AliasedRule;
             type Parser = #parser;

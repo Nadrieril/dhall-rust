@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use dgp::Rule;
 use dhall_generated_parser as dgp;
-use pest_consume::{make_parser, match_inputs, PestConsumer};
+use pest_consume::{match_inputs, Parser};
 
 use crate::map::{DupTreeMap, DupTreeSet};
 use crate::ExprF::*;
@@ -20,7 +20,7 @@ use crate::*;
 type ParsedText<E> = InterpolatedText<Expr<E>>;
 type ParsedTextContents<E> = InterpolatedTextContents<Expr<E>>;
 type ParseInput<'input, 'data> =
-    pest_consume::ParseInput<'input, 'data, Rule, Rc<str>>;
+    pest_consume::Node<'input, 'data, Rule, Rc<str>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -150,7 +150,7 @@ lazy_static::lazy_static! {
 
 struct DhallParser;
 
-#[make_parser(dgp::DhallParser, dgp::Rule)]
+#[pest_consume::parser(dgp::DhallParser, dgp::Rule)]
 impl DhallParser {
     fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())

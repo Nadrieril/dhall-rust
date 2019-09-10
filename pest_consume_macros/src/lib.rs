@@ -11,7 +11,7 @@ mod match_inputs;
 use proc_macro::TokenStream;
 
 #[proc_macro_attribute]
-pub fn make_parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(match make_parser::make_parser(attrs, input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
