@@ -14,4 +14,9 @@
 // additional overrides are done in ../build.rs.
 // The lines that are commented out in ./dhall.pest.visibility are marked as
 // silent (see pest docs for what that means) in the generated pest file.
-include!(concat!(env!("OUT_DIR"), "/grammar.rs"));
+
+use pest_derive::Parser;
+
+#[derive(Parser)]
+#[grammar = "dhall.pest"]
+pub struct DhallParser;

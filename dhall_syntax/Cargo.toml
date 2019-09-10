@@ -12,6 +12,7 @@ doctest = false
 itertools = "0.8.0"
 percent-encoding = "2.1.0"
 pest = "2.1"
+pest_derive = "2.1"
 either = "1.5.2"
 take_mut = "0.2.2"
 hex = "0.3.2"
