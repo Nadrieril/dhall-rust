@@ -1,5 +1,5 @@
 use pest::error::{Error, ErrorVariant};
-use pest::iterators::Pair;
+use pest::iterators::{Pair, Pairs};
 use pest::Span;
 
 pub use pest_consume_macros::{make_parser, match_inputs};
@@ -20,8 +20,9 @@ pub struct ParseInputs<'input, 'data, Rule, Data>
 where
     Rule: pest::RuleType,
 {
-    input: ParseInput<'input, 'data, Rule, Data>,
-    pairs: pest::iterators::Pairs<'input, Rule>,
+    pairs: Pairs<'input, Rule>,
+    span: Span<'input>,
+    user_data: &'data Data,
 }
 
 impl<'input, 'data, Rule, Data> ParseInput<'input, 'data, Rule, Data>
@@ -60,8 +61,9 @@ where
     // (see https://github.com/rust-lang/rust/issues/61997).
     pub fn children(&self) -> ParseInputs<'input, 'data, Rule, Data> {
         ParseInputs {
-            input: self.clone(),
             pairs: self.as_pair().clone().into_inner(),
+            span: self.as_span(),
+            user_data: self.user_data(),
         }
     }
 
@@ -92,15 +94,38 @@ impl<'input, 'data, Rule, Data> ParseInputs<'input, 'data, Rule, Data>
 where
     Rule: pest::RuleType,
 {
+    /// `input` must be the _original_ input that `pairs` is pointing to.
+    pub fn new(
+        input: &'input str,
+        pairs: Pairs<'input, Rule>,
+        user_data: &'data Data,
+    ) -> Self {
+        let span = Span::new(input, 0, input.len()).unwrap();
+        ParseInputs {
+            pairs,
+            span,
+            user_data,
+        }
+    }
     /// Create an error that points to the span of the input.
     pub fn error(&self, message: String) -> Error<Rule> {
-        self.input.error(message)
+        Error::new_from_span(
+            ErrorVariant::CustomError { message },
+            self.span.clone(),
+        )
     }
     pub fn aliased_rules<T>(&self) -> Vec<String>
     where
         T: PestConsumer<Rule = Rule>,
     {
         self.clone().map(|p| p.as_rule_alias::<T>()).collect()
+    }
+    /// Reconstruct the input with a new pair, passing the user data along.
+    fn with_pair(
+        &self,
+        new_pair: Pair<'input, Rule>,
+    ) -> ParseInput<'input, 'data, Rule, Data> {
+        ParseInput::new(new_pair, self.user_data)
     }
 }
 
@@ -120,7 +145,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let child_pair = self.pairs.next()?;
-        let child = self.input.with_pair(child_pair);
+        let child = self.with_pair(child_pair);
         Some(child)
     }
 }
@@ -132,7 +157,7 @@ where
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let child_pair = self.pairs.next_back()?;
-        let child = self.input.with_pair(child_pair);
+        let child = self.with_pair(child_pair);
         Some(child)
     }
 }
@@ -157,8 +182,9 @@ where
 {
     fn clone(&self) -> Self {
         ParseInputs {
-            input: self.input.clone(),
             pairs: self.pairs.clone(),
+            span: self.span.clone(),
+            user_data: self.user_data,
         }
     }
 }

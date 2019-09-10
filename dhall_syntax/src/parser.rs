@@ -21,6 +21,8 @@ type ParsedText<E> = InterpolatedText<Expr<E>>;
 type ParsedTextContents<E> = InterpolatedTextContents<Expr<E>>;
 type ParseInput<'input, 'data> =
     pest_consume::ParseInput<'input, 'data, Rule, Rc<str>>;
+type ParseInputs<'input, 'data> =
+    pest_consume::ParseInputs<'input, 'data, Rule, Rc<str>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -152,6 +154,15 @@ struct Parsers;
 
 #[make_parser(Rule)]
 impl Parsers {
+    fn entrypoint<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
+        let pairs = DhallParser::parse(Rule::final_expression, input_str)?;
+        let rc_input_str = input_str.to_string().into();
+        let inputs = ParseInputs::new(input_str, pairs, &rc_input_str);
+        Ok(match_inputs!(inputs;
+            [expression(e)] => e,
+        ))
+    }
+
     fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
@@ -939,6 +950,7 @@ impl Parsers {
         ))
     }
 
+    #[alias(expression)]
     fn final_expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(match_inputs!(input.children();
             [expression(e), EOI(_)] => e
@@ -947,11 +959,5 @@ impl Parsers {
 }
 
 pub fn parse_expr<E: Clone>(input_str: &str) -> ParseResult<Expr<E>> {
-    let mut pairs = DhallParser::parse(Rule::final_expression, input_str)?;
-    // TODO: proper errors
-    let pair = pairs.next().unwrap();
-    assert_eq!(pairs.next(), None);
-    let rc_input_str = input_str.to_string().into();
-    let input = ParseInput::new(pair, &rc_input_str);
-    Parsers::final_expression(input)
+    Parsers::entrypoint(input_str)
 }
