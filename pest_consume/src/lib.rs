@@ -1,8 +1,121 @@
-/// `pest_consume` extends [pest] to make it easy to consume the resulting pest parse tree.
-/// Given a grammar file, pest generates a parser that outputs an untyped parse tree. Then that
-/// parse tree needs to be transformed into whatever datastructures your application uses.
-/// `pest_consume` provides two powerful macros to make this easy.
-use pest::error::Error;
+//! `pest_consume` extends [pest] to make it easy to consume a pest parse tree.
+//! Given a grammar file, pest generates a parser that outputs an untyped parse tree. Then that
+//! parse tree needs to be transformed into whatever datastructures your application uses.
+//! `pest_consume` provides two macros to make this easy.
+//!
+//! Features of `pest_consume` include:
+//! - strong types;
+//! - consuming children uses an intuitive syntax;
+//! - error handling is well integrated.
+//!
+//! # Example
+//!
+//! Here is the [CSV example from the doc](https://pest.rs/book/examples/csv.html),
+//! using `pest_consume`.
+//!
+//! The pest grammar file contains:
+//! ```text
+//! field = { (ASCII_DIGIT | "." | "-")+ }
+//! record = { field ~ ("," ~ field)* }
+//! file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
+//! ```
+//!
+//! ```no_run
+//! #![feature(slice_patterns)]
+//! use pest_consume::{match_nodes, Error, Parser};
+//!
+//! type Result<T> = std::result::Result<T, Error<Rule>>;
+//! type Node<'i> = pest_consume::Node<'i, Rule, ()>;
+//!
+//! // Construct the first half of the parser using pest as usual.
+//! #[derive(Parser)]
+//! #[grammar = "../examples/csv/csv.pest"]
+//! struct CSVParser;
+//!
+//! // This is the other half of the parser, using pest_consume.
+//! #[pest_consume::parser(CSVParser, Rule)]
+//! impl CSVParser {
+//!     fn EOI(_input: Node) -> Result<()> {
+//!         Ok(())
+//!     }
+//!     fn field(input: Node) -> Result<f64> {
+//!         input
+//!             .as_str()
+//!             .parse::<f64>()
+//!             .map_err(|e| input.error(e.to_string()))
+//!     }
+//!     fn record(input: Node) -> Result<Vec<f64>> {
+//!         Ok(match_nodes!(input.children();
+//!             [field(fields)..] => fields.collect(),
+//!         ))
+//!     }
+//!     fn file(input: Node) -> Result<Vec<Vec<f64>>> {
+//!         Ok(match_nodes!(input.children();
+//!             [record(records).., EOI(_)] => records.collect(),
+//!         ))
+//!     }
+//! }
+//!
+//! fn parse_csv(input_str: &str) -> Result<Vec<Vec<f64>>> {
+//!     let inputs = CSVParser::parse(Rule::file, input_str)?;
+//!     Ok(match_nodes!(<CSVParser>; inputs;
+//!         [file(e)] => e,
+//!     ))
+//! }
+//!
+//! fn main() {
+//!     let parsed = parse_csv("-273.15, 12\n42, 0").unwrap();
+//!     let mut sum = 0.;
+//!     for record in parsed {
+//!         for field in record {
+//!             sum += field;
+//!         }
+//!     }
+//!     println!("{}", sum);
+//! }
+//! ```
+//!
+//! There are several things to note:
+//! - we use two macros provided by `pest_consume`: `parser` and `match_nodes`;
+//! - there is one `fn` item per (non-silent) rule in the grammar;
+//! - we associate an output type to every rule;
+//! - there is no need to fiddle with `.into_inner()`, `.next()` or `.unwrap()`, as is common when using pest
+//!
+//! # How it works
+//!
+//! The main types of this crate ([Node], [Nodes] and [Parser]) are mostly wrappers around
+//! the corresponding [pest] types.
+//!
+//! The `pest_consume::parser` macro does almost nothing when not using advanced features;
+//! most of the magic happens in `match_nodes`.
+//! `match_nodes` desugars rather straightforwardly into calls to the `fn` items corresponding to
+//! the rules matched on.
+//! For example:
+//! ```ignore
+//! match_nodes!(input.children();
+//!     [field(fields)..] => fields.collect(),
+//! )
+//! ```
+//! desugars into:
+//! ```ignore
+//! let nodes = { input.children() };
+//! if ... { // check that all rules in `nodes` are the `field` rule
+//!     let fields = nodes
+//!         .map(|node| Self::field(node)) // Recursively parse children nodes
+//!         ... // Propagate errors
+//!     { fields.collect() }
+//! } else {
+//!     ... // error because we got unexpected rules
+//! }
+//! ```
+//!
+//! # Advanced features
+//!
+//! TODO
+//!
+//! - rule aliasing
+//! - rule shortcutting
+//! - user data
 
 pub use pest::error::Error;
 use pest::Parser as PestParser;
