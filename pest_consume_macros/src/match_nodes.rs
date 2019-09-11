@@ -173,7 +173,7 @@ fn make_parser_branch(
         parses.push(quote!(
             let #binder = #i_inputs
                 .map(|i| #parser::#rule_name(i))
-                .collect::<Result<Vec<_>, _>>()?
+                .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
                 .into_iter();
         ))
     }
@@ -210,8 +210,8 @@ pub fn match_nodes(
         #[allow(unreachable_code)]
         match #i_input_rules.as_slice() {
             #(#branches,)*
-            [..] => return Err(#i_inputs.error(
-                format!("Unexpected children: {:?}", #i_input_rules)
+            [..] => return ::std::result::Result::Err(#i_inputs.error(
+                std::format!("Unexpected children: {:?}", #i_input_rules)
             )),
         }
     }))

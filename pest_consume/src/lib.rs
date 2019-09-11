@@ -3,8 +3,11 @@
 /// parse tree needs to be transformed into whatever datastructures your application uses.
 /// `pest_consume` provides two powerful macros to make this easy.
 use pest::error::Error;
+
+pub use pest::error::Error;
 use pest::Parser as PestParser;
 use pest::RuleType;
+pub use pest_derive::Parser;
 
 #[proc_macro_hack::proc_macro_hack]
 pub use pest_consume_macros::match_nodes;

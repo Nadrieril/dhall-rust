@@ -261,7 +261,7 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
             // While the current rule allows shortcutting, and there is a single child, and the
             // child can still be parsed by the current function, then skip to that child.
             while #self_ty::allows_shortcut(#input_arg.as_rule()) {
-                if let Some(child) = #input_arg.single_child() {
+                if let ::std::option::Option::Some(child) = #input_arg.single_child() {
                     if child.as_aliased_rule::<Self>() == #self_ty::AliasedRule::#fn_name {
                         #input_arg = child;
                         continue;
@@ -273,9 +273,9 @@ fn apply_special_attrs(f: &mut ParsedFn, rule_enum: &Path) -> Result<()> {
             match #input_arg.as_rule() {
                 #(#rule_enum::#aliases => Self::#aliases(#input_arg),)*
                 #rule_enum::#fn_name => #block,
-                r => unreachable!(
+                r => ::std::unreachable!(
                     "make_parser: called {} on {:?}",
-                    stringify!(#fn_name),
+                    ::std::stringify!(#fn_name),
                     r
                 )
             }
@@ -349,14 +349,14 @@ pub fn make_parser(
                         #(#rule_enum::#srcs => Self::#srcs(#input_arg),)*
                         // We can't match on #rule_enum::#tgt since `tgt` might be an arbitrary
                         // identifier.
-                        r if &format!("{:?}", r) == stringify!(#tgt) =>
-                            return Err(#input_arg.error(format!(
+                        r if &::std::format!("{:?}", r) == ::std::stringify!(#tgt) =>
+                            return ::std::result::Result::Err(#input_arg.error(::std::format!(
                                 "make_parser: missing method for rule {}",
-                                stringify!(#tgt),
+                                ::std::stringify!(#tgt),
                             ))),
-                        r => unreachable!(
+                        r => ::std::unreachable!(
                             "make_parser: called {} on {:?}",
-                            stringify!(#tgt),
+                            ::std::stringify!(#tgt),
                             r
                         )
                     }
@@ -383,7 +383,7 @@ pub fn make_parser(
                 match rule {
                     #(#rule_alias_branches)*
                     // TODO: return a proper error ?
-                    r => unreachable!("Rule {:?} does not have a corresponding parsing method", r),
+                    r => ::std::unreachable!("Rule {:?} does not have a corresponding parsing method", r),
                 }
             }
             fn allows_shortcut(rule: Self::Rule) -> bool {
