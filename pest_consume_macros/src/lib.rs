@@ -6,7 +6,7 @@
 extern crate proc_macro;
 
 mod make_parser;
-mod match_inputs;
+mod match_nodes;
 
 use proc_macro::TokenStream;
 
@@ -19,8 +19,8 @@ pub fn parser(attrs: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_hack::proc_macro_hack]
-pub fn match_inputs(input: TokenStream) -> TokenStream {
-    TokenStream::from(match match_inputs::match_inputs(input) {
+pub fn match_nodes(input: TokenStream) -> TokenStream {
+    TokenStream::from(match match_nodes::match_nodes(input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error(),
     })

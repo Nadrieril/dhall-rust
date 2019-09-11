@@ -1,5 +1,5 @@
 #![feature(slice_patterns)]
-use pest_consume::{match_inputs, Parser};
+use pest_consume::{match_nodes, Parser};
 
 #[derive(pest_derive::Parser)]
 #[grammar = "../examples/csv/csv.pest"]
@@ -32,20 +32,20 @@ impl CSVParser {
     }
 
     fn field(input: Node) -> ParseResult<CSVField> {
-        Ok(match_inputs!(input.children();
+        Ok(match_nodes!(input.children();
             [number(n)] => CSVField::Number(n),
             [string(s)] => CSVField::String(s),
         ))
     }
 
     fn record(input: Node) -> ParseResult<CSVRecord> {
-        Ok(match_inputs!(input.children();
+        Ok(match_nodes!(input.children();
             [field(fields)..] => fields.collect(),
         ))
     }
 
     fn file(input: Node) -> ParseResult<CSVFile> {
-        Ok(match_inputs!(input.children();
+        Ok(match_nodes!(input.children();
             [record(records).., EOI(_)] => records.collect(),
         ))
     }
@@ -53,7 +53,7 @@ impl CSVParser {
 
 fn parse_csv(input_str: &str) -> ParseResult<CSVFile> {
     let inputs = CSVParser::parse(Rule::file, input_str)?;
-    Ok(match_inputs!(<CSVParser>; inputs;
+    Ok(match_nodes!(<CSVParser>; inputs;
         [file(e)] => e,
     ))
 }

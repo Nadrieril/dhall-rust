@@ -7,7 +7,7 @@ use pest::Parser as PestParser;
 use pest::RuleType;
 
 #[proc_macro_hack::proc_macro_hack]
-pub use pest_consume_macros::match_inputs;
+pub use pest_consume_macros::match_nodes;
 pub use pest_consume_macros::parser;
 
 mod node {

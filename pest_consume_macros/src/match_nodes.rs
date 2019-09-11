@@ -186,7 +186,7 @@ fn make_parser_branch(
     ))
 }
 
-pub fn match_inputs(
+pub fn match_nodes(
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
     let input: ParseChildrenInput = syn::parse(input)?;
