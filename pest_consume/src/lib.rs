@@ -1,3 +1,7 @@
+/// `pest_consume` extends [pest] to make it easy to consume the resulting pest parse tree.
+/// Given a grammar file, pest generates a parser that outputs an untyped parse tree. Then that
+/// parse tree needs to be transformed into whatever datastructures your application uses.
+/// `pest_consume` provides two powerful macros to make this easy.
 use pest::error::Error;
 use pest::Parser as PestParser;
 use pest::RuleType;
@@ -85,6 +89,9 @@ mod node {
         pub fn as_pair(&self) -> &Pair<'i, R> {
             &self.pair
         }
+        pub fn into_pair(self) -> Pair<'i, R> {
+            self.pair
+        }
         pub fn as_span(&self) -> Span<'i> {
             self.pair.as_span()
         }
@@ -134,6 +141,13 @@ mod node {
             D: Clone,
         {
             Node::new(new_pair, self.user_data.clone())
+        }
+
+        pub fn as_pairs(&self) -> &Pairs<'i, R> {
+            &self.pairs
+        }
+        pub fn into_pairs(self) -> Pairs<'i, R> {
+            self.pairs
         }
     }
 

@@ -1,0 +1,15 @@
+WHITESPACE = _{ " "+ }
+newline = _{ "\r\n" | "\n" }
+number = { "-"? ~ (ASCII_DIGIT | ".")+ }
+string = { (!"'" ~ ASCII)* }
+field = ${
+      number
+    | "'" ~ string ~ "'"
+}
+record = {
+      field ~ ("," ~ field)*
+    | ""
+}
+file = {
+    SOI ~ record ~ (newline ~ record)* ~ newline? ~ EOI
+}
