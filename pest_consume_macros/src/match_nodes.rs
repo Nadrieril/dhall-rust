@@ -9,26 +9,26 @@ use syn::{
 };
 
 #[derive(Debug, Clone)]
-struct ChildrenBranch {
+struct MatchBranch {
     pattern_span: Span,
-    pattern: Punctuated<ChildrenBranchPatternItem, Token![,]>,
+    pattern: Punctuated<MatchBranchPatternItem, Token![,]>,
     body: Expr,
 }
 
 #[derive(Debug, Clone)]
-enum ChildrenBranchPatternItem {
+enum MatchBranchPatternItem {
     Single { rule_name: Ident, binder: Pat },
     Multiple { rule_name: Ident, binder: Ident },
 }
 
 #[derive(Debug, Clone)]
-struct ParseChildrenInput {
+struct MacroInput {
     parser: Type,
     input_expr: Expr,
-    branches: Punctuated<ChildrenBranch, Token![,]>,
+    branches: Punctuated<MatchBranch, Token![,]>,
 }
 
-impl Parse for ChildrenBranch {
+impl Parse for MatchBranch {
     fn parse(input: ParseStream) -> Result<Self> {
         let contents;
         let _: token::Bracket = bracketed!(contents in input);
@@ -38,7 +38,7 @@ impl Parse for ChildrenBranch {
         let _: Token![=>] = input.parse()?;
         let body = input.parse()?;
 
-        Ok(ChildrenBranch {
+        Ok(MatchBranch {
             pattern_span,
             pattern,
             body,
@@ -46,7 +46,7 @@ impl Parse for ChildrenBranch {
     }
 }
 
-impl Parse for ChildrenBranchPatternItem {
+impl Parse for MatchBranchPatternItem {
     fn parse(input: ParseStream) -> Result<Self> {
         let contents;
         let rule_name = input.parse()?;
@@ -54,17 +54,17 @@ impl Parse for ChildrenBranchPatternItem {
         if input.peek(Token![..]) {
             let binder = contents.parse()?;
             let _: Token![..] = input.parse()?;
-            Ok(ChildrenBranchPatternItem::Multiple { rule_name, binder })
+            Ok(MatchBranchPatternItem::Multiple { rule_name, binder })
         } else if input.is_empty() || input.peek(Token![,]) {
             let binder = contents.parse()?;
-            Ok(ChildrenBranchPatternItem::Single { rule_name, binder })
+            Ok(MatchBranchPatternItem::Single { rule_name, binder })
         } else {
             Err(input.error("expected `..` or nothing"))
         }
     }
 }
 
-impl Parse for ParseChildrenInput {
+impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let parser = if input.peek(token::Lt) {
             let _: token::Lt = input.parse()?;
@@ -79,7 +79,7 @@ impl Parse for ParseChildrenInput {
         let _: Token![;] = input.parse()?;
         let branches = Punctuated::parse_terminated(input)?;
 
-        Ok(ParseChildrenInput {
+        Ok(MacroInput {
             parser,
             input_expr,
             branches,
@@ -87,13 +87,13 @@ impl Parse for ParseChildrenInput {
     }
 }
 
-fn make_parser_branch(
-    branch: &ChildrenBranch,
-    i_inputs: &Ident,
-    i_input_rules: &Ident,
+fn make_branch(
+    branch: &MatchBranch,
+    i_nodes: &Ident,
+    i_node_rules: &Ident,
     parser: &Type,
 ) -> Result<TokenStream> {
-    use ChildrenBranchPatternItem::{Multiple, Single};
+    use MatchBranchPatternItem::{Multiple, Single};
 
     let body = &branch.body;
     let aliased_rule = quote!(<#parser as ::pest_consume::Parser>::AliasedRule);
@@ -134,16 +134,16 @@ fn make_parser_branch(
     let start = singles_before_multiple.len();
     let end = singles_after_multiple.len();
     conditions.push(quote!(
-        #start + #end <= #i_input_rules.len()
+        #start + #end <= #i_node_rules.len()
     ));
     for (i, (rule_name, _)) in singles_before_multiple.iter().enumerate() {
         conditions.push(quote!(
-            #i_input_rules[#i] == #aliased_rule::#rule_name
+            #i_node_rules[#i] == #aliased_rule::#rule_name
         ))
     }
     for (i, (rule_name, _)) in singles_after_multiple.iter().enumerate() {
         conditions.push(quote!(
-            #i_input_rules[#i_input_rules.len()-1 - #i] == #aliased_rule::#rule_name
+            #i_node_rules[#i_node_rules.len()-1 - #i] == #aliased_rule::#rule_name
         ))
     }
     if let Some((rule_name, _)) = multiple {
@@ -156,37 +156,37 @@ fn make_parser_branch(
                         *r == #aliased_rule::#rule_name
                     )
                 };
-                all_match(&#i_input_rules[#start..#i_input_rules.len() - #end])
+                all_match(&#i_node_rules[#start..#i_node_rules.len() - #end])
             }
         ))
     } else {
         // No variable-length pattern, so the size must be exactly the number of patterns
         conditions.push(quote!(
-            #start + #end == #i_input_rules.len()
+            #start + #end == #i_node_rules.len()
         ))
     }
 
-    // Once we have found a branch that matches, we need to parse the children.
+    // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
     for (rule_name, binder) in singles_before_multiple.into_iter() {
         parses.push(quote!(
             let #binder = #parser::#rule_name(
-                #i_inputs.next().unwrap()
+                #i_nodes.next().unwrap()
             )?;
         ))
     }
-    // Note the `rev()`: we are taking inputs from the end of the iterator in reverse order, so that
-    // only the unmatched inputs are left in the iterator for the variable-length pattern, if any.
+    // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
+    // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
     for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
         parses.push(quote!(
             let #binder = #parser::#rule_name(
-                #i_inputs.next_back().unwrap()
+                #i_nodes.next_back().unwrap()
             )?;
         ))
     }
     if let Some((rule_name, binder)) = multiple {
         parses.push(quote!(
-            let #binder = #i_inputs
+            let #binder = #i_nodes
                 .map(|i| #parser::#rule_name(i))
                 .collect::<::std::result::Result<::std::vec::Vec<_>, _>>()?
                 .into_iter();
@@ -204,29 +204,29 @@ fn make_parser_branch(
 pub fn match_nodes(
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro2::TokenStream> {
-    let input: ParseChildrenInput = syn::parse(input)?;
+    let input: MacroInput = syn::parse(input)?;
 
-    let i_input_rules = Ident::new("___input_rules", Span::call_site());
-    let i_inputs = Ident::new("___inputs", Span::call_site());
+    let i_nodes = Ident::new("___nodes", input.input_expr.span());
+    let i_node_rules = Ident::new("___node_rules", Span::call_site());
 
     let input_expr = &input.input_expr;
     let parser = &input.parser;
     let branches = input
         .branches
         .iter()
-        .map(|br| make_parser_branch(br, &i_inputs, &i_input_rules, parser))
+        .map(|br| make_branch(br, &i_nodes, &i_node_rules, parser))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(quote!({
         #[allow(unused_mut)]
-        let mut #i_inputs = #input_expr;
-        let #i_input_rules = #i_inputs.aliased_rules::<#parser>();
+        let mut #i_nodes = #input_expr;
+        let #i_node_rules = #i_nodes.aliased_rules::<#parser>();
 
         #[allow(unreachable_code)]
         match () {
             #(#branches,)*
-            _ => return ::std::result::Result::Err(#i_inputs.error(
-                std::format!("Unexpected children: {:?}", #i_input_rules)
+            _ => return ::std::result::Result::Err(#i_nodes.error(
+                std::format!("Nodes didn't match any pattern: {:?}", #i_node_rules)
             )),
         }
     }))
