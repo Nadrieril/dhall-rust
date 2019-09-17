@@ -1,4 +1,3 @@
-#![feature(slice_patterns)]
 use pest_consume::{match_nodes, Error, Parser};
 
 #[derive(Debug)]

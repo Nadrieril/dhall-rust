@@ -90,6 +90,7 @@ impl Parse for ParseChildrenInput {
 fn make_parser_branch(
     branch: &ChildrenBranch,
     i_inputs: &Ident,
+    i_input_rules: &Ident,
     parser: &Type,
 ) -> Result<TokenStream> {
     use ChildrenBranchPatternItem::{Multiple, Single};
@@ -97,33 +98,8 @@ fn make_parser_branch(
     let body = &branch.body;
     let aliased_rule = quote!(<#parser as ::pest_consume::Parser>::AliasedRule);
 
-    // Convert the input pattern into a pattern-match on the Rules of the children. This uses
-    // slice_patterns.
-    // A single pattern just checks that the rule matches; a variable-length pattern binds the
-    // subslice and checks, in the if-guard, that its elements all match the chosen Rule.
-    let i_variable_pattern =
-        Ident::new("___variable_pattern", Span::call_site());
-    let match_pat = branch.pattern.iter().map(|item| match item {
-        Single { rule_name, .. } => quote!(#aliased_rule::#rule_name),
-        Multiple { .. } => quote!(#i_variable_pattern @ ..),
-    });
-    let match_filter = branch.pattern.iter().map(|item| match item {
-        Single { .. } => quote!(),
-        Multiple { rule_name, .. } => quote!(
-            {
-                // We can't use .all() directly in the pattern guard; see
-                // https://github.com/rust-lang/rust/issues/59803.
-                let all_match = |slice: &[_]| {
-                    slice.iter().all(|r|
-                        *r == #aliased_rule::#rule_name
-                    )
-                };
-                all_match(#i_variable_pattern)
-            } &&
-        ),
-    });
-
-    // Once we have found a branch that matches, we need to parse the children.
+    // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
+    // optionally a multiple pattern, and then some more simple patterns.
     let mut singles_before_multiple = Vec::new();
     let mut multiple = None;
     let mut singles_after_multiple = Vec::new();
@@ -152,6 +128,45 @@ fn make_parser_branch(
             }
         }
     }
+
+    // Find which branch to take
+    let mut conditions = Vec::new();
+    let start = singles_before_multiple.len();
+    let end = singles_after_multiple.len();
+    conditions.push(quote!(
+        #start + #end <= #i_input_rules.len()
+    ));
+    for (i, (rule_name, _)) in singles_before_multiple.iter().enumerate() {
+        conditions.push(quote!(
+            #i_input_rules[#i] == #aliased_rule::#rule_name
+        ))
+    }
+    for (i, (rule_name, _)) in singles_after_multiple.iter().enumerate() {
+        conditions.push(quote!(
+            #i_input_rules[#i_input_rules.len()-1 - #i] == #aliased_rule::#rule_name
+        ))
+    }
+    if let Some((rule_name, _)) = multiple {
+        conditions.push(quote!(
+            {
+                // We can't use .all() directly in the pattern guard; see
+                // https://github.com/rust-lang/rust/issues/59803.
+                let all_match = |slice: &[_]| {
+                    slice.iter().all(|r|
+                        *r == #aliased_rule::#rule_name
+                    )
+                };
+                all_match(&#i_input_rules[#start..#i_input_rules.len() - #end])
+            }
+        ))
+    } else {
+        // No variable-length pattern, so the size must be exactly the number of patterns
+        conditions.push(quote!(
+            #start + #end == #i_input_rules.len()
+        ))
+    }
+
+    // Once we have found a branch that matches, we need to parse the children.
     let mut parses = Vec::new();
     for (rule_name, binder) in singles_before_multiple.into_iter() {
         parses.push(quote!(
@@ -161,7 +176,7 @@ fn make_parser_branch(
         ))
     }
     // Note the `rev()`: we are taking inputs from the end of the iterator in reverse order, so that
-    // only the unmatched inputs are left for the variable-length pattern, if any.
+    // only the unmatched inputs are left in the iterator for the variable-length pattern, if any.
     for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
         parses.push(quote!(
             let #binder = #parser::#rule_name(
@@ -179,7 +194,7 @@ fn make_parser_branch(
     }
 
     Ok(quote!(
-        [#(#match_pat),*] if #(#match_filter)* true => {
+        _ if #(#conditions &&)* true => {
             #(#parses)*
             #body
         }
@@ -199,7 +214,7 @@ pub fn match_nodes(
     let branches = input
         .branches
         .iter()
-        .map(|br| make_parser_branch(br, &i_inputs, parser))
+        .map(|br| make_parser_branch(br, &i_inputs, &i_input_rules, parser))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(quote!({
@@ -208,9 +223,9 @@ pub fn match_nodes(
         let #i_input_rules = #i_inputs.aliased_rules::<#parser>();
 
         #[allow(unreachable_code)]
-        match #i_input_rules.as_slice() {
+        match () {
             #(#branches,)*
-            [..] => return ::std::result::Result::Err(#i_inputs.error(
+            _ => return ::std::result::Result::Err(#i_inputs.error(
                 std::format!("Unexpected children: {:?}", #i_input_rules)
             )),
         }

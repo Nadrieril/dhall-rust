@@ -21,7 +21,6 @@
 //! ```
 //!
 //! ```no_run
-//! #![feature(slice_patterns)]
 //! use pest_consume::{match_nodes, Error, Parser};
 //!
 //! type Result<T> = std::result::Result<T, Error<Rule>>;

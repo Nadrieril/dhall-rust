@@ -1,5 +1,4 @@
 #![feature(trace_macros)]
-#![feature(slice_patterns)]
 #![feature(never_type)]
 #![allow(
     clippy::many_single_char_names,
