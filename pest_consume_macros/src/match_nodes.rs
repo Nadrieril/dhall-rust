@@ -8,20 +8,31 @@ use syn::{
     Token, Type,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct MatchBranch {
-    pattern_span: Span,
-    pattern: Punctuated<MatchBranchPatternItem, Token![,]>,
+    // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
+    // optionally a multiple pattern, and then some more simple patterns.
+    singles_before_multiple: Vec<(Ident, Pat)>,
+    multiple: Option<(Ident, Ident)>,
+    singles_after_multiple: Vec<(Ident, Pat)>,
+
     body: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum MatchBranchPatternItem {
-    Single { rule_name: Ident, binder: Pat },
-    Multiple { rule_name: Ident, binder: Ident },
+    Single {
+        rule_name: Ident,
+        binder: Pat,
+    },
+    Multiple {
+        rule_name: Ident,
+        binder: Ident,
+        slice_token: Token![..],
+    },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct MacroInput {
     parser: Type,
     input_expr: Expr,
@@ -32,15 +43,46 @@ impl Parse for MatchBranch {
     fn parse(input: ParseStream) -> Result<Self> {
         let contents;
         let _: token::Bracket = bracketed!(contents in input);
-        let pattern_unparsed: TokenStream = contents.fork().parse()?;
-        let pattern_span = pattern_unparsed.span();
-        let pattern = Punctuated::parse_terminated(&contents)?;
+
+        let pattern: Punctuated<MatchBranchPatternItem, Token![,]> =
+            Punctuated::parse_terminated(&contents)?;
+        use MatchBranchPatternItem::{Multiple, Single};
+        let mut singles_before_multiple = Vec::new();
+        let mut multiple = None;
+        let mut singles_after_multiple = Vec::new();
+        for item in pattern.clone() {
+            match item {
+                Single { rule_name, binder } => {
+                    if multiple.is_none() {
+                        singles_before_multiple.push((rule_name, binder))
+                    } else {
+                        singles_after_multiple.push((rule_name, binder))
+                    }
+                }
+                Multiple {
+                    rule_name,
+                    binder,
+                    slice_token,
+                } => {
+                    if multiple.is_none() {
+                        multiple = Some((rule_name, binder))
+                    } else {
+                        return Err(Error::new(
+                            slice_token.span(),
+                            "multiple variable-length patterns are not allowed",
+                        ));
+                    }
+                }
+            }
+        }
+
         let _: Token![=>] = input.parse()?;
         let body = input.parse()?;
 
         Ok(MatchBranch {
-            pattern_span,
-            pattern,
+            singles_before_multiple,
+            multiple,
+            singles_after_multiple,
             body,
         })
     }
@@ -53,8 +95,12 @@ impl Parse for MatchBranchPatternItem {
         parenthesized!(contents in input);
         if input.peek(Token![..]) {
             let binder = contents.parse()?;
-            let _: Token![..] = input.parse()?;
-            Ok(MatchBranchPatternItem::Multiple { rule_name, binder })
+            let slice_token = input.parse()?;
+            Ok(MatchBranchPatternItem::Multiple {
+                rule_name,
+                binder,
+                slice_token,
+            })
         } else if input.is_empty() || input.peek(Token![,]) {
             let binder = contents.parse()?;
             Ok(MatchBranchPatternItem::Single { rule_name, binder })
@@ -93,60 +139,28 @@ fn make_branch(
     i_node_rules: &Ident,
     parser: &Type,
 ) -> Result<TokenStream> {
-    use MatchBranchPatternItem::{Multiple, Single};
-
-    let body = &branch.body;
     let aliased_rule = quote!(<#parser as ::pest_consume::Parser>::AliasedRule);
-
-    // Patterns all have the form [a, b, c.., d], with a bunch of simple patterns,
-    // optionally a multiple pattern, and then some more simple patterns.
-    let mut singles_before_multiple = Vec::new();
-    let mut multiple = None;
-    let mut singles_after_multiple = Vec::new();
-    for item in &branch.pattern {
-        match item {
-            Single {
-                rule_name, binder, ..
-            } => {
-                if multiple.is_none() {
-                    singles_before_multiple.push((rule_name, binder))
-                } else {
-                    singles_after_multiple.push((rule_name, binder))
-                }
-            }
-            Multiple {
-                rule_name, binder, ..
-            } => {
-                if multiple.is_none() {
-                    multiple = Some((rule_name, binder))
-                } else {
-                    return Err(Error::new(
-                        branch.pattern_span.clone(),
-                        "multiple variable-length patterns are not allowed",
-                    ));
-                }
-            }
-        }
-    }
 
     // Find which branch to take
     let mut conditions = Vec::new();
-    let start = singles_before_multiple.len();
-    let end = singles_after_multiple.len();
+    let start = branch.singles_before_multiple.len();
+    let end = branch.singles_after_multiple.len();
     conditions.push(quote!(
         #start + #end <= #i_node_rules.len()
     ));
-    for (i, (rule_name, _)) in singles_before_multiple.iter().enumerate() {
+    for (i, (rule_name, _)) in branch.singles_before_multiple.iter().enumerate()
+    {
         conditions.push(quote!(
             #i_node_rules[#i] == #aliased_rule::#rule_name
         ))
     }
-    for (i, (rule_name, _)) in singles_after_multiple.iter().enumerate() {
+    for (i, (rule_name, _)) in branch.singles_after_multiple.iter().enumerate()
+    {
         conditions.push(quote!(
             #i_node_rules[#i_node_rules.len()-1 - #i] == #aliased_rule::#rule_name
         ))
     }
-    if let Some((rule_name, _)) = multiple {
+    if let Some((rule_name, _)) = &branch.multiple {
         conditions.push(quote!(
             {
                 // We can't use .all() directly in the pattern guard; see
@@ -168,7 +182,7 @@ fn make_branch(
 
     // Once we have found a branch that matches, we need to parse the nodes.
     let mut parses = Vec::new();
-    for (rule_name, binder) in singles_before_multiple.into_iter() {
+    for (rule_name, binder) in branch.singles_before_multiple.iter() {
         parses.push(quote!(
             let #binder = #parser::#rule_name(
                 #i_nodes.next().unwrap()
@@ -177,14 +191,14 @@ fn make_branch(
     }
     // Note the `rev()`: we are taking nodes from the end of the iterator in reverse order, so that
     // only the unmatched nodes are left in the iterator for the variable-length pattern, if any.
-    for (rule_name, binder) in singles_after_multiple.into_iter().rev() {
+    for (rule_name, binder) in branch.singles_after_multiple.iter().rev() {
         parses.push(quote!(
             let #binder = #parser::#rule_name(
                 #i_nodes.next_back().unwrap()
             )?;
         ))
     }
-    if let Some((rule_name, binder)) = multiple {
+    if let Some((rule_name, binder)) = &branch.multiple {
         parses.push(quote!(
             let #binder = #i_nodes
                 .map(|i| #parser::#rule_name(i))
@@ -193,6 +207,7 @@ fn make_branch(
         ))
     }
 
+    let body = &branch.body;
     Ok(quote!(
         _ if #(#conditions &&)* true => {
             #(#parses)*
