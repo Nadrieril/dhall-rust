@@ -37,6 +37,8 @@ impl<Item> VecPartitionFilterExt<Item> for Vec<Item> {
 
 mod kw {
     syn::custom_keyword!(shortcut);
+    syn::custom_keyword!(rule);
+    syn::custom_keyword!(parser);
 }
 
 struct MakeParserAttrs {
@@ -72,9 +74,32 @@ struct ParsedFn<'a> {
 
 impl Parse for MakeParserAttrs {
     fn parse(input: ParseStream) -> Result<Self> {
-        let parser = input.parse()?;
-        let _: Token![,] = input.parse()?;
-        let rule_enum = input.parse()?;
+        // By default, the pest parser is the same type as the pest_consume one
+        let mut parser = parse_quote!(Self);
+        // By default, use the `Rule` type in scope
+        let mut rule_enum = parse_quote!(Rule);
+
+        while !input.is_empty() {
+            let lookahead = input.lookahead1();
+            if lookahead.peek(kw::parser) {
+                let _: kw::parser = input.parse()?;
+                let _: Token![=] = input.parse()?;
+                parser = input.parse()?;
+            } else if lookahead.peek(kw::rule) {
+                let _: kw::rule = input.parse()?;
+                let _: Token![=] = input.parse()?;
+                rule_enum = input.parse()?;
+            } else {
+                return Err(lookahead.error());
+            }
+
+            if input.peek(Token![,]) {
+                let _: Token![,] = input.parse()?;
+            } else {
+                break;
+            }
+        }
+
         Ok(MakeParserAttrs { parser, rule_enum })
     }
 }

@@ -15,7 +15,7 @@ type Node<'i> = pest_consume::Node<'i, Rule, ()>;
 #[grammar = "../examples/csv/csv.pest"]
 struct CSVParser;
 
-#[pest_consume::parser(CSVParser, Rule)]
+#[pest_consume::parser]
 impl CSVParser {
     fn EOI(_input: Node) -> Result<()> {
         Ok(())

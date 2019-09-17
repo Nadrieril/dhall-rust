@@ -149,7 +149,7 @@ lazy_static::lazy_static! {
 
 struct DhallParser;
 
-#[pest_consume::parser(dgp::DhallParser, dgp::Rule)]
+#[pest_consume::parser(parser = dgp::DhallParser, rule = dgp::Rule)]
 impl DhallParser {
     fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())

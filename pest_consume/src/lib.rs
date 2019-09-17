@@ -32,7 +32,7 @@
 //! struct CSVParser;
 //!
 //! // This is the other half of the parser, using pest_consume.
-//! #[pest_consume::parser(CSVParser, Rule)]
+//! #[pest_consume::parser]
 //! impl CSVParser {
 //!     fn EOI(_input: Node) -> Result<()> {
 //!         Ok(())
