@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use pest::iterators::Pair;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use std::rc::Rc;
@@ -167,7 +166,7 @@ impl DhallParser {
     fn double_quote_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [double_quote_chunk(chunks)..] => {
                 chunks.collect()
             }
@@ -177,7 +176,7 @@ impl DhallParser {
     fn double_quote_chunk<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedTextContents<E>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [expression(e)] => {
                 InterpolatedTextContents::Expr(e)
             },
@@ -264,7 +263,7 @@ impl DhallParser {
     fn single_quote_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ParsedText<E>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [single_quote_continue(lines)] => {
                 let newline: ParsedText<E> = "\n".to_string().into();
 
@@ -301,7 +300,7 @@ impl DhallParser {
     fn single_quote_continue<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<Vec<Vec<ParsedTextContents<E>>>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [expression(e), single_quote_continue(lines)] => {
                 let c = InterpolatedTextContents::Expr(e);
                 let mut lines = lines;
@@ -387,21 +386,15 @@ impl DhallParser {
     #[alias(expression, shortcut = true)]
     fn identifier<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
         Ok(match_nodes!(input.children();
-            [variable(v)] => {
-                spanned(input, Var(v))
-            },
+            [variable(v)] => spanned(input, Var(v)),
             [expression(e)] => e,
         ))
     }
 
     fn variable(input: ParseInput) -> ParseResult<V<Label>> {
-        Ok(match_nodes!(input.children();
-            [label(l), natural_literal(idx)] => {
-                V(l, idx)
-            },
-            [label(l)] => {
-                V(l, 0)
-            },
+        Ok(match_nodes!(input.into_children();
+            [label(l), natural_literal(idx)] => V(l, idx),
+            [label(l)] => V(l, 0),
         ))
     }
 
@@ -437,7 +430,7 @@ impl DhallParser {
             .collect())
     }
     fn path(input: ParseInput) -> ParseResult<Vec<String>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [path_component(components)..] => {
                 components.collect()
             }
@@ -448,7 +441,7 @@ impl DhallParser {
     fn local<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [local_path((prefix, p))] => ImportLocation::Local(prefix, p),
         ))
     }
@@ -457,19 +450,19 @@ impl DhallParser {
     fn parent_path(
         input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Parent, p)
         ))
     }
     #[alias(local_path)]
     fn here_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Here, p)
         ))
     }
     #[alias(local_path)]
     fn home_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Home, p)
         ))
     }
@@ -477,7 +470,7 @@ impl DhallParser {
     fn absolute_path(
         input: ParseInput,
     ) -> ParseResult<(FilePrefix, Vec<String>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Absolute, p)
         ))
     }
@@ -491,7 +484,7 @@ impl DhallParser {
     }
 
     fn http_raw<E: Clone>(input: ParseInput) -> ParseResult<URL<Expr<E>>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [scheme(sch), authority(auth), path(p)] => URL {
                 scheme: sch,
                 authority: auth,
@@ -521,7 +514,7 @@ impl DhallParser {
     fn http<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(ImportLocation::Remote(match_nodes!(input.children();
+        Ok(ImportLocation::Remote(match_nodes!(input.into_children();
             [http_raw(url)] => url,
             [http_raw(url), expression(e)] => URL { headers: Some(e), ..url },
         )))
@@ -531,7 +524,7 @@ impl DhallParser {
     fn env<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<ImportLocation<Expr<E>>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [environment_variable(v)] => ImportLocation::Env(v),
         ))
     }
@@ -541,7 +534,7 @@ impl DhallParser {
     }
     #[alias(environment_variable)]
     fn posix_environment_variable(input: ParseInput) -> ParseResult<String> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [posix_environment_variable_character(chars)..] => {
                 chars.collect()
             },
@@ -586,7 +579,7 @@ impl DhallParser {
     ) -> ParseResult<crate::Import<Expr<E>>> {
         use crate::Import;
         let mode = ImportMode::Code;
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [import_type(location)] => Import { mode, location, hash: None },
             [import_type(location), hash(h)] => Import { mode, location, hash: Some(h) },
         ))
@@ -703,9 +696,8 @@ impl DhallParser {
     #[alias(expression, shortcut = true)]
     #[prec_climb(expression, PRECCLIMBER)]
     fn operator_expression<E: Clone>(
-        input: ParseInput,
         l: Expr<E>,
-        op: Pair<Rule>,
+        op: ParseInput,
         r: Expr<E>,
     ) -> ParseResult<Expr<E>> {
         use crate::BinOp::*;
@@ -724,7 +716,7 @@ impl DhallParser {
             bool_eq => BoolEQ,
             bool_ne => BoolNE,
             equivalent => Equivalence,
-            r => Err(input.error(format!("Rule {:?} isn't an operator", r)))?,
+            r => Err(op.error(format!("Rule {:?} isn't an operator", r)))?,
         };
 
         Ok(spanned_union(
@@ -812,7 +804,7 @@ impl DhallParser {
     }
 
     fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [label(ls)..] => ls.collect(),
         ))
     }
@@ -865,7 +857,7 @@ impl DhallParser {
     fn non_empty_record_type<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [expression(expr), record_type_entry(entries)..] => {
                 (expr, entries.collect())
             }
@@ -875,7 +867,7 @@ impl DhallParser {
     fn record_type_entry<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [label(name), expression(expr)] => (name, expr)
         ))
     }
@@ -883,7 +875,7 @@ impl DhallParser {
     fn non_empty_record_literal<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Expr<E>, DupTreeMap<Label, Expr<E>>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [expression(expr), record_literal_entry(entries)..] => {
                 (expr, entries.collect())
             }
@@ -893,7 +885,7 @@ impl DhallParser {
     fn record_literal_entry<E: Clone>(
         input: ParseInput,
     ) -> ParseResult<(Label, Expr<E>)> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [label(name), expression(expr)] => (name, expr)
         ))
     }
@@ -934,7 +926,7 @@ impl DhallParser {
 
     #[alias(expression)]
     fn final_expression<E: Clone>(input: ParseInput) -> ParseResult<Expr<E>> {
-        Ok(match_nodes!(input.children();
+        Ok(match_nodes!(input.into_children();
             [expression(e), EOI(_)] => e
         ))
     }
