@@ -1,7 +1,5 @@
 #![feature(trace_macros)]
-#![feature(slice_patterns)]
 #![feature(never_type)]
-#![feature(proc_macro_hygiene)]
 #![allow(
     clippy::many_single_char_names,
     clippy::should_implement_trait,

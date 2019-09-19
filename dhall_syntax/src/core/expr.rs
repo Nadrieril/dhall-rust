@@ -37,6 +37,16 @@ impl Span {
             end: sp.end(),
         }
     }
+    /// Takes the union of the two spans. Assumes that the spans come from the same input.
+    /// This will also capture any input between the spans.
+    pub fn union(&self, other: &Span) -> Self {
+        use std::cmp::{max, min};
+        Span {
+            input: self.input.clone(),
+            start: min(self.start, other.start),
+            end: max(self.start, other.start),
+        }
+    }
 }
 
 /// Double with bitwise equality
@@ -324,8 +334,11 @@ impl<E> Expr<E> {
     pub fn as_mut(&mut self) -> &mut RawExpr<E> {
         &mut self.0.as_mut().0
     }
+    pub fn span(&self) -> Option<Span> {
+        self.0.as_ref().1.clone()
+    }
 
-    pub fn new(x: RawExpr<E>, n: Span) -> Self {
+    pub(crate) fn new(x: RawExpr<E>, n: Span) -> Self {
         Expr(Box::new((x, Some(n))))
     }
 
@@ -381,13 +394,6 @@ impl<E> Expr<E> {
 
 // Should probably rename this
 pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
-    Expr::from_expr_no_span(x)
-}
-
-pub(crate) fn spanned<E>(span: Span, x: RawExpr<E>) -> Expr<E> {
-    Expr::new(x, span)
-}
-pub(crate) fn unspanned<E>(x: RawExpr<E>) -> Expr<E> {
     Expr::from_expr_no_span(x)
 }
 
