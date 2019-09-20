@@ -1,7 +1,5 @@
-use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
 
 use abnf_to_pest::render_rules_to_pest;
 
@@ -89,21 +87,6 @@ fn main() -> std::io::Result<()> {
 
     writeln!(&mut file)?;
     writeln!(&mut file, "{}", render_rules_to_pest(rules).pretty(80))?;
-
-    // Generate pest parser manually to avoid spurious recompilations
-    let derived = {
-        let pest_path = "dhall.pest";
-        let pest = quote::quote! {
-            #[grammar = #pest_path]
-            pub struct DhallParser;
-        };
-        pest_generator::derive_parser(pest, false)
-    };
-
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let grammar_path = Path::new(&out_dir).join("grammar.rs");
-    let mut file = File::create(grammar_path)?;
-    writeln!(file, "pub struct DhallParser;\n{}", derived,)?;
 
     Ok(())
 }
