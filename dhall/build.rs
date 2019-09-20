@@ -259,10 +259,11 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/EmptyToMap"
                     || path == "unit/ToMap"
                     || path == "unit/ToMapWithType"
-                    // TODO: Normalize field selection further by inspecting the argument
+                    // TODO: Further record simplifications
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
                     || path == "simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
+                    || path == "simplifications/issue661"
                     || path == "unit/RecordProjectionByTypeWithinFieldSelection"
                     || path == "unit/RecordProjectionWithinFieldSelection"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
@@ -273,7 +274,10 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/RightBiasedMergeWithinFieldSelection1"
                     || path == "unit/RightBiasedMergeWithinFieldSelection2"
                     || path == "unit/RightBiasedMergeWithinFieldSelection3"
+                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
                     || path == "unit/RightBiasedMergeEquivalentArguments"
+                    || path == "unit/NestedRecordProjection"
+                    || path == "unit/NestedRecordProjectionByType"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -312,6 +316,7 @@ fn main() -> std::io::Result<()> {
                     // TODO: toMap
                     || path == "unit/ToMap"
                     || path == "unit/ToMapAnnotated"
+                    || path == "simple/toMapEmptyNormalizeAnnotation"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -340,6 +345,7 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap3"
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
+                    || path == "unit/ToMapWrongKind"
             },
             input_type: FileType::Text,
             output_type: None,
