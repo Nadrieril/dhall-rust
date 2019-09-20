@@ -298,55 +298,13 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         TestFeature {
-            module_name: "typecheck_success",
-            directory: spec_tests_dir.join("typecheck/success/"),
-            variant: "TypecheckSuccess",
-            path_filter: |path: &str| {
-                false
-                    // Too slow
-                    || path == "prelude"
-            },
-            input_type: FileType::Text,
-            output_type: Some(FileType::Text),
-        },
-    )?;
-
-    make_test_module(
-        &mut file,
-        TestFeature {
-            module_name: "typecheck_failure",
-            directory: spec_tests_dir.join("typecheck/failure/"),
-            variant: "TypecheckFailure",
-            path_filter: |path: &str| {
-                false
-                    // TODO: Enable imports in typecheck tests
-                    || path == "importBoundary"
-                    || path == "customHeadersUsingBoundVariable"
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
-                    || path == "unit/RecordProjectionByTypeNotPresent"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/HeterogenousToMap"
-                    || path == "unit/MistypedToMap1"
-                    || path == "unit/MistypedToMap2"
-                    || path == "unit/MistypedToMap3"
-                    || path == "unit/MistypedToMap4"
-                    || path == "unit/NonRecordToMap"
-            },
-            input_type: FileType::Text,
-            output_type: None,
-        },
-    )?;
-
-    make_test_module(
-        &mut file,
-        TestFeature {
             module_name: "type_inference_success",
             directory: spec_tests_dir.join("type-inference/success/"),
             variant: "TypeInferenceSuccess",
             path_filter: |path: &str| {
                 false
+                    // Too slow
+                    || path == "prelude"
                     // TODO: projection by expression
                     || path == "unit/RecordProjectionByType"
                     || path == "unit/RecordProjectionByTypeEmpty"
@@ -366,7 +324,23 @@ fn main() -> std::io::Result<()> {
             module_name: "type_inference_failure",
             directory: spec_tests_dir.join("type-inference/failure/"),
             variant: "TypeInferenceFailure",
-            path_filter: |_path: &str| false,
+            path_filter: |path: &str| {
+                false
+                    // TODO: Enable imports in typecheck tests
+                    || path == "importBoundary"
+                    || path == "customHeadersUsingBoundVariable"
+                    // TODO: projection by expression
+                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
+                    || path == "unit/RecordProjectionByTypeNotPresent"
+                    // TODO: toMap
+                    || path == "unit/EmptyToMap"
+                    || path == "unit/HeterogenousToMap"
+                    || path == "unit/MistypedToMap1"
+                    || path == "unit/MistypedToMap2"
+                    || path == "unit/MistypedToMap3"
+                    || path == "unit/MistypedToMap4"
+                    || path == "unit/NonRecordToMap"
+            },
             input_type: FileType::Text,
             output_type: None,
         },
