@@ -259,10 +259,11 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/EmptyToMap"
                     || path == "unit/ToMap"
                     || path == "unit/ToMapWithType"
-                    // TODO: Normalize field selection further by inspecting the argument
+                    // TODO: Further record simplifications
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
                     || path == "simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
+                    || path == "simplifications/issue661"
                     || path == "unit/RecordProjectionByTypeWithinFieldSelection"
                     || path == "unit/RecordProjectionWithinFieldSelection"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
@@ -273,7 +274,10 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/RightBiasedMergeWithinFieldSelection1"
                     || path == "unit/RightBiasedMergeWithinFieldSelection2"
                     || path == "unit/RightBiasedMergeWithinFieldSelection3"
+                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
                     || path == "unit/RightBiasedMergeEquivalentArguments"
+                    || path == "unit/NestedRecordProjection"
+                    || path == "unit/NestedRecordProjectionByType"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -298,13 +302,21 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         TestFeature {
-            module_name: "typecheck_success",
-            directory: spec_tests_dir.join("typecheck/success/"),
-            variant: "TypecheckSuccess",
+            module_name: "type_inference_success",
+            directory: spec_tests_dir.join("type-inference/success/"),
+            variant: "TypeInferenceSuccess",
             path_filter: |path: &str| {
                 false
                     // Too slow
                     || path == "prelude"
+                    // TODO: projection by expression
+                    || path == "unit/RecordProjectionByType"
+                    || path == "unit/RecordProjectionByTypeEmpty"
+                    || path == "unit/RecordProjectionByTypeJudgmentalEquality"
+                    // TODO: toMap
+                    || path == "unit/ToMap"
+                    || path == "unit/ToMapAnnotated"
+                    || path == "simple/toMapEmptyNormalizeAnnotation"
             },
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -314,9 +326,9 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         TestFeature {
-            module_name: "typecheck_failure",
-            directory: spec_tests_dir.join("typecheck/failure/"),
-            variant: "TypecheckFailure",
+            module_name: "type_inference_failure",
+            directory: spec_tests_dir.join("type-inference/failure/"),
+            variant: "TypeInferenceFailure",
             path_filter: |path: &str| {
                 false
                     // TODO: Enable imports in typecheck tests
@@ -333,40 +345,8 @@ fn main() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap3"
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
+                    || path == "unit/ToMapWrongKind"
             },
-            input_type: FileType::Text,
-            output_type: None,
-        },
-    )?;
-
-    make_test_module(
-        &mut file,
-        TestFeature {
-            module_name: "type_inference_success",
-            directory: spec_tests_dir.join("type-inference/success/"),
-            variant: "TypeInferenceSuccess",
-            path_filter: |path: &str| {
-                false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
-                    || path == "unit/RecordProjectionByTypeJudgmentalEquality"
-                    // TODO: toMap
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapAnnotated"
-            },
-            input_type: FileType::Text,
-            output_type: Some(FileType::Text),
-        },
-    )?;
-
-    make_test_module(
-        &mut file,
-        TestFeature {
-            module_name: "type_inference_failure",
-            directory: spec_tests_dir.join("type-inference/failure/"),
-            variant: "TypeInferenceFailure",
-            path_filter: |_path: &str| false,
             input_type: FileType::Text,
             output_type: None,
         },

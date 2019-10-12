@@ -116,7 +116,7 @@ dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest_consume 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pest_consume 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -239,18 +239,18 @@ dependencies = [
 
 [[package]]
 name = "pest_consume"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest_consume_macros 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pest_consume_macros 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro-hack 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "pest_consume_macros"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "proc-macro-hack 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -523,8 +523,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum output_vt100 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "53cdc5b785b7a58c5aad8216b3dfa114df64b0b06ae6e1501cef91df2fbdf8f9"
 "checksum percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 "checksum pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7e4fb201c5c22a55d8b24fef95f78be52738e5e1361129be1b5e862ecdb6894a"
-"checksum pest_consume 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "db19e2b6df75694d2a73accd716c3e2b28d6241ad88ec140a5588eb4486eeb40"
-"checksum pest_consume_macros 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "36dc3a65f772c034446335f2a09fa4ea7a3cc471f130acdb06e96225f0ee6da0"
+"checksum pest_consume 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c753ea5257c3905465fcd50a6685ad19e61e9e1a20c12312a9bef866ebba8a7e"
+"checksum pest_consume_macros 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "98d85bc534f0754551bb493d0a7f37fca7c7d1e1a86b99453ca7e3ccb6989389"
 "checksum pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "833d1ae558dc601e9a60366421196a8d94bc0ac980476d0b67e1d0988d72b2d0"
 "checksum pest_generator 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7b9fcf299b5712d06ee128a556c94709aaa04512c4dffb8ead07c5c998447fc0"
 "checksum pest_meta 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "df43fd99896fd72c485fe47542c7b500e4ac1e8700bf995544d1317a60ded547"
