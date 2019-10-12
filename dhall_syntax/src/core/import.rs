@@ -11,10 +11,15 @@ pub enum FilePrefix {
     Home,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FilePath {
+    pub file_path: Vec<String>,
+}
+
 /// The location of import (i.e. local vs. remote vs. environment)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ImportLocation<SubExpr> {
-    Local(FilePrefix, Vec<String>),
+    Local(FilePrefix, FilePath),
     Remote(URL<SubExpr>),
     Env(String),
     Missing,
@@ -24,7 +29,7 @@ pub enum ImportLocation<SubExpr> {
 pub struct URL<SubExpr> {
     pub scheme: Scheme,
     pub authority: String,
-    pub path: Vec<String>,
+    pub path: FilePath,
     pub query: Option<String>,
     pub headers: Option<SubExpr>,
 }

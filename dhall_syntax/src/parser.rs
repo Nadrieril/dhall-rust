@@ -429,10 +429,10 @@ impl DhallParser {
             })
             .collect())
     }
-    fn path(input: ParseInput) -> ParseResult<Vec<String>> {
+    fn path(input: ParseInput) -> ParseResult<FilePath> {
         Ok(match_nodes!(input.into_children();
             [path_component(components)..] => {
-                components.collect()
+                FilePath { file_path: components.collect() }
             }
         ))
     }
@@ -449,19 +449,19 @@ impl DhallParser {
     #[alias(local_path)]
     fn parent_path(
         input: ParseInput,
-    ) -> ParseResult<(FilePrefix, Vec<String>)> {
+    ) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Parent, p)
         ))
     }
     #[alias(local_path)]
-    fn here_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
+    fn here_path(input: ParseInput) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Here, p)
         ))
     }
     #[alias(local_path)]
-    fn home_path(input: ParseInput) -> ParseResult<(FilePrefix, Vec<String>)> {
+    fn home_path(input: ParseInput) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Home, p)
         ))
@@ -469,7 +469,7 @@ impl DhallParser {
     #[alias(local_path)]
     fn absolute_path(
         input: ParseInput,
-    ) -> ParseResult<(FilePrefix, Vec<String>)> {
+    ) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Absolute, p)
         ))
