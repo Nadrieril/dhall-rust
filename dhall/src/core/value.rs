@@ -136,7 +136,7 @@ impl Value {
         .into_value()
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
-        Value::new(v, Unevaled, t, Span::PlaceHolder)
+        Value::new(v, Unevaled, t, Span::Artificial)
     }
     pub(crate) fn from_valuef_and_type_and_span(
         v: ValueF,
@@ -146,13 +146,17 @@ impl Value {
         Value::new(v, Unevaled, t, span)
     }
     pub(crate) fn from_valuef_and_type_whnf(v: ValueF, t: Value) -> Value {
-        Value::new(v, WHNF, t, Span::PlaceHolder)
+        Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
     }
     pub(crate) fn from_builtin(b: Builtin) -> Self {
         builtin_to_value(b)
+    }
+    pub(crate) fn with_span(self, span: Span) -> Self {
+        self.as_internal_mut().span = span;
+        self
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {

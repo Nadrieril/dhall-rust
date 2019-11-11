@@ -586,7 +586,7 @@ fn type_last_layer(
                 l.get_type()?,
                 r.get_type()?,
             ),
-            Span::PlaceHolder,
+            Span::Artificial,
         )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
             use crate::phase::normalize::merge_maps;
@@ -622,7 +622,7 @@ fn type_last_layer(
                             l.clone(),
                             r.clone(),
                         ),
-                        Span::PlaceHolder,
+                        Span::Artificial,
                     )
                 },
             )?;
@@ -795,7 +795,7 @@ fn type_last_layer(
             typ,
             span,
         ),
-        RetWhole(v) => v,
+        RetWhole(v) => v.with_span(span),
     })
 }
 
