@@ -40,11 +40,13 @@ impl Span {
         use std::cmp::{max, min};
         use Span::*;
         match (self, other) {
-            (Parsed(x), Parsed(y)) => Parsed(ParsedSpan {
-                input: x.input.clone(),
-                start: min(x.start, y.start),
-                end: max(x.end, y.end),
-            }),
+            (Parsed(x), Parsed(y)) if Rc::ptr_eq(&x.input, &y.input) => {
+                Parsed(ParsedSpan {
+                    input: x.input.clone(),
+                    start: min(x.start, y.start),
+                    end: max(x.end, y.end),
+                })
+            }
             _ => panic!(
                 "Tried to union incompatible spans: {:?} and {:?}",
                 self, other
