@@ -38,9 +38,9 @@ fn resolve_import(
                 Here => cwd.join(path_buf),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(&path_buf, import_cache, import_stack).map_err(|e| {
-                ImportError::Recursive(import.clone(), Box::new(e))
-            })?)
+            Ok(load_import(&path_buf, import_cache, import_stack).map_err(
+                |e| ImportError::Recursive(import.clone(), Box::new(e)),
+            )?)
         }
         _ => unimplemented!("{:?}", import),
     }
@@ -118,58 +118,60 @@ impl Canonicalize for FilePath {
         let mut file_path_components = self.file_path.clone().into_iter();
 
         loop {
-           let component = file_path_components.next();
-           match component.as_ref() {
-               // ───────────────────
-               // canonicalize(ε) = ε
-               None => break,
+            let component = file_path_components.next();
+            match component.as_ref() {
+                // ───────────────────
+                // canonicalize(ε) = ε
+                None => break,
 
-               // canonicalize(directory₀) = directory₁
-               // ───────────────────────────────────────
-               // canonicalize(directory₀/.) = directory₁
-               Some(c) if c == "." => continue,
+                // canonicalize(directory₀) = directory₁
+                // ───────────────────────────────────────
+                // canonicalize(directory₀/.) = directory₁
+                Some(c) if c == "." => continue,
 
-               Some(c) if c == ".." => match file_path_components.next() {
-                   // canonicalize(directory₀) = ε
-                   // ────────────────────────────
-                   // canonicalize(directory₀/..) = /..
-                   None => file_path.push("..".to_string()),
+                Some(c) if c == ".." => match file_path_components.next() {
+                    // canonicalize(directory₀) = ε
+                    // ────────────────────────────
+                    // canonicalize(directory₀/..) = /..
+                    None => file_path.push("..".to_string()),
 
-                   // canonicalize(directory₀) = directory₁/..
-                   // ──────────────────────────────────────────────
-                   // canonicalize(directory₀/..) = directory₁/../..
-                   Some(ref c) if c == ".." => {
-                       file_path.push("..".to_string());
-                       file_path.push("..".to_string());
-                   },
+                    // canonicalize(directory₀) = directory₁/..
+                    // ──────────────────────────────────────────────
+                    // canonicalize(directory₀/..) = directory₁/../..
+                    Some(ref c) if c == ".." => {
+                        file_path.push("..".to_string());
+                        file_path.push("..".to_string());
+                    }
 
-                   // canonicalize(directory₀) = directory₁/component
-                   // ───────────────────────────────────────────────  ; If "component" is not
-                   // canonicalize(directory₀/..) = directory₁         ; ".."
-                   Some(_) => continue,
-               },
+                    // canonicalize(directory₀) = directory₁/component
+                    // ───────────────────────────────────────────────  ; If "component" is not
+                    // canonicalize(directory₀/..) = directory₁         ; ".."
+                    Some(_) => continue,
+                },
 
-               // canonicalize(directory₀) = directory₁
-               // ─────────────────────────────────────────────────────────  ; If no other
-               // canonicalize(directory₀/component) = directory₁/component  ; rule matches
-               Some(c) => file_path.push(c.clone()),
-           }
+                // canonicalize(directory₀) = directory₁
+                // ─────────────────────────────────────────────────────────  ; If no other
+                // canonicalize(directory₀/component) = directory₁/component  ; rule matches
+                Some(c) => file_path.push(c.clone()),
+            }
         }
 
         FilePath { file_path }
     }
 }
 
-impl<SE: Copy> Canonicalize for ImportLocation<SE>  {
+impl<SE: Copy> Canonicalize for ImportLocation<SE> {
     fn canonicalize(&self) -> ImportLocation<SE> {
         match self {
-            ImportLocation::Local(prefix, file) => ImportLocation::Local(*prefix, file.canonicalize()),
+            ImportLocation::Local(prefix, file) => {
+                ImportLocation::Local(*prefix, file.canonicalize())
+            }
             ImportLocation::Remote(url) => ImportLocation::Remote(URL {
-                    scheme: url.scheme,
-                    authority: url.authority.clone(),
-                    path: url.path.canonicalize(),
-                    query: url.query.clone(),
-                    headers: url.headers.clone(),
+                scheme: url.scheme,
+                authority: url.authority.clone(),
+                path: url.path.canonicalize(),
+                query: url.query.clone(),
+                headers: url.headers.clone(),
             }),
             ImportLocation::Env(name) => ImportLocation::Env(name.to_string()),
             ImportLocation::Missing => ImportLocation::Missing,

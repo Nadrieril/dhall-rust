@@ -5,8 +5,8 @@ use std::vec;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
-    rc, Expr, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode,
-    Integer, InterpolatedText, Label, Natural, Scheme, URL, V, FilePath
+    rc, Expr, ExprF, FilePath, FilePrefix, Hash, Import, ImportLocation,
+    ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, URL, V,
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -483,9 +483,13 @@ where
         BoolIf(x, y, z) => ser_seq!(ser; tag(14), expr(x), expr(y), expr(z)),
         Var(V(l, n)) if l == &"_".into() => ser.serialize_u64(*n as u64),
         Var(V(l, n)) => ser_seq!(ser; label(l), U64(*n as u64)),
-        Lam(l, x, y) if l == &"_".into() => ser_seq!(ser; tag(1), expr(x), expr(y)),
+        Lam(l, x, y) if l == &"_".into() => {
+            ser_seq!(ser; tag(1), expr(x), expr(y))
+        }
         Lam(l, x, y) => ser_seq!(ser; tag(1), label(l), expr(x), expr(y)),
-        Pi(l, x, y) if l == &"_".into() => ser_seq!(ser; tag(2), expr(x), expr(y)),
+        Pi(l, x, y) if l == &"_".into() => {
+            ser_seq!(ser; tag(2), expr(x), expr(y))
+        }
         Pi(l, x, y) => ser_seq!(ser; tag(2), label(l), expr(x), expr(y)),
         Let(_, _, _, _) => {
             let (bound_e, bindings) = collect_nested_lets(e);
@@ -557,7 +561,9 @@ where
             ser_seq!(ser; tag(3), U64(op), expr(x), expr(y))
         }
         Merge(x, y, None) => ser_seq!(ser; tag(6), expr(x), expr(y)),
-        Merge(x, y, Some(z)) => ser_seq!(ser; tag(6), expr(x), expr(y), expr(z)),
+        Merge(x, y, Some(z)) => {
+            ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
+        }
         ToMap(x, None) => ser_seq!(ser; tag(27), expr(x)),
         ToMap(x, Some(y)) => ser_seq!(ser; tag(27), expr(x), expr(y)),
         Projection(x, ls) => ser.collect_seq(

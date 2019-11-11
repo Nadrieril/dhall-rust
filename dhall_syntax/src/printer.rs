@@ -377,8 +377,11 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                     Absolute => "",
                 };
                 write!(f, "{}/", prefix)?;
-                let path: String =
-                    path.file_path.iter().map(|c| quote_if_needed(&*c)).join("/");
+                let path: String = path
+                    .file_path
+                    .iter()
+                    .map(|c| quote_if_needed(&*c))
+                    .join("/");
                 f.write_str(&path)?;
             }
             Remote(url) => {

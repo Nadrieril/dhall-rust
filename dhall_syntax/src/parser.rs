@@ -335,7 +335,9 @@ impl DhallParser {
                 "Type" => Const(crate::Const::Type),
                 "Kind" => Const(crate::Const::Kind),
                 "Sort" => Const(crate::Const::Sort),
-                _ => Err(input.error(format!("Unrecognized builtin: '{}'", s)))?,
+                _ => {
+                    Err(input.error(format!("Unrecognized builtin: '{}'", s)))?
+                }
             },
         };
         Ok(spanned(input, e))
@@ -447,9 +449,7 @@ impl DhallParser {
     }
 
     #[alias(local_path)]
-    fn parent_path(
-        input: ParseInput,
-    ) -> ParseResult<(FilePrefix, FilePath)> {
+    fn parent_path(input: ParseInput) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Parent, p)
         ))
@@ -467,9 +467,7 @@ impl DhallParser {
         ))
     }
     #[alias(local_path)]
-    fn absolute_path(
-        input: ParseInput,
-    ) -> ParseResult<(FilePrefix, FilePath)> {
+    fn absolute_path(input: ParseInput) -> ParseResult<(FilePrefix, FilePath)> {
         Ok(match_nodes!(input.into_children();
             [path(p)] => (FilePrefix::Absolute, p)
         ))
