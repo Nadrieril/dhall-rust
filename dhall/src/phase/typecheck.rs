@@ -304,6 +304,7 @@ fn type_with(
     e: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
     use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
+    let span = e.span();
 
     Ok(match e.as_ref() {
         Lam(var, annot, body) => {
@@ -348,7 +349,7 @@ fn type_with(
                 |e| type_with(ctx, e.clone()),
                 |_, _| unreachable!(),
             )?;
-            type_last_layer(ctx, expr)?
+            type_last_layer(ctx, expr, span)?
         }
     })
 }
@@ -358,6 +359,7 @@ fn type_with(
 fn type_last_layer(
     ctx: &TypecheckContext,
     e: ExprF<Value, Normalized>,
+    span: Span,
 ) -> Result<Value, TypeError> {
     use crate::error::TypeMessage::*;
     use dhall_syntax::BinOp::*;
@@ -584,6 +586,7 @@ fn type_last_layer(
                 l.get_type()?,
                 r.get_type()?,
             ),
+            Span::PlaceHolder,
         )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
             use crate::phase::normalize::merge_maps;
@@ -619,6 +622,7 @@ fn type_last_layer(
                             l.clone(),
                             r.clone(),
                         ),
+                        Span::PlaceHolder,
                     )
                 },
             )?;
@@ -786,9 +790,11 @@ fn type_last_layer(
     };
 
     Ok(match ret {
-        RetTypeOnly(typ) => {
-            Value::from_valuef_and_type(ValueF::PartialExpr(e), typ)
-        }
+        RetTypeOnly(typ) => Value::from_valuef_and_type_and_span(
+            ValueF::PartialExpr(e),
+            typ,
+            span,
+        ),
         RetWhole(v) => v,
     })
 }

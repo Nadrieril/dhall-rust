@@ -22,6 +22,9 @@ pub enum Span {
     Decoded,
     /// For expressions constructed during normalization/typecheck
     Artificial,
+    /// For when there should be a span but it's not done yet
+    /// TODO: properly handle spans
+    PlaceHolder,
 }
 
 impl Span {
