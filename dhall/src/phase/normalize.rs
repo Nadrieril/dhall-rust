@@ -738,7 +738,9 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::ProjectionByExpr(_, _) => unimplemented!("selection by expression"),
+        ExprF::ProjectionByExpr(_, _) => {
+            unimplemented!("selection by expression")
+        }
 
         ExprF::Merge(ref handlers, ref variant, _) => {
             let handlers_borrow = handlers.as_whnf();

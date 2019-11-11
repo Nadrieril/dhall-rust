@@ -161,7 +161,9 @@ where
         }
         Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
         Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
-        ProjectionByExpr(e, x) => ProjectionByExpr(v.visit_subexpr(e)?, v.visit_subexpr(x)?),
+        ProjectionByExpr(e, x) => {
+            ProjectionByExpr(v.visit_subexpr(e)?, v.visit_subexpr(x)?)
+        }
         Assert(e) => Assert(v.visit_subexpr(e)?),
         Import(i) => Import(i.traverse_ref(|e| v.visit_subexpr(e))?),
         Embed(a) => Embed(v.visit_embed(a)?),

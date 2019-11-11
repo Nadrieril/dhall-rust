@@ -187,7 +187,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     let y = cbor_value_to_dhall(&y)?;
                     ProjectionByExpr(x, y)
                 } else {
-                    Err(DecodeError::WrongFormatError("projection-by-expr".to_owned()))?
+                    Err(DecodeError::WrongFormatError(
+                        "projection-by-expr".to_owned(),
+                    ))?
                 }
             }
             [U64(10), x, rest @ ..] => {
@@ -586,7 +588,9 @@ where
                 .chain(once(expr(x)))
                 .chain(ls.iter().map(label)),
         ),
-        ProjectionByExpr(x, y) => ser_seq!(ser; tag(10), expr(x), vec![expr(y)]),
+        ProjectionByExpr(x, y) => {
+            ser_seq!(ser; tag(10), expr(x), vec![expr(y)])
+        }
         Import(import) => serialize_import(ser, import),
         Embed(_) => unimplemented!(
             "An expression with resolved imports cannot be binary-encoded"
