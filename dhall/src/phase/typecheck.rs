@@ -339,7 +339,7 @@ fn type_with(
             None => {
                 return Err(TypeError::new(
                     ctx,
-                    TypeMessage::UnboundVariable(var.clone()),
+                    TypeMessage::UnboundVariable(span),
                 ))
             }
         },

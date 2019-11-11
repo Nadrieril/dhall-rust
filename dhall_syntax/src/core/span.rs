@@ -53,4 +53,18 @@ impl Span {
             ),
         }
     }
+
+    pub fn error(&self, message: impl Into<String>) -> String {
+        use pest::error::{Error, ErrorVariant};
+        use pest::Span;
+        let message: String = message.into();
+        let span = match self {
+            self::Span::Parsed(span) => span,
+            _ => return format!("Unknown location: {}", message),
+        };
+        let span = Span::new(&*span.input, span.start, span.end).unwrap();
+        let err: ErrorVariant<!> = ErrorVariant::CustomError { message };
+        let err = Error::new_from_span(err, span);
+        format!("{}", err)
+    }
 }

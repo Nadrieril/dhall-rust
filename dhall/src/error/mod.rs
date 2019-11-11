@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use dhall_syntax::{BinOp, Import, Label, ParseError, V};
+use dhall_syntax::{BinOp, Import, Label, ParseError, Span};
 
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
@@ -48,7 +48,7 @@ pub struct TypeError {
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    UnboundVariable(V<Label>),
+    UnboundVariable(Span),
     InvalidInputType(Value),
     InvalidOutputType(Value),
     NotAFunction(Value),
@@ -102,8 +102,8 @@ impl TypeError {
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
-        let msg = match self.message {
-            UnboundVariable(_) => "Unbound variable".to_string(),
+        let msg = match &self.message {
+            UnboundVariable(span) => span.error("Unbound variable"),
             InvalidInputType(_) => "Invalid function input".to_string(),
             InvalidOutputType(_) => "Invalid function output".to_string(),
             NotAFunction(_) => "Not a function".to_string(),
