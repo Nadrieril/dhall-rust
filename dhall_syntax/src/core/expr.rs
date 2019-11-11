@@ -1,4 +1,3 @@
-use std::rc::Rc;
 
 use crate::map::{DupTreeMap, DupTreeSet};
 use crate::visitor::{self, ExprFMutVisitor, ExprFVisitor};
@@ -12,40 +11,6 @@ pub fn trivial_result<T>(x: Result<T, !>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => e,
-    }
-}
-
-/// A location in the source text
-#[derive(Debug, Clone)]
-pub struct Span {
-    input: Rc<str>,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    start: usize,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    end: usize,
-}
-
-impl Span {
-    pub(crate) fn make(input: Rc<str>, sp: pest::Span) -> Self {
-        Span {
-            input,
-            start: sp.start(),
-            end: sp.end(),
-        }
-    }
-    /// Takes the union of the two spans. Assumes that the spans come from the same input.
-    /// This will also capture any input between the spans.
-    pub fn union(&self, other: &Span) -> Self {
-        use std::cmp::{max, min};
-        Span {
-            input: self.input.clone(),
-            start: min(self.start, other.start),
-            end: max(self.start, other.start),
-        }
     }
 }
 
