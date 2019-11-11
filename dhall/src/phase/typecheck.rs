@@ -768,8 +768,8 @@ fn type_last_layer(
         ToMap(_, _) => unimplemented!("toMap"),
         Projection(record, labels) => {
             let record_type = record.get_type()?;
-            let record_borrow = record_type.as_whnf();
-            let kts = match &*record_borrow {
+            let record_type_borrow = record_type.as_whnf();
+            let kts = match &*record_type_borrow {
                 ValueF::RecordType(kts) => kts,
                 _ => return mkerr(ProjectionMustBeRecord),
             };
