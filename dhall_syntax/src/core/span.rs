@@ -37,7 +37,7 @@ impl Span {
             (Parsed(x), Parsed(y)) => Span::Parsed(ParsedSpan {
                 input: x.input.clone(),
                 start: min(x.start, y.start),
-                end: max(x.start, y.start),
+                end: max(x.end, y.end),
             }),
         }
     }
