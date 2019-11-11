@@ -223,6 +223,8 @@ pub enum ExprF<SubExpr, Embed> {
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
     Projection(SubExpr, DupTreeSet<Label>),
+    ///  `e.(t)`
+    ProjectionByExpr(SubExpr, SubExpr),
     /// `./some/path`
     Import(Import<SubExpr>),
     /// Embeds the result of resolving an import
