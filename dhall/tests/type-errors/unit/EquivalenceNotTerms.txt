@@ -1,1 +1,1 @@
-TypeError { type_message: EquivalenceArgumentMustBeTerm(true, Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }), context: TypecheckContext([]) }
+Type error: Unhandled error

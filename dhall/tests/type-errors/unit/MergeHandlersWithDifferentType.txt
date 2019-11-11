@@ -1,1 +1,1 @@
-TypeError { type_message: MergeHandlerTypeMismatch, context: TypecheckContext([]) }
+Type error: Unhandled error

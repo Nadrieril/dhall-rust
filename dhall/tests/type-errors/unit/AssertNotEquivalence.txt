@@ -1,1 +1,1 @@
-TypeError { type_message: AssertMustTakeEquivalence, context: TypecheckContext([]) }
+Type error: Unhandled error

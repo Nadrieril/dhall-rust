@@ -1,1 +1,1 @@
-TypeError { type_message: ProjectionMissingEntry, context: TypecheckContext([]) }
+Type error: Unhandled error

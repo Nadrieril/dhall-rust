@@ -1,1 +1,1 @@
-TypeError { type_message: AnnotMismatch(Value@Unevaled { value: PartialExpr(NEListLit([Value@Unevaled { value: PartialExpr(NaturalLit(1)), type: Value@Unevaled { value: AppliedBuiltin(Natural, []), type: Type } }])), type: Value@WHNF { value: AppliedBuiltin(List, [Value@Unevaled { value: AppliedBuiltin(Natural, []), type: Type }]), type: Type } }, Value@WHNF { value: AppliedBuiltin(Optional, [Value@Unevaled { value: AppliedBuiltin(Natural, []), type: Type }]), type: Type }), context: TypecheckContext([]) }
+Type error: Unhandled error

@@ -1,1 +1,1 @@
-TypeError { type_message: MissingRecordField(Label("x"), Value@Unevaled { value: PartialExpr(RecordLit(DupTreeMap { map: {Label("y"): One(Value@Unevaled { value: PartialExpr(RecordLit(DupTreeMap { map: {}, size: 0 })), type: Value@Unevaled { value: RecordType({}), type: Type } })}, size: 1 })), type: Value@WHNF { value: RecordType({Label("y"): Value@Unevaled { value: RecordType({}), type: Type }}), type: Type } }), context: TypecheckContext([]) }
+Type error: Unhandled error

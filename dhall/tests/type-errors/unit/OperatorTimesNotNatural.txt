@@ -1,1 +1,1 @@
-TypeError { type_message: BinOpTypeMismatch(NaturalTimes, Value@Unevaled { value: PartialExpr(BoolLit(true)), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } }), context: TypecheckContext([]) }
+Type error: Unhandled error

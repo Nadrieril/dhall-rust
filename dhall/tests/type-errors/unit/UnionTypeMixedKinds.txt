@@ -1,1 +1,1 @@
-TypeError { type_message: InvalidFieldType(Label("y"), Type), context: TypecheckContext([]) }
+Type error: Unhandled error

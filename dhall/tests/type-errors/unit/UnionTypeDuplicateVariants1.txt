@@ -1,1 +1,1 @@
-TypeError { type_message: UnionTypeDuplicateField, context: TypecheckContext([]) }
+Type error: Unhandled error

@@ -1,1 +1,1 @@
-TypeError { type_message: UnboundVariable(V(Label("x"), 0)), context: TypecheckContext([]) }
+Type error: Unbound variable

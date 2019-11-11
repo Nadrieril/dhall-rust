@@ -1,1 +1,1 @@
-TypeError { type_message: InvalidFieldType(Label("y"), Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }), context: TypecheckContext([]) }
+Type error: Unhandled error

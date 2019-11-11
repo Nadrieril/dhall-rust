@@ -1,1 +1,1 @@
-TypeError { type_message: MergeEmptyNeedsAnnotation, context: TypecheckContext([(Label("x"), Kept(AlphaVar(x, 0), Value@WHNF { value: UnionType({}), type: Type }))]) }
+Type error: Unhandled error

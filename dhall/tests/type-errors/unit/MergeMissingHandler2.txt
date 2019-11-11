@@ -1,1 +1,1 @@
-TypeError { type_message: MergeVariantMissingHandler(Label("y")), context: TypecheckContext([]) }
+Type error: Unhandled error

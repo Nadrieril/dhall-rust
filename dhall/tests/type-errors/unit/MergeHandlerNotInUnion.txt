@@ -1,1 +1,1 @@
-TypeError { type_message: Merge2ArgMustBeUnion(Value@Unevaled { value: UnionType({}), type: Type }), context: TypecheckContext([]) }
+Type error: Unhandled error

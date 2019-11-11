@@ -1,1 +1,1 @@
-TypeError { type_message: ProjectionMustBeRecord, context: TypecheckContext([]) }
+Type error: Unhandled error

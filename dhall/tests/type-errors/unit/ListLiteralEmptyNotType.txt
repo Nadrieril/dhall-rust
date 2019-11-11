@@ -1,1 +1,1 @@
-TypeError { type_message: TypeMismatch(Value@Unevaled { value: AppliedBuiltin(List, []), type: Value@WHNF { value: Pi(AlphaLabel(`_`), Type, Type), type: Kind } }, Type, Type), context: TypecheckContext([]) }
+Type error: Wrong type of function argument

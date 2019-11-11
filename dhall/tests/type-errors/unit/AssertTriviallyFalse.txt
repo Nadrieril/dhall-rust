@@ -1,1 +1,1 @@
-TypeError { type_message: AssertMismatch(Value@WHNF { value: NaturalLit(1), type: Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type } }, Value@WHNF { value: NaturalLit(2), type: Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type } }), context: TypecheckContext([]) }
+Type error: Unhandled error
