@@ -54,8 +54,6 @@ pub enum Test<'a> {
     BinaryDecodingFailure(&'a str),
     ImportSuccess(&'a str, &'a str),
     ImportFailure(&'a str),
-    TypecheckSuccess(&'a str, &'a str),
-    TypecheckFailure(&'a str),
     TypeInferenceSuccess(&'a str, &'a str),
     TypeInferenceFailure(&'a str),
     Normalization(&'a str, &'a str),
@@ -150,25 +148,6 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
         }
         ImportFailure(file_path) => {
             parse_file_str(&file_path)?.resolve().unwrap_err();
-        }
-        TypecheckSuccess(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?.resolve()?;
-            let expected = parse_file_str(&expected_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize();
-
-            expr.typecheck_with(&expected.into_typed())?.get_type()?;
-        }
-        TypecheckFailure(file_path) => {
-            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
-            match res {
-                Err(_) => {}
-                // If e did typecheck, check that it doesn't have a type
-                Ok(e) => {
-                    e.get_type().unwrap_err();
-                }
-            }
         }
         TypeInferenceSuccess(expr_file_path, expected_file_path) => {
             let expr =
