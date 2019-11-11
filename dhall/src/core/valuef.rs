@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    rc, Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
+    Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural,
 };
 
 use crate::core::value::{ToExprOptions, Value};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::phase::typecheck::rc;
 use crate::phase::{Normalized, NormalizedExpr};
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are

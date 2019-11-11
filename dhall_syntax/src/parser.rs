@@ -650,7 +650,7 @@ impl DhallParser {
                     final_expr,
                     |acc, x| {
                         spanned_union(
-                            acc.span().unwrap(),
+                            acc.span(),
                             x.3,
                             Let(x.0, x.1, x.2, acc)
                         )
@@ -717,11 +717,7 @@ impl DhallParser {
             r => Err(op.error(format!("Rule {:?} isn't an operator", r)))?,
         };
 
-        Ok(spanned_union(
-            l.span().unwrap(),
-            r.span().unwrap(),
-            BinOp(op, l, r),
-        ))
+        Ok(spanned_union(l.span(), r.span(), BinOp(op, l, r)))
     }
 
     fn Some_(_input: ParseInput) -> ParseResult<()> {
@@ -739,8 +735,8 @@ impl DhallParser {
                     first,
                     |acc, e| {
                         spanned_union(
-                            acc.span().unwrap(),
-                            e.span().unwrap(),
+                            acc.span(),
+                            e.span(),
                             App(acc, e)
                         )
                     }
@@ -778,7 +774,7 @@ impl DhallParser {
                     first,
                     |acc, e| {
                         spanned_union(
-                            acc.span().unwrap(),
+                            acc.span(),
                             e.1,
                             match e.0 {
                                 Either::Left(l) => Field(acc, l),

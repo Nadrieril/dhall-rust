@@ -14,10 +14,14 @@ pub struct ParsedSpan {
     end: usize,
 }
 
-/// A location in the source text
 #[derive(Debug, Clone)]
 pub enum Span {
+    /// A location in the source text
     Parsed(ParsedSpan),
+    /// For expressions obtained from decoding binary
+    Decoded,
+    /// For expressions constructed during normalization/typecheck
+    Artificial,
 }
 
 impl Span {
@@ -28,17 +32,22 @@ impl Span {
             end: sp.end(),
         })
     }
+
     /// Takes the union of the two spans. Assumes that the spans come from the same input.
     /// This will also capture any input between the spans.
     pub fn union(&self, other: &Span) -> Self {
         use std::cmp::{max, min};
         use Span::*;
         match (self, other) {
-            (Parsed(x), Parsed(y)) => Span::Parsed(ParsedSpan {
+            (Parsed(x), Parsed(y)) => Parsed(ParsedSpan {
                 input: x.input.clone(),
                 start: min(x.start, y.start),
                 end: max(x.end, y.end),
             }),
+            _ => panic!(
+                "Tried to union incompatible spans: {:?} and {:?}",
+                self, other
+            ),
         }
     }
 }

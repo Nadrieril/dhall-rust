@@ -2,7 +2,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use dhall_syntax::{
-    rc, Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label,
+    Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,
 };
 
 use crate::core::context::TypecheckContext;
@@ -140,6 +140,10 @@ pub(crate) fn const_to_value(c: Const) -> Value {
         }
         Const::Sort => Value::const_sort(),
     }
+}
+
+pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+    Expr::new(x, Span::Artificial)
 }
 
 // Ad-hoc macro to help construct the types of builtins
