@@ -33,8 +33,9 @@ impl Span {
         })
     }
 
-    /// Takes the union of the two spans. Assumes that the spans come from the same input.
-    /// This will also capture any input between the spans.
+    /// Takes the union of the two spans, i.e. the range of input covered by the two spans plus any
+    /// input between them. Assumes that the spans come from the same input. Fails if one of the
+    /// spans does not point to an input location.
     pub fn union(&self, other: &Span) -> Self {
         use std::cmp::{max, min};
         use Span::*;
@@ -48,6 +49,17 @@ impl Span {
                 "Tried to union incompatible spans: {:?} and {:?}",
                 self, other
             ),
+        }
+    }
+
+    /// Merges two spans assumed to point to a similar thing. If only one of them points to an
+    /// input location, use that one.
+    pub fn merge(&self, other: &Span) -> Self {
+        use Span::*;
+        match (self, other) {
+            (Parsed(x), _) | (_, Parsed(x)) => Parsed(x.clone()),
+            (Artificial, _) | (_, Artificial) => Artificial,
+            (Decoded, Decoded) => Decoded,
         }
     }
 
