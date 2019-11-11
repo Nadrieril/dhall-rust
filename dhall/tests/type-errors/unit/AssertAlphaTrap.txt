@@ -1,6 +1,6 @@
-Type error:  --> 1:47
+ --> 1:47
   |
 1 | assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)␊
   |                                               ^
   |
-  = Unbound variable
+  = Type error: Unbound variable

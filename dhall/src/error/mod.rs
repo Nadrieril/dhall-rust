@@ -103,14 +103,18 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            UnboundVariable(span) => span.error("Unbound variable"),
-            InvalidInputType(_) => "Invalid function input".to_string(),
-            InvalidOutputType(_) => "Invalid function output".to_string(),
-            NotAFunction(_) => "Not a function".to_string(),
-            TypeMismatch(_, _, _) => {
-                "Wrong type of function argument".to_string()
+            UnboundVariable(span) => span.error("Type error: Unbound variable"),
+            InvalidInputType(_) => {
+                "Type error: Invalid function input".to_string()
             }
-            _ => "Unhandled error".to_string(),
+            InvalidOutputType(_) => {
+                "Type error: Invalid function output".to_string()
+            }
+            NotAFunction(_) => "Type error: Not a function".to_string(),
+            TypeMismatch(_, _, _) => {
+                "Type error: Wrong type of function argument".to_string()
+            }
+            _ => "Type error: Unhandled error".to_string(),
         };
         write!(f, "{}", msg)
     }
@@ -126,7 +130,7 @@ impl std::fmt::Display for Error {
             Error::Decode(err) => write!(f, "{:?}", err),
             Error::Encode(err) => write!(f, "{:?}", err),
             Error::Resolve(err) => write!(f, "{:?}", err),
-            Error::Typecheck(err) => write!(f, "Type error: {}", err),
+            Error::Typecheck(err) => write!(f, "{}", err),
         }
     }
 }

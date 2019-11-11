@@ -1,6 +1,6 @@
-Type error:  --> 1:1
+ --> 1:1
   |
 1 | x␊
   | ^
   |
-  = Unbound variable
+  = Type error: Unbound variable
