@@ -176,6 +176,9 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             }
             res.unwrap_err();
         }
+        // Checks the output of the type error against a text file. If the text file doesn't exist,
+        // we instead write to it the output we got. This makes it easy to update those files: just
+        // `rm -r dhall/tests/type-errors` and run the tests again.
         TypeError(file_path) => {
             let mut res =
                 parse_file_str(&file_path)?.skip_resolve()?.typecheck();
