@@ -11,7 +11,6 @@
     clippy::ptr_arg
 )]
 
-#[macro_use]
 mod tests;
 
 pub mod core;

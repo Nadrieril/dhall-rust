@@ -241,6 +241,48 @@ fn main() -> std::io::Result<()> {
     make_test_module(
         &mut file,
         TestFeature {
+            module_name: "import_success",
+            directory: spec_tests_dir.join("import/success/"),
+            variant: "ImportSuccess",
+            path_filter: |path: &str| {
+                false
+                    || path == "alternativeEnvNatural"
+                    || path == "alternativeEnvSimple"
+                    || path == "alternativeHashMismatch"
+                    || path == "asLocation"
+                    || path == "asText"
+                    || path == "customHeaders"
+                    || path == "hashFromCache"
+                    || path == "headerForwarding"
+                    || path == "noHeaderForwarding"
+            },
+            input_type: FileType::Text,
+            output_type: Some(FileType::Text),
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        TestFeature {
+            module_name: "import_failure",
+            directory: spec_tests_dir.join("import/failure/"),
+            variant: "ImportFailure",
+            path_filter: |path: &str| {
+                false
+                    || path == "alternativeEnv"
+                    || path == "alternativeEnvMissing"
+                    || path == "hashMismatch"
+                    || path == "missing"
+                    || path == "referentiallyInsane"
+            },
+            input_type: FileType::Text,
+            output_type: None,
+        },
+    )?;
+
+    make_test_module(
+        &mut file,
+        TestFeature {
             module_name: "beta_normalize",
             directory: spec_tests_dir.join("normalization/success/"),
             variant: "Normalization",

@@ -20,22 +20,6 @@ right: `{}`"#,
     }};
 }
 
-#[macro_export]
-macro_rules! make_spec_test {
-    ($type:expr, $name:ident) => {
-        #[test]
-        #[allow(non_snake_case)]
-        fn $name() {
-            use crate::tests::Test::*;
-            use crate::tests::*;
-            match run_test_stringy_error($type) {
-                Ok(_) => {}
-                Err(s) => panic!(s),
-            }
-        }
-    };
-}
-
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -200,6 +184,21 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
 
 #[cfg(test)]
 mod spec {
+    macro_rules! make_spec_test {
+        ($type:expr, $name:ident) => {
+            #[test]
+            #[allow(non_snake_case)]
+            fn $name() {
+                use crate::tests::Test::*;
+                use crate::tests::*;
+                match run_test_stringy_error($type) {
+                    Ok(_) => {}
+                    Err(s) => panic!(s),
+                }
+            }
+        };
+    }
+
     // See build.rs
     include!(concat!(env!("OUT_DIR"), "/spec_tests.rs"));
 }
