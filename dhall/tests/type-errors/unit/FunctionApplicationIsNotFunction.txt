@@ -1,1 +1,6 @@
-Type error: Not a function
+ --> 1:1
+  |
+1 | True True␊
+  | ^--^
+  |
+  = Type error: Not a function

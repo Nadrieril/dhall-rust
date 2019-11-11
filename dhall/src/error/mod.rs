@@ -104,16 +104,16 @@ impl std::fmt::Display for TypeError {
         use TypeMessage::*;
         let msg = match &self.message {
             UnboundVariable(span) => span.error("Type error: Unbound variable"),
-            InvalidInputType(_) => {
-                "Type error: Invalid function input".to_string()
+            InvalidInputType(v) => {
+                v.span().error("Type error: Invalid function input")
             }
-            InvalidOutputType(_) => {
-                "Type error: Invalid function output".to_string()
+            InvalidOutputType(v) => {
+                v.span().error("Type error: Invalid function output")
             }
-            NotAFunction(_) => "Type error: Not a function".to_string(),
-            TypeMismatch(_, _, _) => {
-                "Type error: Wrong type of function argument".to_string()
-            }
+            NotAFunction(v) => v.span().error("Type error: Not a function"),
+            TypeMismatch(v, _, _) => v
+                .span()
+                .error("Type error: Wrong type of function argument"),
             _ => "Type error: Unhandled error".to_string(),
         };
         write!(f, "{}", msg)

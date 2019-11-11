@@ -165,6 +165,9 @@ impl Value {
             _ => None,
         }
     }
+    pub(crate) fn span(&self) -> Span {
+        self.as_internal().span.clone()
+    }
 
     fn as_internal(&self) -> Ref<ValueInternal> {
         self.0.borrow()

@@ -1,1 +1,6 @@
-Type error: Invalid function input
+ --> 1:7
+  |
+1 | λ(_ : 1) → _␊
+  |       ^
+  |
+  = Type error: Invalid function input

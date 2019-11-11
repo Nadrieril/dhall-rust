@@ -1,1 +1,6 @@
-Type error: Wrong type of function argument
+ --> 1:1
+  |
+1 | Natural/subtract True True␊
+  | ^--------------^
+  |
+  = Type error: Wrong type of function argument

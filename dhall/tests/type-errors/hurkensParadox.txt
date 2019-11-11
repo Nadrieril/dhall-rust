@@ -1,1 +1,1 @@
-Type error: Wrong type of function argument
+[unknown location] Type error: Wrong type of function argument

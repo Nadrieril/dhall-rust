@@ -69,7 +69,7 @@ impl Span {
         let message: String = message.into();
         let span = match self {
             self::Span::Parsed(span) => span,
-            _ => return format!("Unknown location: {}", message),
+            _ => return format!("[unknown location] {}", message),
         };
         let span = Span::new(&*span.input, span.start, span.end).unwrap();
         let err: ErrorVariant<!> = ErrorVariant::CustomError { message };
