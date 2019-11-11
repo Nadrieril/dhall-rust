@@ -111,9 +111,20 @@ impl std::fmt::Display for TypeError {
                 v.span().error("Type error: Invalid function output")
             }
             NotAFunction(v) => v.span().error("Type error: Not a function"),
-            TypeMismatch(v, _, _) => v
-                .span()
-                .error("Type error: Wrong type of function argument"),
+            TypeMismatch(x, y, z) => {
+                x.span()
+                    .error("Type error: Wrong type of function argument")
+                    + "\n"
+                    + &z.span().error(format!(
+                        "This argument has type {:?}",
+                        z.get_type().unwrap()
+                    ))
+                    + "\n"
+                    + &y.span().error(format!(
+                        "But the function expected an argument of type {:?}",
+                        y
+                    ))
+            }
             _ => "Type error: Unhandled error".to_string(),
         };
         write!(f, "{}", msg)

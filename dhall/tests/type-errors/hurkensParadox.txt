@@ -1,1 +1,8 @@
 [unknown location] Type error: Wrong type of function argument
+[unknown location] This argument has type Sort
+ --> 5:21
+  |
+5 | in  let pow = λ(X : Kind) → X → Type␊
+  |                     ^--^
+  |
+  = But the function expected an argument of type Kind

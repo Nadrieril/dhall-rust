@@ -1,1 +1,13 @@
 [unknown location] Type error: Wrong type of function argument
+ --> 1:22
+  |
+1 | (λ(_ : Natural) → _) True␊
+  |                      ^--^
+  |
+  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }
+ --> 1:8
+  |
+1 | (λ(_ : Natural) → _) True␊
+  |        ^-----^
+  |
+  = But the function expected an argument of type Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type }
