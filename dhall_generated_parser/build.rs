@@ -4,8 +4,6 @@ use std::io::{BufRead, BufReader, Read, Write};
 use abnf_to_pest::render_rules_to_pest;
 
 fn main() -> std::io::Result<()> {
-    // TODO: upstream changes to grammar
-    // let abnf_path = "../dhall-lang/standard/dhall.abnf";
     let abnf_path = "src/dhall.abnf";
     let visibility_path = "src/dhall.pest.visibility";
     let pest_path = "src/dhall.pest";
