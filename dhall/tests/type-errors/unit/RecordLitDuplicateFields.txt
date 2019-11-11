@@ -1,0 +1,1 @@
+TypeError { type_message: RecordTypeDuplicateField, context: TypecheckContext([]) }

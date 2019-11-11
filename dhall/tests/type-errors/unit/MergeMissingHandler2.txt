@@ -1,0 +1,1 @@
+TypeError { type_message: MergeVariantMissingHandler(Label("y")), context: TypecheckContext([]) }

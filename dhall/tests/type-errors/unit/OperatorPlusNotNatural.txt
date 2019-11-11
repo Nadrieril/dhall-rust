@@ -1,0 +1,1 @@
+TypeError { type_message: BinOpTypeMismatch(NaturalPlus, Value@Unevaled { value: PartialExpr(BoolLit(true)), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } }), context: TypecheckContext([]) }

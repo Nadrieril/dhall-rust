@@ -1,0 +1,1 @@
+TypeError { type_message: UnboundVariable(V(Label("_"), 0)), context: TypecheckContext([(Label("x"), Kept(AlphaVar(x, 0), Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }))]) }

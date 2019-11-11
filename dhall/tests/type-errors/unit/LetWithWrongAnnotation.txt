@@ -1,0 +1,1 @@
+TypeError { type_message: AnnotMismatch(Value@Unevaled { value: PartialExpr(BoolLit(true)), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } }, Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type }), context: TypecheckContext([]) }

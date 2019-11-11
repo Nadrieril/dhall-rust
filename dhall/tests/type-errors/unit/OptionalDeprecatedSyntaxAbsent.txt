@@ -1,0 +1,1 @@
+TypeError { type_message: InvalidListType(Value@WHNF { value: AppliedBuiltin(Optional, [Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }]), type: Type }), context: TypecheckContext([]) }

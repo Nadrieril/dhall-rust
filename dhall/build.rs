@@ -394,5 +394,34 @@ fn main() -> std::io::Result<()> {
         },
     )?;
 
+    make_test_module(
+        &mut file,
+        TestFeature {
+            module_name: "type_error",
+            directory: spec_tests_dir.join("type-inference/failure/"),
+            variant: "TypeError",
+            path_filter: |path: &str| {
+                false
+                    // TODO: Enable imports in typecheck tests
+                    || path == "importBoundary"
+                    || path == "customHeadersUsingBoundVariable"
+                    // TODO: projection by expression
+                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
+                    || path == "unit/RecordProjectionByTypeNotPresent"
+                    // TODO: toMap
+                    || path == "unit/EmptyToMap"
+                    || path == "unit/HeterogenousToMap"
+                    || path == "unit/MistypedToMap1"
+                    || path == "unit/MistypedToMap2"
+                    || path == "unit/MistypedToMap3"
+                    || path == "unit/MistypedToMap4"
+                    || path == "unit/NonRecordToMap"
+                    || path == "unit/ToMapWrongKind"
+            },
+            input_type: FileType::Text,
+            output_type: None,
+        },
+    )?;
+
     Ok(())
 }

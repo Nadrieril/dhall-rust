@@ -1,0 +1,1 @@
+TypeError { type_message: NotARecord(Label("x"), Value@WHNF { value: BoolLit(true), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } }), context: TypecheckContext([]) }

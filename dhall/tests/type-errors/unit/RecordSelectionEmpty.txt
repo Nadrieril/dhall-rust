@@ -1,0 +1,1 @@
+TypeError { type_message: MissingRecordField(Label("x"), Value@Unevaled { value: PartialExpr(RecordLit(DupTreeMap { map: {}, size: 0 })), type: Value@WHNF { value: RecordType({}), type: Type } }), context: TypecheckContext([]) }

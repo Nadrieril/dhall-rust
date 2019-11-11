@@ -1,0 +1,1 @@
+TypeError { type_message: TypeMismatch(Value@WHNF { value: Pi(AlphaLabel(`_`), Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }, Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }), type: Type }, Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }, Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type }), context: TypecheckContext([]) }
