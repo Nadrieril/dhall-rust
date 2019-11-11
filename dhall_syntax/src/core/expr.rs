@@ -346,10 +346,6 @@ impl<E> Expr<E> {
         Expr(Box::new((x, None)))
     }
 
-    pub fn from_builtin(b: Builtin) -> Self {
-        Expr::from_expr_no_span(ExprF::Builtin(b))
-    }
-
     pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
         Expr(Box::new((x, (self.0).1.clone())))
     }
