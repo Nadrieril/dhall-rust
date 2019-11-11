@@ -1,5 +1,3 @@
-#![feature(non_exhaustive)]
-
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!

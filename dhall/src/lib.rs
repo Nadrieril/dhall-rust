@@ -1,6 +1,5 @@
 #![feature(trace_macros)]
 #![feature(slice_patterns)]
-#![feature(non_exhaustive)]
 #![feature(never_type)]
 #![allow(
     clippy::type_complexity,
