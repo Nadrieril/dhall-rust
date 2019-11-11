@@ -125,12 +125,6 @@ fn main() -> std::io::Result<()> {
                     || path == "largeExpression"
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
-                    // TODO: projection by expression
-                    || path == "recordProjectionByExpression"
-                    || path == "RecordProjectionByType"
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
-                    || path == "unit/RecordProjectFields"
                     // TODO: RFC3986 URLs
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
@@ -163,11 +157,6 @@ fn main() -> std::io::Result<()> {
                 false
                     // Too slow in debug mode
                     || path == "largeExpression"
-                    // TODO: projection by expression
-                    || path == "recordProjectionByExpression"
-                    || path == "RecordProjectionByType"
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
                     // TODO: RFC3986 URLs
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
@@ -194,11 +183,6 @@ fn main() -> std::io::Result<()> {
                     || path == "double"
                     || path == "unit/DoubleLitExponentNoDot"
                     || path == "unit/DoubleLitSecretelyInt"
-                    // TODO: projection by expression
-                    || path == "recordProjectionByExpression"
-                    || path == "RecordProjectionByType"
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
                     // TODO: RFC3986 URLs
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
@@ -215,12 +199,7 @@ fn main() -> std::io::Result<()> {
             module_name: "binary_decoding_success",
             directory: spec_tests_dir.join("binary-decode/success/"),
             variant: "BinaryDecodingSuccess",
-            path_filter: |path: &str| {
-                false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectFields"
-                    || path == "unit/recordProjectionByExpression"
-            },
+            path_filter: |_path: &str| false,
             input_type: FileType::Binary,
             output_type: Some(FileType::Text),
         },

@@ -66,6 +66,9 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
                 write!(f, "{}.", e)?;
                 fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
             }
+            ProjectionByExpr(a, b) => {
+                write!(f, "{}.({})", a, b)?;
+            }
             Var(a) => a.fmt(f)?,
             Const(k) => k.fmt(f)?,
             Builtin(v) => v.fmt(f)?,
@@ -159,7 +162,9 @@ impl<A: Display + Clone> RawExpr<A> {
             // Precedence is magically handled by the ordering of BinOps.
             ExprF::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
             ExprF::App(_, _) if phase > PrintPhase::App => true,
-            Field(_, _) | Projection(_, _) if phase > PrintPhase::Import => {
+            Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _)
+                if phase > PrintPhase::Import =>
+            {
                 true
             }
             _ => false,
@@ -196,6 +201,7 @@ impl<A: Display + Clone> RawExpr<A> {
             ),
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
+            ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
             e => e,
         };
 

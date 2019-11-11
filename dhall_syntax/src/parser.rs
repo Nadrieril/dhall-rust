@@ -24,9 +24,10 @@ pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
-enum Either<A, B> {
-    Left(A),
-    Right(B),
+enum Selector<E> {
+    Field(Label),
+    Projection(DupTreeSet<Label>),
+    ProjectionByExpr(Expr<E>),
 }
 
 impl crate::Builtin {
@@ -777,8 +778,9 @@ impl DhallParser {
                             acc.span(),
                             e.1,
                             match e.0 {
-                                Either::Left(l) => Field(acc, l),
-                                Either::Right(ls) => Projection(acc, ls),
+                                Selector::Field(l) => Field(acc, l),
+                                Selector::Projection(ls) => Projection(acc, ls),
+                                Selector::ProjectionByExpr(e) => ProjectionByExpr(acc, e)
                             }
                         )
                     }
@@ -787,14 +789,15 @@ impl DhallParser {
         ))
     }
 
-    fn selector(
+    fn selector<E: Clone>(
         input: ParseInput,
-    ) -> ParseResult<(Either<Label, DupTreeSet<Label>>, Span)> {
-        Ok(match_nodes!(input.children();
-            [label(l)] => (Either::Left(l), input_to_span(input)),
-            [labels(ls)] => (Either::Right(ls), input_to_span(input)),
-            // [expression(_e)] => unimplemented!("selection by expression"), // TODO
-        ))
+    ) -> ParseResult<(Selector<E>, Span)> {
+        let stor = match_nodes!(input.children();
+            [label(l)] => Selector::Field(l),
+            [labels(ls)] => Selector::Projection(ls),
+            [expression(e)] => Selector::ProjectionByExpr(e),
+        );
+        Ok((stor, input_to_span(input)))
     }
 
     fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {

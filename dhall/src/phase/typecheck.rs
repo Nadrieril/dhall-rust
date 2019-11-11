@@ -787,6 +787,7 @@ fn type_last_layer(
                 record_type.get_type()?,
             ))
         }
+        ProjectionByExpr(_, _) => unimplemented!("selection by expression"),
     };
 
     Ok(match ret {

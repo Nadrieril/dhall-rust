@@ -161,6 +161,7 @@ where
         }
         Field(e, l) => Field(v.visit_subexpr(e)?, l.clone()),
         Projection(e, ls) => Projection(v.visit_subexpr(e)?, ls.clone()),
+        ProjectionByExpr(e, x) => ProjectionByExpr(v.visit_subexpr(e)?, v.visit_subexpr(x)?),
         Assert(e) => Assert(v.visit_subexpr(e)?),
         Import(i) => Import(i.traverse_ref(|e| v.visit_subexpr(e))?),
         Embed(a) => Embed(v.visit_embed(a)?),
@@ -274,6 +275,10 @@ where
         }
         Field(e, _) => v.visit_subexpr(e)?,
         Projection(e, _) => v.visit_subexpr(e)?,
+        ProjectionByExpr(e, x) => {
+            v.visit_subexpr(e)?;
+            v.visit_subexpr(x)?;
+        }
         Assert(e) => v.visit_subexpr(e)?,
         Import(i) => i.traverse_mut(|e| v.visit_subexpr(e))?,
         Embed(a) => v.visit_embed(a)?,
