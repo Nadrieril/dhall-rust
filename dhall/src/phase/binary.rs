@@ -5,8 +5,9 @@ use std::vec;
 
 use dhall_syntax::map::DupTreeMap;
 use dhall_syntax::{
-    rc, Expr, ExprF, FilePath, FilePrefix, Hash, Import, ImportLocation,
-    ImportMode, Integer, InterpolatedText, Label, Natural, Scheme, URL, V,
+    Expr, ExprF, FilePath, FilePrefix, Hash, Import, ImportLocation,
+    ImportMode, Integer, InterpolatedText, Label, Natural, RawExpr, Scheme,
+    Span, URL, V,
 };
 
 use crate::error::{DecodeError, EncodeError};
@@ -22,6 +23,11 @@ pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
 pub(crate) fn encode<E>(expr: &Expr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
+}
+
+// Should probably rename this
+pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+    Expr::new(x, Span::Decoded)
 }
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {

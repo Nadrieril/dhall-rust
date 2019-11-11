@@ -1,0 +1,6 @@
+ --> 1:47
+  |
+1 | assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)␊
+  |                                               ^
+  |
+  = Type error: Unbound variable

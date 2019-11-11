@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::map::{DupTreeMap, DupTreeSet};
 use crate::visitor::{self, ExprFMutVisitor, ExprFVisitor};
 use crate::*;
@@ -12,40 +10,6 @@ pub fn trivial_result<T>(x: Result<T, !>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => e,
-    }
-}
-
-/// A location in the source text
-#[derive(Debug, Clone)]
-pub struct Span {
-    input: Rc<str>,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    start: usize,
-    /// # Safety
-    ///
-    /// Must be a valid character boundary index into `input`.
-    end: usize,
-}
-
-impl Span {
-    pub(crate) fn make(input: Rc<str>, sp: pest::Span) -> Self {
-        Span {
-            input,
-            start: sp.start(),
-            end: sp.end(),
-        }
-    }
-    /// Takes the union of the two spans. Assumes that the spans come from the same input.
-    /// This will also capture any input between the spans.
-    pub fn union(&self, other: &Span) -> Self {
-        use std::cmp::{max, min};
-        Span {
-            input: self.input.clone(),
-            start: min(self.start, other.start),
-            end: max(self.start, other.start),
-        }
     }
 }
 
@@ -178,7 +142,7 @@ pub enum Builtin {
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct Expr<Embed>(Box<(RawExpr<Embed>, Option<Span>)>);
+pub struct Expr<Embed>(Box<(RawExpr<Embed>, Span)>);
 
 pub type RawExpr<Embed> = ExprF<Expr<Embed>, Embed>;
 
@@ -334,16 +298,12 @@ impl<E> Expr<E> {
     pub fn as_mut(&mut self) -> &mut RawExpr<E> {
         &mut self.0.as_mut().0
     }
-    pub fn span(&self) -> Option<Span> {
+    pub fn span(&self) -> Span {
         self.0.as_ref().1.clone()
     }
 
-    pub(crate) fn new(x: RawExpr<E>, n: Span) -> Self {
-        Expr(Box::new((x, Some(n))))
-    }
-
-    pub fn from_expr_no_span(x: RawExpr<E>) -> Self {
-        Expr(Box::new((x, None)))
+    pub fn new(x: RawExpr<E>, n: Span) -> Self {
+        Expr(Box::new((x, n)))
     }
 
     pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
@@ -386,11 +346,6 @@ impl<E> Expr<E> {
         }
         Ok(())
     }
-}
-
-// Should probably rename this
-pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
-    Expr::from_expr_no_span(x)
 }
 
 /// Add an isize to an usize

@@ -1,0 +1,6 @@
+ --> 1:1
+  |
+1 | 2 → _␊
+  | ^
+  |
+  = Type error: Invalid function input

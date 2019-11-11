@@ -1,0 +1,6 @@
+ --> 1:1
+  |
+1 | x␊
+  | ^
+  |
+  = Type error: Unbound variable

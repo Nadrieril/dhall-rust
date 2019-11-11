@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use dhall_syntax::{Builtin, Const};
+use dhall_syntax::{Builtin, Const, Span};
 
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
@@ -36,6 +36,7 @@ struct ValueInternal {
     value: ValueF,
     /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
+    span: Span,
 }
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
@@ -69,18 +70,21 @@ impl ValueInternal {
                 form: Unevaled,
                 value: ValueF::Const(Const::Type),
                 ty: None,
+                span: Span::Artificial,
             },
             |vint| match (&vint.form, &vint.ty) {
                 (Unevaled, Some(ty)) => ValueInternal {
                     form: WHNF,
                     value: normalize_whnf(vint.value, &ty),
                     ty: vint.ty,
+                    span: vint.span,
                 },
                 // `value` is `Sort`
                 (Unevaled, None) => ValueInternal {
                     form: NF,
                     value: ValueF::Const(Const::Sort),
                     ty: None,
+                    span: vint.span,
                 },
                 // Already in WHNF
                 (WHNF, _) | (NF, _) => vint,
@@ -113,11 +117,12 @@ impl ValueInternal {
 }
 
 impl Value {
-    fn new(value: ValueF, form: Form, ty: Value) -> Value {
+    fn new(value: ValueF, form: Form, ty: Value, span: Span) -> Value {
         ValueInternal {
             form,
             value,
             ty: Some(ty),
+            span,
         }
         .into_value()
     }
@@ -126,14 +131,22 @@ impl Value {
             form: NF,
             value: ValueF::Const(Const::Sort),
             ty: None,
+            span: Span::Artificial,
         }
         .into_value()
     }
     pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
-        Value::new(v, Unevaled, t)
+        Value::new(v, Unevaled, t, Span::Artificial)
+    }
+    pub(crate) fn from_valuef_and_type_and_span(
+        v: ValueF,
+        t: Value,
+        span: Span,
+    ) -> Value {
+        Value::new(v, Unevaled, t, span)
     }
     pub(crate) fn from_valuef_and_type_whnf(v: ValueF, t: Value) -> Value {
-        Value::new(v, WHNF, t)
+        Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         const_to_value(c)
@@ -141,12 +154,19 @@ impl Value {
     pub(crate) fn from_builtin(b: Builtin) -> Self {
         builtin_to_value(b)
     }
+    pub(crate) fn with_span(self, span: Span) -> Self {
+        self.as_internal_mut().span = span;
+        self
+    }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
         match &*self.as_whnf() {
             ValueF::Const(c) => Some(*c),
             _ => None,
         }
+    }
+    pub(crate) fn span(&self) -> Span {
+        self.as_internal().span.clone()
     }
 
     fn as_internal(&self) -> Ref<ValueInternal> {
@@ -258,6 +278,7 @@ impl Shift for ValueInternal {
             form: self.form,
             value: self.value.shift(delta, var)?,
             ty: self.ty.shift(delta, var)?,
+            span: self.span.clone(),
         })
     }
 }
@@ -285,6 +306,7 @@ impl Subst<Value> for ValueInternal {
             form: Unevaled,
             value: self.value.subst_shift(var, val),
             ty: self.ty.subst_shift(var, val),
+            span: self.span.clone(),
         }
     }
 }

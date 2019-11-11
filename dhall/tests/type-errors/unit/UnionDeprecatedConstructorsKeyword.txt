@@ -1,0 +1,6 @@
+ --> 1:1
+  |
+1 | constructors < Left : Natural | Right : Bool >␊
+  | ^----------^
+  |
+  = Type error: Unbound variable

@@ -1,0 +1,6 @@
+ --> 1:6
+  |
+1 | [] : List Type␊
+  |      ^--^
+  |
+  = Type error: Wrong type of function argument

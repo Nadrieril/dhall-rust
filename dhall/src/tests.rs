@@ -20,8 +20,31 @@ right: `{}`"#,
     }};
 }
 
+/// Wrapper around string slice that makes debug output `{:?}` to print string same way as `{}`.
+/// Used in different `assert*!` macros in combination with `pretty_assertions` crate to make
+/// test failures to show nice diffs.
+#[derive(PartialEq, Eq)]
+#[doc(hidden)]
+pub struct PrettyString(String);
+
+/// Make diff to display string as multi-line string
+impl std::fmt::Debug for PrettyString {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+macro_rules! assert_eq_pretty_str {
+    ($left:expr, $right:expr) => {
+        assert_eq_pretty!(
+            PrettyString($left.to_string()),
+            PrettyString($right.to_string())
+        );
+    };
+}
+
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::error::{Error, Result};
@@ -40,6 +63,7 @@ pub enum Test<'a> {
     ImportFailure(&'a str),
     TypeInferenceSuccess(&'a str, &'a str),
     TypeInferenceFailure(&'a str),
+    TypeError(&'a str),
     Normalization(&'a str, &'a str),
     AlphaNormalization(&'a str, &'a str),
 }
@@ -144,13 +168,41 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             assert_eq_display!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
-            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
-            match res {
-                Err(_) => {}
-                // If e did typecheck, check that it doesn't have a type
-                Ok(e) => {
-                    e.get_type().unwrap_err();
-                }
+            let mut res =
+                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            if let Ok(e) = &res {
+                // If e did typecheck, check that get_type fails
+                res = e.get_type();
+            }
+            res.unwrap_err();
+        }
+        // Checks the output of the type error against a text file. If the text file doesn't exist,
+        // we instead write to it the output we got. This makes it easy to update those files: just
+        // `rm -r dhall/tests/type-errors` and run the tests again.
+        TypeError(file_path) => {
+            let mut res =
+                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            let file_path = PathBuf::from(file_path);
+            let error_file_path = file_path
+                .strip_prefix("../dhall-lang/tests/type-inference/failure/")
+                .unwrap();
+            let error_file_path =
+                PathBuf::from("tests/type-errors/").join(error_file_path);
+            let error_file_path = error_file_path.with_extension("txt");
+            if let Ok(e) = &res {
+                // If e did typecheck, check that get_type fails
+                res = e.get_type();
+            }
+            let err: Error = res.unwrap_err().into();
+
+            if error_file_path.is_file() {
+                let expected_msg = std::fs::read_to_string(error_file_path)?;
+                let msg = format!("{}\n", err);
+                assert_eq_pretty_str!(msg, expected_msg);
+            } else {
+                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
+                let mut file = File::create(error_file_path)?;
+                writeln!(file, "{}", err)?;
             }
         }
         Normalization(expr_file_path, expected_file_path) => {

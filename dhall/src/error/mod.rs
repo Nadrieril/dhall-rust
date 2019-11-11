@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use dhall_syntax::{BinOp, Import, Label, ParseError, V};
+use dhall_syntax::{BinOp, Import, Label, ParseError, Span};
 
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
@@ -41,14 +41,14 @@ pub enum EncodeError {
 /// A structured type error that includes context
 #[derive(Debug)]
 pub struct TypeError {
-    type_message: TypeMessage,
+    message: TypeMessage,
     context: TypecheckContext,
 }
 
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    UnboundVariable(V<Label>),
+    UnboundVariable(Span),
     InvalidInputType(Value),
     InvalidOutputType(Value),
     NotAFunction(Value),
@@ -90,58 +90,37 @@ pub(crate) enum TypeMessage {
 impl TypeError {
     pub(crate) fn new(
         context: &TypecheckContext,
-        type_message: TypeMessage,
+        message: TypeMessage,
     ) -> Self {
         TypeError {
             context: context.clone(),
-            type_message,
+            message,
         }
     }
 }
 
-impl std::error::Error for TypeMessage {
-    fn description(&self) -> &str {
-        use TypeMessage::*;
-        match *self {
-            // UnboundVariable => "Unbound variable",
-            InvalidInputType(_) => "Invalid function input",
-            InvalidOutputType(_) => "Invalid function output",
-            NotAFunction(_) => "Not a function",
-            TypeMismatch(_, _, _) => "Wrong type of function argument",
-            _ => "Unhandled error",
-        }
-    }
-}
-
-impl std::fmt::Display for TypeMessage {
+impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            // UnboundVariable(_) => {
-            //     f.write_str(include_str!("errors/UnboundVariable.txt"))
-            // }
-            // TypeMismatch(e0, e1, e2) => {
-            //     let template = include_str!("errors/TypeMismatch.txt");
-            //     let s = template
-            //         .replace("$txt0", &format!("{}", e0.as_expr()))
-            //         .replace("$txt1", &format!("{}", e1.as_expr()))
-            //         .replace("$txt2", &format!("{}", e2.as_expr()))
-            //         .replace(
-            //             "$txt3",
-            //             &format!(
-            //                 "{}",
-            //                 e2.get_type()
-            //                     .unwrap()
-            //                     .as_normalized()
-            //                     .unwrap()
-            //                     .as_expr()
-            //             ),
-            //         );
-            //     f.write_str(&s)
-            // }
-            _ => f.write_str("Unhandled error message"),
-        }
+        use TypeMessage::*;
+        let msg = match &self.message {
+            UnboundVariable(span) => span.error("Type error: Unbound variable"),
+            InvalidInputType(v) => {
+                v.span().error("Type error: Invalid function input")
+            }
+            InvalidOutputType(v) => {
+                v.span().error("Type error: Invalid function output")
+            }
+            NotAFunction(v) => v.span().error("Type error: Not a function"),
+            TypeMismatch(v, _, _) => v
+                .span()
+                .error("Type error: Wrong type of function argument"),
+            _ => "Type error: Unhandled error".to_string(),
+        };
+        write!(f, "{}", msg)
     }
 }
+
+impl std::error::Error for TypeError {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -151,7 +130,7 @@ impl std::fmt::Display for Error {
             Error::Decode(err) => write!(f, "{:?}", err),
             Error::Encode(err) => write!(f, "{:?}", err),
             Error::Resolve(err) => write!(f, "{:?}", err),
-            Error::Typecheck(err) => write!(f, "{:?}", err),
+            Error::Typecheck(err) => write!(f, "{}", err),
         }
     }
 }
