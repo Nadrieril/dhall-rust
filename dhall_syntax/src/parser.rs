@@ -3,8 +3,6 @@ use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use std::rc::Rc;
 
-use dgp::Rule;
-use dhall_generated_parser as dgp;
 use pest_consume::{match_nodes, Parser};
 
 use crate::map::{DupTreeMap, DupTreeSet};
@@ -147,9 +145,11 @@ lazy_static::lazy_static! {
     };
 }
 
+#[derive(Parser)]
+#[grammar = "../../dhall_generated_parser/src/dhall.pest"]
 struct DhallParser;
 
-#[pest_consume::parser(parser = dgp::DhallParser, rule = dgp::Rule)]
+#[pest_consume::parser(parser = DhallParser, rule = Rule)]
 impl DhallParser {
     fn EOI(_input: ParseInput) -> ParseResult<()> {
         Ok(())
