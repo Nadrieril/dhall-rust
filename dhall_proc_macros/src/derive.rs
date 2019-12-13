@@ -160,6 +160,7 @@ pub fn derive_static_type_inner(
 
     let ident = &input.ident;
     let tokens = quote! {
+        #[allow(unused_parens)]
         impl #impl_generics ::serde_dhall::StaticType
                 for #ident #ty_generics
                 #where_clause {
