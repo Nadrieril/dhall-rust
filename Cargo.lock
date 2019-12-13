@@ -86,15 +86,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dhall_generated_parser"
-version = "0.1.0"
-dependencies = [
- "abnf_to_pest 0.1.1",
- "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "dhall_proc_macros"
 version = "0.1.0"
 dependencies = [
@@ -108,6 +99,7 @@ dependencies = [
 name = "dhall_syntax"
 version = "0.1.0"
 dependencies = [
+ "abnf_to_pest 0.1.1",
  "either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
