@@ -12,9 +12,8 @@
 
 mod tests;
 
-pub mod core;
-pub mod error;
-pub mod phase;
+pub mod semantics;
+pub use crate::semantics::*;
 
 pub mod syntax {
     pub use dhall_syntax::*;
