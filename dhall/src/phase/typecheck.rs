@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use dhall_syntax::{
+use crate::syntax::{
     Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,
 };
 
@@ -155,7 +155,7 @@ macro_rules! make_type {
     (Double) => { ExprF::Builtin(Builtin::Double) };
     (Text) => { ExprF::Builtin(Builtin::Text) };
     ($var:ident) => {
-        ExprF::Var(dhall_syntax::V(stringify!($var).into(), 0))
+        ExprF::Var(crate::syntax::V(stringify!($var).into(), 0))
     };
     (Optional $ty:ident) => {
         ExprF::App(
@@ -170,7 +170,7 @@ macro_rules! make_type {
         )
     };
     ({ $($label:ident : $ty:ident),* }) => {{
-        let mut kts = dhall_syntax::map::DupTreeMap::new();
+        let mut kts = crate::syntax::map::DupTreeMap::new();
         $(
             kts.insert(
                 Label::from(stringify!($label)),
@@ -203,7 +203,7 @@ macro_rules! make_type {
 }
 
 fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
-    use dhall_syntax::Builtin::*;
+    use crate::syntax::Builtin::*;
     rc(match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
         List | Optional => make_type!(
@@ -303,7 +303,7 @@ fn type_with(
     ctx: &TypecheckContext,
     e: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
-    use dhall_syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
+    use crate::syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
     let span = e.span();
 
     Ok(match e.as_ref() {
@@ -362,10 +362,10 @@ fn type_last_layer(
     span: Span,
 ) -> Result<Value, TypeError> {
     use crate::error::TypeMessage::*;
-    use dhall_syntax::BinOp::*;
-    use dhall_syntax::Builtin::*;
-    use dhall_syntax::Const::Type;
-    use dhall_syntax::ExprF::*;
+    use crate::syntax::BinOp::*;
+    use crate::syntax::Builtin::*;
+    use crate::syntax::Const::Type;
+    use crate::syntax::ExprF::*;
     let mkerr = |msg: TypeMessage| Err(TypeError::new(ctx, msg));
 
     /// Intermediary return type
@@ -434,7 +434,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             match &*t.as_whnf() {
-                ValueF::AppliedBuiltin(dhall_syntax::Builtin::List, args)
+                ValueF::AppliedBuiltin(crate::syntax::Builtin::List, args)
                     if args.len() == 1 => {}
                 _ => return mkerr(InvalidListType(t.clone())),
             }
@@ -457,7 +457,7 @@ fn type_last_layer(
                 return mkerr(InvalidListType(t));
             }
 
-            RetTypeOnly(Value::from_builtin(dhall_syntax::Builtin::List).app(t))
+            RetTypeOnly(Value::from_builtin(crate::syntax::Builtin::List).app(t))
         }
         SomeLit(x) => {
             let t = x.get_type()?;
@@ -466,7 +466,7 @@ fn type_last_layer(
             }
 
             RetTypeOnly(
-                Value::from_builtin(dhall_syntax::Builtin::Optional).app(t),
+                Value::from_builtin(crate::syntax::Builtin::Optional).app(t),
             )
         }
         RecordType(kts) => RetWhole(tck_record_type(

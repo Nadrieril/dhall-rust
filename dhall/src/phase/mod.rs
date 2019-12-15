@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Builtin, Const, Expr};
+use crate::syntax::{Builtin, Const, Expr};
 
 use crate::core::value::{ToExprOptions, Value};
 use crate::core::valuef::ValueF;

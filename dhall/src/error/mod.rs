@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use dhall_syntax::{BinOp, Import, Label, ParseError, Span};
+use crate::syntax::{BinOp, Import, Label, ParseError, Span};
 
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;

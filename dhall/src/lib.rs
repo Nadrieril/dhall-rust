@@ -15,3 +15,7 @@ mod tests;
 pub mod core;
 pub mod error;
 pub mod phase;
+
+pub mod syntax {
+    pub use dhall_syntax::*;
+}

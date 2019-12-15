@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use dhall_syntax::parse_expr;
+use crate::syntax::parse_expr;
 
 use crate::error::Error;
 use crate::phase::resolve::ImportRoot;

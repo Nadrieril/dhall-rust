@@ -3,8 +3,8 @@ use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 use std::vec;
 
-use dhall_syntax::map::DupTreeMap;
-use dhall_syntax::{
+use crate::syntax::map::DupTreeMap;
+use crate::syntax::{
     Expr, ExprF, FilePath, FilePrefix, Hash, Import, ImportLocation,
     ImportMode, Integer, InterpolatedText, Label, Natural, RawExpr, Scheme,
     Span, URL, V,
@@ -32,7 +32,7 @@ pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
     use cbor::Value::*;
-    use dhall_syntax::{BinOp, Builtin, Const};
+    use crate::syntax::{BinOp, Builtin, Const};
     use ExprF::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
@@ -350,7 +350,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                         "import/type".to_owned(),
                     ))?,
                 };
-                Import(dhall_syntax::Import {
+                Import(crate::syntax::Import {
                     mode,
                     hash,
                     location,
@@ -473,8 +473,8 @@ where
     S: serde::ser::Serializer,
 {
     use cbor::Value::{String, I64, U64};
-    use dhall_syntax::Builtin;
-    use dhall_syntax::ExprF::*;
+    use crate::syntax::Builtin;
+    use crate::syntax::ExprF::*;
     use std::iter::once;
 
     use self::Serialize::{RecordMap, UnionMap};
@@ -548,7 +548,7 @@ where
             once(tag(4)).chain(once(null())).chain(xs.iter().map(expr)),
         ),
         TextLit(xs) => {
-            use dhall_syntax::InterpolatedTextContents::{Expr, Text};
+            use crate::syntax::InterpolatedTextContents::{Expr, Text};
             ser.collect_seq(once(tag(18)).chain(xs.iter().map(|x| match x {
                 Expr(x) => expr(x),
                 Text(x) => cbor(String(x.clone())),
@@ -559,7 +559,7 @@ where
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
         Field(x, l) => ser_seq!(ser; tag(9), expr(x), label(l)),
         BinOp(op, x, y) => {
-            use dhall_syntax::BinOp::*;
+            use crate::syntax::BinOp::*;
             let op = match op {
                 BoolOr => 0,
                 BoolAnd => 1,

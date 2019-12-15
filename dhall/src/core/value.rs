@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use dhall_syntax::{Builtin, Const, Span};
+use crate::syntax::{Builtin, Const, Span};
 
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;

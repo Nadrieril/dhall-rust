@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ImportError};
 use crate::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
-use dhall_syntax::{FilePath, ImportLocation, URL};
+use crate::syntax::{FilePath, ImportLocation, URL};
 
-type Import = dhall_syntax::Import<NormalizedExpr>;
+type Import = crate::syntax::Import<NormalizedExpr>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,8 +24,8 @@ fn resolve_import(
     import_stack: &ImportStack,
 ) -> Result<Normalized, ImportError> {
     use self::ImportRoot::*;
-    use dhall_syntax::FilePrefix::*;
-    use dhall_syntax::ImportLocation::*;
+    use crate::syntax::FilePrefix::*;
+    use crate::syntax::ImportLocation::*;
     let cwd = match root {
         LocalDir(cwd) => cwd,
     };

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use dhall_syntax::{Label, V};
+use crate::syntax::{Label, V};
 
 use crate::core::value::Value;
 use crate::core::valuef::ValueF;

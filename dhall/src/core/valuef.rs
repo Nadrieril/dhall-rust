@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use dhall_syntax::{
+use crate::syntax::{
     Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural,
 };
@@ -117,7 +117,7 @@ impl ValueF {
                     .collect(),
             )),
             ValueF::Equivalence(x, y) => rc(ExprF::BinOp(
-                dhall_syntax::BinOp::Equivalence,
+                crate::syntax::BinOp::Equivalence,
                 x.to_expr(opts),
                 y.to_expr(opts),
             )),

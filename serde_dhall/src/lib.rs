@@ -123,7 +123,7 @@ pub use value::Value;
 // A Dhall value.
 pub mod value {
     use dhall::phase::{NormalizedExpr, Parsed, Typed};
-    use dhall_syntax::Builtin;
+    use dhall::syntax::Builtin;
 
     use super::de::{Error, Result};
 

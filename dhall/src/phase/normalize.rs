@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use dhall_syntax::Const::Type;
-use dhall_syntax::{
+use crate::syntax::Const::Type;
+use crate::syntax::{
     BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble,
 };
@@ -47,7 +47,7 @@ macro_rules! make_closure {
     }};
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
-            dhall_syntax::BinOp::NaturalPlus,
+            crate::syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
             Value::from_valuef_and_type(
                 ValueF::NaturalLit(1),
@@ -62,7 +62,7 @@ macro_rules! make_closure {
         let tail = make_closure!($($tail)*);
         let list_type = tail.get_type_not_sort();
         ValueF::PartialExpr(ExprF::BinOp(
-            dhall_syntax::BinOp::ListAppend,
+            crate::syntax::BinOp::ListAppend,
             ValueF::NEListLit(vec![head])
                 .into_value_with_type(list_type.clone()),
             tail,
@@ -76,7 +76,7 @@ pub(crate) fn apply_builtin(
     args: Vec<Value>,
     ty: &Value,
 ) -> ValueF {
-    use dhall_syntax::Builtin::*;
+    use crate::syntax::Builtin::*;
     use ValueF::*;
 
     // Small helper enum
