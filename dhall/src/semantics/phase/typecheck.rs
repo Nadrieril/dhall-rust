@@ -457,7 +457,9 @@ fn type_last_layer(
                 return mkerr(InvalidListType(t));
             }
 
-            RetTypeOnly(Value::from_builtin(crate::syntax::Builtin::List).app(t))
+            RetTypeOnly(
+                Value::from_builtin(crate::syntax::Builtin::List).app(t),
+            )
         }
         SomeLit(x) => {
             let t = x.get_type()?;

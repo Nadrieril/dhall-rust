@@ -31,8 +31,8 @@ pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
 }
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
-    use cbor::Value::*;
     use crate::syntax::{BinOp, Builtin, Const};
+    use cbor::Value::*;
     use ExprF::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
@@ -472,9 +472,9 @@ fn serialize_subexpr<S, E>(ser: S, e: &Expr<E>) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
-    use cbor::Value::{String, I64, U64};
     use crate::syntax::Builtin;
     use crate::syntax::ExprF::*;
+    use cbor::Value::{String, I64, U64};
     use std::iter::once;
 
     use self::Serialize::{RecordMap, UnionMap};
