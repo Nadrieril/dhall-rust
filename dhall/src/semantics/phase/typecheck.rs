@@ -1,16 +1,17 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use crate::syntax::{
-    Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,
-};
-
 use crate::core::context::TypecheckContext;
 use crate::core::value::Value;
 use crate::core::valuef::ValueF;
 use crate::core::var::{Shift, Subst};
 use crate::error::{TypeError, TypeMessage};
+use crate::phase::normalize::merge_maps;
 use crate::phase::Normalized;
+use crate::syntax;
+use crate::syntax::{
+    Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,
+};
 
 fn tck_pi_type(
     ctx: &TypecheckContext,
@@ -18,7 +19,7 @@ fn tck_pi_type(
     tx: Value,
     te: Value,
 ) -> Result<Value, TypeError> {
-    use crate::error::TypeMessage::*;
+    use TypeMessage::*;
     let ctx2 = ctx.insert_type(&x, tx.clone());
 
     let ka = match tx.get_type()?.as_const() {
@@ -48,8 +49,8 @@ fn tck_record_type(
     ctx: &TypecheckContext,
     kts: impl IntoIterator<Item = Result<(Label, Value), TypeError>>,
 ) -> Result<Value, TypeError> {
-    use crate::error::TypeMessage::*;
     use std::collections::hash_map::Entry;
+    use TypeMessage::*;
     let mut new_kts = HashMap::new();
     // An empty record type has type Type
     let mut k = Const::Type;
@@ -83,8 +84,8 @@ fn tck_union_type<Iter>(
 where
     Iter: IntoIterator<Item = Result<(Label, Option<Value>), TypeError>>,
 {
-    use crate::error::TypeMessage::*;
     use std::collections::hash_map::Entry;
+    use TypeMessage::*;
     let mut new_kts = HashMap::new();
     // Check that all types are the same const
     let mut k = None;
@@ -155,7 +156,7 @@ macro_rules! make_type {
     (Double) => { ExprF::Builtin(Builtin::Double) };
     (Text) => { ExprF::Builtin(Builtin::Text) };
     ($var:ident) => {
-        ExprF::Var(crate::syntax::V(stringify!($var).into(), 0))
+        ExprF::Var(syntax::V(stringify!($var).into(), 0))
     };
     (Optional $ty:ident) => {
         ExprF::App(
@@ -170,7 +171,7 @@ macro_rules! make_type {
         )
     };
     ({ $($label:ident : $ty:ident),* }) => {{
-        let mut kts = crate::syntax::map::DupTreeMap::new();
+        let mut kts = syntax::map::DupTreeMap::new();
         $(
             kts.insert(
                 Label::from(stringify!($label)),
@@ -203,7 +204,7 @@ macro_rules! make_type {
 }
 
 fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
-    use crate::syntax::Builtin::*;
+    use syntax::Builtin::*;
     rc(match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
         List | Optional => make_type!(
@@ -303,7 +304,7 @@ fn type_with(
     ctx: &TypecheckContext,
     e: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
-    use crate::syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
+    use syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
     let span = e.span();
 
     Ok(match e.as_ref() {
@@ -361,11 +362,11 @@ fn type_last_layer(
     e: ExprF<Value, Normalized>,
     span: Span,
 ) -> Result<Value, TypeError> {
-    use crate::error::TypeMessage::*;
-    use crate::syntax::BinOp::*;
-    use crate::syntax::Builtin::*;
-    use crate::syntax::Const::Type;
-    use crate::syntax::ExprF::*;
+    use syntax::BinOp::*;
+    use syntax::Builtin::*;
+    use syntax::Const::Type;
+    use syntax::ExprF::*;
+    use TypeMessage::*;
     let mkerr = |msg: TypeMessage| Err(TypeError::new(ctx, msg));
 
     /// Intermediary return type
@@ -434,7 +435,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             match &*t.as_whnf() {
-                ValueF::AppliedBuiltin(crate::syntax::Builtin::List, args)
+                ValueF::AppliedBuiltin(syntax::Builtin::List, args)
                     if args.len() == 1 => {}
                 _ => return mkerr(InvalidListType(t.clone())),
             }
@@ -457,9 +458,7 @@ fn type_last_layer(
                 return mkerr(InvalidListType(t));
             }
 
-            RetTypeOnly(
-                Value::from_builtin(crate::syntax::Builtin::List).app(t),
-            )
+            RetTypeOnly(Value::from_builtin(syntax::Builtin::List).app(t))
         }
         SomeLit(x) => {
             let t = x.get_type()?;
@@ -467,9 +466,7 @@ fn type_last_layer(
                 return mkerr(InvalidOptionalType(t));
             }
 
-            RetTypeOnly(
-                Value::from_builtin(crate::syntax::Builtin::Optional).app(t),
-            )
+            RetTypeOnly(Value::from_builtin(syntax::Builtin::Optional).app(t))
         }
         RecordType(kts) => RetWhole(tck_record_type(
             ctx,
@@ -550,8 +547,6 @@ fn type_last_layer(
             RetTypeOnly(text_type)
         }
         BinOp(RightBiasedRecordMerge, l, r) => {
-            use crate::phase::normalize::merge_maps;
-
             let l_type = l.get_type()?;
             let r_type = r.get_type()?;
 
@@ -591,8 +586,6 @@ fn type_last_layer(
             Span::Artificial,
         )?),
         BinOp(RecursiveRecordTypeMerge, l, r) => {
-            use crate::phase::normalize::merge_maps;
-
             // Extract the LHS record type
             let borrow_l = l.as_whnf();
             let kts_x = match &*borrow_l {

@@ -1,8 +1,6 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use crate::syntax::{Builtin, Const, Span};
-
 use crate::core::context::TypecheckContext;
 use crate::core::valuef::ValueF;
 use crate::core::var::{AlphaVar, Shift, Subst};
@@ -10,6 +8,7 @@ use crate::error::{TypeError, TypeMessage};
 use crate::phase::normalize::{apply_any, normalize_whnf};
 use crate::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::phase::{NormalizedExpr, Typed};
+use crate::syntax::{Builtin, Const, Span};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Form {

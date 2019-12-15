@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use crate::syntax::{
-    Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
-    NaiveDouble, Natural,
-};
-
 use crate::core::value::{ToExprOptions, Value};
 use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::phase::typecheck::rc;
 use crate::phase::{Normalized, NormalizedExpr};
+use crate::syntax;
+use crate::syntax::{
+    Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
+    NaiveDouble, Natural,
+};
 
 /// A semantic value. Subexpressions are Values, which are partially evaluated expressions that are
 /// normalized on-demand.
@@ -117,7 +117,7 @@ impl ValueF {
                     .collect(),
             )),
             ValueF::Equivalence(x, y) => rc(ExprF::BinOp(
-                crate::syntax::BinOp::Equivalence,
+                syntax::BinOp::Equivalence,
                 x.to_expr(opts),
                 y.to_expr(opts),
             )),
