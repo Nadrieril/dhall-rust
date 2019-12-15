@@ -3,8 +3,8 @@ use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 use std::vec;
 
-use crate::error::{DecodeError, EncodeError};
-use crate::phase::DecodedExpr;
+use crate::semantics::error::{DecodeError, EncodeError};
+use crate::semantics::phase::DecodedExpr;
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{

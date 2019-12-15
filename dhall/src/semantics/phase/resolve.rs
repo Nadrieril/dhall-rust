@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, ImportError};
-use crate::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
+use crate::semantics::error::{Error, ImportError};
+use crate::semantics::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
 use crate::syntax;
 use crate::syntax::{FilePath, ImportLocation, URL};
 

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::core::value::Value;
-use crate::core::valuef::ValueF;
-use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
-use crate::phase::Normalized;
+use crate::semantics::core::value::Value;
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{

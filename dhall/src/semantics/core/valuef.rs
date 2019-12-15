@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::core::value::{ToExprOptions, Value};
-use crate::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
-use crate::phase::typecheck::rc;
-use crate::phase::{Normalized, NormalizedExpr};
+use crate::semantics::core::value::{ToExprOptions, Value};
+use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::semantics::phase::typecheck::rc;
+use crate::semantics::phase::{Normalized, NormalizedExpr};
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,

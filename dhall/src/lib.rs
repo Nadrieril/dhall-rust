@@ -13,8 +13,6 @@
 mod tests;
 
 pub mod semantics;
-pub use crate::semantics::*;
-
 pub mod syntax {
     pub use dhall_syntax::*;
 }

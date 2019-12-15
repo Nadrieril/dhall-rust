@@ -1,9 +1,9 @@
 use std::io::Error as IOError;
 
-use crate::core::context::TypecheckContext;
-use crate::core::value::Value;
-use crate::phase::resolve::ImportStack;
-use crate::phase::NormalizedExpr;
+use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::value::Value;
+use crate::semantics::phase::resolve::ImportStack;
+use crate::semantics::phase::NormalizedExpr;
 use crate::syntax::{BinOp, Import, Label, ParseError, Span};
 
 pub type Result<T> = std::result::Result<T, Error>;

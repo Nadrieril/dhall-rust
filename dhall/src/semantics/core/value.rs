@@ -1,13 +1,13 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
-use crate::core::context::TypecheckContext;
-use crate::core::valuef::ValueF;
-use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::{apply_any, normalize_whnf};
-use crate::phase::typecheck::{builtin_to_value, const_to_value};
-use crate::phase::{NormalizedExpr, Typed};
+use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{AlphaVar, Shift, Subst};
+use crate::semantics::error::{TypeError, TypeMessage};
+use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
+use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
+use crate::semantics::phase::{NormalizedExpr, Typed};
 use crate::syntax::{Builtin, Const, Span};
 
 #[derive(Debug, Clone, Copy)]

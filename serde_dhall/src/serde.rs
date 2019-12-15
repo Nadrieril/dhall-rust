@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use dhall::phase::NormalizedExpr;
+use dhall::semantics::phase::NormalizedExpr;
 use dhall::syntax::ExprF;
 
 use crate::de::{Deserialize, Error, Result};

@@ -1,13 +1,13 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use crate::core::context::TypecheckContext;
-use crate::core::value::Value;
-use crate::core::valuef::ValueF;
-use crate::core::var::{Shift, Subst};
-use crate::error::{TypeError, TypeMessage};
-use crate::phase::normalize::merge_maps;
-use crate::phase::Normalized;
+use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::value::Value;
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{Shift, Subst};
+use crate::semantics::error::{TypeError, TypeMessage};
+use crate::semantics::phase::normalize::merge_maps;
+use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,

@@ -2,10 +2,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use crate::error::Error;
-use crate::phase::binary;
-use crate::phase::resolve::ImportRoot;
-use crate::phase::Parsed;
+use crate::semantics::error::Error;
+use crate::semantics::phase::binary;
+use crate::semantics::phase::resolve::ImportRoot;
+use crate::semantics::phase::Parsed;
 use crate::syntax::parse_expr;
 
 pub(crate) fn parse_file(f: &Path) -> Result<Parsed, Error> {
