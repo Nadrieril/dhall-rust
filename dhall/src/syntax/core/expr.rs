@@ -1,6 +1,6 @@
-use crate::map::{DupTreeMap, DupTreeSet};
-use crate::visitor::{self, ExprFMutVisitor, ExprFVisitor};
-use crate::*;
+use crate::syntax::map::{DupTreeMap, DupTreeSet};
+use crate::syntax::visitor::{self, ExprFMutVisitor, ExprFVisitor};
+use crate::syntax::*;
 
 pub type Integer = isize;
 pub type Natural = usize;

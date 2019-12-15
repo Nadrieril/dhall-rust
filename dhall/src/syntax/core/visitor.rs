@@ -1,4 +1,4 @@
-use crate::*;
+use crate::syntax::*;
 use std::iter::FromIterator;
 
 /// A visitor trait that can be used to traverse `ExprF`s. We need this pattern so that Rust lets
@@ -111,7 +111,7 @@ where
             .collect()
     }
 
-    use crate::ExprF::*;
+    use crate::syntax::ExprF::*;
     Ok(match input {
         Var(v) => Var(v.clone()),
         Lam(l, t, e) => {
@@ -225,7 +225,7 @@ where
         Ok(())
     }
 
-    use crate::ExprF::*;
+    use crate::syntax::ExprF::*;
     match input {
         Var(_) | Const(_) | Builtin(_) | BoolLit(_) | NaturalLit(_)
         | IntegerLit(_) | DoubleLit(_) => {}

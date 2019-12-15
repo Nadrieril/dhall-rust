@@ -13,6 +13,4 @@
 mod tests;
 
 pub mod semantics;
-pub mod syntax {
-    pub use dhall_syntax::*;
-}
+pub mod syntax;
