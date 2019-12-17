@@ -20,6 +20,7 @@ pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     }
 }
 
+/// Warning: will fail if `expr` contains an `Embed` node.
 pub(crate) fn encode<E>(expr: &Expr<E>) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
