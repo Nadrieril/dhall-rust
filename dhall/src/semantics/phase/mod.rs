@@ -1,10 +1,11 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use crate::semantics::core::value::{ToExprOptions, Value};
+use crate::semantics::core::value::Value;
 use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
 use crate::semantics::error::{EncodeError, Error, ImportError, TypeError};
+use crate::semantics::to_expr::ToExprOptions;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
@@ -101,18 +102,22 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
+    /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,
         })
     }
+    /// Converts a value back to the corresponding AST expression, normalizing in the process.
     pub fn normalize_to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: true,
         })
     }
+    /// Converts a value back to the corresponding AST expression, (akpha,beta)-normalizing in the
+    /// process.
     pub(crate) fn normalize_to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: true,

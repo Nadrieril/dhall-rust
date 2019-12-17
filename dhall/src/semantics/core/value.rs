@@ -8,6 +8,7 @@ use crate::semantics::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{NormalizedExpr, Typed};
+use crate::semantics::to_expr;
 use crate::syntax::{Builtin, Const, Span};
 
 #[derive(Debug, Clone, Copy)]
@@ -43,15 +44,6 @@ struct ValueInternal {
 /// Can optionally store a type from typechecking to preserve type information.
 #[derive(Clone)]
 pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
-
-#[derive(Copy, Clone)]
-/// Controls conversion from `Value` to `Expr`
-pub(crate) struct ToExprOptions {
-    /// Whether to convert all variables to `_`
-    pub(crate) alpha: bool,
-    /// Whether to normalize before converting
-    pub(crate) normalize: bool,
-}
 
 impl ValueInternal {
     fn into_value(self) -> Value {
@@ -174,9 +166,9 @@ impl Value {
     fn as_internal_mut(&self) -> RefMut<ValueInternal> {
         self.0.borrow_mut()
     }
-    /// WARNING: The returned ValueKind may be entirely unnormalized, in aprticular it may just be an
+    /// WARNING: The returned ValueKind may be entirely unnormalized, in particular it may just be an
     /// unevaled PartialExpr. You probably want to use `as_whnf`.
-    fn as_kind(&self) -> Ref<ValueKind> {
+    pub(crate) fn as_kind(&self) -> Ref<ValueKind> {
         Ref::map(self.as_internal(), ValueInternal::as_kind)
     }
     /// This is what you want if you want to pattern-match on the value.
@@ -187,11 +179,12 @@ impl Value {
         self.as_kind()
     }
 
-    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        if opts.normalize {
-            self.normalize_whnf();
-        }
-        self.as_kind().to_expr(opts)
+    /// Converts a value back to the corresponding AST expression.
+    pub(crate) fn to_expr(
+        &self,
+        opts: to_expr::ToExprOptions,
+    ) -> NormalizedExpr {
+        to_expr::value_to_expr(self, opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
         self.as_whnf().clone()
