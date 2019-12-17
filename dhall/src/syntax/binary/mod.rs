@@ -1,2 +1,4 @@
-pub mod binary;
-pub(crate) use binary::{encode, decode};
+mod decode;
+mod encode;
+pub(crate) use decode::decode;
+pub(crate) use encode::encode;
