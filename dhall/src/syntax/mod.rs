@@ -6,7 +6,6 @@
 )]
 
 mod core;
-pub use crate::syntax::core::context;
 pub use crate::syntax::core::visitor;
 pub use crate::syntax::core::*;
 pub use crate::syntax::text::parser::*;
