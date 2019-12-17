@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::semantics::core::context::TypecheckContext;
 use crate::semantics::core::value::Value;
-use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{Shift, Subst};
 use crate::semantics::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::merge_maps;
@@ -39,8 +39,8 @@ fn tck_pi_type(
 
     let k = function_check(ka, kb);
 
-    Ok(Value::from_valuef_and_type(
-        ValueF::Pi(x.into(), tx, te),
+    Ok(Value::from_kind_and_type(
+        ValueKind::Pi(x.into(), tx, te),
         Value::from_const(k),
     ))
 }
@@ -71,8 +71,8 @@ fn tck_record_type(
         };
     }
 
-    Ok(Value::from_valuef_and_type(
-        ValueF::RecordType(new_kts),
+    Ok(Value::from_kind_and_type(
+        ValueKind::RecordType(new_kts),
         Value::from_const(k),
     ))
 }
@@ -116,8 +116,8 @@ where
     // an union type with only unary variants also has type Type
     let k = k.unwrap_or(Const::Type);
 
-    Ok(Value::from_valuef_and_type(
-        ValueF::UnionType(new_kts),
+    Ok(Value::from_kind_and_type(
+        ValueKind::UnionType(new_kts),
         Value::from_const(k),
     ))
 }
@@ -131,13 +131,13 @@ fn function_check(a: Const, b: Const) -> Const {
 }
 
 pub(crate) fn const_to_value(c: Const) -> Value {
-    let v = ValueF::Const(c);
+    let v = ValueKind::Const(c);
     match c {
         Const::Type => {
-            Value::from_valuef_and_type(v, const_to_value(Const::Kind))
+            Value::from_kind_and_type(v, const_to_value(Const::Kind))
         }
         Const::Kind => {
-            Value::from_valuef_and_type(v, const_to_value(Const::Sort))
+            Value::from_kind_and_type(v, const_to_value(Const::Sort))
         }
         Const::Sort => Value::const_sort(),
     }
@@ -290,8 +290,8 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
     let ctx = TypecheckContext::new();
-    Value::from_valuef_and_type(
-        ValueF::from_builtin(b),
+    Value::from_kind_and_type(
+        ValueKind::from_builtin(b),
         type_with(&ctx, type_of_builtin(b)).unwrap(),
     )
 }
@@ -313,8 +313,8 @@ fn type_with(
             let ctx2 = ctx.insert_type(var, annot.clone());
             let body = type_with(&ctx2, body.clone())?;
             let body_type = body.get_type()?;
-            Value::from_valuef_and_type(
-                ValueF::Lam(var.clone().into(), annot.clone(), body),
+            Value::from_kind_and_type(
+                ValueKind::Lam(var.clone().into(), annot.clone(), body),
                 tck_pi_type(ctx, var.clone(), annot, body_type)?,
             )
         }
@@ -389,7 +389,7 @@ fn type_last_layer(
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();
             let (x, tx, tb) = match &*tf_borrow {
-                ValueF::Pi(x, tx, tb) => (x, tx, tb),
+                ValueKind::Pi(x, tx, tb) => (x, tx, tb),
                 _ => return mkerr(NotAFunction(f.clone())),
             };
             if &a.get_type()? != tx {
@@ -406,8 +406,8 @@ fn type_last_layer(
         }
         Assert(t) => {
             match &*t.as_whnf() {
-                ValueF::Equivalence(x, y) if x == y => {}
-                ValueF::Equivalence(x, y) => {
+                ValueKind::Equivalence(x, y) if x == y => {}
+                ValueKind::Equivalence(x, y) => {
                     return mkerr(AssertMismatch(x.clone(), y.clone()))
                 }
                 _ => return mkerr(AssertMustTakeEquivalence),
@@ -415,7 +415,7 @@ fn type_last_layer(
             RetTypeOnly(t.clone())
         }
         BoolIf(x, y, z) => {
-            if *x.get_type()?.as_whnf() != ValueF::from_builtin(Bool) {
+            if *x.get_type()?.as_whnf() != ValueKind::from_builtin(Bool) {
                 return mkerr(InvalidPredicate(x.clone()));
             }
 
@@ -435,7 +435,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             match &*t.as_whnf() {
-                ValueF::AppliedBuiltin(syntax::Builtin::List, args)
+                ValueKind::AppliedBuiltin(syntax::Builtin::List, args)
                     if args.len() == 1 => {}
                 _ => return mkerr(InvalidListType(t.clone())),
             }
@@ -482,7 +482,7 @@ fn type_last_layer(
         )?),
         Field(r, x) => {
             match &*r.get_type()?.as_whnf() {
-                ValueF::RecordType(kts) => match kts.get(&x) {
+                ValueKind::RecordType(kts) => match kts.get(&x) {
                     Some(tth) => {
                         RetTypeOnly(tth.clone())
                     },
@@ -492,7 +492,7 @@ fn type_last_layer(
                 // TODO: branch here only when r.get_type() is a Const
                 _ => {
                     match &*r.as_whnf() {
-                        ValueF::UnionType(kts) => match kts.get(&x) {
+                        ValueKind::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
                                 RetTypeOnly(
@@ -553,14 +553,14 @@ fn type_last_layer(
             // Extract the LHS record type
             let l_type_borrow = l_type.as_whnf();
             let kts_x = match &*l_type_borrow {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr(MustCombineRecord(l.clone())),
             };
 
             // Extract the RHS record type
             let r_type_borrow = r_type.as_whnf();
             let kts_y = match &*r_type_borrow {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr(MustCombineRecord(r.clone())),
             };
 
@@ -589,7 +589,7 @@ fn type_last_layer(
             // Extract the LHS record type
             let borrow_l = l.as_whnf();
             let kts_x = match &*borrow_l {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => {
                     return mkerr(RecordTypeMergeRequiresRecordType(l.clone()))
                 }
@@ -598,7 +598,7 @@ fn type_last_layer(
             // Extract the RHS record type
             let borrow_r = r.as_whnf();
             let kts_y = match &*borrow_r {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => {
                     return mkerr(RecordTypeMergeRequiresRecordType(r.clone()))
                 }
@@ -626,7 +626,7 @@ fn type_last_layer(
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {
-                ValueF::AppliedBuiltin(List, _) => {}
+                ValueKind::AppliedBuiltin(List, _) => {}
                 _ => return mkerr(BinOpTypeMismatch(*o, l.clone())),
             }
 
@@ -648,8 +648,8 @@ fn type_last_layer(
                 return mkerr(EquivalenceTypeMismatch(r.clone(), l.clone()));
             }
 
-            RetWhole(Value::from_valuef_and_type(
-                ValueF::Equivalence(l.clone(), r.clone()),
+            RetWhole(Value::from_kind_and_type(
+                ValueKind::Equivalence(l.clone(), r.clone()),
                 Value::from_const(Type),
             ))
         }
@@ -684,14 +684,14 @@ fn type_last_layer(
             let record_type = record.get_type()?;
             let record_borrow = record_type.as_whnf();
             let handlers = match &*record_borrow {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr(Merge1ArgMustBeRecord(record.clone())),
             };
 
             let union_type = union.get_type()?;
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
-                ValueF::UnionType(kts) => kts,
+                ValueKind::UnionType(kts) => kts,
                 _ => return mkerr(Merge2ArgMustBeUnion(union.clone())),
             };
 
@@ -703,7 +703,7 @@ fn type_last_layer(
                         Some(Some(variant_type)) => {
                             let handler_type_borrow = handler_type.as_whnf();
                             let (x, tx, tb) = match &*handler_type_borrow {
-                                ValueF::Pi(x, tx, tb) => (x, tx, tb),
+                                ValueKind::Pi(x, tx, tb) => (x, tx, tb),
                                 _ => {
                                     return mkerr(NotAFunction(
                                         handler_type.clone(),
@@ -765,7 +765,7 @@ fn type_last_layer(
             let record_type = record.get_type()?;
             let record_type_borrow = record_type.as_whnf();
             let kts = match &*record_type_borrow {
-                ValueF::RecordType(kts) => kts,
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr(ProjectionMustBeRecord),
             };
 
@@ -777,8 +777,8 @@ fn type_last_layer(
                 };
             }
 
-            RetTypeOnly(Value::from_valuef_and_type(
-                ValueF::RecordType(new_kts),
+            RetTypeOnly(Value::from_kind_and_type(
+                ValueKind::RecordType(new_kts),
                 record_type.get_type()?,
             ))
         }
@@ -786,8 +786,8 @@ fn type_last_layer(
     };
 
     Ok(match ret {
-        RetTypeOnly(typ) => Value::from_valuef_and_type_and_span(
-            ValueF::PartialExpr(e),
+        RetTypeOnly(typ) => Value::from_kind_and_type_and_span(
+            ValueKind::PartialExpr(e),
             typ,
             span,
         ),

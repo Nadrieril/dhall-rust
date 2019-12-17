@@ -2,7 +2,7 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use crate::semantics::core::context::TypecheckContext;
-use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
 use crate::semantics::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
@@ -15,12 +15,12 @@ pub(crate) enum Form {
     /// No constraints; expression may not be normalized at all.
     Unevaled,
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
-    /// not be normalized. This means that the first constructor of the contained ValueF is the first
+    /// not be normalized. This means that the first constructor of the contained ValueKind is the first
     /// constructor of the final Normal Form (NF).
     WHNF,
     /// Normal Form, i.e. completely normalized.
-    /// When all the Values in a ValueF are at least in WHNF, and recursively so, then the
-    /// ValueF is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
+    /// When all the Values in a ValueKind are at least in WHNF, and recursively so, then the
+    /// ValueKind is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
     /// if we have the first constructor of the NF at all levels, we actually have the NF.
     NF,
 }
@@ -32,7 +32,7 @@ use Form::{Unevaled, NF, WHNF};
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
-    value: ValueF,
+    kind: ValueKind,
     /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -57,8 +57,8 @@ impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
-    fn as_valuef(&self) -> &ValueF {
-        &self.value
+    fn as_kind(&self) -> &ValueKind {
+        &self.kind
     }
 
     fn normalize_whnf(&mut self) {
@@ -67,21 +67,21 @@ impl ValueInternal {
             // Dummy value in case the other closure panics
             || ValueInternal {
                 form: Unevaled,
-                value: ValueF::Const(Const::Type),
+                kind: ValueKind::Const(Const::Type),
                 ty: None,
                 span: Span::Artificial,
             },
             |vint| match (&vint.form, &vint.ty) {
                 (Unevaled, Some(ty)) => ValueInternal {
                     form: WHNF,
-                    value: normalize_whnf(vint.value, &ty),
+                    kind: normalize_whnf(vint.kind, &ty),
                     ty: vint.ty,
                     span: vint.span,
                 },
                 // `value` is `Sort`
                 (Unevaled, None) => ValueInternal {
                     form: NF,
-                    value: ValueF::Const(Const::Sort),
+                    kind: ValueKind::Const(Const::Sort),
                     ty: None,
                     span: vint.span,
                 },
@@ -97,7 +97,7 @@ impl ValueInternal {
                 self.normalize_nf();
             }
             WHNF => {
-                self.value.normalize_mut();
+                self.kind.normalize_mut();
                 self.form = NF;
             }
             // Already in NF
@@ -116,10 +116,10 @@ impl ValueInternal {
 }
 
 impl Value {
-    fn new(value: ValueF, form: Form, ty: Value, span: Span) -> Value {
+    fn new(kind: ValueKind, form: Form, ty: Value, span: Span) -> Value {
         ValueInternal {
             form,
-            value,
+            kind,
             ty: Some(ty),
             span,
         }
@@ -128,23 +128,23 @@ impl Value {
     pub(crate) fn const_sort() -> Value {
         ValueInternal {
             form: NF,
-            value: ValueF::Const(Const::Sort),
+            kind: ValueKind::Const(Const::Sort),
             ty: None,
             span: Span::Artificial,
         }
         .into_value()
     }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: Value) -> Value {
+    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
         Value::new(v, Unevaled, t, Span::Artificial)
     }
-    pub(crate) fn from_valuef_and_type_and_span(
-        v: ValueF,
+    pub(crate) fn from_kind_and_type_and_span(
+        v: ValueKind,
         t: Value,
         span: Span,
     ) -> Value {
         Value::new(v, Unevaled, t, span)
     }
-    pub(crate) fn from_valuef_and_type_whnf(v: ValueF, t: Value) -> Value {
+    pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
         Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
@@ -160,7 +160,7 @@ impl Value {
 
     pub(crate) fn as_const(&self) -> Option<Const> {
         match &*self.as_whnf() {
-            ValueF::Const(c) => Some(*c),
+            ValueKind::Const(c) => Some(*c),
             _ => None,
         }
     }
@@ -174,30 +174,30 @@ impl Value {
     fn as_internal_mut(&self) -> RefMut<ValueInternal> {
         self.0.borrow_mut()
     }
-    /// WARNING: The returned ValueF may be entirely unnormalized, in aprticular it may just be an
+    /// WARNING: The returned ValueKind may be entirely unnormalized, in aprticular it may just be an
     /// unevaled PartialExpr. You probably want to use `as_whnf`.
-    fn as_valuef(&self) -> Ref<ValueF> {
-        Ref::map(self.as_internal(), ValueInternal::as_valuef)
+    fn as_kind(&self) -> Ref<ValueKind> {
+        Ref::map(self.as_internal(), ValueInternal::as_kind)
     }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueF> {
+    pub(crate) fn as_whnf(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
-        self.as_valuef()
+        self.as_kind()
     }
 
     pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         if opts.normalize {
             self.normalize_whnf();
         }
-        self.as_valuef().to_expr(opts)
+        self.as_kind().to_expr(opts)
     }
-    pub(crate) fn to_whnf_ignore_type(&self) -> ValueF {
+    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
         self.as_whnf().clone()
     }
     /// Before discarding type information, check that it matches the expected return type.
-    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueF {
+    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind {
         self.check_type(ty);
         self.to_whnf_ignore_type()
     }
@@ -234,13 +234,13 @@ impl Value {
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {
-            ValueF::Pi(x, t, e) => {
+            ValueKind::Pi(x, t, e) => {
                 v.check_type(t);
                 e.subst_shift(&x.into(), &v)
             }
             _ => unreachable!("Internal type error"),
         };
-        Value::from_valuef_and_type_whnf(
+        Value::from_kind_and_type_whnf(
             apply_any(self.clone(), v, &body_t),
             body_t,
         )
@@ -275,7 +275,7 @@ impl Shift for ValueInternal {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(ValueInternal {
             form: self.form,
-            value: self.value.shift(delta, var)?,
+            kind: self.kind.shift(delta, var)?,
             ty: self.ty.shift(delta, var)?,
             span: self.span.clone(),
         })
@@ -284,10 +284,10 @@ impl Shift for ValueInternal {
 
 impl Subst<Value> for Value {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        match &*self.as_valuef() {
+        match &*self.as_kind() {
             // If the var matches, we can just reuse the provided value instead of copying it.
             // We also check that the types match, if in debug mode.
-            ValueF::Var(v) if v == var => {
+            ValueKind::Var(v) if v == var => {
                 if let Ok(self_ty) = self.get_type() {
                     val.check_type(&self_ty.subst_shift(var, val));
                 }
@@ -303,7 +303,7 @@ impl Subst<Value> for ValueInternal {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
-            value: self.value.subst_shift(var, val),
+            kind: self.kind.subst_shift(var, val),
             ty: self.ty.subst_shift(var, val),
             span: self.span.clone(),
         }
@@ -321,11 +321,11 @@ impl std::cmp::Eq for Value {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.as_internal();
-        if let ValueF::Const(c) = &vint.value {
+        if let ValueKind::Const(c) = &vint.kind {
             write!(fmt, "{:?}", c)
         } else {
             let mut x = fmt.debug_struct(&format!("Value@{:?}", &vint.form));
-            x.field("value", &vint.value);
+            x.field("value", &vint.kind);
             if let Some(ty) = vint.ty.as_ref() {
                 x.field("type", &ty);
             } else {

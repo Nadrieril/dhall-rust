@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::semantics::core::value::Value;
-use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
 use crate::semantics::error::TypeError;
 use crate::syntax::{Label, V};
@@ -39,7 +39,7 @@ impl TypecheckContext {
                     let i = i.under_multiple_binders(&shift_map);
                     return Some(match i {
                         CtxItem::Kept(newvar, t) => {
-                            Value::from_valuef_and_type(ValueF::Var(newvar), t)
+                            Value::from_kind_and_type(ValueKind::Var(newvar), t)
                         }
                         CtxItem::Replaced(v) => v,
                     });
