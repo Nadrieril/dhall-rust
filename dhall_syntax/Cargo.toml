@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 edition = "2018"
-build = "build.rs"
 
 [lib]
 doctest = false

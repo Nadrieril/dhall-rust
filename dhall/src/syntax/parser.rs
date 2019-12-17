@@ -146,7 +146,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Parser)]
-#[grammar = "../../dhall_syntax/src/dhall.pest"]
+#[grammar = "dhall.pest"]
 struct DhallParser;
 
 #[pest_consume::parser(parser = DhallParser, rule = Rule)]

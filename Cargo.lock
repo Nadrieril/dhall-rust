@@ -73,6 +73,7 @@ dependencies = [
 name = "dhall"
 version = "0.1.0"
 dependencies = [
+ "abnf_to_pest 0.1.1",
  "bytecount 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
