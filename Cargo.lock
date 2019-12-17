@@ -102,21 +102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dhall_syntax"
-version = "0.1.0"
-dependencies = [
- "abnf_to_pest 0.1.1",
- "either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "pest_consume 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "difference"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -373,7 +358,6 @@ version = "0.1.0"
 dependencies = [
  "dhall 0.1.0",
  "dhall_proc_macros 0.1.0",
- "dhall_syntax 0.1.0",
  "serde 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
