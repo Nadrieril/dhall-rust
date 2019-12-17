@@ -351,7 +351,7 @@ impl<E> Expr<E> {
 }
 
 /// Add an isize to an usize
-/// Panics on over/underflow
+/// Returns `None` on over/underflow
 fn add_ui(u: usize, i: isize) -> Option<usize> {
     Some(if i < 0 {
         u.checked_sub(i.checked_neg()? as usize)?
