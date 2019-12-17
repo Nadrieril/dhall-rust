@@ -112,7 +112,7 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
 enum PrintPhase {
     Base,
     Operator,
-    BinOp(core::BinOp),
+    BinOp(ast::BinOp),
     App,
     Import,
     Primitive,
