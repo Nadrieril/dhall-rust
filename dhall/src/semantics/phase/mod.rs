@@ -5,10 +5,10 @@ use crate::semantics::core::value::{ToExprOptions, Value};
 use crate::semantics::core::valuef::ValueF;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
 use crate::semantics::error::{EncodeError, Error, ImportError, TypeError};
+use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
 
-pub(crate) mod binary;
 pub(crate) mod normalize;
 pub(crate) mod parse;
 pub(crate) mod resolve;

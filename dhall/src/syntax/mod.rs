@@ -13,3 +13,4 @@ mod printer;
 pub use crate::syntax::printer::*;
 mod parser;
 pub use crate::syntax::parser::*;
+pub mod binary;
