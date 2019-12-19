@@ -1,4 +1,4 @@
-use dhall_syntax::{Builtin, Integer, Natural};
+use dhall::syntax::{Builtin, Integer, Natural};
 
 use crate::Value;
 

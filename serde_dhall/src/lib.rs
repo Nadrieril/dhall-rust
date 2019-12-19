@@ -122,8 +122,8 @@ pub use value::Value;
 
 // A Dhall value.
 pub mod value {
-    use dhall::phase::{NormalizedExpr, Parsed, Typed};
-    use dhall_syntax::Builtin;
+    use dhall::semantics::phase::{NormalizedExpr, Parsed, Typed};
+    use dhall::syntax::Builtin;
 
     use super::de::{Error, Result};
 
@@ -138,7 +138,7 @@ pub mod value {
         fn from_str_using_dhall_error_type(
             s: &str,
             ty: Option<&Value>,
-        ) -> dhall::error::Result<Self> {
+        ) -> dhall::semantics::error::Result<Self> {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
@@ -193,7 +193,7 @@ pub mod de {
     pub use error::{Error, Result};
 
     mod error {
-        use dhall::error::Error as DhallError;
+        use dhall::semantics::error::Error as DhallError;
 
         pub type Result<T> = std::result::Result<T, Error>;
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use dhall_syntax::{Label, V};
+use crate::syntax::{ExprF, InterpolatedTextContents, Label, V};
 
 /// Stores a pair of variables: a normal one and one
 /// that corresponds to the alpha-normalized version of the first one.
@@ -190,7 +190,7 @@ impl<T: Shift> Shift for std::cell::RefCell<T> {
     }
 }
 
-impl<T: Shift, E: Clone> Shift for dhall_syntax::ExprF<T, E> {
+impl<T: Shift, E: Clone> Shift for ExprF<T, E> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(self.traverse_ref_with_special_handling_of_binders(
             |v| Ok(v.shift(delta, var)?),
@@ -222,7 +222,7 @@ where
     }
 }
 
-impl<T: Shift> Shift for dhall_syntax::InterpolatedTextContents<T> {
+impl<T: Shift> Shift for InterpolatedTextContents<T> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(self.traverse_ref(|x| Ok(x.shift(delta, var)?))?)
     }
@@ -262,7 +262,7 @@ impl<S, T: Subst<S>> Subst<S> for std::cell::RefCell<T> {
     }
 }
 
-impl<S: Shift, T: Subst<S>, E: Clone> Subst<S> for dhall_syntax::ExprF<T, E> {
+impl<S: Shift, T: Subst<S>, E: Clone> Subst<S> for ExprF<T, E> {
     fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
         self.map_ref_with_special_handling_of_binders(
             |v| v.subst_shift(var, val),
@@ -277,7 +277,7 @@ impl<S, T: Subst<S>> Subst<S> for Vec<T> {
     }
 }
 
-impl<S, T: Subst<S>> Subst<S> for dhall_syntax::InterpolatedTextContents<T> {
+impl<S, T: Subst<S>> Subst<S> for InterpolatedTextContents<T> {
     fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
         self.map_ref(|x| x.subst_shift(var, val))
     }

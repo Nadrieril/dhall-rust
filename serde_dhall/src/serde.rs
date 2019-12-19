@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use dhall::phase::NormalizedExpr;
-use dhall_syntax::ExprF;
+use dhall::semantics::phase::NormalizedExpr;
+use dhall::syntax::ExprF;
 
 use crate::de::{Deserialize, Error, Result};
 use crate::Value;

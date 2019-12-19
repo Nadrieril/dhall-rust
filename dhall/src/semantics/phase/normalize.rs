@@ -1,21 +1,21 @@
 use std::collections::HashMap;
 
-use dhall_syntax::Const::Type;
-use dhall_syntax::{
+use crate::semantics::core::value::Value;
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::semantics::phase::Normalized;
+use crate::syntax;
+use crate::syntax::Const::Type;
+use crate::syntax::{
     BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble,
 };
-
-use crate::core::value::Value;
-use crate::core::valuef::ValueF;
-use crate::core::var::{AlphaLabel, Shift, Subst};
-use crate::phase::Normalized;
 
 // Ad-hoc macro to help construct closures
 macro_rules! make_closure {
     (#$var:ident) => { $var.clone() };
     (var($var:ident, $n:expr, $($ty:tt)*)) => {{
-        let var = crate::core::var::AlphaVar::from_var_and_alpha(
+        let var = AlphaVar::from_var_and_alpha(
             Label::from(stringify!($var)).into(),
             $n
         );
@@ -47,7 +47,7 @@ macro_rules! make_closure {
     }};
     (1 + $($rest:tt)*) => {
         ValueF::PartialExpr(ExprF::BinOp(
-            dhall_syntax::BinOp::NaturalPlus,
+            syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
             Value::from_valuef_and_type(
                 ValueF::NaturalLit(1),
@@ -62,7 +62,7 @@ macro_rules! make_closure {
         let tail = make_closure!($($tail)*);
         let list_type = tail.get_type_not_sort();
         ValueF::PartialExpr(ExprF::BinOp(
-            dhall_syntax::BinOp::ListAppend,
+            syntax::BinOp::ListAppend,
             ValueF::NEListLit(vec![head])
                 .into_value_with_type(list_type.clone()),
             tail,
@@ -76,7 +76,7 @@ pub(crate) fn apply_builtin(
     args: Vec<Value>,
     ty: &Value,
 ) -> ValueF {
-    use dhall_syntax::Builtin::*;
+    use syntax::Builtin::*;
     use ValueF::*;
 
     // Small helper enum

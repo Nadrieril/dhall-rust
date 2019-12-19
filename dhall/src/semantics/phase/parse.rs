@@ -2,11 +2,11 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use dhall_syntax::parse_expr;
-
-use crate::error::Error;
-use crate::phase::resolve::ImportRoot;
-use crate::phase::Parsed;
+use crate::semantics::error::Error;
+use crate::semantics::phase::resolve::ImportRoot;
+use crate::semantics::phase::Parsed;
+use crate::syntax::binary;
+use crate::syntax::parse_expr;
 
 pub(crate) fn parse_file(f: &Path) -> Result<Parsed, Error> {
     let mut buffer = String::new();
@@ -23,7 +23,7 @@ pub(crate) fn parse_str(s: &str) -> Result<Parsed, Error> {
 }
 
 pub(crate) fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
-    let expr = crate::phase::binary::decode(data)?;
+    let expr = binary::decode(data)?;
     let root = ImportRoot::LocalDir(std::env::current_dir()?);
     Ok(Parsed(expr, root))
 }
@@ -31,7 +31,7 @@ pub(crate) fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
 pub(crate) fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
     let mut buffer = Vec::new();
     File::open(f)?.read_to_end(&mut buffer)?;
-    let expr = crate::phase::binary::decode(&buffer)?;
+    let expr = binary::decode(&buffer)?;
     let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
     Ok(Parsed(expr, root))
 }

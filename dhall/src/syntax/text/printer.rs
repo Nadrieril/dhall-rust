@@ -1,11 +1,11 @@
-use crate::*;
+use crate::syntax::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
 impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::ExprF::*;
+        use crate::syntax::ExprF::*;
         match self {
             Lam(a, b, c) => {
                 write!(f, "λ({} : {}) → {}", a, b, c)?;
@@ -141,7 +141,7 @@ impl<A: Display + Clone> RawExpr<A> {
         f: &mut fmt::Formatter,
         phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
-        use crate::ExprF::*;
+        use crate::syntax::ExprF::*;
         use PrintPhase::*;
 
         let needs_paren = match self {
@@ -298,7 +298,7 @@ impl Display for Const {
 
 impl Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::BinOp::*;
+        use crate::syntax::BinOp::*;
         f.write_str(match self {
             BoolOr => "||",
             TextAppend => "++",
@@ -344,7 +344,7 @@ impl Display for Label {
         let is_reserved = match s.as_str() {
             "let" | "in" | "if" | "then" | "else" | "Type" | "Kind"
             | "Sort" | "True" | "False" => true,
-            _ => crate::Builtin::parse(&s).is_some(),
+            _ => crate::syntax::Builtin::parse(&s).is_some(),
         };
         if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
             write!(f, "{}", s)
@@ -443,7 +443,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
 
 impl Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Builtin::*;
+        use crate::syntax::Builtin::*;
         f.write_str(match *self {
             Bool => "Bool",
             Natural => "Natural",
@@ -480,7 +480,7 @@ impl Display for Builtin {
 
 impl Display for Scheme {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::Scheme::*;
+        use crate::syntax::Scheme::*;
         f.write_str(match *self {
             HTTP => "http",
             HTTPS => "https",

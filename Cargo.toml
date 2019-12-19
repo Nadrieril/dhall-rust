@@ -4,20 +4,7 @@ cargo-features = ["profile-overrides"]
 members = [
     "abnf_to_pest",
     "dhall",
-    "dhall_generated_parser",
-    "dhall_syntax",
     "dhall_proc_macros",
     "improved_slice_patterns",
     "serde_dhall"
 ]
-
-# # Parser is super slow when not optimized
-# [profile.dev.overrides.dhall_parser]
-# opt-level = 3
-# [profile.dev.overrides.dhall_syntax]
-# opt-level = 3
-# [profile.dev.overrides.dhall]
-# opt-level = 3
-# [profile.dev]
-# opt-level = 3
-

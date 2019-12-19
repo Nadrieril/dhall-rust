@@ -1,16 +1,14 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use dhall_syntax::{Builtin, Const, Expr};
-
-use crate::core::value::{ToExprOptions, Value};
-use crate::core::valuef::ValueF;
-use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::{EncodeError, Error, ImportError, TypeError};
-
+use crate::semantics::core::value::{ToExprOptions, Value};
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{AlphaVar, Shift, Subst};
+use crate::semantics::error::{EncodeError, Error, ImportError, TypeError};
+use crate::syntax::binary;
+use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
 
-pub(crate) mod binary;
 pub(crate) mod normalize;
 pub(crate) mod parse;
 pub(crate) mod resolve;
@@ -62,7 +60,7 @@ impl Parsed {
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        crate::phase::binary::encode(&self.0)
+        binary::encode(&self.0)
     }
 }
 
@@ -172,7 +170,7 @@ impl Typed {
 
 impl Normalized {
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        crate::phase::binary::encode(&self.to_expr())
+        binary::encode(&self.to_expr())
     }
 
     pub(crate) fn to_expr(&self) -> NormalizedExpr {

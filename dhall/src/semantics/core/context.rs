@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use dhall_syntax::{Label, V};
-
-use crate::core::value::Value;
-use crate::core::valuef::ValueF;
-use crate::core::var::{AlphaVar, Shift, Subst};
-use crate::error::TypeError;
+use crate::semantics::core::value::Value;
+use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::var::{AlphaVar, Shift, Subst};
+use crate::semantics::error::TypeError;
+use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
 enum CtxItem {
