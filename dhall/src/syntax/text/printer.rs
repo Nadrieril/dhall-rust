@@ -27,7 +27,7 @@ impl<'a, E: Display + Clone> PhasedExpr<'a, E> {
     }
 }
 
-impl<E: Display + Clone> RawExpr<E> {
+impl<E: Display + Clone> UnspannedExpr<E> {
     // Annotate subexpressions with the appropriate phase, defaulting to Base
     fn annotate_with_phases<'a>(&'a self) -> ExprKind<PhasedExpr<'a, E>, E> {
         use crate::syntax::ExprKind::*;

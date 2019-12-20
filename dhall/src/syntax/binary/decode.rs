@@ -7,7 +7,8 @@ use crate::semantics::phase::DecodedExpr;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
-    Integer, InterpolatedText, Label, Natural, RawExpr, Scheme, Span, URL, V,
+    Integer, InterpolatedText, Label, Natural, Scheme, Span, UnspannedExpr,
+    URL, V,
 };
 
 pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
@@ -18,7 +19,7 @@ pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
 }
 
 // Should probably rename this
-fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
     Expr::new(x, Span::Decoded)
 }
 

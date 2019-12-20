@@ -99,7 +99,7 @@ pub struct Expr<Embed> {
     span: Span,
 }
 
-pub type RawExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
+pub type UnspannedExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
@@ -232,24 +232,24 @@ impl<SE, E> ExprKind<SE, E> {
 }
 
 impl<E> Expr<E> {
-    pub fn as_ref(&self) -> &RawExpr<E> {
+    pub fn as_ref(&self) -> &UnspannedExpr<E> {
         &self.kind
     }
-    pub fn as_mut(&mut self) -> &mut RawExpr<E> {
+    pub fn as_mut(&mut self) -> &mut UnspannedExpr<E> {
         &mut self.kind
     }
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub fn new(kind: RawExpr<E>, span: Span) -> Self {
+    pub fn new(kind: UnspannedExpr<E>, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
             span,
         }
     }
 
-    pub fn rewrap<E2>(&self, kind: RawExpr<E2>) -> Expr<E2> {
+    pub fn rewrap<E2>(&self, kind: UnspannedExpr<E2>) -> Expr<E2> {
         Expr {
             kind: Box::new(kind),
             span: self.span.clone(),

@@ -10,8 +10,8 @@ use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::{
-    Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, RawExpr,
-    Span,
+    Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, Span,
+    UnspannedExpr,
 };
 
 fn tck_pi_type(
@@ -144,7 +144,7 @@ pub(crate) fn const_to_value(c: Const) -> Value {
     }
 }
 
-pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+pub fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
     Expr::new(x, Span::Artificial)
 }
 
