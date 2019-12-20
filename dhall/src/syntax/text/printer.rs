@@ -2,6 +2,133 @@ use crate::syntax::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
 
+// There is a one-to-one correspondence between the formatter and the grammar. Each phase is
+// named after a corresponding grammar group, and the structure of the formatter reflects
+// the relationship between the corresponding grammar rules. This leads to the nice property
+// of automatically getting all the parentheses and precedences right.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+enum PrintPhase {
+    Base,
+    Operator,
+    BinOp(ast::BinOp),
+    App,
+    Import,
+    Primitive,
+}
+
+// Wraps an Expr with a phase, so that phase selsction can be done
+// separate from the actual printing
+#[derive(Clone)]
+struct PhasedExpr<'a, E>(&'a Expr<E>, PrintPhase);
+
+impl<'a, E: Display + Clone> PhasedExpr<'a, E> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, E> {
+        PhasedExpr(self.0, phase)
+    }
+}
+
+impl<E: Display + Clone> RawExpr<E> {
+    // Annotate subexpressions with the appropriate phase, defaulting to Base
+    fn annotate_with_phases<'a>(&'a self) -> ExprKind<PhasedExpr<'a, E>, E> {
+        use crate::syntax::ExprKind::*;
+        use PrintPhase::*;
+        let with_base = self.map_ref(|e| PhasedExpr(e, Base));
+        match with_base {
+            Pi(a, b, c) => {
+                if &String::from(&a) == "_" {
+                    Pi(a, b.phase(Operator), c)
+                } else {
+                    Pi(a, b, c)
+                }
+            }
+            Merge(a, b, c) => Merge(
+                a.phase(PrintPhase::Import),
+                b.phase(PrintPhase::Import),
+                c.map(|x| x.phase(PrintPhase::App)),
+            ),
+            ToMap(a, b) => ToMap(
+                a.phase(PrintPhase::Import),
+                b.map(|x| x.phase(PrintPhase::App)),
+            ),
+            Annot(a, b) => Annot(a.phase(Operator), b),
+            ExprKind::BinOp(op, a, b) => ExprKind::BinOp(
+                op,
+                a.phase(PrintPhase::BinOp(op)),
+                b.phase(PrintPhase::BinOp(op)),
+            ),
+            SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
+            ExprKind::App(f, a) => ExprKind::App(
+                f.phase(PrintPhase::Import),
+                a.phase(PrintPhase::Import),
+            ),
+            Field(a, b) => Field(a.phase(Primitive), b),
+            Projection(e, ls) => Projection(e.phase(Primitive), ls),
+            ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
+            e => e,
+        }
+    }
+
+    fn fmt_phase(
+        &self,
+        f: &mut fmt::Formatter,
+        phase: PrintPhase,
+    ) -> Result<(), fmt::Error> {
+        use crate::syntax::ExprKind::*;
+
+        let needs_paren = match self {
+            Lam(_, _, _)
+            | BoolIf(_, _, _)
+            | Pi(_, _, _)
+            | Let(_, _, _, _)
+            | EmptyListLit(_)
+            | NEListLit(_)
+            | SomeLit(_)
+            | Merge(_, _, _)
+            | ToMap(_, _)
+            | Annot(_, _) => phase > PrintPhase::Base,
+            // Precedence is magically handled by the ordering of BinOps.
+            ExprKind::BinOp(op, _, _) => phase > PrintPhase::BinOp(*op),
+            ExprKind::App(_, _) => phase > PrintPhase::App,
+            Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _) => {
+                phase > PrintPhase::Import
+            }
+            _ => false,
+        };
+
+        if needs_paren {
+            f.write_str("(")?;
+        }
+        self.annotate_with_phases().fmt(f)?;
+        if needs_paren {
+            f.write_str(")")?;
+        }
+
+        Ok(())
+    }
+}
+
+fn fmt_list<T, I, F>(
+    open: &str,
+    sep: &str,
+    close: &str,
+    it: I,
+    f: &mut fmt::Formatter,
+    func: F,
+) -> Result<(), fmt::Error>
+where
+    I: IntoIterator<Item = T>,
+    F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>,
+{
+    f.write_str(open)?;
+    for (i, x) in it.into_iter().enumerate() {
+        if i > 0 {
+            f.write_str(sep)?;
+        }
+        func(x, f)?;
+    }
+    f.write_str(close)
+}
+
 /// Generic instance that delegates to subexpressions
 impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -104,147 +231,16 @@ impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
     }
 }
 
-// There is a one-to-one correspondence between the formatter and the grammar. Each phase is
-// named after a corresponding grammar group, and the structure of the formatter reflects
-// the relationship between the corresponding grammar rules. This leads to the nice property
-// of automatically getting all the parentheses and precedences right.
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum PrintPhase {
-    Base,
-    Operator,
-    BinOp(ast::BinOp),
-    App,
-    Import,
-    Primitive,
-}
-
-// Wraps an Expr with a phase, so that phase selsction can be done
-// separate from the actual printing
-#[derive(Clone)]
-struct PhasedExpr<'a, A>(&'a Expr<A>, PrintPhase);
-
-impl<'a, A: Display + Clone> Display for PhasedExpr<'a, A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.0.as_ref().fmt_phase(f, self.1)
-    }
-}
-
-impl<'a, A: Display + Clone> PhasedExpr<'a, A> {
-    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, A> {
-        PhasedExpr(self.0, phase)
-    }
-}
-
-impl<A: Display + Clone> RawExpr<A> {
-    fn fmt_phase(
-        &self,
-        f: &mut fmt::Formatter,
-        phase: PrintPhase,
-    ) -> Result<(), fmt::Error> {
-        use crate::syntax::ExprKind::*;
-        use PrintPhase::*;
-
-        let needs_paren = match self {
-            Lam(_, _, _)
-            | BoolIf(_, _, _)
-            | Pi(_, _, _)
-            | Let(_, _, _, _)
-            | EmptyListLit(_)
-            | NEListLit(_)
-            | SomeLit(_)
-            | Merge(_, _, _)
-            | ToMap(_, _)
-            | Annot(_, _)
-                if phase > Base =>
-            {
-                true
-            }
-            // Precedence is magically handled by the ordering of BinOps.
-            ExprKind::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
-            ExprKind::App(_, _) if phase > PrintPhase::App => true,
-            Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _)
-                if phase > PrintPhase::Import =>
-            {
-                true
-            }
-            _ => false,
-        };
-
-        // Annotate subexpressions with the appropriate phase, defaulting to Base
-        let phased_self = match self.map_ref(|e| PhasedExpr(e, Base)) {
-            Pi(a, b, c) => {
-                if &String::from(&a) == "_" {
-                    Pi(a, b.phase(Operator), c)
-                } else {
-                    Pi(a, b, c)
-                }
-            }
-            Merge(a, b, c) => Merge(
-                a.phase(PrintPhase::Import),
-                b.phase(PrintPhase::Import),
-                c.map(|x| x.phase(PrintPhase::App)),
-            ),
-            ToMap(a, b) => ToMap(
-                a.phase(PrintPhase::Import),
-                b.map(|x| x.phase(PrintPhase::App)),
-            ),
-            Annot(a, b) => Annot(a.phase(Operator), b),
-            ExprKind::BinOp(op, a, b) => ExprKind::BinOp(
-                op,
-                a.phase(PrintPhase::BinOp(op)),
-                b.phase(PrintPhase::BinOp(op)),
-            ),
-            SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
-            ExprKind::App(f, a) => ExprKind::App(
-                f.phase(PrintPhase::Import),
-                a.phase(PrintPhase::Import),
-            ),
-            Field(a, b) => Field(a.phase(Primitive), b),
-            Projection(e, ls) => Projection(e.phase(Primitive), ls),
-            ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
-            e => e,
-        };
-
-        if needs_paren {
-            f.write_str("(")?;
-        }
-
-        // Uses the ExprKind<PhasedExpr<_>, _> instance
-        phased_self.fmt(f)?;
-
-        if needs_paren {
-            f.write_str(")")?;
-        }
-        Ok(())
-    }
-}
-
-impl<A: Display + Clone> Display for Expr<A> {
+impl<E: Display + Clone> Display for Expr<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
 }
 
-fn fmt_list<T, I, F>(
-    open: &str,
-    sep: &str,
-    close: &str,
-    it: I,
-    f: &mut fmt::Formatter,
-    func: F,
-) -> Result<(), fmt::Error>
-where
-    I: IntoIterator<Item = T>,
-    F: Fn(T, &mut fmt::Formatter) -> Result<(), fmt::Error>,
-{
-    f.write_str(open)?;
-    for (i, x) in it.into_iter().enumerate() {
-        if i > 0 {
-            f.write_str(sep)?;
-        }
-        func(x, f)?;
+impl<'a, E: Display + Clone> Display for PhasedExpr<'a, E> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.as_ref().fmt_phase(f, self.1)
     }
-    f.write_str(close)
 }
 
 impl<SubExpr: Display> Display for InterpolatedText<SubExpr> {
@@ -361,6 +357,7 @@ impl Display for Hash {
         }
     }
 }
+
 impl<SubExpr: Display> Display for Import<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use FilePrefix::*;
