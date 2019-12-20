@@ -6,45 +6,9 @@ pub type Integer = isize;
 pub type Natural = usize;
 pub type Double = NaiveDouble;
 
-pub fn trivial_result<T>(x: Result<T, !>) -> T {
-    match x {
-        Ok(x) => x,
-        Err(e) => e,
-    }
-}
-
 /// Double with bitwise equality
 #[derive(Debug, Copy, Clone)]
 pub struct NaiveDouble(f64);
-
-impl PartialEq for NaiveDouble {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_bits() == other.0.to_bits()
-    }
-}
-
-impl Eq for NaiveDouble {}
-
-impl std::hash::Hash for NaiveDouble {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        self.0.to_bits().hash(state)
-    }
-}
-
-impl From<f64> for NaiveDouble {
-    fn from(x: f64) -> Self {
-        NaiveDouble(x)
-    }
-}
-
-impl From<NaiveDouble> for f64 {
-    fn from(x: NaiveDouble) -> f64 {
-        x.0
-    }
-}
 
 /// Constants for a pure type system
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -61,18 +25,6 @@ pub enum Const {
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V<Label>(pub Label, pub usize);
-
-// This is only for the specific `Label` type, not generic
-impl From<Label> for V<Label> {
-    fn from(x: Label) -> V<Label> {
-        V(x, 0)
-    }
-}
-impl<'a> From<&'a Label> for V<Label> {
-    fn from(x: &'a Label) -> V<Label> {
-        V(x.clone(), 0)
-    }
-}
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -145,23 +97,6 @@ pub enum Builtin {
 pub struct Expr<Embed>(Box<(RawExpr<Embed>, Span)>);
 
 pub type RawExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
-
-impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.as_ref().0 == other.0.as_ref().0
-    }
-}
-
-impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
-
-impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        (self.0).0.hash(state)
-    }
-}
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
@@ -350,16 +285,6 @@ impl<E> Expr<E> {
     }
 }
 
-/// Add an isize to an usize
-/// Returns `None` on over/underflow
-fn add_ui(u: usize, i: isize) -> Option<usize> {
-    Some(if i < 0 {
-        u.checked_sub(i.checked_neg()? as usize)?
-    } else {
-        u.checked_add(i as usize)?
-    })
-}
-
 impl<Label: PartialEq + Clone> V<Label> {
     pub fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
         let V(x, n) = var;
@@ -373,5 +298,81 @@ impl<Label: PartialEq + Clone> V<Label> {
 
     pub fn over_binder(&self, x: &Label) -> Option<Self> {
         self.shift(-1, &V(x.clone(), 0))
+    }
+}
+
+pub fn trivial_result<T>(x: Result<T, !>) -> T {
+    match x {
+        Ok(x) => x,
+        Err(e) => e,
+    }
+}
+
+/// Add an isize to an usize
+/// Returns `None` on over/underflow
+fn add_ui(u: usize, i: isize) -> Option<usize> {
+    Some(if i < 0 {
+        u.checked_sub(i.checked_neg()? as usize)?
+    } else {
+        u.checked_add(i as usize)?
+    })
+}
+
+impl PartialEq for NaiveDouble {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for NaiveDouble {}
+
+impl std::hash::Hash for NaiveDouble {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.0.to_bits().hash(state)
+    }
+}
+
+impl From<f64> for NaiveDouble {
+    fn from(x: f64) -> Self {
+        NaiveDouble(x)
+    }
+}
+
+impl From<NaiveDouble> for f64 {
+    fn from(x: NaiveDouble) -> f64 {
+        x.0
+    }
+}
+
+// This is only for the specific `Label` type, not generic
+impl From<Label> for V<Label> {
+    fn from(x: Label) -> V<Label> {
+        V(x, 0)
+    }
+}
+
+impl<'a> From<&'a Label> for V<Label> {
+    fn from(x: &'a Label) -> V<Label> {
+        V(x.clone(), 0)
+    }
+}
+
+impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ref().0 == other.0.as_ref().0
+    }
+}
+
+impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
+
+impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        (self.0).0.hash(state)
     }
 }
