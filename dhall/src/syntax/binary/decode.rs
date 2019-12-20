@@ -2,7 +2,7 @@ use itertools::Itertools;
 use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 
-use crate::semantics::error::DecodeError;
+use crate::error::DecodeError;
 use crate::semantics::phase::DecodedExpr;
 use crate::syntax;
 use crate::syntax::{

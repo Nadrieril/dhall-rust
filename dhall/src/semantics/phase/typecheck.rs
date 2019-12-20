@@ -1,11 +1,11 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
+use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TypecheckContext;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{Shift, Subst};
-use crate::semantics::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::syntax;

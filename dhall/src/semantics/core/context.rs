@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
-use crate::semantics::error::TypeError;
 use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]

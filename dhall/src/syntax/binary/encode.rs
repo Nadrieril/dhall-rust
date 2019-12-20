@@ -1,7 +1,7 @@
 use serde_cbor::value::value as cbor;
 use std::vec;
 
-use crate::semantics::error::EncodeError;
+use crate::error::EncodeError;
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{

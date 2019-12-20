@@ -12,5 +12,6 @@
 
 mod tests;
 
+pub mod error;
 pub mod semantics;
 pub mod syntax;

@@ -1,10 +1,10 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
+use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TypecheckContext;
 use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
-use crate::semantics::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{NormalizedExpr, Typed};

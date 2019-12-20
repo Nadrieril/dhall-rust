@@ -1,10 +1,10 @@
 use std::fmt::Display;
 use std::path::Path;
 
+use crate::error::{EncodeError, Error, ImportError, TypeError};
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value_kind::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
-use crate::semantics::error::{EncodeError, Error, ImportError, TypeError};
 use crate::semantics::to_expr::ToExprOptions;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
