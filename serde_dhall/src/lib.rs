@@ -138,7 +138,7 @@ pub mod value {
         fn from_str_using_dhall_error_type(
             s: &str,
             ty: Option<&Value>,
-        ) -> dhall::semantics::error::Result<Self> {
+        ) -> dhall::error::Result<Self> {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
@@ -193,7 +193,7 @@ pub mod de {
     pub use error::{Error, Result};
 
     mod error {
-        use dhall::semantics::error::Error as DhallError;
+        use dhall::error::Error as DhallError;
 
         pub type Result<T> = std::result::Result<T, Error>;
 

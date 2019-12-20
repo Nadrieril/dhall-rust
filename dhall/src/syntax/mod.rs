@@ -5,10 +5,9 @@
     clippy::type_complexity
 )]
 
-mod core;
-pub use crate::syntax::core::context;
-pub use crate::syntax::core::visitor;
-pub use crate::syntax::core::*;
+mod ast;
+pub use crate::syntax::ast::visitor;
+pub use crate::syntax::ast::*;
 pub use crate::syntax::text::parser::*;
 pub use crate::syntax::text::printer::*;
 pub mod binary;

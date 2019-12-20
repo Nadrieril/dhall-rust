@@ -8,6 +8,5 @@ mod span;
 pub use span::*;
 mod text;
 pub use text::*;
-pub mod context;
 pub mod map;
 pub mod visitor;

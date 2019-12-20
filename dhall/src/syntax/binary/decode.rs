@@ -2,12 +2,13 @@ use itertools::Itertools;
 use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 
-use crate::semantics::error::DecodeError;
+use crate::error::DecodeError;
 use crate::semantics::phase::DecodedExpr;
 use crate::syntax;
 use crate::syntax::{
-    Expr, ExprF, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
-    Integer, InterpolatedText, Label, Natural, RawExpr, Scheme, Span, URL, V,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
+    Integer, InterpolatedText, Label, Natural, Scheme, Span, UnspannedExpr,
+    URL, V,
 };
 
 pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
@@ -18,17 +19,17 @@ pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
 }
 
 // Should probably rename this
-fn rc<E>(x: RawExpr<E>) -> Expr<E> {
+fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
     Expr::new(x, Span::Decoded)
 }
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
     use cbor::Value::*;
     use syntax::{BinOp, Builtin, Const};
-    use ExprF::*;
+    use ExprKind::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
-            Some(b) => ExprF::Builtin(b),
+            Some(b) => ExprKind::Builtin(b),
             None => match s.as_str() {
                 "True" => BoolLit(true),
                 "False" => BoolLit(false),
@@ -123,7 +124,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                EmptyListLit(rc(App(rc(ExprF::Builtin(Builtin::List)), t)))
+                EmptyListLit(rc(App(rc(ExprKind::Builtin(Builtin::List)), t)))
             }
             [U64(4), Null, rest @ ..] => {
                 let rest = rest
@@ -139,14 +140,14 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             // Old-style optional literals
             [U64(5), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                App(rc(ExprF::Builtin(Builtin::OptionalNone)), t)
+                App(rc(ExprKind::Builtin(Builtin::OptionalNone)), t)
             }
             [U64(5), t, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let t = cbor_value_to_dhall(&t)?;
                 Annot(
                     rc(SomeLit(x)),
-                    rc(App(rc(ExprF::Builtin(Builtin::Optional)), t)),
+                    rc(App(rc(ExprKind::Builtin(Builtin::Optional)), t)),
                 )
             }
             [U64(6), x, y] => {

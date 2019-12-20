@@ -1,10 +1,11 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use crate::semantics::core::value::{ToExprOptions, Value};
-use crate::semantics::core::valuef::ValueF;
+use crate::error::{EncodeError, Error, ImportError, TypeError};
+use crate::semantics::core::value::Value;
+use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
-use crate::semantics::error::{EncodeError, Error, ImportError, TypeError};
+use crate::semantics::to_expr::ToExprOptions;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
@@ -76,13 +77,6 @@ impl Resolved {
 
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
-    ///
-    /// `normalize` does not type-check the expression.  You may want to type-check
-    /// expressions before normalizing them since normalization can convert an
-    /// ill-typed expression into a well-typed expression.
-    ///
-    /// However, `normalize` will not fail if the expression is ill-typed and will
-    /// leave ill-typed sub-expressions unevaluated.
     pub fn normalize(mut self) -> Normalized {
         self.normalize_mut();
         Normalized(self)
@@ -91,8 +85,8 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(Value::from_const(c))
     }
-    pub(crate) fn from_valuef_and_type(v: ValueF, t: Typed) -> Self {
-        Typed(Value::from_valuef_and_type(v, t.into_value()))
+    pub(crate) fn from_kind_and_type(v: ValueKind, t: Typed) -> Self {
+        Typed(Value::from_kind_and_type(v, t.into_value()))
     }
     pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
@@ -101,18 +95,22 @@ impl Typed {
         Typed::from_const(Const::Type)
     }
 
+    /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,
         })
     }
+    /// Converts a value back to the corresponding AST expression, beta-normalizing in the process.
     pub fn normalize_to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: true,
         })
     }
+    /// Converts a value back to the corresponding AST expression, (alpha,beta)-normalizing in the
+    /// process.
     pub(crate) fn normalize_to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: true,
@@ -148,8 +146,8 @@ impl Typed {
     pub fn make_record_type(
         kts: impl Iterator<Item = (String, Typed)>,
     ) -> Self {
-        Typed::from_valuef_and_type(
-            ValueF::RecordType(
+        Typed::from_kind_and_type(
+            ValueKind::RecordType(
                 kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
             ),
             Typed::const_type(),
@@ -158,8 +156,8 @@ impl Typed {
     pub fn make_union_type(
         kts: impl Iterator<Item = (String, Option<Typed>)>,
     ) -> Self {
-        Typed::from_valuef_and_type(
-            ValueF::UnionType(
+        Typed::from_kind_and_type(
+            ValueKind::UnionType(
                 kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
                     .collect(),
             ),

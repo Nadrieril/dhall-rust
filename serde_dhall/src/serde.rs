@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use dhall::semantics::phase::NormalizedExpr;
-use dhall::syntax::ExprF;
+use dhall::syntax::ExprKind;
 
 use crate::de::{Deserialize, Error, Result};
 use crate::Value;
@@ -31,7 +31,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         V: serde::de::Visitor<'de>,
     {
         use std::convert::TryInto;
-        use ExprF::*;
+        use ExprKind::*;
         match self.0.as_ref().as_ref() {
             NaturalLit(n) => {
                 if let Ok(n64) = (*n).try_into() {

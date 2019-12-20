@@ -1,50 +1,14 @@
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::visitor::{self, ExprFMutVisitor, ExprFVisitor};
+use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
 use crate::syntax::*;
 
 pub type Integer = isize;
 pub type Natural = usize;
 pub type Double = NaiveDouble;
 
-pub fn trivial_result<T>(x: Result<T, !>) -> T {
-    match x {
-        Ok(x) => x,
-        Err(e) => e,
-    }
-}
-
 /// Double with bitwise equality
 #[derive(Debug, Copy, Clone)]
 pub struct NaiveDouble(f64);
-
-impl PartialEq for NaiveDouble {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_bits() == other.0.to_bits()
-    }
-}
-
-impl Eq for NaiveDouble {}
-
-impl std::hash::Hash for NaiveDouble {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        self.0.to_bits().hash(state)
-    }
-}
-
-impl From<f64> for NaiveDouble {
-    fn from(x: f64) -> Self {
-        NaiveDouble(x)
-    }
-}
-
-impl From<NaiveDouble> for f64 {
-    fn from(x: NaiveDouble) -> f64 {
-        x.0
-    }
-}
 
 /// Constants for a pure type system
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -61,18 +25,6 @@ pub enum Const {
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V<Label>(pub Label, pub usize);
-
-// This is only for the specific `Label` type, not generic
-impl From<Label> for V<Label> {
-    fn from(x: Label) -> V<Label> {
-        V(x, 0)
-    }
-}
-impl<'a> From<&'a Label> for V<Label> {
-    fn from(x: &'a Label) -> V<Label> {
-        V(x.clone(), 0)
-    }
-}
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -142,33 +94,19 @@ pub enum Builtin {
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct Expr<Embed>(Box<(RawExpr<Embed>, Span)>);
-
-pub type RawExpr<Embed> = ExprF<Expr<Embed>, Embed>;
-
-impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.as_ref().0 == other.0.as_ref().0
-    }
+pub struct Expr<Embed> {
+    kind: Box<ExprKind<Expr<Embed>, Embed>>,
+    span: Span,
 }
 
-impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
-
-impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        (self.0).0.hash(state)
-    }
-}
+pub type UnspannedExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExprF<SubExpr, Embed> {
+pub enum ExprKind<SubExpr, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
@@ -231,12 +169,12 @@ pub enum ExprF<SubExpr, Embed> {
     Embed(Embed),
 }
 
-impl<SE, E> ExprF<SE, E> {
+impl<SE, E> ExprKind<SE, E> {
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprF<SE2, E>, Err>
+    ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
@@ -250,7 +188,7 @@ impl<SE, E> ExprF<SE, E> {
     fn traverse_ref<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprF<SE2, E>, Err>
+    ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
@@ -268,7 +206,7 @@ impl<SE, E> ExprF<SE, E> {
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
-    ) -> ExprF<SE2, E>
+    ) -> ExprKind<SE2, E>
     where
         E: Clone,
     {
@@ -281,7 +219,7 @@ impl<SE, E> ExprF<SE, E> {
     pub fn map_ref<'a, SE2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-    ) -> ExprF<SE2, E>
+    ) -> ExprKind<SE2, E>
     where
         E: Clone,
     {
@@ -294,22 +232,25 @@ impl<SE, E> ExprF<SE, E> {
 }
 
 impl<E> Expr<E> {
-    pub fn as_ref(&self) -> &RawExpr<E> {
-        &self.0.as_ref().0
-    }
-    pub fn as_mut(&mut self) -> &mut RawExpr<E> {
-        &mut self.0.as_mut().0
+    pub fn as_ref(&self) -> &UnspannedExpr<E> {
+        &self.kind
     }
     pub fn span(&self) -> Span {
-        self.0.as_ref().1.clone()
+        self.span.clone()
     }
 
-    pub fn new(x: RawExpr<E>, n: Span) -> Self {
-        Expr(Box::new((x, n)))
+    pub fn new(kind: UnspannedExpr<E>, span: Span) -> Self {
+        Expr {
+            kind: Box::new(kind),
+            span,
+        }
     }
 
-    pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
-        Expr(Box::new((x, (self.0).1.clone())))
+    pub fn rewrap<E2>(&self, kind: UnspannedExpr<E2>) -> Expr<E2> {
+        Expr {
+            kind: Box::new(kind),
+            span: self.span.clone(),
+        }
     }
 
     pub fn traverse_resolve_mut<Err, F1>(
@@ -320,21 +261,21 @@ impl<E> Expr<E> {
         E: Clone,
         F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
     {
-        match self.as_mut() {
-            ExprF::BinOp(BinOp::ImportAlt, l, r) => {
-                let garbage_expr = ExprF::BoolLit(false);
+        match self.kind.as_mut() {
+            ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
+                let garbage_expr = ExprKind::BoolLit(false);
                 let new_self = if l.traverse_resolve_mut(f).is_ok() {
                     l
                 } else {
                     r.traverse_resolve_mut(f)?;
                     r
                 };
-                *self.as_mut() =
-                    std::mem::replace(new_self.as_mut(), garbage_expr);
+                *self.kind =
+                    std::mem::replace(new_self.kind.as_mut(), garbage_expr);
             }
             _ => {
-                self.as_mut().traverse_mut(|e| e.traverse_resolve_mut(f))?;
-                if let ExprF::Import(import) = self.as_mut() {
+                self.kind.traverse_mut(|e| e.traverse_resolve_mut(f))?;
+                if let ExprKind::Import(import) = self.kind.as_mut() {
                     let garbage_import = Import {
                         mode: ImportMode::Code,
                         location: ImportLocation::Missing,
@@ -342,22 +283,12 @@ impl<E> Expr<E> {
                     };
                     // Move out of &mut import
                     let import = std::mem::replace(import, garbage_import);
-                    *self.as_mut() = ExprF::Embed(f(import)?);
+                    *self.kind = ExprKind::Embed(f(import)?);
                 }
             }
         }
         Ok(())
     }
-}
-
-/// Add an isize to an usize
-/// Returns `None` on over/underflow
-fn add_ui(u: usize, i: isize) -> Option<usize> {
-    Some(if i < 0 {
-        u.checked_sub(i.checked_neg()? as usize)?
-    } else {
-        u.checked_add(i as usize)?
-    })
 }
 
 impl<Label: PartialEq + Clone> V<Label> {
@@ -373,5 +304,75 @@ impl<Label: PartialEq + Clone> V<Label> {
 
     pub fn over_binder(&self, x: &Label) -> Option<Self> {
         self.shift(-1, &V(x.clone(), 0))
+    }
+}
+
+pub fn trivial_result<T>(x: Result<T, !>) -> T {
+    match x {
+        Ok(x) => x,
+        Err(e) => e,
+    }
+}
+
+/// Add an isize to an usize
+/// Returns `None` on over/underflow
+fn add_ui(u: usize, i: isize) -> Option<usize> {
+    Some(if i < 0 {
+        u.checked_sub(i.checked_neg()? as usize)?
+    } else {
+        u.checked_add(i as usize)?
+    })
+}
+
+impl PartialEq for NaiveDouble {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for NaiveDouble {}
+
+impl std::hash::Hash for NaiveDouble {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.0.to_bits().hash(state)
+    }
+}
+
+impl From<f64> for NaiveDouble {
+    fn from(x: f64) -> Self {
+        NaiveDouble(x)
+    }
+}
+
+impl From<NaiveDouble> for f64 {
+    fn from(x: NaiveDouble) -> f64 {
+        x.0
+    }
+}
+
+/// This is only for the specific `Label` type, not generic
+impl From<Label> for V<Label> {
+    fn from(x: Label) -> V<Label> {
+        V(x, 0)
+    }
+}
+
+impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
+
+impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.kind.hash(state)
     }
 }

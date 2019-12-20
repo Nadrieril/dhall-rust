@@ -1,12 +1,12 @@
 use serde_cbor::value::value as cbor;
 use std::vec;
 
-use crate::semantics::error::EncodeError;
+use crate::error::EncodeError;
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
-    Expr, ExprF, FilePrefix, Hash, Import, ImportLocation, ImportMode, Label,
-    Scheme, V,
+    Expr, ExprKind, FilePrefix, Hash, Import, ImportLocation, ImportMode,
+    Label, Scheme, V,
 };
 
 /// Warning: will fail if `expr` contains an `Embed` node.
@@ -46,7 +46,7 @@ where
     use cbor::Value::{String, I64, U64};
     use std::iter::once;
     use syntax::Builtin;
-    use syntax::ExprF::*;
+    use syntax::ExprKind::*;
 
     use self::Serialize::{RecordMap, UnionMap};
     fn expr<E>(x: &Expr<E>) -> self::Serialize<'_, E> {
@@ -110,7 +110,9 @@ where
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
         EmptyListLit(x) => match x.as_ref() {
             App(f, a) => match f.as_ref() {
-                ExprF::Builtin(Builtin::List) => ser_seq!(ser; tag(4), expr(a)),
+                ExprKind::Builtin(Builtin::List) => {
+                    ser_seq!(ser; tag(4), expr(a))
+                }
                 _ => ser_seq!(ser; tag(28), expr(x)),
             },
             _ => ser_seq!(ser; tag(28), expr(x)),
@@ -284,7 +286,7 @@ fn collect_nested_applications<'a, E>(
 ) -> (&'a Expr<E>, Vec<&'a Expr<E>>) {
     fn go<'a, E>(e: &'a Expr<E>, vec: &mut Vec<&'a Expr<E>>) -> &'a Expr<E> {
         match e.as_ref() {
-            ExprF::App(f, a) => {
+            ExprKind::App(f, a) => {
                 vec.push(a);
                 go(f, vec)
             }
@@ -306,7 +308,7 @@ fn collect_nested_lets<'a, E>(
         vec: &mut Vec<LetBinding<'a, E>>,
     ) -> &'a Expr<E> {
         match e.as_ref() {
-            ExprF::Let(l, t, v, e) => {
+            ExprKind::Let(l, t, v, e) => {
                 vec.push((l, t, v));
                 go(e, vec)
             }

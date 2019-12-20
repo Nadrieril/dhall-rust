@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::syntax::{ExprF, InterpolatedTextContents, Label, V};
+use crate::syntax::{ExprKind, InterpolatedTextContents, Label, V};
 
 /// Stores a pair of variables: a normal one and one
 /// that corresponds to the alpha-normalized version of the first one.
@@ -12,7 +12,7 @@ pub struct AlphaVar {
 }
 
 // Exactly like a Label, but equality returns always true.
-// This is so that ValueF equality is exactly alpha-equivalence.
+// This is so that ValueKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct AlphaLabel(Label);
 
@@ -190,7 +190,7 @@ impl<T: Shift> Shift for std::cell::RefCell<T> {
     }
 }
 
-impl<T: Shift, E: Clone> Shift for ExprF<T, E> {
+impl<T: Shift, E: Clone> Shift for ExprKind<T, E> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(self.traverse_ref_with_special_handling_of_binders(
             |v| Ok(v.shift(delta, var)?),
@@ -262,7 +262,7 @@ impl<S, T: Subst<S>> Subst<S> for std::cell::RefCell<T> {
     }
 }
 
-impl<S: Shift, T: Subst<S>, E: Clone> Subst<S> for ExprF<T, E> {
+impl<S: Shift, T: Subst<S>, E: Clone> Subst<S> for ExprKind<T, E> {
     fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self {
         self.map_ref_with_special_handling_of_binders(
             |v| v.subst_shift(var, val),

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use crate::semantics::core::value::Value;
-use crate::semantics::core::valuef::ValueF;
+use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
-    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
-    NaiveDouble,
+    BinOp, Builtin, ExprKind, InterpolatedText, InterpolatedTextContents,
+    Label, NaiveDouble,
 };
 
 // Ad-hoc macro to help construct closures
@@ -19,7 +19,7 @@ macro_rules! make_closure {
             Label::from(stringify!($var)).into(),
             $n
         );
-        ValueF::Var(var)
+        ValueKind::Var(var)
             .into_value_with_type(make_closure!($($ty)*))
     }};
     // Warning: assumes that $ty, as a dhall value, has type `Type`
@@ -28,9 +28,9 @@ macro_rules! make_closure {
         let ty = make_closure!($($ty)*);
         let body = make_closure!($($body)*);
         let body_ty = body.get_type_not_sort();
-        let lam_ty = ValueF::Pi(var.clone(), ty.clone(), body_ty)
+        let lam_ty = ValueKind::Pi(var.clone(), ty.clone(), body_ty)
             .into_value_with_type(Value::from_const(Type));
-        ValueF::Lam(var, ty, body).into_value_with_type(lam_ty)
+        ValueKind::Lam(var, ty, body).into_value_with_type(lam_ty)
     }};
     (Natural) => {
         Value::from_builtin(Builtin::Natural)
@@ -43,14 +43,14 @@ macro_rules! make_closure {
         let v = make_closure!($($rest)*);
         let v_type = v.get_type_not_sort();
         let opt_v_type = Value::from_builtin(Builtin::Optional).app(v_type);
-        ValueF::NEOptionalLit(v).into_value_with_type(opt_v_type)
+        ValueKind::NEOptionalLit(v).into_value_with_type(opt_v_type)
     }};
     (1 + $($rest:tt)*) => {
-        ValueF::PartialExpr(ExprF::BinOp(
+        ValueKind::PartialExpr(ExprKind::BinOp(
             syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
-            Value::from_valuef_and_type(
-                ValueF::NaturalLit(1),
+            Value::from_kind_and_type(
+                ValueKind::NaturalLit(1),
                 make_closure!(Natural)
             ),
         )).into_value_with_type(
@@ -61,9 +61,9 @@ macro_rules! make_closure {
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
         let list_type = tail.get_type_not_sort();
-        ValueF::PartialExpr(ExprF::BinOp(
+        ValueKind::PartialExpr(ExprKind::BinOp(
             syntax::BinOp::ListAppend,
-            ValueF::NEListLit(vec![head])
+            ValueKind::NEListLit(vec![head])
                 .into_value_with_type(list_type.clone()),
             tail,
         )).into_value_with_type(list_type)
@@ -75,13 +75,13 @@ pub(crate) fn apply_builtin(
     b: Builtin,
     args: Vec<Value>,
     ty: &Value,
-) -> ValueF {
+) -> ValueKind {
     use syntax::Builtin::*;
-    use ValueF::*;
+    use ValueKind::*;
 
     // Small helper enum
     enum Ret<'a> {
-        ValueF(ValueF),
+        ValueKind(ValueKind),
         Value(Value),
         // For applications that can return a function, it's important to keep the remaining
         // arguments to apply them to the resulting function.
@@ -90,38 +90,38 @@ pub(crate) fn apply_builtin(
     }
 
     let ret = match (b, args.as_slice()) {
-        (OptionalNone, [t]) => Ret::ValueF(EmptyOptionalLit(t.clone())),
+        (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),
         (NaturalIsZero, [n]) => match &*n.as_whnf() {
-            NaturalLit(n) => Ret::ValueF(BoolLit(*n == 0)),
+            NaturalLit(n) => Ret::ValueKind(BoolLit(*n == 0)),
             _ => Ret::DoneAsIs,
         },
         (NaturalEven, [n]) => match &*n.as_whnf() {
-            NaturalLit(n) => Ret::ValueF(BoolLit(*n % 2 == 0)),
+            NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 == 0)),
             _ => Ret::DoneAsIs,
         },
         (NaturalOdd, [n]) => match &*n.as_whnf() {
-            NaturalLit(n) => Ret::ValueF(BoolLit(*n % 2 != 0)),
+            NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 != 0)),
             _ => Ret::DoneAsIs,
         },
         (NaturalToInteger, [n]) => match &*n.as_whnf() {
-            NaturalLit(n) => Ret::ValueF(IntegerLit(*n as isize)),
+            NaturalLit(n) => Ret::ValueKind(IntegerLit(*n as isize)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalShow, [n]) => match &*n.as_whnf() {
-            NaturalLit(n) => {
-                Ret::ValueF(TextLit(vec![InterpolatedTextContents::Text(
-                    n.to_string(),
-                )]))
+        (NaturalShow, [n]) => {
+            match &*n.as_whnf() {
+                NaturalLit(n) => Ret::ValueKind(TextLit(vec![
+                    InterpolatedTextContents::Text(n.to_string()),
+                ])),
+                _ => Ret::DoneAsIs,
             }
-            _ => Ret::DoneAsIs,
-        },
+        }
         (NaturalSubtract, [a, b]) => match (&*a.as_whnf(), &*b.as_whnf()) {
             (NaturalLit(a), NaturalLit(b)) => {
-                Ret::ValueF(NaturalLit(if b > a { b - a } else { 0 }))
+                Ret::ValueKind(NaturalLit(if b > a { b - a } else { 0 }))
             }
             (NaturalLit(0), _) => Ret::Value(b.clone()),
-            (_, NaturalLit(0)) => Ret::ValueF(NaturalLit(0)),
-            _ if a == b => Ret::ValueF(NaturalLit(0)),
+            (_, NaturalLit(0)) => Ret::ValueKind(NaturalLit(0)),
+            _ if a == b => Ret::ValueKind(NaturalLit(0)),
             _ => Ret::DoneAsIs,
         },
         (IntegerShow, [n]) => match &*n.as_whnf() {
@@ -131,24 +131,24 @@ pub(crate) fn apply_builtin(
                 } else {
                     format!("+{}", n)
                 };
-                Ret::ValueF(TextLit(vec![InterpolatedTextContents::Text(s)]))
+                Ret::ValueKind(TextLit(vec![InterpolatedTextContents::Text(s)]))
             }
             _ => Ret::DoneAsIs,
         },
         (IntegerToDouble, [n]) => match &*n.as_whnf() {
             IntegerLit(n) => {
-                Ret::ValueF(DoubleLit(NaiveDouble::from(*n as f64)))
+                Ret::ValueKind(DoubleLit(NaiveDouble::from(*n as f64)))
             }
             _ => Ret::DoneAsIs,
         },
-        (DoubleShow, [n]) => match &*n.as_whnf() {
-            DoubleLit(n) => {
-                Ret::ValueF(TextLit(vec![InterpolatedTextContents::Text(
-                    n.to_string(),
-                )]))
+        (DoubleShow, [n]) => {
+            match &*n.as_whnf() {
+                DoubleLit(n) => Ret::ValueKind(TextLit(vec![
+                    InterpolatedTextContents::Text(n.to_string()),
+                ])),
+                _ => Ret::DoneAsIs,
             }
-            _ => Ret::DoneAsIs,
-        },
+        }
         (TextShow, [v]) => match &*v.as_whnf() {
             TextLit(elts) => {
                 match elts.as_slice() {
@@ -158,7 +158,7 @@ pub(crate) fn apply_builtin(
                         let txt: InterpolatedText<Normalized> =
                             std::iter::empty().collect();
                         let s = txt.to_string();
-                        Ret::ValueF(TextLit(vec![
+                        Ret::ValueKind(TextLit(vec![
                             InterpolatedTextContents::Text(s),
                         ]))
                     }
@@ -172,7 +172,7 @@ pub(crate) fn apply_builtin(
                             ))
                             .collect();
                         let s = txt.to_string();
-                        Ret::ValueF(TextLit(vec![
+                        Ret::ValueKind(TextLit(vec![
                             InterpolatedTextContents::Text(s),
                         ]))
                     }
@@ -182,28 +182,28 @@ pub(crate) fn apply_builtin(
             _ => Ret::DoneAsIs,
         },
         (ListLength, [_, l]) => match &*l.as_whnf() {
-            EmptyListLit(_) => Ret::ValueF(NaturalLit(0)),
-            NEListLit(xs) => Ret::ValueF(NaturalLit(xs.len())),
+            EmptyListLit(_) => Ret::ValueKind(NaturalLit(0)),
+            NEListLit(xs) => Ret::ValueKind(NaturalLit(xs.len())),
             _ => Ret::DoneAsIs,
         },
         (ListHead, [_, l]) => match &*l.as_whnf() {
-            EmptyListLit(n) => Ret::ValueF(EmptyOptionalLit(n.clone())),
+            EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => {
-                Ret::ValueF(NEOptionalLit(xs.iter().next().unwrap().clone()))
+                Ret::ValueKind(NEOptionalLit(xs.iter().next().unwrap().clone()))
             }
             _ => Ret::DoneAsIs,
         },
         (ListLast, [_, l]) => match &*l.as_whnf() {
-            EmptyListLit(n) => Ret::ValueF(EmptyOptionalLit(n.clone())),
-            NEListLit(xs) => Ret::ValueF(NEOptionalLit(
+            EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
+            NEListLit(xs) => Ret::ValueKind(NEOptionalLit(
                 xs.iter().rev().next().unwrap().clone(),
             )),
             _ => Ret::DoneAsIs,
         },
         (ListReverse, [_, l]) => match &*l.as_whnf() {
-            EmptyListLit(n) => Ret::ValueF(EmptyListLit(n.clone())),
+            EmptyListLit(n) => Ret::ValueKind(EmptyListLit(n.clone())),
             NEListLit(xs) => {
-                Ret::ValueF(NEListLit(xs.iter().rev().cloned().collect()))
+                Ret::ValueKind(NEListLit(xs.iter().rev().cloned().collect()))
             }
             _ => Ret::DoneAsIs,
         },
@@ -222,7 +222,7 @@ pub(crate) fn apply_builtin(
                     let mut kts = HashMap::new();
                     kts.insert("index".into(), Value::from_builtin(Natural));
                     kts.insert("value".into(), t.clone());
-                    let t = Value::from_valuef_and_type(
+                    let t = Value::from_kind_and_type(
                         RecordType(kts),
                         Value::from_const(Type),
                     );
@@ -237,7 +237,7 @@ pub(crate) fn apply_builtin(
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Value::from_valuef_and_type(
+                                        Value::from_kind_and_type(
                                             NaturalLit(i),
                                             Value::from_builtin(
                                                 Builtin::Natural,
@@ -245,7 +245,7 @@ pub(crate) fn apply_builtin(
                                         ),
                                     );
                                     kvs.insert("value".into(), e.clone());
-                                    Value::from_valuef_and_type(
+                                    Value::from_kind_and_type(
                                         RecordLit(kvs),
                                         t.clone(),
                                     )
@@ -254,14 +254,14 @@ pub(crate) fn apply_builtin(
                         ),
                         _ => unreachable!(),
                     };
-                    Ret::ValueF(list)
+                    Ret::ValueKind(list)
                 }
                 _ => Ret::DoneAsIs,
             }
         }
         (ListBuild, [t, f]) => match &*f.as_whnf() {
             // fold/build fusion
-            ValueF::AppliedBuiltin(ListFold, args) => {
+            ValueKind::AppliedBuiltin(ListFold, args) => {
                 if args.len() >= 2 {
                     Ret::Value(args[1].clone())
                 } else {
@@ -303,7 +303,7 @@ pub(crate) fn apply_builtin(
         },
         (OptionalBuild, [t, f]) => match &*f.as_whnf() {
             // fold/build fusion
-            ValueF::AppliedBuiltin(OptionalFold, args) => {
+            ValueKind::AppliedBuiltin(OptionalFold, args) => {
                 if args.len() >= 2 {
                     Ret::Value(args[1].clone())
                 } else {
@@ -338,7 +338,7 @@ pub(crate) fn apply_builtin(
         },
         (NaturalBuild, [f]) => match &*f.as_whnf() {
             // fold/build fusion
-            ValueF::AppliedBuiltin(NaturalFold, args) => {
+            ValueKind::AppliedBuiltin(NaturalFold, args) => {
                 if !args.is_empty() {
                     Ret::Value(args[0].clone())
                 } else {
@@ -375,7 +375,7 @@ pub(crate) fn apply_builtin(
         _ => Ret::DoneAsIs,
     };
     match ret {
-        Ret::ValueF(v) => v,
+        Ret::ValueKind(v) => v,
         Ret::Value(v) => v.to_whnf_check_type(ty),
         Ret::ValueWithRemainingArgs(unconsumed_args, mut v) => {
             let n_consumed_args = args.len() - unconsumed_args.len();
@@ -388,23 +388,23 @@ pub(crate) fn apply_builtin(
     }
 }
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueF {
+pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
-        ValueF::Lam(x, _, e) => {
+        ValueKind::Lam(x, _, e) => {
             e.subst_shift(&x.into(), &a).to_whnf_check_type(ty)
         }
-        ValueF::AppliedBuiltin(b, args) => {
+        ValueKind::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
             apply_builtin(*b, args, ty)
         }
-        ValueF::UnionConstructor(l, kts) => {
-            ValueF::UnionLit(l.clone(), a, kts.clone())
+        ValueKind::UnionConstructor(l, kts) => {
+            ValueKind::UnionLit(l.clone(), a, kts.clone())
         }
         _ => {
             drop(f_borrow);
-            ValueF::PartialExpr(ExprF::App(f, a))
+            ValueKind::PartialExpr(ExprKind::App(f, a))
         }
     }
 }
@@ -426,7 +426,7 @@ pub(crate) fn squash_textlit(
                 Expr(e) => {
                     let e_borrow = e.as_whnf();
                     match &*e_borrow {
-                        ValueF::TextLit(elts2) => {
+                        ValueKind::TextLit(elts2) => {
                             inner(elts2.iter().cloned(), crnt_str, ret)
                         }
                         _ => {
@@ -479,10 +479,10 @@ where
 
 // Small helper enum to avoid repetition
 enum Ret<'a> {
-    ValueF(ValueF),
+    ValueKind(ValueKind),
     Value(Value),
     ValueRef(&'a Value),
-    Expr(ExprF<Value, Normalized>),
+    Expr(ExprKind<Value, Normalized>),
 }
 
 fn apply_binop<'a>(
@@ -496,7 +496,7 @@ fn apply_binop<'a>(
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
         RightBiasedRecordMerge, TextAppend,
     };
-    use ValueF::{
+    use ValueKind::{
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
         TextLit,
     };
@@ -505,58 +505,58 @@ fn apply_binop<'a>(
     Some(match (o, &*x_borrow, &*y_borrow) {
         (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
         (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
-        (BoolAnd, BoolLit(false), _) => Ret::ValueF(BoolLit(false)),
-        (BoolAnd, _, BoolLit(false)) => Ret::ValueF(BoolLit(false)),
+        (BoolAnd, BoolLit(false), _) => Ret::ValueKind(BoolLit(false)),
+        (BoolAnd, _, BoolLit(false)) => Ret::ValueKind(BoolLit(false)),
         (BoolAnd, _, _) if x == y => Ret::ValueRef(x),
-        (BoolOr, BoolLit(true), _) => Ret::ValueF(BoolLit(true)),
-        (BoolOr, _, BoolLit(true)) => Ret::ValueF(BoolLit(true)),
+        (BoolOr, BoolLit(true), _) => Ret::ValueKind(BoolLit(true)),
+        (BoolOr, _, BoolLit(true)) => Ret::ValueKind(BoolLit(true)),
         (BoolOr, BoolLit(false), _) => Ret::ValueRef(y),
         (BoolOr, _, BoolLit(false)) => Ret::ValueRef(x),
         (BoolOr, _, _) if x == y => Ret::ValueRef(x),
         (BoolEQ, BoolLit(true), _) => Ret::ValueRef(y),
         (BoolEQ, _, BoolLit(true)) => Ret::ValueRef(x),
-        (BoolEQ, BoolLit(x), BoolLit(y)) => Ret::ValueF(BoolLit(x == y)),
-        (BoolEQ, _, _) if x == y => Ret::ValueF(BoolLit(true)),
+        (BoolEQ, BoolLit(x), BoolLit(y)) => Ret::ValueKind(BoolLit(x == y)),
+        (BoolEQ, _, _) if x == y => Ret::ValueKind(BoolLit(true)),
         (BoolNE, BoolLit(false), _) => Ret::ValueRef(y),
         (BoolNE, _, BoolLit(false)) => Ret::ValueRef(x),
-        (BoolNE, BoolLit(x), BoolLit(y)) => Ret::ValueF(BoolLit(x != y)),
-        (BoolNE, _, _) if x == y => Ret::ValueF(BoolLit(false)),
+        (BoolNE, BoolLit(x), BoolLit(y)) => Ret::ValueKind(BoolLit(x != y)),
+        (BoolNE, _, _) if x == y => Ret::ValueKind(BoolLit(false)),
 
         (NaturalPlus, NaturalLit(0), _) => Ret::ValueRef(y),
         (NaturalPlus, _, NaturalLit(0)) => Ret::ValueRef(x),
         (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            Ret::ValueF(NaturalLit(x + y))
+            Ret::ValueKind(NaturalLit(x + y))
         }
-        (NaturalTimes, NaturalLit(0), _) => Ret::ValueF(NaturalLit(0)),
-        (NaturalTimes, _, NaturalLit(0)) => Ret::ValueF(NaturalLit(0)),
+        (NaturalTimes, NaturalLit(0), _) => Ret::ValueKind(NaturalLit(0)),
+        (NaturalTimes, _, NaturalLit(0)) => Ret::ValueKind(NaturalLit(0)),
         (NaturalTimes, NaturalLit(1), _) => Ret::ValueRef(y),
         (NaturalTimes, _, NaturalLit(1)) => Ret::ValueRef(x),
         (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            Ret::ValueF(NaturalLit(x * y))
+            Ret::ValueKind(NaturalLit(x * y))
         }
 
         (ListAppend, EmptyListLit(_), _) => Ret::ValueRef(y),
         (ListAppend, _, EmptyListLit(_)) => Ret::ValueRef(x),
-        (ListAppend, NEListLit(xs), NEListLit(ys)) => Ret::ValueF(NEListLit(
-            xs.iter().chain(ys.iter()).cloned().collect(),
-        )),
+        (ListAppend, NEListLit(xs), NEListLit(ys)) => Ret::ValueKind(
+            NEListLit(xs.iter().chain(ys.iter()).cloned().collect()),
+        ),
 
         (TextAppend, TextLit(x), _) if x.is_empty() => Ret::ValueRef(y),
         (TextAppend, _, TextLit(y)) if y.is_empty() => Ret::ValueRef(x),
-        (TextAppend, TextLit(x), TextLit(y)) => Ret::ValueF(TextLit(
+        (TextAppend, TextLit(x), TextLit(y)) => Ret::ValueKind(TextLit(
             squash_textlit(x.iter().chain(y.iter()).cloned()),
         )),
         (TextAppend, TextLit(x), _) => {
             use std::iter::once;
             let y = InterpolatedTextContents::Expr(y.clone());
-            Ret::ValueF(TextLit(squash_textlit(
+            Ret::ValueKind(TextLit(squash_textlit(
                 x.iter().cloned().chain(once(y)),
             )))
         }
         (TextAppend, _, TextLit(y)) => {
             use std::iter::once;
             let x = InterpolatedTextContents::Expr(x.clone());
-            Ret::ValueF(TextLit(squash_textlit(
+            Ret::ValueKind(TextLit(squash_textlit(
                 once(x).chain(y.iter().cloned()),
             )))
         }
@@ -573,7 +573,7 @@ fn apply_binop<'a>(
                 // Insert only if key not already present
                 kvs.entry(x.clone()).or_insert_with(|| v.clone());
             }
-            Ret::ValueF(RecordLit(kvs))
+            Ret::ValueKind(RecordLit(kvs))
         }
 
         (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
@@ -589,8 +589,8 @@ fn apply_binop<'a>(
                 _ => unreachable!("Internal type error"),
             };
             let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |k, v1, v2| {
-                Ok(Value::from_valuef_and_type(
-                    ValueF::PartialExpr(ExprF::BinOp(
+                Ok(Value::from_kind_and_type(
+                    ValueKind::PartialExpr(ExprKind::BinOp(
                         RecursiveRecordMerge,
                         v1.clone(),
                         v2.clone(),
@@ -598,7 +598,7 @@ fn apply_binop<'a>(
                     kts.get(k).expect("Internal type error").clone(),
                 ))
             })?;
-            Ret::ValueF(RecordLit(kvs))
+            Ret::ValueKind(RecordLit(kvs))
         }
 
         (RecursiveRecordTypeMerge, _, _) | (Equivalence, _, _) => {
@@ -610,46 +610,46 @@ fn apply_binop<'a>(
 }
 
 pub(crate) fn normalize_one_layer(
-    expr: ExprF<Value, Normalized>,
+    expr: ExprKind<Value, Normalized>,
     ty: &Value,
-) -> ValueF {
-    use ValueF::{
+) -> ValueKind {
+    use ValueKind::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
         NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
         UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
-        ExprF::Import(_) => unreachable!(
+        ExprKind::Import(_) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
         // Those cases have already been completely handled in the typechecking phase (using
         // `RetWhole`), so they won't appear here.
-        ExprF::Lam(_, _, _)
-        | ExprF::Pi(_, _, _)
-        | ExprF::Let(_, _, _, _)
-        | ExprF::Embed(_)
-        | ExprF::Const(_)
-        | ExprF::Builtin(_)
-        | ExprF::Var(_)
-        | ExprF::Annot(_, _)
-        | ExprF::RecordType(_)
-        | ExprF::UnionType(_) => {
+        ExprKind::Lam(_, _, _)
+        | ExprKind::Pi(_, _, _)
+        | ExprKind::Let(_, _, _, _)
+        | ExprKind::Embed(_)
+        | ExprKind::Const(_)
+        | ExprKind::Builtin(_)
+        | ExprKind::Var(_)
+        | ExprKind::Annot(_, _)
+        | ExprKind::RecordType(_)
+        | ExprKind::UnionType(_) => {
             unreachable!("This case should have been handled in typecheck")
         }
-        ExprF::Assert(_) => Ret::Expr(expr),
-        ExprF::App(v, a) => Ret::Value(v.app(a)),
-        ExprF::BoolLit(b) => Ret::ValueF(BoolLit(b)),
-        ExprF::NaturalLit(n) => Ret::ValueF(NaturalLit(n)),
-        ExprF::IntegerLit(n) => Ret::ValueF(IntegerLit(n)),
-        ExprF::DoubleLit(n) => Ret::ValueF(DoubleLit(n)),
-        ExprF::SomeLit(e) => Ret::ValueF(NEOptionalLit(e)),
-        ExprF::EmptyListLit(ref t) => {
+        ExprKind::Assert(_) => Ret::Expr(expr),
+        ExprKind::App(v, a) => Ret::Value(v.app(a)),
+        ExprKind::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
+        ExprKind::NaturalLit(n) => Ret::ValueKind(NaturalLit(n)),
+        ExprKind::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
+        ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
+        ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
+        ExprKind::EmptyListLit(ref t) => {
             // Check if the type is of the form `List x`
             let t_borrow = t.as_whnf();
             match &*t_borrow {
                 AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
-                    Ret::ValueF(EmptyListLit(args[0].clone()))
+                    Ret::ValueKind(EmptyListLit(args[0].clone()))
                 }
                 _ => {
                     drop(t_borrow);
@@ -657,23 +657,23 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::NEListLit(elts) => {
-            Ret::ValueF(NEListLit(elts.into_iter().collect()))
+        ExprKind::NEListLit(elts) => {
+            Ret::ValueKind(NEListLit(elts.into_iter().collect()))
         }
-        ExprF::RecordLit(kvs) => {
-            Ret::ValueF(RecordLit(kvs.into_iter().collect()))
+        ExprKind::RecordLit(kvs) => {
+            Ret::ValueKind(RecordLit(kvs.into_iter().collect()))
         }
-        ExprF::TextLit(elts) => {
+        ExprKind::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
             let elts: Vec<_> = squash_textlit(elts.into_iter());
             // Simplify bare interpolation
             if let [Expr(th)] = elts.as_slice() {
                 Ret::Value(th.clone())
             } else {
-                Ret::ValueF(TextLit(elts))
+                Ret::ValueKind(TextLit(elts))
             }
         }
-        ExprF::BoolIf(ref b, ref e1, ref e2) => {
+        ExprKind::BoolIf(ref b, ref e1, ref e2) => {
             let b_borrow = b.as_whnf();
             match &*b_borrow {
                 BoolLit(true) => Ret::ValueRef(e1),
@@ -695,18 +695,18 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
+        ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
             Some(ret) => ret,
             None => Ret::Expr(expr),
         },
 
-        ExprF::Projection(_, ref ls) if ls.is_empty() => {
-            Ret::ValueF(RecordLit(HashMap::new()))
+        ExprKind::Projection(_, ref ls) if ls.is_empty() => {
+            Ret::ValueKind(RecordLit(HashMap::new()))
         }
-        ExprF::Projection(ref v, ref ls) => {
+        ExprKind::Projection(ref v, ref ls) => {
             let v_borrow = v.as_whnf();
             match &*v_borrow {
-                RecordLit(kvs) => Ret::ValueF(RecordLit(
+                RecordLit(kvs) => Ret::ValueKind(RecordLit(
                     ls.iter()
                         .filter_map(|l| {
                             kvs.get(l).map(|x| (l.clone(), x.clone()))
@@ -719,7 +719,7 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::Field(ref v, ref l) => {
+        ExprKind::Field(ref v, ref l) => {
             let v_borrow = v.as_whnf();
             match &*v_borrow {
                 RecordLit(kvs) => match kvs.get(l) {
@@ -730,7 +730,7 @@ pub(crate) fn normalize_one_layer(
                     }
                 },
                 UnionType(kts) => {
-                    Ret::ValueF(UnionConstructor(l.clone(), kts.clone()))
+                    Ret::ValueKind(UnionConstructor(l.clone(), kts.clone()))
                 }
                 _ => {
                     drop(v_borrow);
@@ -738,11 +738,11 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::ProjectionByExpr(_, _) => {
+        ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
 
-        ExprF::Merge(ref handlers, ref variant, _) => {
+        ExprKind::Merge(ref handlers, ref variant, _) => {
             let handlers_borrow = handlers.as_whnf();
             let variant_borrow = variant.as_whnf();
             match (&*handlers_borrow, &*variant_borrow) {
@@ -769,24 +769,24 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
     };
 
     match ret {
-        Ret::ValueF(v) => v,
+        Ret::ValueKind(v) => v,
         Ret::Value(v) => v.to_whnf_check_type(ty),
         Ret::ValueRef(v) => v.to_whnf_check_type(ty),
-        Ret::Expr(expr) => ValueF::PartialExpr(expr),
+        Ret::Expr(expr) => ValueKind::PartialExpr(expr),
     }
 }
 
-/// Normalize a ValueF into WHNF
-pub(crate) fn normalize_whnf(v: ValueF, ty: &Value) -> ValueF {
+/// Normalize a ValueKind into WHNF
+pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
     match v {
-        ValueF::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
-        ValueF::PartialExpr(e) => normalize_one_layer(e, ty),
-        ValueF::TextLit(elts) => {
-            ValueF::TextLit(squash_textlit(elts.into_iter()))
+        ValueKind::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
+        ValueKind::PartialExpr(e) => normalize_one_layer(e, ty),
+        ValueKind::TextLit(elts) => {
+            ValueKind::TextLit(squash_textlit(elts.into_iter()))
         }
         // All other cases are already in WHNF
         v => v,
