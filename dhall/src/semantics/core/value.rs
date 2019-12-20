@@ -11,6 +11,25 @@ use crate::semantics::phase::{NormalizedExpr, Typed};
 use crate::semantics::to_expr;
 use crate::syntax::{Builtin, Const, Span};
 
+use self::Form::{Unevaled, NF, WHNF};
+
+/// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
+/// sharing computation automatically. Uses a RefCell to share computation.
+/// Can optionally store a type from typechecking to preserve type information.
+#[derive(Clone)]
+pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
+
+/// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
+/// Invariant: if `form` is `NF`, `value` must be fully normalized
+#[derive(Debug)]
+struct ValueInternal {
+    form: Form,
+    kind: ValueKind,
+    /// This is None if and only if `value` is `Sort` (which doesn't have a type)
+    ty: Option<Value>,
+    span: Span,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Form {
     /// No constraints; expression may not be normalized at all.
@@ -24,87 +43,6 @@ pub(crate) enum Form {
     /// ValueKind is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
     /// if we have the first constructor of the NF at all levels, we actually have the NF.
     NF,
-}
-use Form::{Unevaled, NF, WHNF};
-
-/// Partially normalized value.
-/// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
-/// Invariant: if `form` is `NF`, `value` must be fully normalized
-#[derive(Debug)]
-struct ValueInternal {
-    form: Form,
-    kind: ValueKind,
-    /// This is None if and only if `value` is `Sort` (which doesn't have a type)
-    ty: Option<Value>,
-    span: Span,
-}
-
-/// Stores a possibly unevaluated value. Gets (partially) normalized on-demand,
-/// sharing computation automatically. Uses a RefCell to share computation.
-/// Can optionally store a type from typechecking to preserve type information.
-#[derive(Clone)]
-pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
-
-impl ValueInternal {
-    fn into_value(self) -> Value {
-        Value(Rc::new(RefCell::new(self)))
-    }
-    fn as_kind(&self) -> &ValueKind {
-        &self.kind
-    }
-
-    fn normalize_whnf(&mut self) {
-        take_mut::take_or_recover(
-            self,
-            // Dummy value in case the other closure panics
-            || ValueInternal {
-                form: Unevaled,
-                kind: ValueKind::Const(Const::Type),
-                ty: None,
-                span: Span::Artificial,
-            },
-            |vint| match (&vint.form, &vint.ty) {
-                (Unevaled, Some(ty)) => ValueInternal {
-                    form: WHNF,
-                    kind: normalize_whnf(vint.kind, &ty),
-                    ty: vint.ty,
-                    span: vint.span,
-                },
-                // `value` is `Sort`
-                (Unevaled, None) => ValueInternal {
-                    form: NF,
-                    kind: ValueKind::Const(Const::Sort),
-                    ty: None,
-                    span: vint.span,
-                },
-                // Already in WHNF
-                (WHNF, _) | (NF, _) => vint,
-            },
-        )
-    }
-    fn normalize_nf(&mut self) {
-        match self.form {
-            Unevaled => {
-                self.normalize_whnf();
-                self.normalize_nf();
-            }
-            WHNF => {
-                self.kind.normalize_mut();
-                self.form = NF;
-            }
-            // Already in NF
-            NF => {}
-        }
-    }
-
-    fn get_type(&self) -> Result<&Value, TypeError> {
-        match &self.ty {
-            Some(t) => Ok(t),
-            None => {
-                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
-            }
-        }
-    }
 }
 
 impl Value {
@@ -255,6 +193,68 @@ impl Value {
     pub(crate) fn get_type_not_sort(&self) -> Value {
         self.get_type()
             .expect("Internal type error: value is `Sort` but shouldn't be")
+    }
+}
+
+impl ValueInternal {
+    fn into_value(self) -> Value {
+        Value(Rc::new(RefCell::new(self)))
+    }
+    fn as_kind(&self) -> &ValueKind {
+        &self.kind
+    }
+
+    fn normalize_whnf(&mut self) {
+        take_mut::take_or_recover(
+            self,
+            // Dummy value in case the other closure panics
+            || ValueInternal {
+                form: Unevaled,
+                kind: ValueKind::Const(Const::Type),
+                ty: None,
+                span: Span::Artificial,
+            },
+            |vint| match (&vint.form, &vint.ty) {
+                (Unevaled, Some(ty)) => ValueInternal {
+                    form: WHNF,
+                    kind: normalize_whnf(vint.kind, &ty),
+                    ty: vint.ty,
+                    span: vint.span,
+                },
+                // `value` is `Sort`
+                (Unevaled, None) => ValueInternal {
+                    form: NF,
+                    kind: ValueKind::Const(Const::Sort),
+                    ty: None,
+                    span: vint.span,
+                },
+                // Already in WHNF
+                (WHNF, _) | (NF, _) => vint,
+            },
+        )
+    }
+    fn normalize_nf(&mut self) {
+        match self.form {
+            Unevaled => {
+                self.normalize_whnf();
+                self.normalize_nf();
+            }
+            WHNF => {
+                self.kind.normalize_mut();
+                self.form = NF;
+            }
+            // Already in NF
+            NF => {}
+        }
+    }
+
+    fn get_type(&self) -> Result<&Value, TypeError> {
+        match &self.ty {
+            Some(t) => Ok(t),
+            None => {
+                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
+            }
+        }
     }
 }
 
