@@ -2,81 +2,112 @@
 pub use dup_tree_map::DupTreeMap;
 pub use dup_tree_set::DupTreeSet;
 
+mod known_size_iter {
+    pub struct KnownSizeIterator<I> {
+        pub iter: I,
+        pub size: usize,
+    }
+
+    impl<I: Iterator> Iterator for KnownSizeIterator<I> {
+        type Item = I::Item;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let next = self.iter.next();
+            if next.is_some() {
+                self.size -= 1;
+            }
+            next
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.size, Some(self.size))
+        }
+    }
+
+    // unsafe impl<I: Iterator> iter::TrustedLen for KnownSizeIterator<I> {}
+}
+
+mod tuple {
+    mod sealed {
+        pub trait Sealed {}
+    }
+    pub trait Tuple: sealed::Sealed {
+        type First;
+        type Second;
+    }
+    impl<A, B> sealed::Sealed for (A, B) {}
+    impl<A, B> Tuple for (A, B) {
+        type First = A;
+        type Second = B;
+    }
+}
+
 mod dup_tree_map {
-    use smallvec as svec;
-    use smallvec::smallvec;
-    use std::collections::{btree_map, BTreeMap};
+    use super::known_size_iter::KnownSizeIterator;
+    use super::tuple::Tuple;
+    use smallvec::SmallVec;
+    use std::collections::BTreeMap;
     use std::iter;
-    use std::{slice, vec};
+
+    type OneOrMore<V> = SmallVec<[V; 1]>;
+    type DupTreeMapInternal<K, V> = BTreeMap<K, OneOrMore<V>>;
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct DupTreeMap<K, V> {
-        map: BTreeMap<K, smallvec::SmallVec<[V; 1]>>,
+        map: DupTreeMapInternal<K, V>,
         size: usize,
     }
 
-    pub type IterInternalIntermediate<'a, K, V> =
-        iter::Zip<iter::Repeat<&'a K>, slice::Iter<'a, V>>;
-    pub type IterInternal<'a, K, V> = iter::FlatMap<
-        btree_map::Iter<'a, K, smallvec::SmallVec<[V; 1]>>,
-        IterInternalIntermediate<'a, K, V>,
-        for<'b> fn(
-            (&'b K, &'b smallvec::SmallVec<[V; 1]>),
-        ) -> IterInternalIntermediate<'b, K, V>,
+    // Generic types and functions to construct the iterators for this struct.
+    type ZipRepeatIter<T> = iter::Zip<
+        iter::Repeat<<T as Tuple>::First>,
+        <<T as Tuple>::Second as IntoIterator>::IntoIter,
     >;
-    pub struct Iter<'a, K, V> {
-        iter: IterInternal<'a, K, V>,
-        size: usize,
-    }
-    pub type IterMutInternalIntermediate<'a, K, V> =
-        iter::Zip<iter::Repeat<&'a K>, slice::IterMut<'a, V>>;
-    pub type IterMutInternal<'a, K, V> = iter::FlatMap<
-        btree_map::IterMut<'a, K, smallvec::SmallVec<[V; 1]>>,
-        IterMutInternalIntermediate<'a, K, V>,
-        for<'b> fn(
-            (&'b K, &'b mut smallvec::SmallVec<[V; 1]>),
-        ) -> IterMutInternalIntermediate<'b, K, V>,
+    type DupTreeMapIter<M> = KnownSizeIterator<
+        iter::FlatMap<
+            <M as IntoIterator>::IntoIter,
+            ZipRepeatIter<<M as IntoIterator>::Item>,
+            fn(
+                <M as IntoIterator>::Item,
+            ) -> ZipRepeatIter<<M as IntoIterator>::Item>,
+        >,
     >;
-    pub struct IterMut<'a, K, V> {
-        iter: IterMutInternal<'a, K, V>,
-        size: usize,
-    }
-    pub type IntoIterInternalIntermediate<K, V> =
-        iter::Zip<iter::Repeat<K>, svec::IntoIter<[V; 1]>>;
-    pub type IntoIterInternal<K, V> = iter::FlatMap<
-        btree_map::IntoIter<K, smallvec::SmallVec<[V; 1]>>,
-        IntoIterInternalIntermediate<K, V>,
-        fn(
-            (K, smallvec::SmallVec<[V; 1]>),
-        ) -> IntoIterInternalIntermediate<K, V>,
-    >;
-    pub struct IntoIter<K: Clone, V> {
-        iter: IntoIterInternal<K, V>,
-        size: usize,
+
+    fn zip_repeat<'a, K, I>((k, iter): (K, I)) -> ZipRepeatIter<(K, I)>
+    where
+        K: Clone,
+        I: IntoIterator,
+    {
+        iter::repeat(k).zip(iter.into_iter())
     }
 
-    impl<K, V> DupTreeMap<K, V> {
-        pub fn new() -> Self
-        where
-            K: Ord,
-        {
+    fn make_map_iter<M, K, I>(map: M, size: usize) -> DupTreeMapIter<M>
+    where
+        M: IntoIterator<Item = (K, I)>,
+        K: Clone,
+        I: IntoIterator,
+    {
+        KnownSizeIterator {
+            iter: map.into_iter().flat_map(zip_repeat),
+            size,
+        }
+    }
+
+    pub type IterMut<'a, K, V> =
+        DupTreeMapIter<&'a mut DupTreeMapInternal<K, V>>;
+    pub type Iter<'a, K, V> = DupTreeMapIter<&'a DupTreeMapInternal<K, V>>;
+    pub type IntoIter<K, V> = DupTreeMapIter<DupTreeMapInternal<K, V>>;
+
+    impl<K: Ord, V> DupTreeMap<K, V> {
+        pub fn new() -> Self {
             DupTreeMap {
                 map: BTreeMap::new(),
                 size: 0,
             }
         }
 
-        pub fn insert(&mut self, key: K, value: V)
-        where
-            K: Ord,
-        {
-            use std::collections::btree_map::Entry;
-            match self.map.entry(key) {
-                Entry::Vacant(e) => {
-                    e.insert(smallvec![value]);
-                }
-                Entry::Occupied(mut e) => e.get_mut().push(value),
-            }
+        pub fn insert(&mut self, key: K, value: V) {
+            self.map.entry(key).or_default().push(value);
             self.size += 1;
         }
 
@@ -87,34 +118,12 @@ mod dup_tree_map {
             self.size == 0
         }
 
-        pub fn iter(&self) -> Iter<'_, K, V>
-        where
-            K: Ord,
-        {
-            fn foo<'a, K, V>(
-                (k, vec): (&'a K, &'a smallvec::SmallVec<[V; 1]>),
-            ) -> IterInternalIntermediate<'a, K, V> {
-                iter::repeat(k).zip(vec.iter())
-            }
-            Iter {
-                iter: self.map.iter().flat_map(foo),
-                size: self.size,
-            }
+        pub fn iter(&self) -> Iter<'_, K, V> {
+            make_map_iter(&self.map, self.size)
         }
 
-        pub fn iter_mut(&mut self) -> IterMut<'_, K, V>
-        where
-            K: Ord,
-        {
-            fn foo<'a, K, V>(
-                (k, vec): (&'a K, &'a mut smallvec::SmallVec<[V; 1]>),
-            ) -> IterMutInternalIntermediate<'a, K, V> {
-                iter::repeat(k).zip(vec.iter_mut())
-            }
-            IterMut {
-                iter: self.map.iter_mut().flat_map(foo),
-                size: self.size,
-            }
+        pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+            make_map_iter(&mut self.map, self.size)
         }
     }
 
@@ -135,24 +144,14 @@ mod dup_tree_map {
         type IntoIter = IntoIter<K, V>;
 
         fn into_iter(self) -> Self::IntoIter {
-            fn foo<K, V>(
-                (k, vec): (K, smallvec::SmallVec<[V; 1]>),
-            ) -> IntoIterInternalIntermediate<K, V>
-            where
-                K: Clone,
-            {
-                iter::repeat(k).zip(vec.into_iter())
-            }
-            IntoIter {
-                iter: self.map.into_iter().flat_map(foo),
-                size: self.size,
-            }
+            make_map_iter(self.map, self.size)
         }
     }
 
     impl<'a, K, V> IntoIterator for &'a DupTreeMap<K, V>
     where
-        K: Ord,
+        K: Ord + 'a,
+        V: 'a,
     {
         type Item = (&'a K, &'a V);
         type IntoIter = Iter<'a, K, V>;
@@ -164,7 +163,8 @@ mod dup_tree_map {
 
     impl<'a, K, V> IntoIterator for &'a mut DupTreeMap<K, V>
     where
-        K: Ord,
+        K: Ord + 'a,
+        V: 'a,
     {
         type Item = (&'a K, &'a mut V);
         type IntoIter = IterMut<'a, K, V>;
@@ -189,62 +189,10 @@ mod dup_tree_map {
             map
         }
     }
-
-    impl<'a, K, V> Iterator for Iter<'a, K, V> {
-        type Item = (&'a K, &'a V);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let next = self.iter.next();
-            if next.is_some() {
-                self.size -= 1;
-            }
-            next
-        }
-
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            (self.size, Some(self.size))
-        }
-    }
-
-    impl<'a, K, V> Iterator for IterMut<'a, K, V> {
-        type Item = (&'a K, &'a mut V);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let next = self.iter.next();
-            if next.is_some() {
-                self.size -= 1;
-            }
-            next
-        }
-
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            (self.size, Some(self.size))
-        }
-    }
-
-    impl<K, V> Iterator for IntoIter<K, V>
-    where
-        K: Clone,
-    {
-        type Item = (K, V);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let next = self.iter.next();
-            if next.is_some() {
-                self.size -= 1;
-            }
-            next
-        }
-
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            (self.size, Some(self.size))
-        }
-    }
-
-    // unsafe impl<K, V> iter::TrustedLen for IntoIter<K, V> {}
 }
 
 mod dup_tree_set {
+    use super::tuple::Tuple;
     use super::DupTreeMap;
     use std::iter;
 
@@ -253,18 +201,22 @@ mod dup_tree_set {
         map: DupTreeMap<K, ()>,
     }
 
-    pub type Iter<'a, K> = iter::Map<
-        super::dup_tree_map::Iter<'a, K, ()>,
-        for<'b> fn((&'b K, &'b ())) -> &'b K,
+    type DupTreeSetIter<M> = iter::Map<
+        <M as IntoIterator>::IntoIter,
+        fn(
+            <M as IntoIterator>::Item,
+        ) -> <<M as IntoIterator>::Item as Tuple>::First,
     >;
-    pub type IntoIter<K> =
-        iter::Map<super::dup_tree_map::IntoIter<K, ()>, fn((K, ())) -> K>;
 
-    impl<K> DupTreeSet<K> {
-        pub fn new() -> Self
-        where
-            K: Ord,
-        {
+    pub type Iter<'a, K> = DupTreeSetIter<&'a DupTreeMap<K, ()>>;
+    pub type IntoIter<K> = DupTreeSetIter<DupTreeMap<K, ()>>;
+
+    fn drop_second<A, B>((a, _): (A, B)) -> A {
+        a
+    }
+
+    impl<K: Ord> DupTreeSet<K> {
+        pub fn new() -> Self {
             DupTreeSet {
                 map: DupTreeMap::new(),
             }
@@ -277,14 +229,8 @@ mod dup_tree_set {
             self.map.is_empty()
         }
 
-        pub fn iter(&self) -> Iter<'_, K>
-        where
-            K: Ord,
-        {
-            fn foo<'a, K>((k, ()): (&'a K, &'a ())) -> &'a K {
-                k
-            }
-            self.map.iter().map(foo)
+        pub fn iter<'a>(&'a self) -> Iter<'a, K> {
+            self.map.iter().map(drop_second)
         }
     }
 
@@ -305,16 +251,13 @@ mod dup_tree_set {
         type IntoIter = IntoIter<K>;
 
         fn into_iter(self) -> Self::IntoIter {
-            fn foo<K>((k, ()): (K, ())) -> K {
-                k
-            }
-            self.map.into_iter().map(foo)
+            self.map.into_iter().map(drop_second)
         }
     }
 
     impl<'a, K> IntoIterator for &'a DupTreeSet<K>
     where
-        K: Ord,
+        K: Ord + 'a,
     {
         type Item = &'a K;
         type IntoIter = Iter<'a, K>;
