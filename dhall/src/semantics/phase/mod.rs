@@ -77,13 +77,6 @@ impl Resolved {
 
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
-    ///
-    /// `normalize` does not type-check the expression.  You may want to type-check
-    /// expressions before normalizing them since normalization can convert an
-    /// ill-typed expression into a well-typed expression.
-    ///
-    /// However, `normalize` will not fail if the expression is ill-typed and will
-    /// leave ill-typed sub-expressions unevaluated.
     pub fn normalize(mut self) -> Normalized {
         self.normalize_mut();
         Normalized(self)
@@ -109,14 +102,14 @@ impl Typed {
             normalize: false,
         })
     }
-    /// Converts a value back to the corresponding AST expression, normalizing in the process.
+    /// Converts a value back to the corresponding AST expression, beta-normalizing in the process.
     pub fn normalize_to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: true,
         })
     }
-    /// Converts a value back to the corresponding AST expression, (akpha,beta)-normalizing in the
+    /// Converts a value back to the corresponding AST expression, (alpha,beta)-normalizing in the
     /// process.
     pub(crate) fn normalize_to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {

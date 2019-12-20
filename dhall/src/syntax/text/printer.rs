@@ -16,8 +16,8 @@ enum PrintPhase {
     Primitive,
 }
 
-// Wraps an Expr with a phase, so that phase selsction can be done
-// separate from the actual printing
+// Wraps an Expr with a phase, so that phase selection can be done separate from the actual
+// printing.
 #[derive(Clone)]
 struct PhasedExpr<'a, E>(&'a Expr<E>, PrintPhase);
 
