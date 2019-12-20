@@ -7,8 +7,8 @@ use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
-    BinOp, Builtin, ExprF, InterpolatedText, InterpolatedTextContents, Label,
-    NaiveDouble,
+    BinOp, Builtin, ExprKind, InterpolatedText, InterpolatedTextContents,
+    Label, NaiveDouble,
 };
 
 // Ad-hoc macro to help construct closures
@@ -46,7 +46,7 @@ macro_rules! make_closure {
         ValueKind::NEOptionalLit(v).into_value_with_type(opt_v_type)
     }};
     (1 + $($rest:tt)*) => {
-        ValueKind::PartialExpr(ExprF::BinOp(
+        ValueKind::PartialExpr(ExprKind::BinOp(
             syntax::BinOp::NaturalPlus,
             make_closure!($($rest)*),
             Value::from_kind_and_type(
@@ -61,7 +61,7 @@ macro_rules! make_closure {
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
         let list_type = tail.get_type_not_sort();
-        ValueKind::PartialExpr(ExprF::BinOp(
+        ValueKind::PartialExpr(ExprKind::BinOp(
             syntax::BinOp::ListAppend,
             ValueKind::NEListLit(vec![head])
                 .into_value_with_type(list_type.clone()),
@@ -404,7 +404,7 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
         }
         _ => {
             drop(f_borrow);
-            ValueKind::PartialExpr(ExprF::App(f, a))
+            ValueKind::PartialExpr(ExprKind::App(f, a))
         }
     }
 }
@@ -482,7 +482,7 @@ enum Ret<'a> {
     ValueKind(ValueKind),
     Value(Value),
     ValueRef(&'a Value),
-    Expr(ExprF<Value, Normalized>),
+    Expr(ExprKind<Value, Normalized>),
 }
 
 fn apply_binop<'a>(
@@ -590,7 +590,7 @@ fn apply_binop<'a>(
             };
             let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |k, v1, v2| {
                 Ok(Value::from_kind_and_type(
-                    ValueKind::PartialExpr(ExprF::BinOp(
+                    ValueKind::PartialExpr(ExprKind::BinOp(
                         RecursiveRecordMerge,
                         v1.clone(),
                         v2.clone(),
@@ -610,7 +610,7 @@ fn apply_binop<'a>(
 }
 
 pub(crate) fn normalize_one_layer(
-    expr: ExprF<Value, Normalized>,
+    expr: ExprKind<Value, Normalized>,
     ty: &Value,
 ) -> ValueKind {
     use ValueKind::{
@@ -620,31 +620,31 @@ pub(crate) fn normalize_one_layer(
     };
 
     let ret = match expr {
-        ExprF::Import(_) => unreachable!(
+        ExprKind::Import(_) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
         // Those cases have already been completely handled in the typechecking phase (using
         // `RetWhole`), so they won't appear here.
-        ExprF::Lam(_, _, _)
-        | ExprF::Pi(_, _, _)
-        | ExprF::Let(_, _, _, _)
-        | ExprF::Embed(_)
-        | ExprF::Const(_)
-        | ExprF::Builtin(_)
-        | ExprF::Var(_)
-        | ExprF::Annot(_, _)
-        | ExprF::RecordType(_)
-        | ExprF::UnionType(_) => {
+        ExprKind::Lam(_, _, _)
+        | ExprKind::Pi(_, _, _)
+        | ExprKind::Let(_, _, _, _)
+        | ExprKind::Embed(_)
+        | ExprKind::Const(_)
+        | ExprKind::Builtin(_)
+        | ExprKind::Var(_)
+        | ExprKind::Annot(_, _)
+        | ExprKind::RecordType(_)
+        | ExprKind::UnionType(_) => {
             unreachable!("This case should have been handled in typecheck")
         }
-        ExprF::Assert(_) => Ret::Expr(expr),
-        ExprF::App(v, a) => Ret::Value(v.app(a)),
-        ExprF::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
-        ExprF::NaturalLit(n) => Ret::ValueKind(NaturalLit(n)),
-        ExprF::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
-        ExprF::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
-        ExprF::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
-        ExprF::EmptyListLit(ref t) => {
+        ExprKind::Assert(_) => Ret::Expr(expr),
+        ExprKind::App(v, a) => Ret::Value(v.app(a)),
+        ExprKind::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
+        ExprKind::NaturalLit(n) => Ret::ValueKind(NaturalLit(n)),
+        ExprKind::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
+        ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
+        ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
+        ExprKind::EmptyListLit(ref t) => {
             // Check if the type is of the form `List x`
             let t_borrow = t.as_whnf();
             match &*t_borrow {
@@ -657,13 +657,13 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::NEListLit(elts) => {
+        ExprKind::NEListLit(elts) => {
             Ret::ValueKind(NEListLit(elts.into_iter().collect()))
         }
-        ExprF::RecordLit(kvs) => {
+        ExprKind::RecordLit(kvs) => {
             Ret::ValueKind(RecordLit(kvs.into_iter().collect()))
         }
-        ExprF::TextLit(elts) => {
+        ExprKind::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
             let elts: Vec<_> = squash_textlit(elts.into_iter());
             // Simplify bare interpolation
@@ -673,7 +673,7 @@ pub(crate) fn normalize_one_layer(
                 Ret::ValueKind(TextLit(elts))
             }
         }
-        ExprF::BoolIf(ref b, ref e1, ref e2) => {
+        ExprKind::BoolIf(ref b, ref e1, ref e2) => {
             let b_borrow = b.as_whnf();
             match &*b_borrow {
                 BoolLit(true) => Ret::ValueRef(e1),
@@ -695,15 +695,15 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
+        ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
             Some(ret) => ret,
             None => Ret::Expr(expr),
         },
 
-        ExprF::Projection(_, ref ls) if ls.is_empty() => {
+        ExprKind::Projection(_, ref ls) if ls.is_empty() => {
             Ret::ValueKind(RecordLit(HashMap::new()))
         }
-        ExprF::Projection(ref v, ref ls) => {
+        ExprKind::Projection(ref v, ref ls) => {
             let v_borrow = v.as_whnf();
             match &*v_borrow {
                 RecordLit(kvs) => Ret::ValueKind(RecordLit(
@@ -719,7 +719,7 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::Field(ref v, ref l) => {
+        ExprKind::Field(ref v, ref l) => {
             let v_borrow = v.as_whnf();
             match &*v_borrow {
                 RecordLit(kvs) => match kvs.get(l) {
@@ -738,11 +738,11 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::ProjectionByExpr(_, _) => {
+        ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
 
-        ExprF::Merge(ref handlers, ref variant, _) => {
+        ExprKind::Merge(ref handlers, ref variant, _) => {
             let handlers_borrow = handlers.as_whnf();
             let variant_borrow = variant.as_whnf();
             match (&*handlers_borrow, &*variant_borrow) {
@@ -769,7 +769,7 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprF::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
     };
 
     match ret {

@@ -8,7 +8,7 @@ use pest_consume::{match_nodes, Parser};
 use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::ExprF::*;
+use crate::syntax::ExprKind::*;
 use crate::syntax::{
     Double, FilePath, FilePrefix, Hash, ImportLocation, ImportMode, Integer,
     InterpolatedText, InterpolatedTextContents, Label, NaiveDouble, Natural,

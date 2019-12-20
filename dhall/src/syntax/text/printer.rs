@@ -3,9 +3,9 @@ use itertools::Itertools;
 use std::fmt::{self, Display};
 
 /// Generic instance that delegates to subexpressions
-impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
+impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::syntax::ExprF::*;
+        use crate::syntax::ExprKind::*;
         match self {
             Lam(a, b, c) => {
                 write!(f, "λ({} : {}) → {}", a, b, c)?;
@@ -53,10 +53,10 @@ impl<SE: Display + Clone, E: Display> Display for ExprF<SE, E> {
             Assert(a) => {
                 write!(f, "assert : {}", a)?;
             }
-            ExprF::BinOp(op, a, b) => {
+            ExprKind::BinOp(op, a, b) => {
                 write!(f, "{} {} {}", a, op, b)?;
             }
-            ExprF::App(a, b) => {
+            ExprKind::App(a, b) => {
                 write!(f, "{} {}", a, b)?;
             }
             Field(a, b) => {
@@ -141,7 +141,7 @@ impl<A: Display + Clone> RawExpr<A> {
         f: &mut fmt::Formatter,
         phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
-        use crate::syntax::ExprF::*;
+        use crate::syntax::ExprKind::*;
         use PrintPhase::*;
 
         let needs_paren = match self {
@@ -160,8 +160,8 @@ impl<A: Display + Clone> RawExpr<A> {
                 true
             }
             // Precedence is magically handled by the ordering of BinOps.
-            ExprF::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
-            ExprF::App(_, _) if phase > PrintPhase::App => true,
+            ExprKind::BinOp(op, _, _) if phase > PrintPhase::BinOp(*op) => true,
+            ExprKind::App(_, _) if phase > PrintPhase::App => true,
             Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _)
                 if phase > PrintPhase::Import =>
             {
@@ -189,13 +189,13 @@ impl<A: Display + Clone> RawExpr<A> {
                 b.map(|x| x.phase(PrintPhase::App)),
             ),
             Annot(a, b) => Annot(a.phase(Operator), b),
-            ExprF::BinOp(op, a, b) => ExprF::BinOp(
+            ExprKind::BinOp(op, a, b) => ExprKind::BinOp(
                 op,
                 a.phase(PrintPhase::BinOp(op)),
                 b.phase(PrintPhase::BinOp(op)),
             ),
             SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
-            ExprF::App(f, a) => ExprF::App(
+            ExprKind::App(f, a) => ExprKind::App(
                 f.phase(PrintPhase::Import),
                 a.phase(PrintPhase::Import),
             ),
@@ -209,7 +209,7 @@ impl<A: Display + Clone> RawExpr<A> {
             f.write_str("(")?;
         }
 
-        // Uses the ExprF<PhasedExpr<_>, _> instance
+        // Uses the ExprKind<PhasedExpr<_>, _> instance
         phased_self.fmt(f)?;
 
         if needs_paren {

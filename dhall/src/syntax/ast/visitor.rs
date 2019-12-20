@@ -1,7 +1,7 @@
 use crate::syntax::*;
 use std::iter::FromIterator;
 
-/// A visitor trait that can be used to traverse `ExprF`s. We need this pattern so that Rust lets
+/// A visitor trait that can be used to traverse `ExprKind`s. We need this pattern so that Rust lets
 /// us have as much mutability as we can.
 /// For example, `traverse_ref_with_special_handling_of_binders` cannot be made using only
 /// `traverse_ref`, because `traverse_ref` takes a `FnMut` so we would need to pass multiple
@@ -9,7 +9,7 @@ use std::iter::FromIterator;
 /// preventing exactly this ! So we have to be more clever. The visitor pattern allows us to have
 /// only one mutable thing the whole time: the visitor itself. The visitor can then carry around
 /// multiple closures or just one, and Rust is ok with either. See for example TraverseRefVisitor.
-pub trait ExprFVisitor<'a, SE1, SE2, E1, E2>: Sized {
+pub trait ExprKindVisitor<'a, SE1, SE2, E1, E2>: Sized {
     type Error;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error>;
@@ -25,14 +25,14 @@ pub trait ExprFVisitor<'a, SE1, SE2, E1, E2>: Sized {
 
     fn visit(
         self,
-        input: &'a ExprF<SE1, E1>,
-    ) -> Result<ExprF<SE2, E2>, Self::Error> {
+        input: &'a ExprKind<SE1, E1>,
+    ) -> Result<ExprKind<SE2, E2>, Self::Error> {
         visit_ref(self, input)
     }
 }
 
-/// Like `ExprFVisitor`, but by mutable reference
-pub trait ExprFMutVisitor<'a, SE, E>: Sized {
+/// Like `ExprKindVisitor`, but by mutable reference
+pub trait ExprKindMutVisitor<'a, SE, E>: Sized {
     type Error;
 
     fn visit_subexpr(&mut self, subexpr: &'a mut SE)
@@ -49,17 +49,17 @@ pub trait ExprFMutVisitor<'a, SE, E>: Sized {
         self.visit_subexpr(subexpr)
     }
 
-    fn visit(self, input: &'a mut ExprF<SE, E>) -> Result<(), Self::Error> {
+    fn visit(self, input: &'a mut ExprKind<SE, E>) -> Result<(), Self::Error> {
         visit_mut(self, input)
     }
 }
 
 fn visit_ref<'a, V, SE1, SE2, E1, E2>(
     mut v: V,
-    input: &'a ExprF<SE1, E1>,
-) -> Result<ExprF<SE2, E2>, V::Error>
+    input: &'a ExprKind<SE1, E1>,
+) -> Result<ExprKind<SE2, E2>, V::Error>
 where
-    V: ExprFVisitor<'a, SE1, SE2, E1, E2>,
+    V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
 {
     fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
         x: &'a [T],
@@ -83,7 +83,7 @@ where
     where
         SE1: 'a,
         T: FromIterator<(Label, SE2)>,
-        V: ExprFVisitor<'a, SE1, SE2, E1, E2>,
+        V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
     {
         x.into_iter()
             .map(|(k, x)| Ok((k.clone(), v.visit_subexpr(x)?)))
@@ -96,7 +96,7 @@ where
     where
         SE1: 'a,
         T: FromIterator<(Label, Option<SE2>)>,
-        V: ExprFVisitor<'a, SE1, SE2, E1, E2>,
+        V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
     {
         x.into_iter()
             .map(|(k, x)| {
@@ -111,7 +111,7 @@ where
             .collect()
     }
 
-    use crate::syntax::ExprF::*;
+    use crate::syntax::ExprKind::*;
     Ok(match input {
         Var(v) => Var(v.clone()),
         Lam(l, t, e) => {
@@ -172,14 +172,14 @@ where
 
 fn visit_mut<'a, V, SE, E>(
     mut v: V,
-    input: &'a mut ExprF<SE, E>,
+    input: &'a mut ExprKind<SE, E>,
 ) -> Result<(), V::Error>
 where
-    V: ExprFMutVisitor<'a, SE, E>,
+    V: ExprKindMutVisitor<'a, SE, E>,
 {
     fn vec<'a, V, SE, E>(v: &mut V, x: &'a mut Vec<SE>) -> Result<(), V::Error>
     where
-        V: ExprFMutVisitor<'a, SE, E>,
+        V: ExprKindMutVisitor<'a, SE, E>,
     {
         for x in x {
             v.visit_subexpr(x)?;
@@ -191,7 +191,7 @@ where
         x: &'a mut Option<SE>,
     ) -> Result<(), V::Error>
     where
-        V: ExprFMutVisitor<'a, SE, E>,
+        V: ExprKindMutVisitor<'a, SE, E>,
     {
         if let Some(x) = x {
             v.visit_subexpr(x)?;
@@ -204,7 +204,7 @@ where
     ) -> Result<(), V::Error>
     where
         SE: 'a,
-        V: ExprFMutVisitor<'a, SE, E>,
+        V: ExprKindMutVisitor<'a, SE, E>,
     {
         for (_, x) in x {
             v.visit_subexpr(x)?;
@@ -217,7 +217,7 @@ where
     ) -> Result<(), V::Error>
     where
         SE: 'a,
-        V: ExprFMutVisitor<'a, SE, E>,
+        V: ExprKindMutVisitor<'a, SE, E>,
     {
         for (_, x) in x {
             opt(&mut v, x)?;
@@ -225,7 +225,7 @@ where
         Ok(())
     }
 
-    use crate::syntax::ExprF::*;
+    use crate::syntax::ExprKind::*;
     match input {
         Var(_) | Const(_) | Builtin(_) | BoolLit(_) | NaturalLit(_)
         | IntegerLit(_) | DoubleLit(_) => {}
@@ -293,7 +293,7 @@ pub struct TraverseRefWithBindersVisitor<F1, F2> {
     pub visit_under_binder: F2,
 }
 
-impl<'a, SE, E, SE2, Err, F1, F2> ExprFVisitor<'a, SE, SE2, E, E>
+impl<'a, SE, E, SE2, Err, F1, F2> ExprKindVisitor<'a, SE, SE2, E, E>
     for TraverseRefWithBindersVisitor<F1, F2>
 where
     SE: 'a,
@@ -322,7 +322,7 @@ pub struct TraverseRefVisitor<F1> {
     pub visit_subexpr: F1,
 }
 
-impl<'a, SE, E, SE2, Err, F1> ExprFVisitor<'a, SE, SE2, E, E>
+impl<'a, SE, E, SE2, Err, F1> ExprKindVisitor<'a, SE, SE2, E, E>
     for TraverseRefVisitor<F1>
 where
     SE: 'a,
@@ -343,7 +343,8 @@ pub struct TraverseMutVisitor<F1> {
     pub visit_subexpr: F1,
 }
 
-impl<'a, SE, E, Err, F1> ExprFMutVisitor<'a, SE, E> for TraverseMutVisitor<F1>
+impl<'a, SE, E, Err, F1> ExprKindMutVisitor<'a, SE, E>
+    for TraverseMutVisitor<F1>
 where
     SE: 'a,
     E: 'a,

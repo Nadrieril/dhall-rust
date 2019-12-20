@@ -10,7 +10,8 @@ use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::{
-    Builtin, Const, Expr, ExprF, InterpolatedTextContents, Label, RawExpr, Span,
+    Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, RawExpr,
+    Span,
 };
 
 fn tck_pi_type(
@@ -149,24 +150,24 @@ pub fn rc<E>(x: RawExpr<E>) -> Expr<E> {
 
 // Ad-hoc macro to help construct the types of builtins
 macro_rules! make_type {
-    (Type) => { ExprF::Const(Const::Type) };
-    (Bool) => { ExprF::Builtin(Builtin::Bool) };
-    (Natural) => { ExprF::Builtin(Builtin::Natural) };
-    (Integer) => { ExprF::Builtin(Builtin::Integer) };
-    (Double) => { ExprF::Builtin(Builtin::Double) };
-    (Text) => { ExprF::Builtin(Builtin::Text) };
+    (Type) => { ExprKind::Const(Const::Type) };
+    (Bool) => { ExprKind::Builtin(Builtin::Bool) };
+    (Natural) => { ExprKind::Builtin(Builtin::Natural) };
+    (Integer) => { ExprKind::Builtin(Builtin::Integer) };
+    (Double) => { ExprKind::Builtin(Builtin::Double) };
+    (Text) => { ExprKind::Builtin(Builtin::Text) };
     ($var:ident) => {
-        ExprF::Var(syntax::V(stringify!($var).into(), 0))
+        ExprKind::Var(syntax::V(stringify!($var).into(), 0))
     };
     (Optional $ty:ident) => {
-        ExprF::App(
-            rc(ExprF::Builtin(Builtin::Optional)),
+        ExprKind::App(
+            rc(ExprKind::Builtin(Builtin::Optional)),
             rc(make_type!($ty))
         )
     };
     (List $($rest:tt)*) => {
-        ExprF::App(
-            rc(ExprF::Builtin(Builtin::List)),
+        ExprKind::App(
+            rc(ExprKind::Builtin(Builtin::List)),
             rc(make_type!($($rest)*))
         )
     };
@@ -178,24 +179,24 @@ macro_rules! make_type {
                 rc(make_type!($ty)),
             );
         )*
-        ExprF::RecordType(kts)
+        ExprKind::RecordType(kts)
     }};
     ($ty:ident -> $($rest:tt)*) => {
-        ExprF::Pi(
+        ExprKind::Pi(
             "_".into(),
             rc(make_type!($ty)),
             rc(make_type!($($rest)*))
         )
     };
     (($($arg:tt)*) -> $($rest:tt)*) => {
-        ExprF::Pi(
+        ExprKind::Pi(
             "_".into(),
             rc(make_type!($($arg)*)),
             rc(make_type!($($rest)*))
         )
     };
     (forall ($var:ident : $($ty:tt)*) -> $($rest:tt)*) => {
-        ExprF::Pi(
+        ExprKind::Pi(
             stringify!($var).into(),
             rc(make_type!($($ty)*)),
             rc(make_type!($($rest)*))
@@ -304,7 +305,7 @@ fn type_with(
     ctx: &TypecheckContext,
     e: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
-    use syntax::ExprF::{Annot, Embed, Lam, Let, Pi, Var};
+    use syntax::ExprKind::{Annot, Embed, Lam, Let, Pi, Var};
     let span = e.span();
 
     Ok(match e.as_ref() {
@@ -359,13 +360,13 @@ fn type_with(
 /// layer.
 fn type_last_layer(
     ctx: &TypecheckContext,
-    e: ExprF<Value, Normalized>,
+    e: ExprKind<Value, Normalized>,
     span: Span,
 ) -> Result<Value, TypeError> {
     use syntax::BinOp::*;
     use syntax::Builtin::*;
     use syntax::Const::Type;
-    use syntax::ExprF::*;
+    use syntax::ExprKind::*;
     use TypeMessage::*;
     let mkerr = |msg: TypeMessage| Err(TypeError::new(ctx, msg));
 
@@ -578,7 +579,7 @@ fn type_last_layer(
         }
         BinOp(RecursiveRecordMerge, l, r) => RetTypeOnly(type_last_layer(
             ctx,
-            ExprF::BinOp(
+            ExprKind::BinOp(
                 RecursiveRecordTypeMerge,
                 l.get_type()?,
                 r.get_type()?,
@@ -612,7 +613,7 @@ fn type_last_layer(
                 |_, l: &Value, r: &Value| {
                     type_last_layer(
                         ctx,
-                        ExprF::BinOp(
+                        ExprKind::BinOp(
                             RecursiveRecordTypeMerge,
                             l.clone(),
                             r.clone(),
@@ -806,5 +807,5 @@ pub(crate) fn typecheck_with(
     expr: Expr<Normalized>,
     ty: Expr<Normalized>,
 ) -> Result<Value, TypeError> {
-    typecheck(expr.rewrap(ExprF::Annot(expr.clone(), ty)))
+    typecheck(expr.rewrap(ExprKind::Annot(expr.clone(), ty)))
 }

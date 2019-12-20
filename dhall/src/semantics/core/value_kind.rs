@@ -5,7 +5,7 @@ use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::semantics::phase::{Normalized, NormalizedExpr};
 use crate::semantics::to_expr;
 use crate::syntax::{
-    Builtin, Const, ExprF, Integer, InterpolatedTextContents, Label,
+    Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural,
 };
 
@@ -43,7 +43,7 @@ pub(crate) enum ValueKind {
     TextLit(Vec<InterpolatedTextContents<Value>>),
     Equivalence(Value, Value),
     // Invariant: in whnf, this must not contain a value captured by one of the variants above.
-    PartialExpr(ExprF<Value, Normalized>),
+    PartialExpr(ExprKind<Value, Normalized>),
 }
 
 impl ValueKind {

@@ -1,5 +1,5 @@
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::visitor::{self, ExprFMutVisitor, ExprFVisitor};
+use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
 use crate::syntax::*;
 
 pub type Integer = isize;
@@ -144,7 +144,7 @@ pub enum Builtin {
 #[derive(Debug, Clone)]
 pub struct Expr<Embed>(Box<(RawExpr<Embed>, Span)>);
 
-pub type RawExpr<Embed> = ExprF<Expr<Embed>, Embed>;
+pub type RawExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
 
 impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
     fn eq(&self, other: &Self) -> bool {
@@ -168,7 +168,7 @@ impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExprF<SubExpr, Embed> {
+pub enum ExprKind<SubExpr, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
@@ -231,12 +231,12 @@ pub enum ExprF<SubExpr, Embed> {
     Embed(Embed),
 }
 
-impl<SE, E> ExprF<SE, E> {
+impl<SE, E> ExprKind<SE, E> {
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprF<SE2, E>, Err>
+    ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
@@ -250,7 +250,7 @@ impl<SE, E> ExprF<SE, E> {
     fn traverse_ref<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprF<SE2, E>, Err>
+    ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
@@ -268,7 +268,7 @@ impl<SE, E> ExprF<SE, E> {
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
-    ) -> ExprF<SE2, E>
+    ) -> ExprKind<SE2, E>
     where
         E: Clone,
     {
@@ -281,7 +281,7 @@ impl<SE, E> ExprF<SE, E> {
     pub fn map_ref<'a, SE2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-    ) -> ExprF<SE2, E>
+    ) -> ExprKind<SE2, E>
     where
         E: Clone,
     {
@@ -321,8 +321,8 @@ impl<E> Expr<E> {
         F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
     {
         match self.as_mut() {
-            ExprF::BinOp(BinOp::ImportAlt, l, r) => {
-                let garbage_expr = ExprF::BoolLit(false);
+            ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
+                let garbage_expr = ExprKind::BoolLit(false);
                 let new_self = if l.traverse_resolve_mut(f).is_ok() {
                     l
                 } else {
@@ -334,7 +334,7 @@ impl<E> Expr<E> {
             }
             _ => {
                 self.as_mut().traverse_mut(|e| e.traverse_resolve_mut(f))?;
-                if let ExprF::Import(import) = self.as_mut() {
+                if let ExprKind::Import(import) = self.as_mut() {
                     let garbage_import = Import {
                         mode: ImportMode::Code,
                         location: ImportLocation::Missing,
@@ -342,7 +342,7 @@ impl<E> Expr<E> {
                     };
                     // Move out of &mut import
                     let import = std::mem::replace(import, garbage_import);
-                    *self.as_mut() = ExprF::Embed(f(import)?);
+                    *self.as_mut() = ExprKind::Embed(f(import)?);
                 }
             }
         }
