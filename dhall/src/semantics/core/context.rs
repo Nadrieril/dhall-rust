@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
-use crate::semantics::core::value_kind::ValueKind;
+use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Shift, Subst};
 use crate::syntax::{Label, V};
 
