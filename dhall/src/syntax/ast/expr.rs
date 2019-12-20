@@ -235,9 +235,6 @@ impl<E> Expr<E> {
     pub fn as_ref(&self) -> &UnspannedExpr<E> {
         &self.kind
     }
-    pub fn as_mut(&mut self) -> &mut UnspannedExpr<E> {
-        &mut self.kind
-    }
     pub fn span(&self) -> Span {
         self.span.clone()
     }
@@ -264,7 +261,7 @@ impl<E> Expr<E> {
         E: Clone,
         F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
     {
-        match self.as_mut() {
+        match self.kind.as_mut() {
             ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
                 let garbage_expr = ExprKind::BoolLit(false);
                 let new_self = if l.traverse_resolve_mut(f).is_ok() {
@@ -273,12 +270,12 @@ impl<E> Expr<E> {
                     r.traverse_resolve_mut(f)?;
                     r
                 };
-                *self.as_mut() =
-                    std::mem::replace(new_self.as_mut(), garbage_expr);
+                *self.kind =
+                    std::mem::replace(new_self.kind.as_mut(), garbage_expr);
             }
             _ => {
-                self.as_mut().traverse_mut(|e| e.traverse_resolve_mut(f))?;
-                if let ExprKind::Import(import) = self.as_mut() {
+                self.kind.traverse_mut(|e| e.traverse_resolve_mut(f))?;
+                if let ExprKind::Import(import) = self.kind.as_mut() {
                     let garbage_import = Import {
                         mode: ImportMode::Code,
                         location: ImportLocation::Missing,
@@ -286,7 +283,7 @@ impl<E> Expr<E> {
                     };
                     // Move out of &mut import
                     let import = std::mem::replace(import, garbage_import);
-                    *self.as_mut() = ExprKind::Embed(f(import)?);
+                    *self.kind = ExprKind::Embed(f(import)?);
                 }
             }
         }
