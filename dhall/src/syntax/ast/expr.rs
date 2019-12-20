@@ -347,16 +347,10 @@ impl From<NaiveDouble> for f64 {
     }
 }
 
-// This is only for the specific `Label` type, not generic
+/// This is only for the specific `Label` type, not generic
 impl From<Label> for V<Label> {
     fn from(x: Label) -> V<Label> {
         V(x, 0)
-    }
-}
-
-impl<'a> From<&'a Label> for V<Label> {
-    fn from(x: &'a Label) -> V<Label> {
-        V(x.clone(), 0)
     }
 }
 
