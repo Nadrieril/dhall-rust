@@ -6,6 +6,8 @@ use dhall::syntax::ExprKind;
 use crate::de::{Deserialize, Error, Result};
 use crate::Value;
 
+impl<'a, T> crate::de::sealed::Sealed for T where T: serde::Deserialize<'a> {}
+
 impl<'a, T> Deserialize for T
 where
     T: serde::Deserialize<'a>,

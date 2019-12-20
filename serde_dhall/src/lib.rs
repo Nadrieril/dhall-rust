@@ -179,6 +179,8 @@ pub mod value {
         }
     }
 
+    impl super::de::sealed::Sealed for Value {}
+
     impl super::de::Deserialize for Value {
         fn from_dhall(v: &Value) -> Result<Self> {
             Ok(v.clone())
@@ -225,14 +227,17 @@ pub mod de {
         }
     }
 
+    pub(crate) mod sealed {
+        pub trait Sealed {}
+    }
+
     /// A data structure that can be deserialized from a Dhall expression
     ///
     /// This is automatically implemented for any type that [serde][serde]
     /// can deserialize.
     ///
     /// This trait cannot be implemented manually.
-    // TODO: seal trait
-    pub trait Deserialize: Sized {
+    pub trait Deserialize: sealed::Sealed + Sized {
         /// See [serde_dhall::from_str][crate::from_str]
         fn from_dhall(v: &Value) -> Result<Self>;
     }
