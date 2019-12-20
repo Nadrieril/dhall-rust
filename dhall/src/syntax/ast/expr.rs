@@ -94,7 +94,10 @@ pub enum Builtin {
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct Expr<Embed>(Box<(RawExpr<Embed>, Span)>);
+pub struct Expr<Embed> {
+    kind: Box<ExprKind<Expr<Embed>, Embed>>,
+    span: Span,
+}
 
 pub type RawExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
 
@@ -230,21 +233,27 @@ impl<SE, E> ExprKind<SE, E> {
 
 impl<E> Expr<E> {
     pub fn as_ref(&self) -> &RawExpr<E> {
-        &self.0.as_ref().0
+        &self.kind
     }
     pub fn as_mut(&mut self) -> &mut RawExpr<E> {
-        &mut self.0.as_mut().0
+        &mut self.kind
     }
     pub fn span(&self) -> Span {
-        self.0.as_ref().1.clone()
+        self.span.clone()
     }
 
-    pub fn new(x: RawExpr<E>, n: Span) -> Self {
-        Expr(Box::new((x, n)))
+    pub fn new(kind: RawExpr<E>, span: Span) -> Self {
+        Expr {
+            kind: Box::new(kind),
+            span,
+        }
     }
 
-    pub fn rewrap<E2>(&self, x: RawExpr<E2>) -> Expr<E2> {
-        Expr(Box::new((x, (self.0).1.clone())))
+    pub fn rewrap<E2>(&self, kind: RawExpr<E2>) -> Expr<E2> {
+        Expr {
+            kind: Box::new(kind),
+            span: self.span.clone(),
+        }
     }
 
     pub fn traverse_resolve_mut<Err, F1>(
@@ -356,7 +365,7 @@ impl From<Label> for V<Label> {
 
 impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
     fn eq(&self, other: &Self) -> bool {
-        self.0.as_ref().0 == other.0.as_ref().0
+        self.kind == other.kind
     }
 }
 
@@ -367,6 +376,6 @@ impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
     where
         H: std::hash::Hasher,
     {
-        (self.0).0.hash(state)
+        self.kind.hash(state)
     }
 }
