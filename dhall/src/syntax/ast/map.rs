@@ -2,83 +2,26 @@
 pub use dup_tree_map::DupTreeMap;
 pub use dup_tree_set::DupTreeSet;
 
-mod one_or_more {
-    use either::Either;
-    use std::{iter, slice, vec};
-
-    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub enum OneOrMore<T> {
-        One(T),
-        More(Vec<T>),
-    }
-
-    pub type Iter<'a, T> = Either<slice::Iter<'a, T>, iter::Once<&'a T>>;
-    pub type IterMut<'a, T> =
-        Either<slice::IterMut<'a, T>, iter::Once<&'a mut T>>;
-    pub type IntoIter<T> = Either<vec::IntoIter<T>, iter::Once<T>>;
-
-    impl<T> OneOrMore<T> {
-        pub fn new(x: T) -> Self {
-            OneOrMore::One(x)
-        }
-
-        pub fn push(&mut self, x: T) {
-            take_mut::take(self, |sef| match sef {
-                OneOrMore::More(mut vec) => {
-                    vec.push(x);
-                    OneOrMore::More(vec)
-                }
-                OneOrMore::One(one) => OneOrMore::More(vec![one, x]),
-            })
-        }
-
-        pub fn iter(&self) -> Iter<'_, T> {
-            match self {
-                OneOrMore::More(vec) => Either::Left(vec.iter()),
-                OneOrMore::One(x) => Either::Right(iter::once(x)),
-            }
-        }
-
-        pub fn iter_mut(&mut self) -> IterMut<'_, T> {
-            match self {
-                OneOrMore::More(vec) => Either::Left(vec.iter_mut()),
-                OneOrMore::One(x) => Either::Right(iter::once(x)),
-            }
-        }
-    }
-
-    impl<T> IntoIterator for OneOrMore<T> {
-        type Item = T;
-        type IntoIter = IntoIter<T>;
-
-        fn into_iter(self) -> Self::IntoIter {
-            match self {
-                OneOrMore::More(vec) => Either::Left(vec.into_iter()),
-                OneOrMore::One(x) => Either::Right(iter::once(x)),
-            }
-        }
-    }
-}
-
 mod dup_tree_map {
-    use super::one_or_more;
-    use super::one_or_more::OneOrMore;
+    use smallvec as svec;
+    use smallvec::smallvec;
     use std::collections::{btree_map, BTreeMap};
     use std::iter;
+    use std::{slice, vec};
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct DupTreeMap<K, V> {
-        map: BTreeMap<K, OneOrMore<V>>,
+        map: BTreeMap<K, smallvec::SmallVec<[V; 1]>>,
         size: usize,
     }
 
     pub type IterInternalIntermediate<'a, K, V> =
-        iter::Zip<iter::Repeat<&'a K>, one_or_more::Iter<'a, V>>;
+        iter::Zip<iter::Repeat<&'a K>, slice::Iter<'a, V>>;
     pub type IterInternal<'a, K, V> = iter::FlatMap<
-        btree_map::Iter<'a, K, OneOrMore<V>>,
+        btree_map::Iter<'a, K, smallvec::SmallVec<[V; 1]>>,
         IterInternalIntermediate<'a, K, V>,
         for<'b> fn(
-            (&'b K, &'b OneOrMore<V>),
+            (&'b K, &'b smallvec::SmallVec<[V; 1]>),
         ) -> IterInternalIntermediate<'b, K, V>,
     >;
     pub struct Iter<'a, K, V> {
@@ -86,12 +29,12 @@ mod dup_tree_map {
         size: usize,
     }
     pub type IterMutInternalIntermediate<'a, K, V> =
-        iter::Zip<iter::Repeat<&'a K>, one_or_more::IterMut<'a, V>>;
+        iter::Zip<iter::Repeat<&'a K>, slice::IterMut<'a, V>>;
     pub type IterMutInternal<'a, K, V> = iter::FlatMap<
-        btree_map::IterMut<'a, K, OneOrMore<V>>,
+        btree_map::IterMut<'a, K, smallvec::SmallVec<[V; 1]>>,
         IterMutInternalIntermediate<'a, K, V>,
         for<'b> fn(
-            (&'b K, &'b mut OneOrMore<V>),
+            (&'b K, &'b mut smallvec::SmallVec<[V; 1]>),
         ) -> IterMutInternalIntermediate<'b, K, V>,
     >;
     pub struct IterMut<'a, K, V> {
@@ -99,11 +42,13 @@ mod dup_tree_map {
         size: usize,
     }
     pub type IntoIterInternalIntermediate<K, V> =
-        iter::Zip<iter::Repeat<K>, one_or_more::IntoIter<V>>;
+        iter::Zip<iter::Repeat<K>, svec::IntoIter<[V; 1]>>;
     pub type IntoIterInternal<K, V> = iter::FlatMap<
-        btree_map::IntoIter<K, OneOrMore<V>>,
+        btree_map::IntoIter<K, smallvec::SmallVec<[V; 1]>>,
         IntoIterInternalIntermediate<K, V>,
-        fn((K, OneOrMore<V>)) -> IntoIterInternalIntermediate<K, V>,
+        fn(
+            (K, smallvec::SmallVec<[V; 1]>),
+        ) -> IntoIterInternalIntermediate<K, V>,
     >;
     pub struct IntoIter<K: Clone, V> {
         iter: IntoIterInternal<K, V>,
@@ -128,7 +73,7 @@ mod dup_tree_map {
             use std::collections::btree_map::Entry;
             match self.map.entry(key) {
                 Entry::Vacant(e) => {
-                    e.insert(OneOrMore::new(value));
+                    e.insert(smallvec![value]);
                 }
                 Entry::Occupied(mut e) => e.get_mut().push(value),
             }
@@ -147,9 +92,9 @@ mod dup_tree_map {
             K: Ord,
         {
             fn foo<'a, K, V>(
-                (k, oom): (&'a K, &'a OneOrMore<V>),
+                (k, vec): (&'a K, &'a smallvec::SmallVec<[V; 1]>),
             ) -> IterInternalIntermediate<'a, K, V> {
-                iter::repeat(k).zip(oom.iter())
+                iter::repeat(k).zip(vec.iter())
             }
             Iter {
                 iter: self.map.iter().flat_map(foo),
@@ -162,9 +107,9 @@ mod dup_tree_map {
             K: Ord,
         {
             fn foo<'a, K, V>(
-                (k, oom): (&'a K, &'a mut OneOrMore<V>),
+                (k, vec): (&'a K, &'a mut smallvec::SmallVec<[V; 1]>),
             ) -> IterMutInternalIntermediate<'a, K, V> {
-                iter::repeat(k).zip(oom.iter_mut())
+                iter::repeat(k).zip(vec.iter_mut())
             }
             IterMut {
                 iter: self.map.iter_mut().flat_map(foo),
@@ -191,12 +136,12 @@ mod dup_tree_map {
 
         fn into_iter(self) -> Self::IntoIter {
             fn foo<K, V>(
-                (k, oom): (K, OneOrMore<V>),
+                (k, vec): (K, smallvec::SmallVec<[V; 1]>),
             ) -> IntoIterInternalIntermediate<K, V>
             where
                 K: Clone,
             {
-                iter::repeat(k).zip(oom.into_iter())
+                iter::repeat(k).zip(vec.into_iter())
             }
             IntoIter {
                 iter: self.map.into_iter().flat_map(foo),
