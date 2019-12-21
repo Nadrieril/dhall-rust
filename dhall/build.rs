@@ -408,9 +408,10 @@ fn generate_tests() -> std::io::Result<()> {
 }
 
 fn convert_abnf_to_pest() -> std::io::Result<()> {
+    let out_dir = env::var("OUT_DIR").unwrap();
     let abnf_path = "src/dhall.abnf";
     let visibility_path = "src/dhall.pest.visibility";
-    let pest_path = "src/dhall.pest";
+    let grammar_path = Path::new(&out_dir).join("dhall.pest");
     println!("cargo:rerun-if-changed={}", abnf_path);
     println!("cargo:rerun-if-changed={}", visibility_path);
 
@@ -427,7 +428,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
         }
     }
 
-    let mut file = File::create(pest_path)?;
+    let mut file = File::create(grammar_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
 
     // TODO: this is a cheat; properly support RFC3986 URLs instead
@@ -493,8 +494,31 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     Ok(())
 }
 
+// Generate pest parser manually becaue otherwise we'd need to modify something outside of
+// OUT_DIR and that's forbidden by docs.rs.
+fn generate_pest_parser() -> std::io::Result<()> {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let grammar_path = Path::new(&out_dir).join("dhall.pest");
+    let grammar_path = grammar_path.to_str();
+    let output_path = Path::new(&out_dir).join("dhall_parser.rs");
+
+    let pest = quote::quote!(
+        #[grammar = #grammar_path]
+        struct DhallParser;
+    );
+    let derived = pest_generator::derive_parser(pest, false);
+    let file_contents = quote::quote!(
+        struct DhallParser;
+        #derived
+    );
+
+    let mut file = File::create(output_path)?;
+    writeln!(file, "{}", file_contents)
+}
+
 fn main() -> std::io::Result<()> {
     convert_abnf_to_pest()?;
+    generate_pest_parser()?;
     generate_tests()?;
     Ok(())
 }
