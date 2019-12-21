@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/dhall/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/dhall/0.1.1")]
 #![feature(trace_macros)]
 #![feature(slice_patterns)]
 #![feature(never_type)]
