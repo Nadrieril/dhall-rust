@@ -1,24 +1,70 @@
-# `dhall-rust`
+<img src="https://github.com/dhall-lang/dhall-lang/blob/master/img/dhall-logo.svg" width="600" alt="Dhall Logo">
 
 [![Build Status](https://travis-ci.org/Nadrieril/dhall-rust.svg?branch=master)](https://travis-ci.org/Nadrieril/dhall-rust)
 [![codecov](https://codecov.io/gh/Nadrieril/dhall-rust/branch/master/graph/badge.svg)](https://codecov.io/gh/Nadrieril/dhall-rust)
 
-This is a WIP implementation in Rust of the [dhall](https://dhall-lang.org) configuration format/programming language.
+Dhall is a programmable configuration language optimized for
+maintainability.
 
-This language is defined by a [standard](https://github.com/dhall-lang/dhall-lang), and this implementation tries its best to respect it.
+You can think of Dhall as: JSON + functions + types + imports
 
-This is a nightly crate, so you will need a nightly compiler to use it.
+Note that while Dhall is programmable, Dhall is not Turing-complete.  Many
+of Dhall's features take advantage of this restriction to provide stronger
+safety guarantees and more powerful tooling.
 
-This is still quite unstable so use at your own risk. Documentation is severely lacking for now, sorry !
+You can find more details about the language by visiting the official website:
+
+* [https://dhall-lang.org](http://dhall-lang.org/)
+
+# `dhall-rust`
+
+This is the Rust implementation of the Dhall configuration language.
+It is meant to be used to integrate Dhall in your application.
+
+If you only want to convert Dhall to/from JSON or YAML, you should use the
+official tooling instead; instructions can be found
+[here](https://docs.dhall-lang.org/tutorials/Getting-started_Generate-JSON-or-YAML.html).
+
+## Usage
+
+For now, the only supported way of integrating Dhall in your application is via
+the `serde_dhall` crate, and only parsing is supported.
+
+`serde_dhall` is a nightly crate, and only works with a nightly compiler.
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+serde_dhall = "0.1.0"
+```
+
+Reading Dhall files is easy and leverages the wonderful [`serde`]() library.
+
+```rust
+use std::collections::BTreeMap;
+
+// Some Dhall data
+let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
+
+// Deserialize it to a Rust type.
+let deserialized_map: BTreeMap<String, usize> = serde_dhall::from_str(data)?;
+
+let mut expected_map = BTreeMap::new();
+expected_map.insert("x".to_string(), 1);
+expected_map.insert("y".to_string(), 2);
+
+assert_eq!(deserialized_map, expected_map);
+```
 
 ## Standard-compliance
 
-- Parsing: 100%
-- Imports: 10%
-- Normalization: 100%
-- Typechecking: 83%
+This implementation currently supports partially the [Dhall
+standard](https://github.com/dhall-lang/dhall-lang) version `10.0`.
 
-You can see what's missing from the commented out tests in `dhall/src/normalize.rs` and `dhall/src/typecheck.rs`.
+Only local imports are supported, but otherwise the main features are
+implemented. See
+[here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
+for a list of missing features.
 
 # Contributing
 
