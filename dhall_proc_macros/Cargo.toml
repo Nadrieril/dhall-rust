@@ -1,8 +1,11 @@
 [package]
 name = "dhall_proc_macros"
-version = "0.1.0"
+version = "0.1.0"  # remember to update html_root_url
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
+description = "Macros for dhall"
+readme = "README.md"
+repository = "https://github.com/Nadrieril/dhall-rust"
 edition = "2018"
 
 [lib]

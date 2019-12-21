@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/dhall_proc_macros/0.1.0")]
 //! This crate contains the code-generation primitives for the [dhall-rust][dhall-rust] crate.
 //! This is highly unstable and breaks regularly; use at your own risk.
 //!

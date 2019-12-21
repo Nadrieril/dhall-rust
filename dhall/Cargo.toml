@@ -1,8 +1,11 @@
 [package]
 name = "dhall"
-version = "0.1.0"
+version = "0.1.0"  # remember to update html_root_url
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
+description = "Implementation of the Dhall configuration language"
+readme = "README.md"
+repository = "https://github.com/Nadrieril/dhall-rust"
 edition = "2018"
 build = "build.rs"
 
@@ -12,9 +15,8 @@ hex = "0.3.2"
 lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 pest = "2.1"
-# pest_consume = { path = "../../pest_consume/pest_consume" }
 pest_consume = "1.0"
-serde = { version = "1.0" }
+serde = "1.0"
 serde_cbor = "0.9.0"
 smallvec = "1.0.0"
 take_mut = "0.2.2"
