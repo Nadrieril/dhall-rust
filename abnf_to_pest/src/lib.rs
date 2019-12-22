@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/abnf_to_pest/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/abnf_to_pest/0.2.0")]
 
 //! A tiny crate that helps convert ABNF grammars to [pest][pest].
 //!
@@ -21,10 +21,7 @@
 //!
 //! [pest]: https://pest.rs
 
-use abnf::abnf::Rule;
-pub use abnf::abnf::{
-    Alternation, Concatenation, Element, Range, Repeat, Repetition,
-};
+use abnf::types::{Node, NumVal, Repeat, Rule};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 use pretty::{BoxDoc, Doc};
@@ -33,60 +30,27 @@ trait Pretty {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>>;
 }
 
-impl Pretty for Alternation {
+impl Pretty for Node {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        Doc::intersperse(
-            self.concatenations
-                .iter()
-                .map(|x| x.pretty().nest(2).group()),
-            Doc::space().append(Doc::text("| ")),
-        )
-    }
-}
-
-impl Pretty for Concatenation {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        Doc::intersperse(
-            self.repetitions.iter().map(Repetition::pretty),
-            Doc::space().append(Doc::text("~ ")),
-        )
-    }
-}
-
-impl Pretty for Repetition {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        self.element.pretty().append(
-            self.repeat
-                .as_ref()
-                .map(Repeat::pretty)
-                .unwrap_or_else(Doc::nil),
-        )
-    }
-}
-
-impl Pretty for Repeat {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        Doc::text(match (self.min.unwrap_or(0), self.max) {
-            (0, None) => "*".into(),
-            (1, None) => "+".into(),
-            (0, Some(1)) => "?".into(),
-            (min, None) => format!("{{{},}}", min),
-            (min, Some(max)) if min == max => format!("{{{}}}", min),
-            (min, Some(max)) => format!("{{{},{}}}", min, max),
-        })
-    }
-}
-
-impl Pretty for Element {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        use abnf::abnf::Element::*;
+        use Node::*;
         match self {
+            Alternation(nodes) => Doc::intersperse(
+                nodes.iter().map(|x| x.pretty().nest(2).group()),
+                Doc::space().append(Doc::text("| ")),
+            ),
+            Concatenation(nodes) => Doc::intersperse(
+                nodes.iter().map(|x| x.pretty()),
+                Doc::space().append(Doc::text("~ ")),
+            ),
+            Repetition(rep) => {
+                rep.get_node().pretty().append(rep.get_repeat().pretty())
+            }
             Rulename(s) => Doc::text(escape_rulename(s)),
-            Group(g) => Doc::text("(")
-                .append((g.alternation).pretty().nest(4).group())
+            Group(n) => Doc::text("(")
+                .append(n.pretty().nest(4).group())
                 .append(Doc::text(")")),
-            Option(o) => Doc::text("(")
-                .append((o.alternation).pretty().nest(4).group())
+            Optional(n) => Doc::text("(")
+                .append(n.pretty().nest(4).group())
                 .append(Doc::text(")?")),
             CharVal(s) => Doc::text(format!(
                 "^\"{}\"",
@@ -98,14 +62,27 @@ impl Pretty for Element {
     }
 }
 
-impl Pretty for Range {
+impl Pretty for Repeat {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        use abnf::abnf::Range::*;
+        Doc::text(match (self.get_min().unwrap_or(0), self.get_max()) {
+            (0, None) => "*".into(),
+            (1, None) => "+".into(),
+            (0, Some(1)) => "?".into(),
+            (min, None) => format!("{{{},}}", min),
+            (min, Some(max)) if min == max => format!("{{{}}}", min),
+            (min, Some(max)) => format!("{{{},{}}}", min, max),
+        })
+    }
+}
+
+impl Pretty for NumVal {
+    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
+        use NumVal::*;
         Doc::text(match self {
             Range(x, y) => {
                 format!("'{}'..'{}'", format_char(*x), format_char(*y))
             }
-            OneOf(v) => {
+            Terminal(v) => {
                 format!("\"{}\"", v.iter().map(|x| format_char(*x)).join(""))
             }
         })
@@ -154,17 +131,18 @@ fn format_char(x: u32) -> String {
 #[derive(Debug, Clone)]
 pub struct PestyRule {
     pub silent: bool,
-    pub elements: Alternation,
+    pub node: Node,
 }
 
 impl Pretty for (String, PestyRule) {
     fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
+        let (name, rule) = self;
         Doc::nil()
-            .append(Doc::text(self.0.clone()))
+            .append(Doc::text(name.clone()))
             .append(Doc::text(" = "))
-            .append(Doc::text(if self.1.silent { "_" } else { "" }))
+            .append(Doc::text(if rule.silent { "_" } else { "" }))
             .append(Doc::text("{"))
-            .append(Doc::space().append(self.1.elements.pretty()).nest(2))
+            .append(Doc::space().append(rule.node.pretty()).nest(2))
             .append(Doc::space())
             .append(Doc::text("}"))
             .group()
@@ -173,21 +151,19 @@ impl Pretty for (String, PestyRule) {
 
 /// Parse an abnf file. Returns a map of rules.
 pub fn parse_abnf(
-    data: &[u8],
+    data: &str,
 ) -> Result<IndexMap<String, PestyRule>, std::io::Error> {
     let make_err =
         |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
-    let rules: Vec<Rule> =
-        abnf::abnf::rulelist_comp(&data).map_err(make_err)?.1;
+    let rules: Vec<Rule> = abnf::rulelist(data).map_err(make_err)?;
     Ok(rules
         .into_iter()
         .map(|rule| {
-            let name = escape_rulename(&rule.name);
             (
-                name.clone(),
+                escape_rulename(rule.get_name()),
                 PestyRule {
                     silent: false,
-                    elements: rule.elements.clone(),
+                    node: rule.get_node().clone(),
                 },
             )
         })

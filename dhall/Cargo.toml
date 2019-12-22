@@ -26,7 +26,7 @@ pretty_assertions = "0.6.1"
 
 [build-dependencies]
 walkdir = "2"
-abnf_to_pest = { version = "0.1.2", path = "../abnf_to_pest" }
+abnf_to_pest = { version = "0.2.0", path = "../abnf_to_pest" }
 pest_generator = "2.1"
 quote = "1.0"
 

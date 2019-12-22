@@ -1,7 +1,7 @@
 use std::env;
 use std::ffi::OsString;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::fs::{read_to_string, File};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -383,10 +383,8 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     println!("cargo:rerun-if-changed={}", abnf_path);
     println!("cargo:rerun-if-changed={}", visibility_path);
 
-    let mut file = File::open(abnf_path)?;
-    let mut data = Vec::new();
-    file.read_to_end(&mut data)?;
-    data.push('\n' as u8);
+    let mut data = read_to_string(abnf_path)?;
+    data.push('\n');
 
     let mut rules = abnf_to_pest::parse_abnf(&data)?;
     for line in BufReader::new(File::open(visibility_path)?).lines() {
