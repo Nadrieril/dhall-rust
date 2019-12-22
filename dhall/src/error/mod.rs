@@ -76,6 +76,7 @@ pub(crate) enum TypeMessage {
     MergeHandlerReturnTypeMustNotBeDependent,
     ProjectionMustBeRecord,
     ProjectionMissingEntry,
+    ProjectionDuplicateField,
     Sort,
     RecordTypeDuplicateField,
     RecordTypeMergeRequiresRecordType(Value),

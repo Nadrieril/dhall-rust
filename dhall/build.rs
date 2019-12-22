@@ -296,6 +296,7 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: toMap
                     || path == "unit/ToMap"
                     || path == "unit/ToMapAnnotated"
+                    || path == "unit/ToMapInferTypeFromRecord"
                     || path == "simple/toMapEmptyNormalizeAnnotation"
             }),
             input_type: FileType::Text,
@@ -321,6 +322,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap3"
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
+                    || path == "unit/ToMapEmptyInvalidAnnotation"
                     || path == "unit/ToMapWrongKind"
             }),
             input_type: FileType::Text,
@@ -346,6 +348,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap3"
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
+                    || path == "unit/ToMapEmptyInvalidAnnotation"
                     || path == "unit/ToMapWrongKind"
             }),
             input_type: FileType::Text,

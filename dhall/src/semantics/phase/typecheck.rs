@@ -774,7 +774,15 @@ fn type_last_layer(
             for l in labels {
                 match kts.get(l) {
                     None => return mkerr(ProjectionMissingEntry),
-                    Some(t) => new_kts.insert(l.clone(), t.clone()),
+                    Some(t) => {
+                        use std::collections::hash_map::Entry;
+                        match new_kts.entry(l.clone()) {
+                            Entry::Occupied(_) => {
+                                return mkerr(ProjectionDuplicateField)
+                            }
+                            Entry::Vacant(e) => e.insert(t.clone()),
+                        }
+                    }
                 };
             }
 
