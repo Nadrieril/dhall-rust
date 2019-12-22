@@ -64,7 +64,9 @@ impl<E: Display + Clone> UnspannedExpr<E> {
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
-            Completion(a, b) => Completion(a.phase(Primitive), b.phase(Primitive)),
+            Completion(a, b) => {
+                Completion(a.phase(Primitive), b.phase(Primitive))
+            }
             e => e,
         }
     }
@@ -90,9 +92,10 @@ impl<E: Display + Clone> UnspannedExpr<E> {
             // Precedence is magically handled by the ordering of BinOps.
             ExprKind::BinOp(op, _, _) => phase > PrintPhase::BinOp(*op),
             ExprKind::App(_, _) => phase > PrintPhase::App,
-            Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _) | Completion(_, _) => {
-                phase > PrintPhase::Import
-            }
+            Field(_, _)
+            | Projection(_, _)
+            | ProjectionByExpr(_, _)
+            | Completion(_, _) => phase > PrintPhase::Import,
             _ => false,
         };
 
