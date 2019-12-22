@@ -322,6 +322,8 @@ impl Display for NaiveDouble {
             f.write_str("-Infinity")
         } else if v.is_nan() {
             f.write_str("NaN")
+        } else if v == 0.0 && v.is_sign_negative() {
+            f.write_str("-0.0")
         } else {
             let s = format!("{}", v);
             if s.contains('e') || s.contains('.') {

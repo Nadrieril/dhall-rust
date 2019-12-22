@@ -224,6 +224,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "hashMismatch"
                     || path == "missing"
                     || path == "referentiallyInsane"
+                    || path == "customHeadersUsingBoundVariable"
             }),
             input_type: FileType::Text,
             output_type: None,
@@ -308,9 +309,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeInferenceFailure",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: Enable imports in typecheck tests
-                    || path == "importBoundary"
-                    || path == "customHeadersUsingBoundVariable"
                     // TODO: projection by expression
                     || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
                     || path == "unit/RecordProjectionByTypeNotPresent"
@@ -334,9 +332,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: Enable imports in typecheck tests
-                    || path == "importBoundary"
-                    || path == "customHeadersUsingBoundVariable"
                     // TODO: projection by expression
                     || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
                     || path == "unit/RecordProjectionByTypeNotPresent"
