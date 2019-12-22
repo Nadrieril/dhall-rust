@@ -163,6 +163,8 @@ pub enum ExprKind<SubExpr, Embed> {
     Projection(SubExpr, DupTreeSet<Label>),
     ///  `e.(t)`
     ProjectionByExpr(SubExpr, SubExpr),
+    ///  `x::y`
+    Completion(SubExpr, SubExpr),
     /// `./some/path`
     Import(Import<SubExpr>),
     /// Embeds the result of resolving an import

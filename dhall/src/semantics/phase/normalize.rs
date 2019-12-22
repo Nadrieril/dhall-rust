@@ -741,6 +741,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
+        ExprKind::Completion(_, _) => unimplemented!("record completion"),
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
             let handlers_borrow = handlers.as_whnf();

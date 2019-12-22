@@ -267,6 +267,9 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RightBiasedMergeEquivalentArguments"
                     || path == "unit/NestedRecordProjection"
                     || path == "unit/NestedRecordProjectionByType"
+                    // TODO: record completion
+                    || path == "simple/completion"
+                    || path == "unit/Completion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -299,6 +302,9 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/ToMapAnnotated"
                     || path == "unit/ToMapInferTypeFromRecord"
                     || path == "simple/toMapEmptyNormalizeAnnotation"
+                    // TODO: record completion
+                    || path == "simple/completion"
+                    || path == "unit/Completion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -322,6 +328,11 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/NonRecordToMap"
                     || path == "unit/ToMapEmptyInvalidAnnotation"
                     || path == "unit/ToMapWrongKind"
+                    // TODO: record completion
+                    || path == "unit/CompletionMissingRequiredField"
+                    || path == "unit/CompletionWithWrongDefaultType"
+                    || path == "unit/CompletionWithWrongFieldName"
+                    || path == "unit/CompletionWithWrongOverridenType"
             }),
             input_type: FileType::Text,
             output_type: None,
@@ -345,6 +356,11 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/NonRecordToMap"
                     || path == "unit/ToMapEmptyInvalidAnnotation"
                     || path == "unit/ToMapWrongKind"
+                    // TODO: record completion
+                    || path == "unit/CompletionMissingRequiredField"
+                    || path == "unit/CompletionWithWrongDefaultType"
+                    || path == "unit/CompletionWithWrongFieldName"
+                    || path == "unit/CompletionWithWrongOverridenType"
             }),
             input_type: FileType::Text,
             output_type: None,

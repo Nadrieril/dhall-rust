@@ -91,6 +91,7 @@ prefer
 lambda
 forall
 arrow
+# complete
 # exponent
 numeric_double_literal
 minus_infinity_literal
@@ -161,6 +162,7 @@ equivalent_expression
 application_expression
 first_application_expression
 # import_expression
+completion_expression
 selector_expression
 selector
 labels

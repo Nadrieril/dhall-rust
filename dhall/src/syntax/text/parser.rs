@@ -766,6 +766,25 @@ impl DhallParser {
     }
 
     #[alias(expression, shortcut = true)]
+    fn completion_expression(input: ParseInput) -> ParseResult<Expr> {
+        Ok(match_nodes!(input.children();
+            [expression(e)] => e,
+            [expression(first), expression(rest)..] => {
+                rest.fold(
+                    first,
+                    |acc, e| {
+                        spanned_union(
+                            acc.span(),
+                            e.span(),
+                            Completion(acc, e),
+                        )
+                    }
+                )
+            },
+        ))
+    }
+
+    #[alias(expression, shortcut = true)]
     fn selector_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
             [expression(e)] => e,

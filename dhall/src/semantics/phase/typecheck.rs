@@ -792,6 +792,7 @@ fn type_last_layer(
             ))
         }
         ProjectionByExpr(_, _) => unimplemented!("selection by expression"),
+        Completion(_, _) => unimplemented!("record completion"),
     };
 
     Ok(match ret {

@@ -164,6 +164,9 @@ where
         ProjectionByExpr(x, y) => {
             ser_seq!(ser; tag(10), expr(x), vec![expr(y)])
         }
+        Completion(x, y) => {
+            ser_seq!(ser; tag(3), tag(13), expr(x), expr(y))
+        }
         Import(import) => serialize_import(ser, import),
         Embed(_) => unimplemented!(
             "An expression with resolved imports cannot be binary-encoded"
