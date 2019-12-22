@@ -59,7 +59,7 @@ assert_eq!(deserialized_map, expected_map);
 ## Standard-compliance
 
 This implementation currently supports partially the [Dhall
-standard](https://github.com/dhall-lang/dhall-lang) version `10.0`.
+standard](https://github.com/dhall-lang/dhall-lang) version `11.0`.
 
 Only local imports are supported, but otherwise the main features are
 implemented. See
