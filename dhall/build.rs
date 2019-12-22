@@ -51,8 +51,7 @@ fn dhall_files_in_dir<'a>(
         })
 }
 
-#[derive(Debug, Clone)]
-struct TestFeature<F> {
+struct TestFeature {
     /// Name of the module, used in the output of `cargo test`
     module_name: &'static str,
     /// Directory containing the tests files
@@ -60,7 +59,7 @@ struct TestFeature<F> {
     /// Relevant variant of `dhall::tests::Test`
     variant: &'static str,
     /// Given a file name, whether to exclude it
-    path_filter: F,
+    path_filter: Box<dyn FnMut(&str) -> bool>,
     /// Type of the input file
     input_type: FileType,
     /// Type of the output file, if any
@@ -69,7 +68,7 @@ struct TestFeature<F> {
 
 fn make_test_module(
     w: &mut impl Write, // Where to output the generated code
-    mut feature: TestFeature<impl FnMut(&str) -> bool>,
+    mut feature: TestFeature,
 ) -> std::io::Result<()> {
     let tests_dir = feature.directory;
     writeln!(w, "mod {} {{", feature.module_name)?;
@@ -113,15 +112,13 @@ fn generate_tests() -> std::io::Result<()> {
 
     let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
     let spec_tests_dir = Path::new("../dhall-lang/tests/");
-    let mut file = File::create(parser_tests_path)?;
 
-    make_test_module(
-        &mut file,
+    let tests = vec![
         TestFeature {
             module_name: "parser_success",
             directory: spec_tests_dir.join("parser/success/"),
             variant: "ParserSuccess",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // Too slow in debug mode
                     || path == "largeExpression"
@@ -131,31 +128,23 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "parser_failure",
             directory: spec_tests_dir.join("parser/failure/"),
             variant: "ParserFailure",
-            path_filter: |_path: &str| false,
+            path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Text,
             output_type: None,
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "printer",
             directory: spec_tests_dir.join("parser/success/"),
             variant: "Printer",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // Too slow in debug mode
                     || path == "largeExpression"
@@ -163,19 +152,15 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "binary_encoding",
             directory: spec_tests_dir.join("parser/success/"),
             variant: "BinaryEncoding",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // Too slow in debug mode
                     || path == "largeExpression"
@@ -189,43 +174,31 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "binary_decoding_success",
             directory: spec_tests_dir.join("binary-decode/success/"),
             variant: "BinaryDecodingSuccess",
-            path_filter: |_path: &str| false,
+            path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
             output_type: Some(FileType::Text),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "binary_decoding_failure",
             directory: spec_tests_dir.join("binary-decode/failure/"),
             variant: "BinaryDecodingFailure",
-            path_filter: |_path: &str| false,
+            path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
             output_type: None,
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "import_success",
             directory: spec_tests_dir.join("import/success/"),
             variant: "ImportSuccess",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     || path == "alternativeEnvNatural"
                     || path == "alternativeEnvSimple"
@@ -236,38 +209,30 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "hashFromCache"
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "import_failure",
             directory: spec_tests_dir.join("import/failure/"),
             variant: "ImportFailure",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     || path == "alternativeEnv"
                     || path == "alternativeEnvMissing"
                     || path == "hashMismatch"
                     || path == "missing"
                     || path == "referentiallyInsane"
-            },
+            }),
             input_type: FileType::Text,
             output_type: None,
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "beta_normalize",
             directory: spec_tests_dir.join("normalization/success/"),
             variant: "Normalization",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 // We don't support bignums
                 path == "simple/integerToDouble"
                     // Too slow
@@ -301,34 +266,26 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RightBiasedMergeEquivalentArguments"
                     || path == "unit/NestedRecordProjection"
                     || path == "unit/NestedRecordProjectionByType"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "alpha_normalize",
             directory: spec_tests_dir.join("alpha-normalization/success/"),
             variant: "AlphaNormalization",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 // This test doesn't typecheck
                 path == "unit/FunctionNestedBindingXXFree"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "type_inference_success",
             directory: spec_tests_dir.join("type-inference/success/"),
             variant: "TypeInferenceSuccess",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // Too slow
                     || path == "prelude"
@@ -340,19 +297,15 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/ToMap"
                     || path == "unit/ToMapAnnotated"
                     || path == "simple/toMapEmptyNormalizeAnnotation"
-            },
+            }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "type_inference_failure",
             directory: spec_tests_dir.join("type-inference/failure/"),
             variant: "TypeInferenceFailure",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // TODO: Enable imports in typecheck tests
                     || path == "importBoundary"
@@ -369,19 +322,15 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
                     || path == "unit/ToMapWrongKind"
-            },
+            }),
             input_type: FileType::Text,
             output_type: None,
         },
-    )?;
-
-    make_test_module(
-        &mut file,
         TestFeature {
             module_name: "type_error",
             directory: spec_tests_dir.join("type-inference/failure/"),
             variant: "TypeError",
-            path_filter: |path: &str| {
+            path_filter: Box::new(|path: &str| {
                 false
                     // TODO: Enable imports in typecheck tests
                     || path == "importBoundary"
@@ -398,11 +347,16 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MistypedToMap4"
                     || path == "unit/NonRecordToMap"
                     || path == "unit/ToMapWrongKind"
-            },
+            }),
             input_type: FileType::Text,
             output_type: None,
         },
-    )?;
+    ];
+
+    let mut file = File::create(parser_tests_path)?;
+    for test in tests {
+        make_test_module(&mut file, test)?;
+    }
 
     Ok(())
 }
