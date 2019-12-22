@@ -156,9 +156,15 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Parser)]
-#[grammar = "dhall.pest"]
-struct DhallParser;
+// Generate pest parser manually becaue otherwise we'd need to modify something outside of OUT_DIR
+// and that's forbidden by docs.rs.
+// This is equivalent to:
+// ```
+// #[derive(Parser)
+// #[grammar = "..."]
+// struct DhallParser;
+// ```
+include!(concat!(env!("OUT_DIR"), "/dhall_parser.rs"));
 
 #[pest_consume::parser(parser = DhallParser, rule = Rule)]
 impl DhallParser {
