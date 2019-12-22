@@ -128,6 +128,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -152,6 +154,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -174,6 +178,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -385,6 +391,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
 
     let mut data = read_to_string(abnf_path)?;
     data.push('\n');
+    let data = data.replace('∀', ""); // See https://github.com/duesee/abnf/issues/11
 
     let mut rules = abnf_to_pest::parse_abnf(&data)?;
     for line in BufReader::new(File::open(visibility_path)?).lines() {
@@ -400,6 +407,12 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     // TODO: this is a cheat; properly support RFC3986 URLs instead
     rules.remove("url_path");
     writeln!(&mut file, "url_path = _{{ path }}")?;
+
+    rules.remove("missing");
+    writeln!(
+        &mut file,
+        r#"missing = {{ "missing" ~ !simple_label_next_char }}"#
+    )?;
 
     rules.remove("simple_label");
     writeln!(
