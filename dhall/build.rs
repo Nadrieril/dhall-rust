@@ -414,10 +414,18 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     rules.remove("url_path");
     writeln!(&mut file, "url_path = _{{ path }}")?;
 
+    // Work around some greediness issue in the grammar.
     rules.remove("missing");
     writeln!(
         &mut file,
         r#"missing = {{ "missing" ~ !simple_label_next_char }}"#
+    )?;
+
+    // Prefer my nice error message to illegible parse errors.
+    rules.remove("unicode_escape");
+    writeln!(
+        &mut file,
+        r#"unicode_escape = _{{ HEXDIG{{4}} | "{{" ~ HEXDIG+ ~ "}}" }}"#
     )?;
 
     rules.remove("simple_label");

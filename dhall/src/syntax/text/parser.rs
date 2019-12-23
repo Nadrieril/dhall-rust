@@ -217,19 +217,18 @@ impl DhallParser {
             "t" => "\t".to_owned(),
             // "uXXXX" or "u{XXXXX}"
             s => {
-                use std::convert::{TryFrom, TryInto};
+                use std::convert::TryInto;
 
                 let s = &s[1..];
                 let s = if &s[0..1] == "{" {
                     &s[1..s.len() - 1]
                 } else {
-                    &s[0..s.len()]
+                    s
                 };
 
                 if s.len() > 8 {
                     Err(input.error(format!(
-                        "Escape sequences can't have more than 8 chars: \"{}\"",
-                        s
+                        "Escape sequences can't have more than 8 chars"
                     )))?
                 }
 
@@ -242,12 +241,10 @@ impl DhallParser {
                 // `s` has length 8, so `bytes` has length 4
                 let bytes: &[u8] = &hex::decode(s).unwrap();
                 let i = u32::from_be_bytes(bytes.try_into().unwrap());
-                let c = char::try_from(i).unwrap();
                 match i {
-                    0xD800..=0xDFFF => {
-                        let c_ecapsed = c.escape_unicode();
-                        Err(input.error(format!("Escape sequences can't contain surrogate pairs: \"{}\"", c_ecapsed)))?
-                    }
+                    0xD800..=0xDFFF => Err(input.error(format!(
+                        "Escape sequences can't contain surrogate pairs"
+                    )))?,
                     0x0FFFE..=0x0FFFF
                     | 0x1FFFE..=0x1FFFF
                     | 0x2FFFE..=0x2FFFF
@@ -264,12 +261,12 @@ impl DhallParser {
                     | 0xDFFFE..=0xDFFFF
                     | 0xEFFFE..=0xEFFFF
                     | 0xFFFFE..=0xFFFFF
-                    | 0x10_FFFE..=0x10_FFFF => {
-                        let c_ecapsed = c.escape_unicode();
-                        Err(input.error(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed)))?
-                    }
+                    | 0x10_FFFE..=0x10_FFFF => Err(input.error(format!(
+                        "Escape sequences can't contain non-characters"
+                    )))?,
                     _ => {}
                 }
+                let c: char = i.try_into().unwrap();
                 std::iter::once(c).collect()
             }
         })

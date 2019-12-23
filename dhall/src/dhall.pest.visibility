@@ -24,6 +24,10 @@ quoted_label
 double_quote_chunk
 double_quote_escaped
 # unicode_escape
+# unicode_suffix
+# unbraced_escape
+# braced_codepoint
+# braced_escape
 double_quote_char
 double_quote_literal
 single_quote_continue
