@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
@@ -138,6 +139,16 @@ pub(crate) fn apply_builtin(
         (IntegerToDouble, [n]) => match &*n.as_whnf() {
             IntegerLit(n) => {
                 Ret::ValueKind(DoubleLit(NaiveDouble::from(*n as f64)))
+            }
+            _ => Ret::DoneAsIs,
+        },
+        (IntegerNegate, [n]) => match &*n.as_whnf() {
+            IntegerLit(n) => Ret::ValueKind(IntegerLit(-n)),
+            _ => Ret::DoneAsIs,
+        },
+        (IntegerClamp, [n]) => match &*n.as_whnf() {
+            IntegerLit(n) => {
+                Ret::ValueKind(NaturalLit((*n).try_into().unwrap_or(0)))
             }
             _ => Ret::DoneAsIs,
         },

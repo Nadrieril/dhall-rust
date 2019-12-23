@@ -468,6 +468,8 @@ impl Display for Builtin {
             NaturalShow => "Natural/show",
             NaturalSubtract => "Natural/subtract",
             IntegerToDouble => "Integer/toDouble",
+            IntegerNegate => "Integer/negate",
+            IntegerClamp => "Integer/clamp",
             IntegerShow => "Integer/show",
             DoubleShow => "Double/show",
             ListBuild => "List/build",

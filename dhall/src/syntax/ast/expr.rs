@@ -79,6 +79,8 @@ pub enum Builtin {
     NaturalSubtract,
     IntegerToDouble,
     IntegerShow,
+    IntegerNegate,
+    IntegerClamp,
     DoubleShow,
     ListBuild,
     ListFold,

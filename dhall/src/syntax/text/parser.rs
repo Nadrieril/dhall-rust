@@ -57,6 +57,8 @@ impl crate::syntax::Builtin {
             "Natural/subtract" => Some(NaturalSubtract),
             "Integer/toDouble" => Some(IntegerToDouble),
             "Integer/show" => Some(IntegerShow),
+            "Integer/negate" => Some(IntegerNegate),
+            "Integer/clamp" => Some(IntegerClamp),
             "Double/show" => Some(DoubleShow),
             "List/build" => Some(ListBuild),
             "List/fold" => Some(ListFold),

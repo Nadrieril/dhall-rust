@@ -235,6 +235,9 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 
         IntegerToDouble => make_type!(Integer -> Double),
         IntegerShow => make_type!(Integer -> Text),
+        IntegerNegate => make_type!(Integer -> Integer),
+        IntegerClamp => make_type!(Integer -> Natural),
+
         DoubleShow => make_type!(Double -> Text),
         TextShow => make_type!(Text -> Text),
 
