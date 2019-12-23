@@ -383,19 +383,27 @@ impl DhallParser {
     }
 
     fn natural_literal(input: ParseInput) -> ParseResult<Natural> {
-        input
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|e| input.error(format!("{}", e)))
+        let s = input.as_str().trim();
+        if s.starts_with("0x") {
+            let without_prefix = s.trim_start_matches("0x");
+            usize::from_str_radix(without_prefix, 16)
+                .map_err(|e| input.error(format!("{}", e)))
+        } else {
+            s.parse().map_err(|e| input.error(format!("{}", e)))
+        }
     }
 
     fn integer_literal(input: ParseInput) -> ParseResult<Integer> {
-        input
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|e| input.error(format!("{}", e)))
+        let s = input.as_str().trim();
+        let (sign, rest) = (&s[0..1], &s[1..]);
+        if rest.starts_with("0x") {
+            let without_prefix =
+                sign.to_owned() + rest.trim_start_matches("0x");
+            isize::from_str_radix(&without_prefix, 16)
+                .map_err(|e| input.error(format!("{}", e)))
+        } else {
+            s.parse().map_err(|e| input.error(format!("{}", e)))
+        }
     }
 
     #[alias(expression, shortcut = true)]
