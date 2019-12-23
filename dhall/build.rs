@@ -188,7 +188,13 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "binary_decoding_success",
             directory: spec_tests_dir.join("binary-decode/success/"),
             variant: "BinaryDecodingSuccess",
-            path_filter: Box::new(|_path: &str| false),
+            path_filter: Box::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "unit/IntegerBigNegative"
+                    || path == "unit/IntegerBigPositive"
+                    || path == "unit/NaturalBig"
+            }),
             input_type: FileType::Binary,
             output_type: Some(FileType::Text),
         },
