@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -235,6 +236,9 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 
         IntegerToDouble => make_type!(Integer -> Double),
         IntegerShow => make_type!(Integer -> Text),
+        IntegerNegate => make_type!(Integer -> Integer),
+        IntegerClamp => make_type!(Integer -> Natural),
+
         DoubleShow => make_type!(Double -> Text),
         TextShow => make_type!(Text -> Text),
 
@@ -692,8 +696,19 @@ fn type_last_layer(
             let union_type = union.get_type()?;
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
-                ValueKind::UnionType(kts) => kts,
-                _ => return mkerr(Merge2ArgMustBeUnion(union.clone())),
+                ValueKind::UnionType(kts) => Cow::Borrowed(kts),
+                ValueKind::AppliedBuiltin(syntax::Builtin::Optional, args)
+                    if args.len() == 1 =>
+                {
+                    let ty = &args[0];
+                    let mut kts = HashMap::new();
+                    kts.insert("None".into(), None);
+                    kts.insert("Some".into(), Some(ty.clone()));
+                    Cow::Owned(kts)
+                }
+                _ => {
+                    return mkerr(Merge2ArgMustBeUnionOrOptional(union.clone()))
+                }
             };
 
             let mut inferred_type = None;
@@ -774,7 +789,15 @@ fn type_last_layer(
             for l in labels {
                 match kts.get(l) {
                     None => return mkerr(ProjectionMissingEntry),
-                    Some(t) => new_kts.insert(l.clone(), t.clone()),
+                    Some(t) => {
+                        use std::collections::hash_map::Entry;
+                        match new_kts.entry(l.clone()) {
+                            Entry::Occupied(_) => {
+                                return mkerr(ProjectionDuplicateField)
+                            }
+                            Entry::Vacant(e) => e.insert(t.clone()),
+                        }
+                    }
                 };
             }
 
@@ -784,6 +807,7 @@ fn type_last_layer(
             ))
         }
         ProjectionByExpr(_, _) => unimplemented!("selection by expression"),
+        Completion(_, _) => unimplemented!("record completion"),
     };
 
     Ok(match ret {

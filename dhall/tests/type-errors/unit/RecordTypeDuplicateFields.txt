@@ -1,1 +1,1 @@
-Type error: Unhandled error
+Type error: Unhandled error: RecordTypeDuplicateField

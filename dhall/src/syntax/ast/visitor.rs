@@ -164,6 +164,9 @@ where
         ProjectionByExpr(e, x) => {
             ProjectionByExpr(v.visit_subexpr(e)?, v.visit_subexpr(x)?)
         }
+        Completion(e, x) => {
+            Completion(v.visit_subexpr(e)?, v.visit_subexpr(x)?)
+        }
         Assert(e) => Assert(v.visit_subexpr(e)?),
         Import(i) => Import(i.traverse_ref(|e| v.visit_subexpr(e))?),
         Embed(a) => Embed(v.visit_embed(a)?),
@@ -280,6 +283,10 @@ where
         ProjectionByExpr(e, x) => {
             v.visit_subexpr(e)?;
             v.visit_subexpr(x)?;
+        }
+        Completion(x, y) => {
+            v.visit_subexpr(x)?;
+            v.visit_subexpr(y)?;
         }
         Assert(e) => v.visit_subexpr(e)?,
         Import(i) => i.traverse_mut(|e| v.visit_subexpr(e))?,

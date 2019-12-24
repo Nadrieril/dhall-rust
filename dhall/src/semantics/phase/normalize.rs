@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
@@ -141,6 +142,16 @@ pub(crate) fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
+        (IntegerNegate, [n]) => match &*n.as_whnf() {
+            IntegerLit(n) => Ret::ValueKind(IntegerLit(-n)),
+            _ => Ret::DoneAsIs,
+        },
+        (IntegerClamp, [n]) => match &*n.as_whnf() {
+            IntegerLit(n) => {
+                Ret::ValueKind(NaturalLit((*n).try_into().unwrap_or(0)))
+            }
+            _ => Ret::DoneAsIs,
+        },
         (DoubleShow, [n]) => {
             match &*n.as_whnf() {
                 DoubleLit(n) => Ret::ValueKind(TextLit(vec![
@@ -259,37 +270,23 @@ pub(crate) fn apply_builtin(
                 _ => Ret::DoneAsIs,
             }
         }
-        (ListBuild, [t, f]) => match &*f.as_whnf() {
-            // fold/build fusion
-            ValueKind::AppliedBuiltin(ListFold, args) => {
-                if args.len() >= 2 {
-                    Ret::Value(args[1].clone())
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => {
-                let list_t = Value::from_builtin(List).app(t.clone());
-                Ret::Value(
-                    f.app(list_t.clone())
-                        .app({
-                            // Move `t` under new variables
-                            let t1 = t.under_binder(Label::from("x"));
-                            let t2 = t1.under_binder(Label::from("xs"));
-                            make_closure!(
-                                λ(x : #t) ->
-                                λ(xs : List #t1) ->
-                                [ var(x, 1, #t2) ] # var(xs, 0, List #t2)
-                            )
-                        })
-                        .app(
-                            EmptyListLit(t.clone())
-                                .into_value_with_type(list_t),
-                        ),
-                )
-            }
-        },
+        (ListBuild, [t, f]) => {
+            let list_t = Value::from_builtin(List).app(t.clone());
+            Ret::Value(
+                f.app(list_t.clone())
+                    .app({
+                        // Move `t` under new variables
+                        let t1 = t.under_binder(Label::from("x"));
+                        let t2 = t1.under_binder(Label::from("xs"));
+                        make_closure!(
+                            λ(x : #t) ->
+                            λ(xs : List #t1) ->
+                            [ var(x, 1, #t2) ] # var(xs, 0, List #t2)
+                        )
+                    })
+                    .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
+            )
+        }
         (ListFold, [_, l, _, cons, nil, r @ ..]) => match &*l.as_whnf() {
             EmptyListLit(_) => Ret::ValueWithRemainingArgs(r, nil.clone()),
             NEListLit(xs) => {
@@ -301,31 +298,20 @@ pub(crate) fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
-        (OptionalBuild, [t, f]) => match &*f.as_whnf() {
-            // fold/build fusion
-            ValueKind::AppliedBuiltin(OptionalFold, args) => {
-                if args.len() >= 2 {
-                    Ret::Value(args[1].clone())
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => {
-                let optional_t = Value::from_builtin(Optional).app(t.clone());
-                Ret::Value(
-                    f.app(optional_t.clone())
-                        .app({
-                            let t1 = t.under_binder(Label::from("x"));
-                            make_closure!(λ(x: #t) -> Some(var(x, 0, #t1)))
-                        })
-                        .app(
-                            EmptyOptionalLit(t.clone())
-                                .into_value_with_type(optional_t),
-                        ),
-                )
-            }
-        },
+        (OptionalBuild, [t, f]) => {
+            let optional_t = Value::from_builtin(Optional).app(t.clone());
+            Ret::Value(
+                f.app(optional_t.clone())
+                    .app({
+                        let t1 = t.under_binder(Label::from("x"));
+                        make_closure!(λ(x: #t) -> Some(var(x, 0, #t1)))
+                    })
+                    .app(
+                        EmptyOptionalLit(t.clone())
+                            .into_value_with_type(optional_t),
+                    ),
+            )
+        }
         (OptionalFold, [_, v, _, just, nothing, r @ ..]) => match &*v.as_whnf()
         {
             EmptyOptionalLit(_) => {
@@ -336,27 +322,17 @@ pub(crate) fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
-        (NaturalBuild, [f]) => match &*f.as_whnf() {
-            // fold/build fusion
-            ValueKind::AppliedBuiltin(NaturalFold, args) => {
-                if !args.is_empty() {
-                    Ret::Value(args[0].clone())
-                } else {
-                    // Do we really need to handle this case ?
-                    unimplemented!()
-                }
-            }
-            _ => Ret::Value(
-                f.app(Value::from_builtin(Natural))
-                    .app(make_closure!(
-                        λ(x : Natural) -> 1 + var(x, 0, Natural)
-                    ))
-                    .app(
-                        NaturalLit(0)
-                            .into_value_with_type(Value::from_builtin(Natural)),
-                    ),
-            ),
-        },
+        (NaturalBuild, [f]) => Ret::Value(
+            f.app(Value::from_builtin(Natural))
+                .app(make_closure!(
+                    λ(x : Natural) -> 1 + var(x, 0, Natural)
+                ))
+                .app(
+                    NaturalLit(0)
+                        .into_value_with_type(Value::from_builtin(Natural)),
+                ),
+        ),
+
         (NaturalFold, [n, t, succ, zero, r @ ..]) => match &*n.as_whnf() {
             NaturalLit(0) => Ret::ValueWithRemainingArgs(r, zero.clone()),
             NaturalLit(n) => {
@@ -614,8 +590,8 @@ pub(crate) fn normalize_one_layer(
     ty: &Value,
 ) -> ValueKind {
     use ValueKind::{
-        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
-        NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
+        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit,
+        IntegerLit, NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
         UnionConstructor, UnionLit, UnionType,
     };
 
@@ -741,6 +717,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
+        ExprKind::Completion(_, _) => unimplemented!("record completion"),
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
             let handlers_borrow = handlers.as_whnf();
@@ -762,6 +739,26 @@ pub(crate) fn normalize_one_layer(
                         Ret::Expr(expr)
                     }
                 },
+                (RecordLit(kvs), EmptyOptionalLit(_)) => {
+                    match kvs.get(&"None".into()) {
+                        Some(h) => Ret::Value(h.clone()),
+                        None => {
+                            drop(handlers_borrow);
+                            drop(variant_borrow);
+                            Ret::Expr(expr)
+                        }
+                    }
+                }
+                (RecordLit(kvs), NEOptionalLit(v)) => {
+                    match kvs.get(&"Some".into()) {
+                        Some(h) => Ret::Value(h.app(v.clone())),
+                        None => {
+                            drop(handlers_borrow);
+                            drop(variant_borrow);
+                            Ret::Expr(expr)
+                        }
+                    }
+                }
                 _ => {
                     drop(handlers_borrow);
                     drop(variant_borrow);

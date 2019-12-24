@@ -67,7 +67,7 @@ pub(crate) enum TypeMessage {
     BinOpTypeMismatch(BinOp, Value),
     InvalidTextInterpolation(Value),
     Merge1ArgMustBeRecord(Value),
-    Merge2ArgMustBeUnion(Value),
+    Merge2ArgMustBeUnionOrOptional(Value),
     MergeEmptyNeedsAnnotation,
     MergeHandlerMissingVariant(Label),
     MergeVariantMissingHandler(Label),
@@ -76,6 +76,7 @@ pub(crate) enum TypeMessage {
     MergeHandlerReturnTypeMustNotBeDependent,
     ProjectionMustBeRecord,
     ProjectionMissingEntry,
+    ProjectionDuplicateField,
     Sort,
     RecordTypeDuplicateField,
     RecordTypeMergeRequiresRecordType(Value),
@@ -124,7 +125,7 @@ impl std::fmt::Display for TypeError {
                         y
                     ))
             }
-            _ => "Type error: Unhandled error".to_string(),
+            _ => format!("Type error: Unhandled error: {:?}", self.message),
         };
         write!(f, "{}", msg)
     }

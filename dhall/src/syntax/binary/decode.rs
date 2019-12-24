@@ -98,6 +98,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let l = Label::from(l.as_str());
                 Pi(l, x, y)
             }
+            [U64(3), U64(13), x, y] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                Completion(x, y)
+            }
             [U64(3), U64(n), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;

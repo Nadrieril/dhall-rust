@@ -64,6 +64,9 @@ impl<E: Display + Clone> UnspannedExpr<E> {
             Field(a, b) => Field(a.phase(Primitive), b),
             Projection(e, ls) => Projection(e.phase(Primitive), ls),
             ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
+            Completion(a, b) => {
+                Completion(a.phase(Primitive), b.phase(Primitive))
+            }
             e => e,
         }
     }
@@ -89,9 +92,10 @@ impl<E: Display + Clone> UnspannedExpr<E> {
             // Precedence is magically handled by the ordering of BinOps.
             ExprKind::BinOp(op, _, _) => phase > PrintPhase::BinOp(*op),
             ExprKind::App(_, _) => phase > PrintPhase::App,
-            Field(_, _) | Projection(_, _) | ProjectionByExpr(_, _) => {
-                phase > PrintPhase::Import
-            }
+            Field(_, _)
+            | Projection(_, _)
+            | ProjectionByExpr(_, _)
+            | Completion(_, _) => phase > PrintPhase::Import,
             _ => false,
         };
 
@@ -189,13 +193,6 @@ impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
             Field(a, b) => {
                 write!(f, "{}.{}", a, b)?;
             }
-            Projection(e, ls) => {
-                write!(f, "{}.", e)?;
-                fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
-            }
-            ProjectionByExpr(a, b) => {
-                write!(f, "{}.({})", a, b)?;
-            }
             Var(a) => a.fmt(f)?,
             Const(k) => k.fmt(f)?,
             Builtin(v) => v.fmt(f)?,
@@ -224,6 +221,16 @@ impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
                 }
                 Ok(())
             })?,
+            Projection(e, ls) => {
+                write!(f, "{}.", e)?;
+                fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
+            }
+            ProjectionByExpr(a, b) => {
+                write!(f, "{}.({})", a, b)?;
+            }
+            Completion(a, b) => {
+                write!(f, "{}::{}", a, b)?;
+            }
             Import(a) => a.fmt(f)?,
             Embed(a) => a.fmt(f)?,
         }
@@ -322,6 +329,8 @@ impl Display for NaiveDouble {
             f.write_str("-Infinity")
         } else if v.is_nan() {
             f.write_str("NaN")
+        } else if v == 0.0 && v.is_sign_negative() {
+            f.write_str("-0.0")
         } else {
             let s = format!("{}", v);
             if s.contains('e') || s.contains('.') {
@@ -459,6 +468,8 @@ impl Display for Builtin {
             NaturalShow => "Natural/show",
             NaturalSubtract => "Natural/subtract",
             IntegerToDouble => "Integer/toDouble",
+            IntegerNegate => "Integer/negate",
+            IntegerClamp => "Integer/clamp",
             IntegerShow => "Integer/show",
             DoubleShow => "Double/show",
             ListBuild => "List/build",

@@ -57,6 +57,8 @@ impl crate::syntax::Builtin {
             "Natural/subtract" => Some(NaturalSubtract),
             "Integer/toDouble" => Some(IntegerToDouble),
             "Integer/show" => Some(IntegerShow),
+            "Integer/negate" => Some(IntegerNegate),
+            "Integer/clamp" => Some(IntegerClamp),
             "Double/show" => Some(DoubleShow),
             "List/build" => Some(ListBuild),
             "List/fold" => Some(ListFold),
@@ -181,6 +183,15 @@ impl DhallParser {
         Ok(Label::from(input.as_str()))
     }
 
+    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
+    // #[alias(label)]
+    // fn any_label_or_some(input: ParseInput) -> ParseResult<Label> {
+    //     Ok(match_nodes!(input.into_children();
+    //         [label(l)] => l,
+    //         [Some_(_)] => Label::from("Some"),
+    //     ))
+    // }
+
     fn double_quote_literal(input: ParseInput) -> ParseResult<ParsedText> {
         Ok(match_nodes!(input.into_children();
             [double_quote_chunk(chunks)..] => {
@@ -215,19 +226,18 @@ impl DhallParser {
             "t" => "\t".to_owned(),
             // "uXXXX" or "u{XXXXX}"
             s => {
-                use std::convert::{TryFrom, TryInto};
+                use std::convert::TryInto;
 
                 let s = &s[1..];
                 let s = if &s[0..1] == "{" {
                     &s[1..s.len() - 1]
                 } else {
-                    &s[0..s.len()]
+                    s
                 };
 
                 if s.len() > 8 {
                     Err(input.error(format!(
-                        "Escape sequences can't have more than 8 chars: \"{}\"",
-                        s
+                        "Escape sequences can't have more than 8 chars"
                     )))?
                 }
 
@@ -240,12 +250,10 @@ impl DhallParser {
                 // `s` has length 8, so `bytes` has length 4
                 let bytes: &[u8] = &hex::decode(s).unwrap();
                 let i = u32::from_be_bytes(bytes.try_into().unwrap());
-                let c = char::try_from(i).unwrap();
                 match i {
-                    0xD800..=0xDFFF => {
-                        let c_ecapsed = c.escape_unicode();
-                        Err(input.error(format!("Escape sequences can't contain surrogate pairs: \"{}\"", c_ecapsed)))?
-                    }
+                    0xD800..=0xDFFF => Err(input.error(format!(
+                        "Escape sequences can't contain surrogate pairs"
+                    )))?,
                     0x0FFFE..=0x0FFFF
                     | 0x1FFFE..=0x1FFFF
                     | 0x2FFFE..=0x2FFFF
@@ -262,12 +270,12 @@ impl DhallParser {
                     | 0xDFFFE..=0xDFFFF
                     | 0xEFFFE..=0xEFFFF
                     | 0xFFFFE..=0xFFFFF
-                    | 0x10_FFFE..=0x10_FFFF => {
-                        let c_ecapsed = c.escape_unicode();
-                        Err(input.error(format!("Escape sequences can't contain non-characters: \"{}\"", c_ecapsed)))?
-                    }
+                    | 0x10_FFFE..=0x10_FFFF => Err(input.error(format!(
+                        "Escape sequences can't contain non-characters"
+                    )))?,
                     _ => {}
                 }
+                let c: char = i.try_into().unwrap();
                 std::iter::once(c).collect()
             }
         })
@@ -384,19 +392,27 @@ impl DhallParser {
     }
 
     fn natural_literal(input: ParseInput) -> ParseResult<Natural> {
-        input
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|e| input.error(format!("{}", e)))
+        let s = input.as_str().trim();
+        if s.starts_with("0x") {
+            let without_prefix = s.trim_start_matches("0x");
+            usize::from_str_radix(without_prefix, 16)
+                .map_err(|e| input.error(format!("{}", e)))
+        } else {
+            s.parse().map_err(|e| input.error(format!("{}", e)))
+        }
     }
 
     fn integer_literal(input: ParseInput) -> ParseResult<Integer> {
-        input
-            .as_str()
-            .trim()
-            .parse()
-            .map_err(|e| input.error(format!("{}", e)))
+        let s = input.as_str().trim();
+        let (sign, rest) = (&s[0..1], &s[1..]);
+        if rest.starts_with("0x") {
+            let without_prefix =
+                sign.to_owned() + rest.trim_start_matches("0x");
+            isize::from_str_radix(&without_prefix, 16)
+                .map_err(|e| input.error(format!("{}", e)))
+        } else {
+            s.parse().map_err(|e| input.error(format!("{}", e)))
+        }
     }
 
     #[alias(expression, shortcut = true)]
@@ -762,6 +778,25 @@ impl DhallParser {
                 spanned(input, ToMap(x, None))
             },
             [expression(e)] => e,
+        ))
+    }
+
+    #[alias(expression, shortcut = true)]
+    fn completion_expression(input: ParseInput) -> ParseResult<Expr> {
+        Ok(match_nodes!(input.children();
+            [expression(e)] => e,
+            [expression(first), expression(rest)..] => {
+                rest.fold(
+                    first,
+                    |acc, e| {
+                        spanned_union(
+                            acc.span(),
+                            e.span(),
+                            Completion(acc, e),
+                        )
+                    }
+                )
+            },
         ))
     }
 

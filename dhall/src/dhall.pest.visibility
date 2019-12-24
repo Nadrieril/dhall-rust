@@ -21,9 +21,14 @@ quoted_label
 # label
 # nonreserved_label
 # any_label
+any_label_or_some
 double_quote_chunk
 double_quote_escaped
 # unicode_escape
+# unicode_suffix
+# unbraced_escape
+# braced_codepoint
+# braced_escape
 double_quote_char
 double_quote_literal
 single_quote_continue
@@ -91,6 +96,7 @@ prefer
 lambda
 forall
 arrow
+# complete
 # exponent
 numeric_double_literal
 minus_infinity_literal
@@ -161,6 +167,7 @@ equivalent_expression
 application_expression
 first_application_expression
 # import_expression
+completion_expression
 selector_expression
 selector
 labels
