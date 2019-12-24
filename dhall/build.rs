@@ -285,6 +285,7 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
                     || path == "unit/MergeNone"
                     || path == "unit/MergeSome"
+                    || path == "unit/NaturalBuildFoldFusion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),

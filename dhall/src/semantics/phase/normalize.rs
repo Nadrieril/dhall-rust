@@ -24,7 +24,7 @@ macro_rules! make_closure {
             .into_value_with_type(make_closure!($($ty)*))
     }};
     // Warning: assumes that $ty, as a dhall value, has type `Type`
-    (λ($var:ident : $($ty:tt)*) -> $($body:tt)*) => {{
+    (λ($var:tt : $($ty:tt)*) -> $($body:tt)*) => {{
         let var: AlphaLabel = Label::from(stringify!($var)).into();
         let ty = make_closure!($($ty)*);
         let body = make_closure!($($body)*);
@@ -276,12 +276,12 @@ pub(crate) fn apply_builtin(
                 f.app(list_t.clone())
                     .app({
                         // Move `t` under new variables
-                        let t1 = t.under_binder(Label::from("x"));
-                        let t2 = t1.under_binder(Label::from("xs"));
+                        let t1 = t.under_binder(Label::from("a"));
+                        let t2 = t1.under_binder(Label::from("as"));
                         make_closure!(
-                            λ(x : #t) ->
-                            λ(xs : List #t1) ->
-                            [ var(x, 1, #t2) ] # var(xs, 0, List #t2)
+                            λ(a : #t) ->
+                            λ(as : List #t1) ->
+                            [ var(a, 1, #t2) ] # var(as, 0, List #t2)
                         )
                     })
                     .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
@@ -303,8 +303,8 @@ pub(crate) fn apply_builtin(
             Ret::Value(
                 f.app(optional_t.clone())
                     .app({
-                        let t1 = t.under_binder(Label::from("x"));
-                        make_closure!(λ(x: #t) -> Some(var(x, 0, #t1)))
+                        let t1 = t.under_binder(Label::from("a"));
+                        make_closure!(λ(a: #t) -> Some(var(a, 0, #t1)))
                     })
                     .app(
                         EmptyOptionalLit(t.clone())

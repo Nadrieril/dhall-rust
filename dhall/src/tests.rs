@@ -206,11 +206,9 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             let expr = parse_file_str(&expr_file_path)?
                 .resolve()?
                 .typecheck()?
-                .normalize();
-            let expected = parse_file_str(&expected_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize();
+                .normalize()
+                .to_expr();
+            let expected = parse_file_str(&expected_file_path)?.to_expr();
 
             assert_eq_display!(expr, expected);
         }
@@ -220,12 +218,9 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
                 .typecheck()?
                 .normalize()
                 .to_expr_alpha();
-            let expected = parse_file_str(&expected_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize();
+            let expected = parse_file_str(&expected_file_path)?.to_expr();
 
-            assert_eq_display!(expr, expected.to_expr());
+            assert_eq_display!(expr, expected);
         }
     }
     Ok(())
