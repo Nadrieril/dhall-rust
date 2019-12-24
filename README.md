@@ -42,7 +42,7 @@ Add this to your `Cargo.toml`:
 serde_dhall = "0.2.0"
 ```
 
-Reading Dhall files is easy and leverages the wonderful [`serde`]() library.
+Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
 
 ```rust
 use std::collections::BTreeMap;
