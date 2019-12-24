@@ -63,6 +63,11 @@ impl Parsed {
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
         binary::encode(&self.0)
     }
+
+    /// Converts a value back to the corresponding AST expression.
+    pub fn to_expr(&self) -> ParsedExpr {
+        self.0.clone()
+    }
 }
 
 impl Resolved {
@@ -72,6 +77,10 @@ impl Resolved {
     pub fn typecheck_with(self, ty: &Typed) -> Result<Typed, TypeError> {
         Ok(typecheck::typecheck_with(self.0, ty.normalize_to_expr())?
             .into_typed())
+    }
+    /// Converts a value back to the corresponding AST expression.
+    pub fn to_expr(&self) -> ResolvedExpr {
+        self.0.clone()
     }
 }
 
@@ -96,7 +105,7 @@ impl Typed {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self) -> NormalizedExpr {
+    pub fn to_expr(&self) -> ResolvedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,

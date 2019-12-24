@@ -200,6 +200,9 @@ impl Value {
             WHNF | NF => {}
         }
     }
+    pub(crate) fn normalize_nf(&self) {
+        self.as_internal_mut().normalize_nf();
+    }
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {

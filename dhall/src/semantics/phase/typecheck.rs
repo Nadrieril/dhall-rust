@@ -315,6 +315,7 @@ fn type_with(
     Ok(match e.as_ref() {
         Lam(var, annot, body) => {
             let annot = type_with(ctx, annot.clone())?;
+            annot.normalize_nf();
             let ctx2 = ctx.insert_type(var, annot.clone());
             let body = type_with(&ctx2, body.clone())?;
             let body_type = body.get_type()?;
@@ -401,7 +402,9 @@ fn type_last_layer(
                 return mkerr(TypeMismatch(f.clone(), tx.clone(), a.clone()));
             }
 
-            RetTypeOnly(tb.subst_shift(&x.into(), a))
+            let ret = tb.subst_shift(&x.into(), a);
+            ret.normalize_nf();
+            RetTypeOnly(ret)
         }
         Annot(x, t) => {
             if &x.get_type()? != t {

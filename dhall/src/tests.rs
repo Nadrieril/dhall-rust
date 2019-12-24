@@ -160,11 +160,8 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
         TypeInferenceSuccess(expr_file_path, expected_file_path) => {
             let expr =
                 parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
-            let ty = expr.get_type()?.normalize_to_expr();
-            let expected = parse_file_str(&expected_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize_to_expr();
+            let ty = expr.get_type()?.to_expr();
+            let expected = parse_file_str(&expected_file_path)?.to_expr();
             assert_eq_display!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
