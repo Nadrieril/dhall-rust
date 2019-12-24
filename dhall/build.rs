@@ -403,7 +403,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
 
     let mut data = read_to_string(abnf_path)?;
     data.push('\n');
-    let data = data.replace('∀', ""); // See https://github.com/duesee/abnf/issues/11
+    let data = data.replace('∀', ""); // TODO: waiting for abnf 0.6.1
 
     let mut rules = abnf_to_pest::parse_abnf(&data)?;
     for line in BufReader::new(File::open(visibility_path)?).lines() {
