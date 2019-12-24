@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "dhall"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "abnf_to_pest 0.2.0",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -404,9 +404,9 @@ dependencies = [
 
 [[package]]
 name = "serde_dhall"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "dhall 0.1.1",
+ "dhall 0.2.0",
  "dhall_proc_macros 0.1.0",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
