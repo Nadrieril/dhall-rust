@@ -67,7 +67,7 @@ pub(crate) enum TypeMessage {
     BinOpTypeMismatch(BinOp, Value),
     InvalidTextInterpolation(Value),
     Merge1ArgMustBeRecord(Value),
-    Merge2ArgMustBeUnion(Value),
+    Merge2ArgMustBeUnionOrOptional(Value),
     MergeEmptyNeedsAnnotation,
     MergeHandlerMissingVariant(Label),
     MergeVariantMissingHandler(Label),

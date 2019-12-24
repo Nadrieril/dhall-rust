@@ -590,8 +590,8 @@ pub(crate) fn normalize_one_layer(
     ty: &Value,
 ) -> ValueKind {
     use ValueKind::{
-        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, IntegerLit,
-        NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
+        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit,
+        IntegerLit, NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
         UnionConstructor, UnionLit, UnionType,
     };
 
@@ -739,6 +739,26 @@ pub(crate) fn normalize_one_layer(
                         Ret::Expr(expr)
                     }
                 },
+                (RecordLit(kvs), EmptyOptionalLit(_)) => {
+                    match kvs.get(&"None".into()) {
+                        Some(h) => Ret::Value(h.clone()),
+                        None => {
+                            drop(handlers_borrow);
+                            drop(variant_borrow);
+                            Ret::Expr(expr)
+                        }
+                    }
+                }
+                (RecordLit(kvs), NEOptionalLit(v)) => {
+                    match kvs.get(&"Some".into()) {
+                        Some(h) => Ret::Value(h.app(v.clone())),
+                        None => {
+                            drop(handlers_borrow);
+                            drop(variant_borrow);
+                            Ret::Expr(expr)
+                        }
+                    }
+                }
                 _ => {
                     drop(handlers_borrow);
                     drop(variant_borrow);

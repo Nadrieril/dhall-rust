@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -695,8 +696,19 @@ fn type_last_layer(
             let union_type = union.get_type()?;
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
-                ValueKind::UnionType(kts) => kts,
-                _ => return mkerr(Merge2ArgMustBeUnion(union.clone())),
+                ValueKind::UnionType(kts) => Cow::Borrowed(kts),
+                ValueKind::AppliedBuiltin(syntax::Builtin::Optional, args)
+                    if args.len() == 1 =>
+                {
+                    let ty = &args[0];
+                    let mut kts = HashMap::new();
+                    kts.insert("None".into(), None);
+                    kts.insert("Some".into(), Some(ty.clone()));
+                    Cow::Owned(kts)
+                }
+                _ => {
+                    return mkerr(Merge2ArgMustBeUnionOrOptional(union.clone()))
+                }
             };
 
             let mut inferred_type = None;

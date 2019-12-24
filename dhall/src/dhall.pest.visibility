@@ -21,6 +21,7 @@ quoted_label
 # label
 # nonreserved_label
 # any_label
+any_label_or_some
 double_quote_chunk
 double_quote_escaped
 # unicode_escape

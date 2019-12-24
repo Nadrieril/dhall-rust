@@ -183,6 +183,15 @@ impl DhallParser {
         Ok(Label::from(input.as_str()))
     }
 
+    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
+    // #[alias(label)]
+    // fn any_label_or_some(input: ParseInput) -> ParseResult<Label> {
+    //     Ok(match_nodes!(input.into_children();
+    //         [label(l)] => l,
+    //         [Some_(_)] => Label::from("Some"),
+    //     ))
+    // }
+
     fn double_quote_literal(input: ParseInput) -> ParseResult<ParsedText> {
         Ok(match_nodes!(input.into_children();
             [double_quote_chunk(chunks)..] => {

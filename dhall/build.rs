@@ -128,7 +128,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
                     || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
@@ -154,7 +154,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
                     || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
@@ -178,7 +178,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: https://github.com/dhall-lang/dhall-lang/pull/788#issuecomment-568298973
+                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
                     || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
@@ -282,6 +282,9 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
+                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
+                    || path == "unit/MergeNone"
+                    || path == "unit/MergeSome"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -317,6 +320,9 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
+                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
+                    || path == "unit/MergeNone"
+                    || path == "unit/MergeSome"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -423,6 +429,10 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
 
     // Prefer my nice error message to illegible parse errors.
     rules.remove("unicode_escape");
+    rules.remove("unbraced_escape");
+    rules.remove("braced_escape");
+    rules.remove("braced_codepoint");
+    rules.remove("unicode_suffix");
     writeln!(
         &mut file,
         r#"unicode_escape = _{{ HEXDIG{{4}} | "{{" ~ HEXDIG+ ~ "}}" }}"#
