@@ -1,1 +1,1 @@
-Type error: Unhandled error
+Type error: Unhandled error: AnnotMismatch(Value@Unevaled { value: PartialExpr(NaturalLit(1)), type: Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type } }, Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type })

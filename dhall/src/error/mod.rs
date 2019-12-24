@@ -125,7 +125,7 @@ impl std::fmt::Display for TypeError {
                         y
                     ))
             }
-            _ => "Type error: Unhandled error".to_string(),
+            _ => format!("Type error: Unhandled error: {:?}", self.message),
         };
         write!(f, "{}", msg)
     }
