@@ -288,7 +288,7 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
             optional
         ),
         OptionalNone => make_type!(
-            forall (a: Type) -> Optional a
+            forall (A: Type) -> Optional A
         ),
     })
 }
@@ -503,9 +503,9 @@ fn type_last_layer(
                                 RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
-                                        "_".into(),
+                                        x.clone(),
                                         t.clone(),
-                                        r.under_binder(Label::from("_")),
+                                        r.under_binder(x),
                                     )?
                                 )
                             },
@@ -764,12 +764,12 @@ fn type_last_layer(
                 }
             }
 
-            match (inferred_type, type_annot) {
-                (Some(ref t1), Some(t2)) => {
-                    if t1 != t2 {
+            match (inferred_type, type_annot.as_ref()) {
+                (Some(t1), Some(t2)) => {
+                    if &t1 != t2 {
                         return mkerr(MergeAnnotMismatch);
                     }
-                    RetTypeOnly(t2.clone())
+                    RetTypeOnly(t1)
                 }
                 (Some(t), None) => RetTypeOnly(t),
                 (None, Some(t)) => RetTypeOnly(t.clone()),
