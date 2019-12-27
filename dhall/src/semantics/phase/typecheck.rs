@@ -306,23 +306,23 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
     use syntax::ExprKind::{Annot, Embed, Lam, Let, Pi, Var};
     let span = e.span();
 
-    Ok(match e.as_ref() {
+    match e.as_ref() {
         Lam(var, annot, body) => {
             let annot = type_with(ctx, annot.clone())?;
             annot.normalize_nf();
             let ctx2 = ctx.insert_type(var, annot.clone());
             let body = type_with(&ctx2, body.clone())?;
             let body_type = body.get_type()?;
-            Value::from_kind_and_type(
+            Ok(Value::from_kind_and_type(
                 ValueKind::Lam(var.clone().into(), annot.clone(), body),
                 tck_pi_type(ctx, var.clone(), annot, body_type)?,
-            )
+            ))
         }
         Pi(x, ta, tb) => {
             let ta = type_with(ctx, ta.clone())?;
             let ctx2 = ctx.insert_type(x, ta.clone());
             let tb = type_with(&ctx2, tb.clone())?;
-            return tck_pi_type(ctx, x.clone(), ta, tb);
+            tck_pi_type(ctx, x.clone(), ta, tb)
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -332,16 +332,13 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
             };
 
             let v = type_with(ctx, v)?;
-            return type_with(&ctx.insert_value(x, v.clone())?, e.clone());
+            type_with(&ctx.insert_value(x, v.clone())?, e.clone())
         }
-        Embed(p) => p.clone().into_typed().into_value(),
+        Embed(p) => Ok(p.clone().into_typed().into_value()),
         Var(var) => match ctx.lookup(&var) {
-            Some(typed) => typed.clone(),
+            Some(typed) => Ok(typed.clone()),
             None => {
-                return Err(TypeError::new(
-                    ctx,
-                    TypeMessage::UnboundVariable(span),
-                ))
+                Err(TypeError::new(ctx, TypeMessage::UnboundVariable(span)))
             }
         },
         e => {
@@ -350,9 +347,9 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
                 |e| type_with(ctx, e.clone()),
                 |_, _| unreachable!(),
             )?;
-            type_last_layer(ctx, expr, span)?
+            type_last_layer(ctx, expr, span)
         }
-    })
+    }
 }
 
 /// When all sub-expressions have been typed, check the remaining toplevel
