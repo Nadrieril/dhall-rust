@@ -306,14 +306,6 @@ impl ValueKind<Value> {
         Value::from_kind_and_type(self, t)
     }
 
-    /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(
-        &self,
-        opts: to_expr::ToExprOptions,
-    ) -> NormalizedExpr {
-        to_expr::kind_to_expr(self, opts)
-    }
-
     pub(crate) fn normalize_mut(&mut self) {
         match self {
             ValueKind::Var(_)
@@ -390,7 +382,6 @@ impl ValueKind<Value> {
 }
 
 impl<V> ValueKind<V> {
-    #[allow(dead_code)]
     pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
         &'a self,
         mut map_val: impl FnMut(&'a V) -> V2,
@@ -406,6 +397,15 @@ impl<V> ValueKind<V> {
             }
             .visit(self),
         )
+    }
+
+    pub(crate) fn map_ref<'a, V2>(
+        &'a self,
+        map_val: impl Fn(&'a V) -> V2,
+    ) -> ValueKind<V2> {
+        self.map_ref_with_special_handling_of_binders(&map_val, |_, x| {
+            map_val(x)
+        })
     }
 }
 
