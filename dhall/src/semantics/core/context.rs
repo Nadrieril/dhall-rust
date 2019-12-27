@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
@@ -15,14 +17,23 @@ enum CtxItem {
 #[derive(Debug, Clone)]
 pub(crate) struct TyCtx {
     ctx: Vec<(Binder, CtxItem)>,
+    /// Keeps track of the next free binder id to assign. Shared among all the contexts to ensure
+    /// unicity across the expression.
+    next_uid: Rc<RefCell<u64>>,
 }
 
 impl TyCtx {
     pub fn new() -> Self {
-        TyCtx { ctx: Vec::new() }
+        TyCtx {
+            ctx: Vec::new(),
+            next_uid: Rc::new(RefCell::new(0)),
+        }
     }
     fn with_vec(&self, vec: Vec<(Binder, CtxItem)>) -> Self {
-        TyCtx { ctx: vec }
+        TyCtx {
+            ctx: vec,
+            next_uid: self.next_uid.clone(),
+        }
     }
     pub fn insert_type(&self, x: &Binder, t: Value) -> Self {
         let mut vec = self.ctx.clone();
@@ -63,7 +74,10 @@ impl TyCtx {
         None
     }
     pub fn new_binder(&self, l: &Label) -> Binder {
-        Binder::new(l.clone())
+        let mut next_uid = self.next_uid.borrow_mut();
+        let uid = *next_uid;
+        *next_uid += 1;
+        Binder::new(l.clone(), uid)
     }
 
     /// Given a var that makes sense in the current context, map the given function in such a way

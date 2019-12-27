@@ -11,11 +11,17 @@ pub struct AlphaVar {
     alpha: V<()>,
 }
 
+type BinderUID = u64;
+
 // Exactly like a Label, but equality returns always true.
 // This is so that ValueKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct Binder {
     name: Label,
+    /// Id of the binder, unique across the current expression. Used to distinguish bindersinstead
+    /// of their name. The id won't actually be unique when there are imports around, but
+    /// typechecking ensures this can't cause a conflict.
+    uid: BinderUID,
 }
 
 pub(crate) trait Shift: Sized {
@@ -67,8 +73,8 @@ impl AlphaVar {
 }
 
 impl Binder {
-    pub(crate) fn new(name: Label) -> Self {
-        Binder { name }
+    pub(crate) fn new(name: Label, uid: BinderUID) -> Self {
+        Binder { name, uid }
     }
     pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
