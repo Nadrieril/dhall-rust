@@ -13,29 +13,31 @@ enum CtxItem {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(Vec<(Label, CtxItem)>);
+pub(crate) struct TypecheckContext {
+    ctx: Vec<(Label, CtxItem)>,
+}
 
 impl TypecheckContext {
     pub fn new() -> Self {
-        TypecheckContext(Vec::new())
+        TypecheckContext { ctx: Vec::new() }
     }
     fn with_vec(&self, vec: Vec<(Label, CtxItem)>) -> Self {
-        TypecheckContext(vec)
+        TypecheckContext { ctx: vec }
     }
     pub fn insert_type(&self, x: &Label, t: Value) -> Self {
-        let mut vec = self.0.clone();
+        let mut vec = self.ctx.clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
         self.with_vec(vec)
     }
     pub fn insert_value(&self, x: &Label, e: Value) -> Result<Self, TypeError> {
-        let mut vec = self.0.clone();
+        let mut vec = self.ctx.clone();
         vec.push((x.clone(), CtxItem::Replaced(e)));
         Ok(self.with_vec(vec))
     }
     pub fn lookup(&self, var: &V<Label>) -> Option<Value> {
         let mut var = var.clone();
         let mut shift_map: HashMap<Label, _> = HashMap::new();
-        for (l, i) in self.0.iter().rev() {
+        for (l, i) in self.ctx.iter().rev() {
             match var.over_binder(l) {
                 None => {
                     let i = i.under_multiple_binders(&shift_map);
@@ -65,9 +67,9 @@ impl TypecheckContext {
         mut f: impl FnMut(&AlphaVar, &CtxItem) -> Result<CtxItem, E>,
     ) -> Result<Self, E> {
         let mut vec = Vec::new();
-        vec.reserve(self.0.len());
+        vec.reserve(self.ctx.len());
         let mut var = var.clone();
-        let mut iter = self.0.iter().rev();
+        let mut iter = self.ctx.iter().rev();
         for (l, i) in iter.by_ref() {
             vec.push((l.clone(), f(&var, i)?));
             if let CtxItem::Kept(_, _) = i {
@@ -89,7 +91,7 @@ impl TypecheckContext {
         } else {
             Some(
                 self.with_vec(
-                    self.0
+                    self.ctx
                         .iter()
                         .map(|(l, i)| Ok((l.clone(), i.shift(delta, &var)?)))
                         .collect::<Result<_, _>>()?,
