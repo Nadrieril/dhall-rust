@@ -51,7 +51,7 @@ pub(crate) enum Form {
     NF,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind {
     /// Closures
     Lam(AlphaLabel, Value, Value),
@@ -569,69 +569,6 @@ impl std::cmp::PartialEq for Value {
     }
 }
 impl std::cmp::Eq for Value {}
-
-impl std::cmp::PartialEq for ValueKind {
-    fn eq(&self, other: &Self) -> bool {
-        use ValueKind::*;
-        match (self, other) {
-            (Lam(x0, x1, x2), Lam(y0, y1, y2)) => {
-                x0 == y0 && x1 == y1 && x2 == y2
-            }
-            (Pi(x0, x1, x2), Pi(y0, y1, y2)) => {
-                x0 == y0 && x1 == y1 && x2 == y2
-            }
-            (AppliedBuiltin(x0, x1), AppliedBuiltin(y0, y1)) => {
-                x0 == y0 && x1 == y1
-            }
-            (Var(x0), Var(y0)) => x0 == y0,
-            (Const(x0), Const(y0)) => x0 == y0,
-            (BoolLit(x0), BoolLit(y0)) => x0 == y0,
-            (NaturalLit(x0), NaturalLit(y0)) => x0 == y0,
-            (IntegerLit(x0), IntegerLit(y0)) => x0 == y0,
-            (DoubleLit(x0), DoubleLit(y0)) => x0 == y0,
-            (EmptyOptionalLit(x0), EmptyOptionalLit(y0)) => x0 == y0,
-            (NEOptionalLit(x0), NEOptionalLit(y0)) => x0 == y0,
-            (EmptyListLit(x0), EmptyListLit(y0)) => x0 == y0,
-            (NEListLit(x0), NEListLit(y0)) => x0 == y0,
-            (RecordType(x0), RecordType(y0)) => x0 == y0,
-            (RecordLit(x0), RecordLit(y0)) => x0 == y0,
-            (UnionType(x0), UnionType(y0)) => x0 == y0,
-            (UnionConstructor(x0, x1), UnionConstructor(y0, y1)) => {
-                x0 == y0 && x1 == y1
-            }
-            (UnionLit(x0, x1, x2), UnionLit(y0, y1, y2)) => {
-                x0 == y0 && x1 == y1 && x2 == y2
-            }
-            (TextLit(x0), TextLit(y0)) => x0 == y0,
-            (Equivalence(x0, x1), Equivalence(y0, y1)) => x0 == y0 && x1 == y1,
-            (PartialExpr(x0), PartialExpr(y0)) => x0 == y0,
-
-            // Explicitely list all constructors to ensure we don't forget to update this function.
-            (Lam(..), _)
-            | (Pi(..), _)
-            | (AppliedBuiltin(..), _)
-            | (Var(..), _)
-            | (Const(..), _)
-            | (BoolLit(..), _)
-            | (NaturalLit(..), _)
-            | (IntegerLit(..), _)
-            | (DoubleLit(..), _)
-            | (EmptyOptionalLit(..), _)
-            | (NEOptionalLit(..), _)
-            | (EmptyListLit(..), _)
-            | (NEListLit(..), _)
-            | (RecordType(..), _)
-            | (RecordLit(..), _)
-            | (UnionType(..), _)
-            | (UnionConstructor(..), _)
-            | (UnionLit(..), _)
-            | (TextLit(..), _)
-            | (Equivalence(..), _)
-            | (PartialExpr(..), _) => false,
-        }
-    }
-}
-impl std::cmp::Eq for ValueKind {}
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
