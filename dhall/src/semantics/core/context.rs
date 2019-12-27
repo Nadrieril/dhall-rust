@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
@@ -14,21 +13,24 @@ enum CtxItem {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext(Rc<Vec<(Label, CtxItem)>>);
+pub(crate) struct TypecheckContext(Vec<(Label, CtxItem)>);
 
 impl TypecheckContext {
     pub fn new() -> Self {
-        TypecheckContext(Rc::new(Vec::new()))
+        TypecheckContext(Vec::new())
+    }
+    fn with_vec(&self, vec: Vec<(Label, CtxItem)>) -> Self {
+        TypecheckContext(vec)
     }
     pub fn insert_type(&self, x: &Label, t: Value) -> Self {
-        let mut vec = self.0.as_ref().clone();
+        let mut vec = self.0.clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
-        TypecheckContext(Rc::new(vec))
+        self.with_vec(vec)
     }
     pub fn insert_value(&self, x: &Label, e: Value) -> Result<Self, TypeError> {
-        let mut vec = self.0.as_ref().clone();
+        let mut vec = self.0.clone();
         vec.push((x.clone(), CtxItem::Replaced(e)));
-        Ok(TypecheckContext(Rc::new(vec)))
+        Ok(self.with_vec(vec))
     }
     pub fn lookup(&self, var: &V<Label>) -> Option<Value> {
         let mut var = var.clone();
@@ -79,18 +81,20 @@ impl TypecheckContext {
             vec.push((l.clone(), (*i).clone()));
         }
         vec.reverse();
-        Ok(TypecheckContext(Rc::new(vec)))
+        Ok(self.with_vec(vec))
     }
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         if delta < 0 {
             Some(self.do_with_var(var, |var, i| Ok(i.shift(delta, &var)?))?)
         } else {
-            Some(TypecheckContext(Rc::new(
-                self.0
-                    .iter()
-                    .map(|(l, i)| Ok((l.clone(), i.shift(delta, &var)?)))
-                    .collect::<Result<_, _>>()?,
-            )))
+            Some(
+                self.with_vec(
+                    self.0
+                        .iter()
+                        .map(|(l, i)| Ok((l.clone(), i.shift(delta, &var)?)))
+                        .collect::<Result<_, _>>()?,
+                ),
+            )
         }
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
