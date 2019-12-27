@@ -9,6 +9,8 @@ use crate::syntax::{ExprKind, InterpolatedTextContents, Label, V};
 pub struct AlphaVar {
     normal: V<Label>,
     alpha: V<()>,
+    /// Id of the corresponding binder.
+    binder_uid: BinderUID,
 }
 
 type BinderUID = u64;
@@ -93,6 +95,7 @@ impl Shift for AlphaVar {
         Some(AlphaVar {
             normal: self.normal.shift(delta, &var.normal)?,
             alpha: self.alpha.shift(delta, &var.alpha)?,
+            binder_uid: self.binder_uid,
         })
     }
 }
@@ -121,23 +124,24 @@ impl std::fmt::Debug for Binder {
     }
 }
 
-impl From<Label> for AlphaVar {
-    fn from(x: Label) -> AlphaVar {
-        AlphaVar {
-            normal: V(x, 0),
-            alpha: V((), 0),
-        }
-    }
-}
 impl<'a> From<&'a Label> for AlphaVar {
     fn from(x: &'a Label) -> AlphaVar {
-        x.clone().into()
+        AlphaVar {
+            normal: V(x.clone(), 0),
+            alpha: V((), 0),
+            // TODO: evil evil but only used in shift
+            binder_uid: 0,
+        }
     }
 }
 impl From<Binder> for AlphaVar {
     fn from(x: Binder) -> AlphaVar {
-        let l: Label = x.into();
-        l.into()
+        let binder_uid = x.uid;
+        AlphaVar {
+            normal: V(x.into(), 0),
+            alpha: V((), 0),
+            binder_uid,
+        }
     }
 }
 impl<'a> From<&'a Binder> for AlphaVar {

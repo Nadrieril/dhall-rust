@@ -494,10 +494,11 @@ fn type_last_layer(
                         ValueKind::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
+                                let x = ctx.new_binder(x);
                                 RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
-                                        ctx.new_binder(x),
+                                        x.clone(),
                                         t.clone(),
                                         r.under_binder(x),
                                     )?
