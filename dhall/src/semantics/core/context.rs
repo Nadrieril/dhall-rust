@@ -22,6 +22,11 @@ pub(crate) struct TyCtx {
     next_uid: Rc<RefCell<u64>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct VarCtx<'b> {
+    ctx: Vec<&'b Binder>,
+}
+
 impl TyCtx {
     pub fn new() -> Self {
         TyCtx {
@@ -125,6 +130,34 @@ impl TyCtx {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         self.do_with_var(var, |var, i| Ok::<_, !>(i.subst_shift(&var, val)))
             .unwrap()
+    }
+}
+
+impl<'b> VarCtx<'b> {
+    pub fn new() -> Self {
+        VarCtx { ctx: Vec::new() }
+    }
+    pub fn insert(&self, binder: &'b Binder) -> Self {
+        VarCtx {
+            ctx: self.ctx.iter().copied().chain(Some(binder)).collect(),
+        }
+    }
+    pub fn lookup(&self, binder: &Binder) -> Option<usize> {
+        self.ctx
+            .iter()
+            .rev()
+            .enumerate()
+            .find(|(_, other)| binder.same_binder(other))
+            .map(|(i, _)| i)
+    }
+    pub fn lookup_by_name(&self, binder: &Binder) -> Option<usize> {
+        self.ctx
+            .iter()
+            .rev()
+            .filter(|other| binder.name() == other.name())
+            .enumerate()
+            .find(|(_, other)| binder.same_binder(other))
+            .map(|(i, _)| i)
     }
 }
 

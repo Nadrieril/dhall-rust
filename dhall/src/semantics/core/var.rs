@@ -65,13 +65,6 @@ pub(crate) trait Subst<S> {
 }
 
 impl AlphaVar {
-    pub(crate) fn to_var(&self, alpha: bool) -> V<Label> {
-        if alpha {
-            V("_".into(), self.alpha.1)
-        } else {
-            self.normal.clone()
-        }
-    }
     pub(crate) fn binder(&self) -> Binder {
         Binder::new(self.normal.0.clone(), self.binder_uid)
     }
@@ -80,6 +73,9 @@ impl AlphaVar {
 impl Binder {
     pub(crate) fn new(name: Label, uid: BinderUID) -> Self {
         Binder { name, uid }
+    }
+    pub(crate) fn name(&self) -> &Label {
+        &self.name
     }
     pub(crate) fn same_binder(&self, other: &Binder) -> bool {
         self.uid == other.uid

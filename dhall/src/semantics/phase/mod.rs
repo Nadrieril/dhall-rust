@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
-use crate::semantics::core::var::{AlphaVar, Shift, Subst};
+use crate::semantics::core::var::{AlphaVar, Shift};
 use crate::semantics::to_expr::ToExprOptions;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
@@ -200,12 +200,6 @@ impl Shift for Typed {
 impl Shift for Normalized {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(Normalized(self.0.shift(delta, var)?))
-    }
-}
-
-impl Subst<Value> for Typed {
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        Typed(self.0.subst_shift(var, val))
     }
 }
 

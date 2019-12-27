@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::TyCtx;
+use crate::semantics::core::context::{TyCtx, VarCtx};
 use crate::semantics::core::var::{AlphaVar, Binder, Shift, Subst};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
@@ -164,7 +164,7 @@ impl Value {
         &self,
         opts: to_expr::ToExprOptions,
     ) -> NormalizedExpr {
-        to_expr::value_to_expr(self, opts)
+        to_expr::value_to_expr(&VarCtx::new(), self, opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
@@ -399,6 +399,7 @@ impl<V> ValueKind<V> {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn map_ref<'a, V2>(
         &'a self,
         map_val: impl Fn(&'a V) -> V2,
@@ -414,7 +415,7 @@ impl<V> ValueKind<V> {
 fn equiv(val1: &Value, val2: &Value) -> bool {
     struct ValueWithCtx<'v, 'c> {
         val: &'v Value,
-        ctx: Cow<'c, Vec<&'v Binder>>,
+        ctx: Cow<'c, VarCtx<'v>>,
     }
     impl<'v, 'c> PartialEq for ValueWithCtx<'v, 'c> {
         fn eq(&self, other: &ValueWithCtx<'v, 'c>) -> bool {
@@ -423,8 +424,8 @@ fn equiv(val1: &Value, val2: &Value) -> bool {
     }
     // Push the given context into every subnode of the ValueKind. That way, normal equality of the
     // resulting value will take into account the context.
-    fn push_context<'v, 'c>(
-        ctx: &'c Vec<&'v Binder>,
+    fn push_context_through<'v, 'c>(
+        ctx: &'c VarCtx<'v>,
         kind: &'v ValueKind<Value>,
     ) -> ValueKind<ValueWithCtx<'v, 'c>> {
         kind.map_ref_with_special_handling_of_binders(
@@ -434,25 +435,15 @@ fn equiv(val1: &Value, val2: &Value) -> bool {
             },
             |binder, val| ValueWithCtx {
                 val,
-                ctx: Cow::Owned(
-                    ctx.iter().cloned().chain(Some(binder)).collect(),
-                ),
+                ctx: Cow::Owned(ctx.insert(binder)),
             },
         )
     }
 
-    fn lookup(ctx: &Vec<&Binder>, binder: &Binder) -> Option<usize> {
-        ctx.iter()
-            .rev()
-            .enumerate()
-            .find(|(_, other)| binder.same_binder(other))
-            .map(|(i, _)| i)
-    }
-
     fn equiv_with_ctx<'v, 'c>(
-        ctx1: &'c Vec<&'v Binder>,
+        ctx1: &'c VarCtx<'v>,
         val1: &'v Value,
-        ctx2: &'c Vec<&'v Binder>,
+        ctx2: &'c VarCtx<'v>,
         val2: &'v Value,
     ) -> bool {
         use ValueKind::Var;
@@ -465,16 +456,17 @@ fn equiv(val1: &Value, val2: &Value) -> bool {
             if b1.same_binder(&b2) {
                 return true;
             }
-            match (lookup(ctx1, &b1), lookup(ctx2, &b2)) {
+            match (ctx1.lookup(&b1), ctx2.lookup(&b2)) {
                 (Some(i), Some(j)) => i == j,
                 _ => false,
             }
         } else {
-            push_context(ctx1, &*kind1) == push_context(ctx2, &*kind2)
+            push_context_through(ctx1, &*kind1)
+                == push_context_through(ctx2, &*kind2)
         }
     }
 
-    equiv_with_ctx(&Vec::new(), val1, &Vec::new(), val2)
+    equiv_with_ctx(&VarCtx::new(), val1, &VarCtx::new(), val2)
 }
 
 impl Shift for Value {

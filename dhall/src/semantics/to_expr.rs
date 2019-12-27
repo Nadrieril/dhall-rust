@@ -1,9 +1,9 @@
-use crate::semantics::core::value::Value;
-use crate::semantics::core::value::ValueKind;
+use crate::semantics::core::context::VarCtx;
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::NormalizedExpr;
+use crate::semantics::{Value, ValueKind};
 use crate::syntax;
-use crate::syntax::{Builtin, ExprKind};
+use crate::syntax::{Builtin, ExprKind, V};
 
 /// Controls conversion from `Value` to `Expr`
 #[derive(Copy, Clone)]
@@ -16,6 +16,7 @@ pub(crate) struct ToExprOptions {
 
 /// Converts a value back to the corresponding AST expression.
 pub(crate) fn value_to_expr(
+    ctx: &VarCtx,
     val: &Value,
     opts: ToExprOptions,
 ) -> NormalizedExpr {
@@ -23,7 +24,27 @@ pub(crate) fn value_to_expr(
         val.normalize_whnf();
     }
 
-    match val.as_kind().map_ref(|v| value_to_expr(v, opts)) {
+    let kind = val.as_kind();
+    let kind = kind.map_ref_with_special_handling_of_binders(
+        |v| value_to_expr(ctx, v, opts),
+        |binder, v| value_to_expr(&ctx.insert(binder), v, opts),
+    );
+    match kind {
+        ValueKind::Var(v) => {
+            let b = v.binder();
+            let (idx, name) = if opts.alpha {
+                (ctx.lookup(&b), "_".into())
+            } else {
+                (ctx.lookup_by_name(&b), b.name().clone())
+            };
+            match idx {
+                Some(idx) => rc(ExprKind::Var(V(name, idx))),
+                None => panic!(
+                    "internal error: binder {:?} not found in environment",
+                    b
+                ),
+            }
+        }
         ValueKind::Lam(x, t, e) => {
             rc(ExprKind::Lam(x.to_label_maybe_alpha(opts.alpha), t, e))
         }
@@ -33,7 +54,6 @@ pub(crate) fn value_to_expr(
         ValueKind::Pi(x, t, e) => {
             rc(ExprKind::Pi(x.to_label_maybe_alpha(opts.alpha), t, e))
         }
-        ValueKind::Var(v) => rc(ExprKind::Var(v.to_var(opts.alpha))),
         ValueKind::Const(c) => rc(ExprKind::Const(c)),
         ValueKind::BoolLit(b) => rc(ExprKind::BoolLit(b)),
         ValueKind::NaturalLit(n) => rc(ExprKind::NaturalLit(n)),
