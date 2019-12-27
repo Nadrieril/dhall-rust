@@ -189,7 +189,7 @@ impl<SE, E> ExprKind<SE, E> {
         .visit(self)
     }
 
-    fn traverse_ref<'a, SE2, Err>(
+    pub(crate) fn traverse_ref<'a, SE2, Err>(
         &'a self,
         visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2, E>, Err>

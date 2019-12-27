@@ -388,6 +388,34 @@ impl ValueKind<Value> {
     }
 }
 
+impl<V> ValueKind<V> {
+    #[allow(dead_code)]
+    pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
+        &'a self,
+        mut map_val: impl FnMut(&'a V) -> V2,
+        mut map_under_binder: impl FnMut(&'a AlphaLabel, &'a V) -> V2,
+    ) -> ValueKind<V2> {
+        use crate::semantics::visitor;
+        use crate::syntax::trivial_result;
+        use visitor::ValueKindVisitor;
+        trivial_result(
+            visitor::TraverseRefWithBindersVisitor {
+                visit_val: |x| Ok(map_val(x)),
+                visit_under_binder: |l, x| Ok(map_under_binder(l, x)),
+            }
+            .visit(self),
+        )
+    }
+}
+
+// #[allow(dead_code)]
+// fn equiv(x: &Value, y:&Value) -> bool {
+//     let map = |kind| {
+
+//     };
+//     map(x) == map(y)
+// }
+
 impl Shift for Value {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(Value(self.0.shift(delta, var)?))

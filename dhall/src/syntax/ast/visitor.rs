@@ -1,5 +1,6 @@
-use crate::syntax::*;
 use std::iter::FromIterator;
+
+use crate::syntax::*;
 
 /// A visitor trait that can be used to traverse `ExprKind`s. We need this pattern so that Rust lets
 /// us have as much mutability as we can.
