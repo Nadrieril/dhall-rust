@@ -13,16 +13,16 @@ enum CtxItem {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypecheckContext {
+pub(crate) struct TyCtx {
     ctx: Vec<(Label, CtxItem)>,
 }
 
-impl TypecheckContext {
+impl TyCtx {
     pub fn new() -> Self {
-        TypecheckContext { ctx: Vec::new() }
+        TyCtx { ctx: Vec::new() }
     }
     fn with_vec(&self, vec: Vec<(Label, CtxItem)>) -> Self {
-        TypecheckContext { ctx: vec }
+        TyCtx { ctx: vec }
     }
     pub fn insert_type(&self, x: &Label, t: Value) -> Self {
         let mut vec = self.ctx.clone();
@@ -116,7 +116,7 @@ impl Shift for CtxItem {
     }
 }
 
-impl Shift for TypecheckContext {
+impl Shift for TyCtx {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         self.shift(delta, var)
     }
@@ -134,7 +134,7 @@ impl Subst<Value> for CtxItem {
     }
 }
 
-impl Subst<Value> for TypecheckContext {
+impl Subst<Value> for TyCtx {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         self.subst_shift(var, val)
     }

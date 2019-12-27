@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{Shift, Subst};
@@ -16,7 +16,7 @@ use crate::syntax::{
 };
 
 fn tck_pi_type(
-    ctx: &TypecheckContext,
+    ctx: &TyCtx,
     x: Label,
     tx: Value,
     te: Value,
@@ -48,7 +48,7 @@ fn tck_pi_type(
 }
 
 fn tck_record_type(
-    ctx: &TypecheckContext,
+    ctx: &TyCtx,
     kts: impl IntoIterator<Item = Result<(Label, Value), TypeError>>,
 ) -> Result<Value, TypeError> {
     use std::collections::hash_map::Entry;
@@ -79,10 +79,7 @@ fn tck_record_type(
     ))
 }
 
-fn tck_union_type<Iter>(
-    ctx: &TypecheckContext,
-    kts: Iter,
-) -> Result<Value, TypeError>
+fn tck_union_type<Iter>(ctx: &TyCtx, kts: Iter) -> Result<Value, TypeError>
 where
     Iter: IntoIterator<Item = Result<(Label, Option<Value>), TypeError>>,
 {
@@ -294,7 +291,7 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 }
 
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
-    let ctx = TypecheckContext::new();
+    let ctx = TyCtx::new();
     Value::from_kind_and_type(
         ValueKind::from_builtin(b),
         type_with(&ctx, type_of_builtin(b)).unwrap(),
@@ -305,10 +302,7 @@ pub(crate) fn builtin_to_value(b: Builtin) -> Value {
 /// succeeded, or an error if type-checking failed.
 /// Some normalization is done while typechecking, so the returned expression might be partially
 /// normalized as well.
-fn type_with(
-    ctx: &TypecheckContext,
-    e: Expr<Normalized>,
-) -> Result<Value, TypeError> {
+fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
     use syntax::ExprKind::{Annot, Embed, Lam, Let, Pi, Var};
     let span = e.span();
 
@@ -364,7 +358,7 @@ fn type_with(
 /// When all sub-expressions have been typed, check the remaining toplevel
 /// layer.
 fn type_last_layer(
-    ctx: &TypecheckContext,
+    ctx: &TyCtx,
     e: ExprKind<Value, Normalized>,
     span: Span,
 ) -> Result<Value, TypeError> {
@@ -827,7 +821,7 @@ fn type_last_layer(
 /// expression must be closed (i.e. no free variables), otherwise type-checking
 /// will fail.
 pub(crate) fn typecheck(e: Expr<Normalized>) -> Result<Value, TypeError> {
-    type_with(&TypecheckContext::new(), e)
+    type_with(&TyCtx::new(), e)
 }
 
 pub(crate) fn typecheck_with(

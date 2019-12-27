@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
@@ -292,9 +292,7 @@ impl ValueInternal {
     fn get_type(&self) -> Result<&Value, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
-            None => {
-                Err(TypeError::new(&TypecheckContext::new(), TypeMessage::Sort))
-            }
+            None => Err(TypeError::new(&TyCtx::new(), TypeMessage::Sort)),
         }
     }
 }

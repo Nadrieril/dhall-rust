@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use crate::semantics::core::context::TypecheckContext;
+use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::value::Value;
 use crate::semantics::phase::resolve::ImportStack;
 use crate::semantics::phase::NormalizedExpr;
@@ -41,7 +41,7 @@ pub enum EncodeError {
 #[derive(Debug)]
 pub struct TypeError {
     message: TypeMessage,
-    context: TypecheckContext,
+    context: TyCtx,
 }
 
 /// The specific type error
@@ -88,10 +88,7 @@ pub(crate) enum TypeMessage {
 }
 
 impl TypeError {
-    pub(crate) fn new(
-        context: &TypecheckContext,
-        message: TypeMessage,
-    ) -> Self {
+    pub(crate) fn new(context: &TyCtx, message: TypeMessage) -> Self {
         TypeError {
             context: context.clone(),
             message,
