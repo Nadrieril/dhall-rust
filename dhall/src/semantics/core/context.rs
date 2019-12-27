@@ -133,12 +133,3 @@ impl Subst<Value> for TypecheckContext {
         self.subst_shift(var, val)
     }
 }
-
-/// Don't count contexts when comparing stuff.
-/// This is dirty but needed.
-impl PartialEq for TypecheckContext {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-impl Eq for TypecheckContext {}
