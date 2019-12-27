@@ -30,7 +30,7 @@ pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
-    kind: ValueKind,
+    kind: ValueKind<Value>,
     /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -52,7 +52,7 @@ pub(crate) enum Form {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValueKind {
+pub(crate) enum ValueKind<Value> {
     /// Closures
     Lam(AlphaLabel, Value, Value),
     Pi(AlphaLabel, Value, Value),
@@ -84,7 +84,7 @@ pub(crate) enum ValueKind {
 }
 
 impl Value {
-    fn new(kind: ValueKind, form: Form, ty: Value, span: Span) -> Value {
+    fn new(kind: ValueKind<Value>, form: Form, ty: Value, span: Span) -> Value {
         ValueInternal {
             form,
             kind,
@@ -102,17 +102,20 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
+    pub(crate) fn from_kind_and_type(v: ValueKind<Value>, t: Value) -> Value {
         Value::new(v, Unevaled, t, Span::Artificial)
     }
     pub(crate) fn from_kind_and_type_and_span(
-        v: ValueKind,
+        v: ValueKind<Value>,
         t: Value,
         span: Span,
     ) -> Value {
         Value::new(v, Unevaled, t, span)
     }
-    pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
+    pub(crate) fn from_kind_and_type_whnf(
+        v: ValueKind<Value>,
+        t: Value,
+    ) -> Value {
         Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
@@ -144,13 +147,13 @@ impl Value {
     }
     /// WARNING: The returned ValueKind may be entirely unnormalized, in particular it may just be an
     /// unevaled PartialExpr. You probably want to use `as_whnf`.
-    pub(crate) fn as_kind(&self) -> Ref<ValueKind> {
+    pub(crate) fn as_kind(&self) -> Ref<ValueKind<Value>> {
         Ref::map(self.as_internal(), ValueInternal::as_kind)
     }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueKind> {
+    pub(crate) fn as_whnf(&self) -> Ref<ValueKind<Value>> {
         self.normalize_whnf();
         self.as_kind()
     }
@@ -162,11 +165,11 @@ impl Value {
     ) -> NormalizedExpr {
         to_expr::value_to_expr(self, opts)
     }
-    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
+    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
     }
     /// Before discarding type information, check that it matches the expected return type.
-    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind {
+    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind<Value> {
         self.check_type(ty);
         self.to_whnf_ignore_type()
     }
@@ -241,7 +244,7 @@ impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
-    fn as_kind(&self) -> &ValueKind {
+    fn as_kind(&self) -> &ValueKind<Value> {
         &self.kind
     }
 
@@ -297,7 +300,7 @@ impl ValueInternal {
     }
 }
 
-impl ValueKind {
+impl ValueKind<Value> {
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_kind_and_type(self, t)
     }
@@ -380,7 +383,7 @@ impl ValueKind {
         }
     }
 
-    pub(crate) fn from_builtin(b: Builtin) -> ValueKind {
+    pub(crate) fn from_builtin(b: Builtin) -> ValueKind<Value> {
         ValueKind::AppliedBuiltin(b, vec![])
     }
 }
@@ -402,7 +405,7 @@ impl Shift for ValueInternal {
     }
 }
 
-impl Shift for ValueKind {
+impl Shift for ValueKind<Value> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
             ValueKind::Lam(x, t, e) => ValueKind::Lam(
@@ -495,7 +498,7 @@ impl Subst<Value> for ValueInternal {
     }
 }
 
-impl Subst<Value> for ValueKind {
+impl Subst<Value> for ValueKind<Value> {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
             ValueKind::AppliedBuiltin(b, args) => {

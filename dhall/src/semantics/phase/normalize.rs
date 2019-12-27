@@ -68,13 +68,13 @@ pub(crate) fn apply_builtin(
     b: Builtin,
     args: Vec<Value>,
     ty: &Value,
-) -> ValueKind {
+) -> ValueKind<Value> {
     use syntax::Builtin::*;
     use ValueKind::*;
 
     // Small helper enum
     enum Ret<'a> {
-        ValueKind(ValueKind),
+        ValueKind(ValueKind<Value>),
         Value(Value),
         // For applications that can return a function, it's important to keep the remaining
         // arguments to apply them to the resulting function.
@@ -365,7 +365,7 @@ pub(crate) fn apply_builtin(
     }
 }
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
+pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
         ValueKind::Lam(x, _, e) => {
@@ -456,7 +456,7 @@ where
 
 // Small helper enum to avoid repetition
 enum Ret<'a> {
-    ValueKind(ValueKind),
+    ValueKind(ValueKind<Value>),
     Value(Value),
     ValueRef(&'a Value),
     Expr(ExprKind<Value, Normalized>),
@@ -589,7 +589,7 @@ fn apply_binop<'a>(
 pub(crate) fn normalize_one_layer(
     expr: ExprKind<Value, Normalized>,
     ty: &Value,
-) -> ValueKind {
+) -> ValueKind<Value> {
     use ValueKind::{
         AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit,
         IntegerLit, NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
@@ -779,7 +779,10 @@ pub(crate) fn normalize_one_layer(
 }
 
 /// Normalize a ValueKind into WHNF
-pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
+pub(crate) fn normalize_whnf(
+    v: ValueKind<Value>,
+    ty: &Value,
+) -> ValueKind<Value> {
     match v {
         ValueKind::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty),

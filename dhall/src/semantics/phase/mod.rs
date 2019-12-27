@@ -94,7 +94,7 @@ impl Typed {
     pub(crate) fn from_const(c: Const) -> Self {
         Typed(Value::from_const(c))
     }
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Typed) -> Self {
+    pub(crate) fn from_kind_and_type(v: ValueKind<Value>, t: Typed) -> Self {
         Typed(Value::from_kind_and_type(v, t.into_value()))
     }
     pub(crate) fn from_value(th: Value) -> Self {

@@ -27,7 +27,7 @@ pub(crate) fn value_to_expr(
 
 /// Converts a value back to the corresponding AST expression.
 pub(crate) fn kind_to_expr(
-    kind: &ValueKind,
+    kind: &ValueKind<Value>,
     opts: ToExprOptions,
 ) -> NormalizedExpr {
     match kind {
