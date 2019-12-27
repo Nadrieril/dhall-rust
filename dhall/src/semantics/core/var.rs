@@ -14,7 +14,9 @@ pub struct AlphaVar {
 // Exactly like a Label, but equality returns always true.
 // This is so that ValueKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
-pub struct AlphaLabel(Label);
+pub struct Binder {
+    name: Label,
+}
 
 pub(crate) trait Shift: Sized {
     // Shift an expression to move it around binders without changing the meaning of its free
@@ -64,7 +66,10 @@ impl AlphaVar {
     }
 }
 
-impl AlphaLabel {
+impl Binder {
+    pub(crate) fn new(name: Label) -> Self {
+        Binder { name }
+    }
     pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
             "_".into()
@@ -92,7 +97,7 @@ impl std::cmp::PartialEq for AlphaVar {
         self.alpha == other.alpha
     }
 }
-impl std::cmp::PartialEq for AlphaLabel {
+impl std::cmp::PartialEq for Binder {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
@@ -104,9 +109,9 @@ impl std::fmt::Debug for AlphaVar {
     }
 }
 
-impl std::fmt::Debug for AlphaLabel {
+impl std::fmt::Debug for Binder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AlphaLabel({})", &self.0)
+        write!(f, "Binder({})", &self.name)
     }
 }
 
@@ -123,26 +128,21 @@ impl<'a> From<&'a Label> for AlphaVar {
         x.clone().into()
     }
 }
-impl From<AlphaLabel> for AlphaVar {
-    fn from(x: AlphaLabel) -> AlphaVar {
+impl From<Binder> for AlphaVar {
+    fn from(x: Binder) -> AlphaVar {
         let l: Label = x.into();
         l.into()
     }
 }
-impl<'a> From<&'a AlphaLabel> for AlphaVar {
-    fn from(x: &'a AlphaLabel) -> AlphaVar {
+impl<'a> From<&'a Binder> for AlphaVar {
+    fn from(x: &'a Binder) -> AlphaVar {
         x.clone().into()
     }
 }
 
-impl From<Label> for AlphaLabel {
-    fn from(x: Label) -> AlphaLabel {
-        AlphaLabel(x)
-    }
-}
-impl From<AlphaLabel> for Label {
-    fn from(x: AlphaLabel) -> Label {
-        x.0
+impl From<Binder> for Label {
+    fn from(x: Binder) -> Label {
+        x.name
     }
 }
 impl Shift for () {

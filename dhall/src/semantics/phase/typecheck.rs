@@ -4,11 +4,9 @@ use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
-use crate::semantics::core::value::Value;
-use crate::semantics::core::value::ValueKind;
-use crate::semantics::core::var::{Shift, Subst};
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
+use crate::semantics::{Binder, Shift, Subst, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, Span,
@@ -17,12 +15,12 @@ use crate::syntax::{
 
 fn tck_pi_type(
     ctx: &TyCtx,
-    x: Label,
+    binder: Binder,
     tx: Value,
     te: Value,
 ) -> Result<Value, TypeError> {
     use TypeMessage::*;
-    let ctx2 = ctx.insert_type(&x, tx.clone());
+    let ctx2 = ctx.insert_type(&binder, tx.clone());
 
     let ka = match tx.get_type()?.as_const() {
         Some(k) => k,
@@ -42,7 +40,7 @@ fn tck_pi_type(
     let k = function_check(ka, kb);
 
     Ok(Value::from_kind_and_type(
-        ValueKind::Pi(x.into(), tx, te),
+        ValueKind::Pi(binder, tx, te),
         Value::from_const(k),
     ))
 }
@@ -307,21 +305,23 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
 
     match e.as_ref() {
         Lam(var, annot, body) => {
+            let binder = ctx.new_binder(var);
             let annot = type_with(ctx, annot.clone())?;
             annot.normalize_nf();
-            let ctx2 = ctx.insert_type(var, annot.clone());
+            let ctx2 = ctx.insert_type(&binder, annot.clone());
             let body = type_with(&ctx2, body.clone())?;
             let body_type = body.get_type()?;
             Ok(Value::from_kind_and_type(
-                ValueKind::Lam(var.clone().into(), annot.clone(), body),
-                tck_pi_type(ctx, var.clone(), annot, body_type)?,
+                ValueKind::Lam(binder.clone(), annot.clone(), body),
+                tck_pi_type(ctx, binder, annot, body_type)?,
             ))
         }
         Pi(x, ta, tb) => {
+            let binder = ctx.new_binder(x);
             let ta = type_with(ctx, ta.clone())?;
-            let ctx2 = ctx.insert_type(x, ta.clone());
+            let ctx2 = ctx.insert_type(&binder, ta.clone());
             let tb = type_with(&ctx2, tb.clone())?;
-            tck_pi_type(ctx, x.clone(), ta, tb)
+            tck_pi_type(ctx, binder, ta, tb)
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -331,7 +331,8 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
             };
 
             let v = type_with(ctx, v)?;
-            type_with(&ctx.insert_value(x, v.clone())?, e.clone())
+            let binder = ctx.new_binder(x);
+            type_with(&ctx.insert_value(&binder, v.clone())?, e.clone())
         }
         Embed(p) => Ok(p.clone().into_typed().into_value()),
         Var(var) => match ctx.lookup(&var) {
@@ -496,7 +497,7 @@ fn type_last_layer(
                                 RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
-                                        x.clone(),
+                                        ctx.new_binder(x),
                                         t.clone(),
                                         r.under_binder(x),
                                     )?

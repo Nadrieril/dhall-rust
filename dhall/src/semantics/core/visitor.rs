@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
 
-use crate::semantics::{AlphaLabel, ValueKind};
+use crate::semantics::{Binder, ValueKind};
 use crate::syntax::Label;
 
 /// A visitor trait that can be used to traverse `ValueKind`s. We need this pattern so that Rust lets
@@ -12,7 +12,7 @@ pub(crate) trait ValueKindVisitor<'a, V1, V2>: Sized {
     fn visit_val(&mut self, val: &'a V1) -> Result<V2, Self::Error>;
     fn visit_val_under_binder(
         mut self,
-        _label: &'a AlphaLabel,
+        _label: &'a Binder,
         val: &'a V1,
     ) -> Result<V2, Self::Error> {
         self.visit_val(val)
@@ -117,7 +117,7 @@ impl<'a, V1, V2, Err, F1, F2> ValueKindVisitor<'a, V1, V2>
 where
     V1: 'a,
     F1: FnMut(&'a V1) -> Result<V2, Err>,
-    F2: FnOnce(&'a AlphaLabel, &'a V1) -> Result<V2, Err>,
+    F2: FnOnce(&'a Binder, &'a V1) -> Result<V2, Err>,
 {
     type Error = Err;
 
@@ -126,7 +126,7 @@ where
     }
     fn visit_val_under_binder(
         self,
-        label: &'a AlphaLabel,
+        label: &'a Binder,
         val: &'a V1,
     ) -> Result<V2, Self::Error> {
         (self.visit_under_binder)(label, val)

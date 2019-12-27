@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
-use crate::semantics::core::var::{AlphaVar, Shift, Subst};
+use crate::semantics::core::var::{AlphaVar, Binder, Shift, Subst};
 use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
@@ -14,22 +14,26 @@ enum CtxItem {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TyCtx {
-    ctx: Vec<(Label, CtxItem)>,
+    ctx: Vec<(Binder, CtxItem)>,
 }
 
 impl TyCtx {
     pub fn new() -> Self {
         TyCtx { ctx: Vec::new() }
     }
-    fn with_vec(&self, vec: Vec<(Label, CtxItem)>) -> Self {
+    fn with_vec(&self, vec: Vec<(Binder, CtxItem)>) -> Self {
         TyCtx { ctx: vec }
     }
-    pub fn insert_type(&self, x: &Label, t: Value) -> Self {
+    pub fn insert_type(&self, x: &Binder, t: Value) -> Self {
         let mut vec = self.ctx.clone();
         vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
         self.with_vec(vec)
     }
-    pub fn insert_value(&self, x: &Label, e: Value) -> Result<Self, TypeError> {
+    pub fn insert_value(
+        &self,
+        x: &Binder,
+        e: Value,
+    ) -> Result<Self, TypeError> {
         let mut vec = self.ctx.clone();
         vec.push((x.clone(), CtxItem::Replaced(e)));
         Ok(self.with_vec(vec))
@@ -37,8 +41,9 @@ impl TyCtx {
     pub fn lookup(&self, var: &V<Label>) -> Option<Value> {
         let mut var = var.clone();
         let mut shift_map: HashMap<Label, _> = HashMap::new();
-        for (l, i) in self.ctx.iter().rev() {
-            match var.over_binder(l) {
+        for (b, i) in self.ctx.iter().rev() {
+            let l = b.to_label();
+            match var.over_binder(&l) {
                 None => {
                     let i = i.under_multiple_binders(&shift_map);
                     return Some(match i {
@@ -51,12 +56,16 @@ impl TyCtx {
                 Some(newvar) => var = newvar,
             };
             if let CtxItem::Kept(_, _) = i {
-                *shift_map.entry(l.clone()).or_insert(0) += 1;
+                *shift_map.entry(l).or_insert(0) += 1;
             }
         }
         // Unbound variable
         None
     }
+    pub fn new_binder(&self, l: &Label) -> Binder {
+        Binder::new(l.clone())
+    }
+
     /// Given a var that makes sense in the current context, map the given function in such a way
     /// that the passed variable always makes sense in the context of the passed item.
     /// Once we pass the variable definition, the variable doesn't make sense anymore so we just

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
-use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::semantics::core::var::{AlphaVar, Binder, Shift, Subst};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{Normalized, NormalizedExpr, Typed};
@@ -54,8 +54,8 @@ pub(crate) enum Form {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind<Value> {
     /// Closures
-    Lam(AlphaLabel, Value, Value),
-    Pi(AlphaLabel, Value, Value),
+    Lam(Binder, Value, Value),
+    Pi(Binder, Value, Value),
     // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
@@ -393,7 +393,7 @@ impl<V> ValueKind<V> {
     pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
         &'a self,
         mut map_val: impl FnMut(&'a V) -> V2,
-        mut map_under_binder: impl FnMut(&'a AlphaLabel, &'a V) -> V2,
+        mut map_under_binder: impl FnMut(&'a Binder, &'a V) -> V2,
     ) -> ValueKind<V2> {
         use crate::semantics::visitor;
         use crate::syntax::trivial_result;
