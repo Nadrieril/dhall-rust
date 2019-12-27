@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -408,13 +409,73 @@ impl<V> ValueKind<V> {
     }
 }
 
-// #[allow(dead_code)]
-// fn equiv(x: &Value, y:&Value) -> bool {
-//     let map = |kind| {
+/// Compare two values for equality modulo alpha/beta-equivalence.
+// TODO: use Rc comparison to shortcut on identical pointers
+fn equiv(val1: &Value, val2: &Value) -> bool {
+    struct ValueWithCtx<'v, 'c> {
+        val: &'v Value,
+        ctx: Cow<'c, Vec<&'v Binder>>,
+    }
+    impl<'v, 'c> PartialEq for ValueWithCtx<'v, 'c> {
+        fn eq(&self, other: &ValueWithCtx<'v, 'c>) -> bool {
+            equiv_with_ctx(&*self.ctx, self.val, &*other.ctx, other.val)
+        }
+    }
+    // Push the given context into every subnode of the ValueKind. That way, normal equality of the
+    // resulting value will take into account the context.
+    fn push_context<'v, 'c>(
+        ctx: &'c Vec<&'v Binder>,
+        kind: &'v ValueKind<Value>,
+    ) -> ValueKind<ValueWithCtx<'v, 'c>> {
+        kind.map_ref_with_special_handling_of_binders(
+            |val| ValueWithCtx {
+                val,
+                ctx: Cow::Borrowed(ctx),
+            },
+            |binder, val| ValueWithCtx {
+                val,
+                ctx: Cow::Owned(
+                    ctx.iter().cloned().chain(Some(binder)).collect(),
+                ),
+            },
+        )
+    }
 
-//     };
-//     map(x) == map(y)
-// }
+    fn lookup(ctx: &Vec<&Binder>, binder: &Binder) -> Option<usize> {
+        ctx.iter()
+            .rev()
+            .enumerate()
+            .find(|(_, other)| binder.same_binder(other))
+            .map(|(i, _)| i)
+    }
+
+    fn equiv_with_ctx<'v, 'c>(
+        ctx1: &'c Vec<&'v Binder>,
+        val1: &'v Value,
+        ctx2: &'c Vec<&'v Binder>,
+        val2: &'v Value,
+    ) -> bool {
+        use ValueKind::Var;
+        let kind1 = val1.as_whnf();
+        let kind2 = val2.as_whnf();
+
+        if let (Var(v1), Var(v2)) = (&*kind1, &*kind2) {
+            let b1 = v1.binder();
+            let b2 = v2.binder();
+            if b1.same_binder(&b2) {
+                return true;
+            }
+            match (lookup(ctx1, &b1), lookup(ctx2, &b2)) {
+                (Some(i), Some(j)) => i == j,
+                _ => false,
+            }
+        } else {
+            push_context(ctx1, &*kind1) == push_context(ctx2, &*kind2)
+        }
+    }
+
+    equiv_with_ctx(&Vec::new(), val1, &Vec::new(), val2)
+}
 
 impl Shift for Value {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
@@ -593,10 +654,9 @@ impl Subst<Value> for ValueKind<Value> {
     }
 }
 
-// TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        *self.as_whnf() == *other.as_whnf()
+        equiv(self, other)
     }
 }
 impl std::cmp::Eq for Value {}

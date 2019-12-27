@@ -72,11 +72,17 @@ impl AlphaVar {
             self.normal.clone()
         }
     }
+    pub(crate) fn binder(&self) -> Binder {
+        Binder::new(self.normal.0.clone(), self.binder_uid)
+    }
 }
 
 impl Binder {
     pub(crate) fn new(name: Label, uid: BinderUID) -> Self {
         Binder { name, uid }
+    }
+    pub(crate) fn same_binder(&self, other: &Binder) -> bool {
+        self.uid == other.uid
     }
     pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
