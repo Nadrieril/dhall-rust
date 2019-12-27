@@ -10,4 +10,4 @@
 1 | merge { x = λ(_ : Bool) → _ } (< x : Natural >.x 1)␊
   |                   ^--^
   |
-  = But the function expected an argument of type Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }
+  = But the function expected an argument of type Value@NF { value: AppliedBuiltin(Bool, []), type: Type }

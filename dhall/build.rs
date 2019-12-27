@@ -128,8 +128,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
-                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -154,8 +152,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
-                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -178,8 +174,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
-                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
-                    || path == "preferMissingNoSpaces"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -282,10 +276,6 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
-                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
-                    || path == "unit/MergeNone"
-                    || path == "unit/MergeSome"
-                    || path == "unit/NaturalBuildFoldFusion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -321,9 +311,6 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
-                    // TODO: waiting for https://github.com/dhall-lang/dhall-lang/pull/871
-                    || path == "unit/MergeNone"
-                    || path == "unit/MergeSome"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
