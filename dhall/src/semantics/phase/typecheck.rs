@@ -291,10 +291,9 @@ fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 }
 
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
-    let ctx = TyCtx::new();
     Value::from_kind_and_type(
         ValueKind::from_builtin(b),
-        type_with(&ctx, type_of_builtin(b)).unwrap(),
+        typecheck(type_of_builtin(b)).unwrap(),
     )
 }
 

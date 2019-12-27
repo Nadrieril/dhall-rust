@@ -62,12 +62,6 @@ impl AlphaVar {
             self.normal.clone()
         }
     }
-    pub(crate) fn from_var_and_alpha(normal: V<Label>, alpha: usize) -> Self {
-        AlphaVar {
-            normal,
-            alpha: V((), alpha),
-        }
-    }
 }
 
 impl AlphaLabel {

@@ -3,7 +3,8 @@ use std::convert::TryInto;
 
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
-use crate::semantics::core::var::{AlphaLabel, AlphaVar, Shift, Subst};
+use crate::semantics::core::var::Subst;
+use crate::semantics::phase::typecheck::{rc, typecheck};
 use crate::semantics::phase::Normalized;
 use crate::syntax;
 use crate::syntax::Const::Type;
@@ -14,60 +15,51 @@ use crate::syntax::{
 
 // Ad-hoc macro to help construct closures
 macro_rules! make_closure {
-    (#$var:ident) => { $var.clone() };
-    (var($var:ident, $n:expr, $($ty:tt)*)) => {{
-        let var = AlphaVar::from_var_and_alpha(
+    (var($var:ident)) => {{
+        rc(ExprKind::Var(syntax::V(
             Label::from(stringify!($var)).into(),
-            $n
-        );
-        ValueKind::Var(var)
-            .into_value_with_type(make_closure!($($ty)*))
+            0
+        )))
     }};
-    // Warning: assumes that $ty, as a dhall value, has type `Type`
     (λ($var:tt : $($ty:tt)*) -> $($body:tt)*) => {{
-        let var: AlphaLabel = Label::from(stringify!($var)).into();
+        let var = Label::from(stringify!($var));
         let ty = make_closure!($($ty)*);
         let body = make_closure!($($body)*);
-        let body_ty = body.get_type_not_sort();
-        let lam_ty = ValueKind::Pi(var.clone(), ty.clone(), body_ty)
-            .into_value_with_type(Value::from_const(Type));
-        ValueKind::Lam(var, ty, body).into_value_with_type(lam_ty)
+        rc(ExprKind::Lam(var, ty, body))
     }};
+    (Type) => {
+        rc(ExprKind::Const(Type))
+    };
     (Natural) => {
-        Value::from_builtin(Builtin::Natural)
+        rc(ExprKind::Builtin(Builtin::Natural))
     };
-    (List $($rest:tt)*) => {
-        Value::from_builtin(Builtin::List)
-            .app(make_closure!($($rest)*))
-    };
-    (Some($($rest:tt)*)) => {{
-        let v = make_closure!($($rest)*);
-        let v_type = v.get_type_not_sort();
-        let opt_v_type = Value::from_builtin(Builtin::Optional).app(v_type);
-        ValueKind::NEOptionalLit(v).into_value_with_type(opt_v_type)
+    (List $($ty:tt)*) => {{
+        let ty = make_closure!($($ty)*);
+        rc(ExprKind::App(
+            rc(ExprKind::Builtin(Builtin::List)),
+            ty
+        ))
     }};
-    (1 + $($rest:tt)*) => {
-        ValueKind::PartialExpr(ExprKind::BinOp(
+    (Some($($v:tt)*)) => {
+        rc(ExprKind::SomeLit(
+            make_closure!($($v)*)
+        ))
+    };
+    (1 + $($v:tt)*) => {
+        rc(ExprKind::BinOp(
             syntax::BinOp::NaturalPlus,
-            make_closure!($($rest)*),
-            Value::from_kind_and_type(
-                ValueKind::NaturalLit(1),
-                make_closure!(Natural)
-            ),
-        )).into_value_with_type(
-            make_closure!(Natural)
-        )
+            make_closure!($($v)*),
+            rc(ExprKind::NaturalLit(1))
+        ))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
-        let list_type = tail.get_type_not_sort();
-        ValueKind::PartialExpr(ExprKind::BinOp(
+        rc(ExprKind::BinOp(
             syntax::BinOp::ListAppend,
-            ValueKind::NEListLit(vec![head])
-                .into_value_with_type(list_type.clone()),
+            rc(ExprKind::NEListLit(vec![head])),
             tail,
-        )).into_value_with_type(list_type)
+        ))
     }};
 }
 
@@ -274,16 +266,16 @@ pub(crate) fn apply_builtin(
             let list_t = Value::from_builtin(List).app(t.clone());
             Ret::Value(
                 f.app(list_t.clone())
-                    .app({
-                        // Move `t` under new variables
-                        let t1 = t.under_binder(Label::from("a"));
-                        let t2 = t1.under_binder(Label::from("as"));
-                        make_closure!(
-                            λ(a : #t) ->
-                            λ(as : List #t1) ->
-                            [ var(a, 1, #t2) ] # var(as, 0, List #t2)
-                        )
-                    })
+                    .app(
+                        typecheck(make_closure!(
+                            λ(T : Type) ->
+                            λ(a : var(T)) ->
+                            λ(as : List var(T)) ->
+                            [ var(a) ] # var(as)
+                        ))
+                        .unwrap()
+                        .app(t.clone()),
+                    )
                     .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
             )
         }
@@ -302,10 +294,15 @@ pub(crate) fn apply_builtin(
             let optional_t = Value::from_builtin(Optional).app(t.clone());
             Ret::Value(
                 f.app(optional_t.clone())
-                    .app({
-                        let t1 = t.under_binder(Label::from("a"));
-                        make_closure!(λ(a: #t) -> Some(var(a, 0, #t1)))
-                    })
+                    .app(
+                        typecheck(make_closure!(
+                            λ(T : Type) ->
+                            λ(a : var(T)) ->
+                            Some(var(a))
+                        ))
+                        .unwrap()
+                        .app(t.clone()),
+                    )
                     .app(
                         EmptyOptionalLit(t.clone())
                             .into_value_with_type(optional_t),
@@ -324,9 +321,13 @@ pub(crate) fn apply_builtin(
         },
         (NaturalBuild, [f]) => Ret::Value(
             f.app(Value::from_builtin(Natural))
-                .app(make_closure!(
-                    λ(x : Natural) -> 1 + var(x, 0, Natural)
-                ))
+                .app(
+                    typecheck(make_closure!(
+                        λ(x : Natural) ->
+                        1 + var(x)
+                    ))
+                    .unwrap(),
+                )
                 .app(
                     NaturalLit(0)
                         .into_value_with_type(Value::from_builtin(Natural)),
