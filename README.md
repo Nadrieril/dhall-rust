@@ -39,7 +39,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.2.0"
+serde_dhall = "0.2.1"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
@@ -127,6 +127,8 @@ $ cargo test
 Now we can have fun and happy contributing!
 
 ## Changelog
+
+- 0.2.1: Improve documentation and deserialize many more types
 
 - 0.2.0: Update to supporting dhall v12.0.0
 

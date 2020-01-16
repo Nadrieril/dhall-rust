@@ -1,6 +1,6 @@
 [package]
 name = "dhall"
-version = "0.2.0"  # remember to update html_root_url
+version = "0.2.1"  # remember to update html_root_url
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 description = "Implementation of the Dhall configuration language"
