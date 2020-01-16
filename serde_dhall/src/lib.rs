@@ -64,6 +64,28 @@
 //! # }
 //! ```
 //!
+//! # Type correspondence
+//!
+//! The following Dhall types correspond to the following Rust types:
+//!
+//! Dhall  | Rust
+//! -------|------
+//! `Bool`  | `bool`
+//! `Natural`  | `u64`, `u32`, ...
+//! `Integer`  | `i64`, `i32`, ...
+//! `Double`  | `f64`, `f32`, ...
+//! `Text`  | `String`
+//! `List T`  | `Vec<T>`
+//! `Optional T`  | `Option<T>`
+//! `{ x: T, y: U }`  | structs
+//! `{ _1: T, _2: U }`  | `(T, U)`, structs
+//! `{ x: T, y: T }`  | `HashMap<String, T>`, structs
+//! `< x: T \| y: U >`  | enums
+//! `T -> U`  | unsupported
+//! `Prelude.JSON.Type`  | unsupported
+//! `Prelude.Map.Type T U`  | unsupported
+//!
+//!
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [serde_json::from_str] or
