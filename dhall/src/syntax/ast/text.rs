@@ -97,6 +97,10 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         &self.head
     }
 
+    pub fn tail(&self) -> &Vec<(SubExpr, String)> {
+        &self.tail
+    }
+
     pub fn head_mut(&mut self) -> &mut String {
         &mut self.head
     }

@@ -1,4 +1,4 @@
-use dhall::syntax::{Builtin, Integer, Natural};
+use dhall::syntax::Builtin;
 
 use crate::Value;
 
@@ -28,9 +28,14 @@ macro_rules! derive_builtin {
 }
 
 derive_builtin!(bool, Bool);
-derive_builtin!(Natural, Natural);
+derive_builtin!(usize, Natural);
 derive_builtin!(u64, Natural);
-derive_builtin!(Integer, Integer);
+derive_builtin!(u32, Natural);
+derive_builtin!(isize, Integer);
+derive_builtin!(i64, Integer);
+derive_builtin!(i32, Integer);
+derive_builtin!(f64, Double);
+derive_builtin!(f32, Double);
 derive_builtin!(String, Text);
 
 impl<A, B> StaticType for (A, B)
