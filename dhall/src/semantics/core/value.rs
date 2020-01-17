@@ -163,7 +163,7 @@ impl Value {
         &self,
         opts: to_expr::ToExprOptions,
     ) -> NormalizedExpr {
-        to_expr::value_to_expr(self, opts)
+        to_expr::value_to_expr(self, opts, &vec![])
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()

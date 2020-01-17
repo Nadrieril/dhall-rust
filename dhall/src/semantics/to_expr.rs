@@ -1,8 +1,9 @@
+use crate::semantics::core::var::Binder;
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::NormalizedExpr;
 use crate::semantics::{Value, ValueKind};
 use crate::syntax;
-use crate::syntax::{Builtin, ExprKind};
+use crate::syntax::{Builtin, ExprKind, V};
 
 /// Controls conversion from `Value` to `Expr`
 #[derive(Copy, Clone)]
@@ -14,19 +15,37 @@ pub(crate) struct ToExprOptions {
 }
 
 /// Converts a value back to the corresponding AST expression.
-pub(crate) fn value_to_expr(
-    val: &Value,
+pub(crate) fn value_to_expr<'a>(
+    val: &'a Value,
     opts: ToExprOptions,
+    ctx: &Vec<&'a Binder>,
 ) -> NormalizedExpr {
     if opts.normalize {
         val.normalize_whnf();
     }
 
     let kind = val.as_kind();
-    let kind = kind.map_ref(|v| value_to_expr(v, opts));
+    let kind = kind.map_ref_with_special_handling_of_binders(
+        |v| value_to_expr(v, opts, ctx),
+        |b, _, v| {
+            let mut ctx = ctx.clone();
+            ctx.push(b);
+            value_to_expr(v, opts, &ctx)
+        },
+    );
     match kind {
+        ValueKind::Var(v) if opts.alpha => {
+            rc(ExprKind::Var(V("_".into(), v.idx())))
+        }
         ValueKind::Var(v) => {
-            rc(ExprKind::Var(v.to_var_maybe_alpha(opts.alpha)))
+            let name = ctx[ctx.len() - 1 - v.idx()].to_label();
+            let mut idx = 0;
+            for b in ctx.iter().rev().take(v.idx()) {
+                if b.name() == &name {
+                    idx += 1;
+                }
+            }
+            rc(ExprKind::Var(V(name, idx)))
         }
         ValueKind::Lam(x, t, e) => {
             rc(ExprKind::Lam(x.to_label_maybe_alpha(opts.alpha), t, e))

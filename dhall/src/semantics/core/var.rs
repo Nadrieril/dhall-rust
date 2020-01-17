@@ -2,12 +2,9 @@ use std::collections::HashMap;
 
 use crate::syntax::{Label, V};
 
-/// Stores a pair of variables: a normal one and one
-/// that corresponds to the alpha-normalized version of the first one.
-/// Equality is up to alpha-equivalence (compares on the second one only).
+/// Stores an alpha-normalized variable.
 #[derive(Clone, Eq)]
 pub struct AlphaVar {
-    normal: V<Label>,
     alpha: V<()>,
 }
 
@@ -19,17 +16,12 @@ pub struct Binder {
 }
 
 impl AlphaVar {
-    pub(crate) fn to_var_maybe_alpha(&self, alpha: bool) -> V<Label> {
-        if alpha {
-            V("_".into(), self.alpha.idx())
-        } else {
-            self.normal.clone()
-        }
+    pub(crate) fn idx(&self) -> usize {
+        self.alpha.idx()
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(AlphaVar {
-            normal: self.normal.shift(delta, &var.normal)?,
             alpha: self.alpha.shift(delta, &var.alpha)?,
         })
     }
@@ -48,7 +40,6 @@ impl AlphaVar {
         shift_map: &HashMap<Label, usize>,
     ) -> Self {
         AlphaVar {
-            normal: self.normal.under_multiple_binders(shift_map),
             alpha: self.alpha.under_multiple_binders(shift_map),
         }
     }
@@ -68,6 +59,9 @@ impl Binder {
     pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
     }
+    pub(crate) fn name(&self) -> &Label {
+        &self.name
+    }
 }
 
 /// Equality up to alpha-equivalence
@@ -85,7 +79,7 @@ impl std::cmp::PartialEq for Binder {
 
 impl std::fmt::Debug for AlphaVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AlphaVar({}, {})", self.normal, self.alpha.1)
+        write!(f, "AlphaVar({})", self.alpha.1)
     }
 }
 
@@ -97,18 +91,12 @@ impl std::fmt::Debug for Binder {
 
 impl<'a> From<&'a Label> for AlphaVar {
     fn from(x: &'a Label) -> AlphaVar {
-        AlphaVar {
-            normal: V(x.clone(), 0),
-            alpha: V((), 0),
-        }
+        AlphaVar { alpha: V((), 0) }
     }
 }
 impl From<Binder> for AlphaVar {
     fn from(x: Binder) -> AlphaVar {
-        AlphaVar {
-            normal: V(x.into(), 0),
-            alpha: V((), 0),
-        }
+        AlphaVar { alpha: V((), 0) }
     }
 }
 impl<'a> From<&'a Binder> for AlphaVar {
