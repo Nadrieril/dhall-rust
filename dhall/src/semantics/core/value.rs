@@ -255,14 +255,6 @@ impl Value {
         // Can't fail since delta is positive
         self.shift(1, &x.into()).unwrap()
     }
-    pub(crate) fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        self.as_internal()
-            .under_multiple_binders(shift_map)
-            .into_value()
-    }
     pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match &*self.as_kind() {
             // If the var matches, we can just reuse the provided value instead of copying it.
@@ -369,20 +361,6 @@ impl ValueInternal {
             span: self.span.clone(),
         })
     }
-    fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        ValueInternal {
-            form: self.form,
-            kind: self.kind.under_multiple_binders(shift_map),
-            ty: match &self.ty {
-                None => None,
-                Some(ty) => Some(ty.under_multiple_binders(shift_map)),
-            },
-            span: self.span.clone(),
-        }
-    }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
@@ -481,29 +459,6 @@ impl ValueKind<Value> {
                 |b, _, x| Ok(x.shift(delta, &var.under_binder(b))?),
             )?,
         })
-    }
-    #[allow(dead_code)]
-    fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        match self {
-            ValueKind::Var(v) => {
-                ValueKind::Var(v.under_multiple_binders(shift_map))
-            }
-            _ => self.map_ref_with_special_handling_of_binders(
-                |v| v.under_multiple_binders(shift_map),
-                |b, _, v| {
-                    let mut v = v.clone();
-                    for (x, n) in shift_map {
-                        let x: AlphaVar = x.into();
-                        // Can't fail since delta is positive
-                        v = v.shift(*n as isize, &x.under_binder(b)).unwrap();
-                    }
-                    v
-                },
-            ),
-        }
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {

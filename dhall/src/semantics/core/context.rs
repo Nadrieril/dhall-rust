@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
@@ -40,7 +38,7 @@ impl TyCtx {
     }
     pub fn lookup(&self, var: &V<Label>) -> Option<Value> {
         let mut var = var.clone();
-        let mut shift_map: HashMap<Label, usize> = HashMap::new();
+        let mut shift_delta: isize = 0;
         let mut rev_ctx = self.ctx.iter().rev().map(|(b, i)| (b.to_label(), i));
 
         let found_item = loop {
@@ -50,7 +48,7 @@ impl TyCtx {
                     None => break item,
                 };
                 if let CtxItem::Kept(_, _) = item {
-                    *shift_map.entry(label).or_insert(0) += 1;
+                    shift_delta += 1;
                 }
             } else {
                 // Unbound variable
@@ -65,13 +63,8 @@ impl TyCtx {
             ),
             CtxItem::Replaced(v) => v.clone(),
         };
-
-        let v = v.under_multiple_binders(&shift_map);
-        // for (x, n) in shift_map {
-        //     let x: AlphaVar = (&x).into();
-        //     // Can't fail since delta is positive
-        //     v = v.shift(n as isize, &x).unwrap();
-        // }
+        // Can't fail because delta is positive
+        let v = v.shift(shift_delta, &AlphaVar::default()).unwrap();
         return Some(v);
     }
     // pub fn lookup_alpha(&self, var: &AlphaVar) -> Option<Value> {

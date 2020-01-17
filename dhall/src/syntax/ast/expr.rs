@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
 use crate::syntax::*;
@@ -316,30 +314,6 @@ impl<Label: PartialEq + Clone> V<Label> {
 
     pub(crate) fn over_binder(&self, x: &Label) -> Option<Self> {
         self.shift(-1, &V(x.clone(), 0))
-    }
-}
-
-impl V<Label> {
-    pub(crate) fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        let name = &self.0;
-        let idx = self.1 + shift_map.get(name).unwrap_or(&0);
-        V(name.clone(), idx)
-    }
-}
-
-impl V<()> {
-    pub(crate) fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        let mut idx = self.1;
-        for (_, n) in shift_map {
-            idx += n;
-        }
-        V((), idx)
     }
 }
 

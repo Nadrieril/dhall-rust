@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::syntax::{Label, V};
 
 /// Stores an alpha-normalized variable.
@@ -16,6 +14,9 @@ pub struct Binder {
 }
 
 impl AlphaVar {
+    pub(crate) fn default() -> Self {
+        AlphaVar { alpha: V((), 0) }
+    }
     pub(crate) fn idx(&self) -> usize {
         self.alpha.idx()
     }
@@ -34,14 +35,6 @@ impl AlphaVar {
     }
     pub(crate) fn over_binder(&self, x: &AlphaVar) -> Option<Self> {
         self.shift(-1, x)
-    }
-    pub(crate) fn under_multiple_binders(
-        &self,
-        shift_map: &HashMap<Label, usize>,
-    ) -> Self {
-        AlphaVar {
-            alpha: self.alpha.under_multiple_binders(shift_map),
-        }
     }
 }
 
@@ -89,11 +82,6 @@ impl std::fmt::Debug for Binder {
     }
 }
 
-impl<'a> From<&'a Label> for AlphaVar {
-    fn from(x: &'a Label) -> AlphaVar {
-        AlphaVar { alpha: V((), 0) }
-    }
-}
 impl From<Binder> for AlphaVar {
     fn from(x: Binder) -> AlphaVar {
         AlphaVar { alpha: V((), 0) }
@@ -101,7 +89,7 @@ impl From<Binder> for AlphaVar {
 }
 impl<'a> From<&'a Binder> for AlphaVar {
     fn from(x: &'a Binder) -> AlphaVar {
-        x.clone().into()
+        AlphaVar { alpha: V((), 0) }
     }
 }
 
