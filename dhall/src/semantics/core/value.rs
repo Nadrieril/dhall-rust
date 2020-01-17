@@ -1,10 +1,9 @@
-use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::{TyCtx, VarCtx};
+use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::var::{AlphaVar, Binder, Shift, Subst};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
@@ -164,7 +163,7 @@ impl Value {
         &self,
         opts: to_expr::ToExprOptions,
     ) -> NormalizedExpr {
-        to_expr::value_to_expr(&VarCtx::new(), self, opts)
+        to_expr::value_to_expr(self, opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
@@ -410,65 +409,6 @@ impl<V> ValueKind<V> {
     }
 }
 
-/// Compare two values for equality modulo alpha/beta-equivalence.
-// TODO: use Rc comparison to shortcut on identical pointers
-fn equiv(val1: &Value, val2: &Value) -> bool {
-    struct ValueWithCtx<'v, 'c> {
-        val: &'v Value,
-        ctx: Cow<'c, VarCtx<'v>>,
-    }
-    impl<'v, 'c> PartialEq for ValueWithCtx<'v, 'c> {
-        fn eq(&self, other: &ValueWithCtx<'v, 'c>) -> bool {
-            equiv_with_ctx(&*self.ctx, self.val, &*other.ctx, other.val)
-        }
-    }
-    // Push the given context into every subnode of the ValueKind. That way, normal equality of the
-    // resulting value will take into account the context.
-    fn push_context_through<'v, 'c>(
-        ctx: &'c VarCtx<'v>,
-        kind: &'v ValueKind<Value>,
-    ) -> ValueKind<ValueWithCtx<'v, 'c>> {
-        kind.map_ref_with_special_handling_of_binders(
-            |val| ValueWithCtx {
-                val,
-                ctx: Cow::Borrowed(ctx),
-            },
-            |binder, val| ValueWithCtx {
-                val,
-                ctx: Cow::Owned(ctx.insert(binder)),
-            },
-        )
-    }
-
-    fn equiv_with_ctx<'v, 'c>(
-        ctx1: &'c VarCtx<'v>,
-        val1: &'v Value,
-        ctx2: &'c VarCtx<'v>,
-        val2: &'v Value,
-    ) -> bool {
-        use ValueKind::Var;
-        let kind1 = val1.as_whnf();
-        let kind2 = val2.as_whnf();
-
-        if let (Var(v1), Var(v2)) = (&*kind1, &*kind2) {
-            let b1 = v1.binder();
-            let b2 = v2.binder();
-            if b1.same_binder(&b2) {
-                return true;
-            }
-            match (ctx1.lookup(&b1), ctx2.lookup(&b2)) {
-                (Some(i), Some(j)) => i == j,
-                _ => false,
-            }
-        } else {
-            push_context_through(ctx1, &*kind1)
-                == push_context_through(ctx2, &*kind2)
-        }
-    }
-
-    equiv_with_ctx(&VarCtx::new(), val1, &VarCtx::new(), val2)
-}
-
 impl Shift for Value {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(Value(self.0.shift(delta, var)?))
@@ -646,9 +586,10 @@ impl Subst<Value> for ValueKind<Value> {
     }
 }
 
+// TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        equiv(self, other)
+        *self.as_whnf() == *other.as_whnf()
     }
 }
 impl std::cmp::Eq for Value {}

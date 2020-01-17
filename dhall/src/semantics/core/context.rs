@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::error::TypeError;
 use crate::semantics::core::value::Value;
@@ -17,28 +15,14 @@ enum CtxItem {
 #[derive(Debug, Clone)]
 pub(crate) struct TyCtx {
     ctx: Vec<(Binder, CtxItem)>,
-    /// Keeps track of the next free binder id to assign. Shared among all the contexts to ensure
-    /// unicity across the expression.
-    next_uid: Rc<RefCell<u64>>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct VarCtx<'b> {
-    ctx: Vec<&'b Binder>,
 }
 
 impl TyCtx {
     pub fn new() -> Self {
-        TyCtx {
-            ctx: Vec::new(),
-            next_uid: Rc::new(RefCell::new(0)),
-        }
+        TyCtx { ctx: Vec::new() }
     }
     fn with_vec(&self, vec: Vec<(Binder, CtxItem)>) -> Self {
-        TyCtx {
-            ctx: vec,
-            next_uid: self.next_uid.clone(),
-        }
+        TyCtx { ctx: vec }
     }
     pub fn insert_type(&self, x: &Binder, t: Value) -> Self {
         let mut vec = self.ctx.clone();
@@ -79,10 +63,7 @@ impl TyCtx {
         None
     }
     pub fn new_binder(&self, l: &Label) -> Binder {
-        let mut next_uid = self.next_uid.borrow_mut();
-        let uid = *next_uid;
-        *next_uid += 1;
-        Binder::new(l.clone(), uid)
+        Binder::new(l.clone())
     }
 
     /// Given a var that makes sense in the current context, map the given function in such a way
@@ -130,34 +111,6 @@ impl TyCtx {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         self.do_with_var(var, |var, i| Ok::<_, !>(i.subst_shift(&var, val)))
             .unwrap()
-    }
-}
-
-impl<'b> VarCtx<'b> {
-    pub fn new() -> Self {
-        VarCtx { ctx: Vec::new() }
-    }
-    pub fn insert(&self, binder: &'b Binder) -> Self {
-        VarCtx {
-            ctx: self.ctx.iter().copied().chain(Some(binder)).collect(),
-        }
-    }
-    pub fn lookup(&self, binder: &Binder) -> Option<usize> {
-        self.ctx
-            .iter()
-            .rev()
-            .enumerate()
-            .find(|(_, other)| binder.same_binder(other))
-            .map(|(i, _)| i)
-    }
-    pub fn lookup_by_name(&self, binder: &Binder) -> Option<usize> {
-        self.ctx
-            .iter()
-            .rev()
-            .filter(|other| binder.name() == other.name())
-            .enumerate()
-            .find(|(_, other)| binder.same_binder(other))
-            .map(|(i, _)| i)
     }
 }
 

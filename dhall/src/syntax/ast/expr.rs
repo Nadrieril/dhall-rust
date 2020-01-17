@@ -173,6 +173,15 @@ pub enum ExprKind<SubExpr, Embed> {
     Embed(Embed),
 }
 
+impl<Label> V<Label> {
+    pub(crate) fn name(&self) -> &Label {
+        &self.0
+    }
+    pub(crate) fn idx(&self) -> usize {
+        self.1
+    }
+}
+
 impl<SE, E> ExprKind<SE, E> {
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,

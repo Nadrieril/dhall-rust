@@ -9,21 +9,13 @@ use crate::syntax::{ExprKind, InterpolatedTextContents, Label, V};
 pub struct AlphaVar {
     normal: V<Label>,
     alpha: V<()>,
-    /// Id of the corresponding binder.
-    binder_uid: BinderUID,
 }
-
-type BinderUID = u64;
 
 // Exactly like a Label, but equality returns always true.
 // This is so that ValueKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct Binder {
     name: Label,
-    /// Id of the binder, unique across the current expression. Used to distinguish bindersinstead
-    /// of their name. The id won't actually be unique when there are imports around, but
-    /// typechecking ensures this can't cause a conflict.
-    uid: BinderUID,
 }
 
 pub(crate) trait Shift: Sized {
@@ -65,20 +57,18 @@ pub(crate) trait Subst<S> {
 }
 
 impl AlphaVar {
-    pub(crate) fn binder(&self) -> Binder {
-        Binder::new(self.normal.0.clone(), self.binder_uid)
+    pub(crate) fn to_var_maybe_alpha(&self, alpha: bool) -> V<Label> {
+        if alpha {
+            V("_".into(), self.alpha.idx())
+        } else {
+            self.normal.clone()
+        }
     }
 }
 
 impl Binder {
-    pub(crate) fn new(name: Label, uid: BinderUID) -> Self {
-        Binder { name, uid }
-    }
-    pub(crate) fn name(&self) -> &Label {
-        &self.name
-    }
-    pub(crate) fn same_binder(&self, other: &Binder) -> bool {
-        self.uid == other.uid
+    pub(crate) fn new(name: Label) -> Self {
+        Binder { name }
     }
     pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
         if alpha {
@@ -97,7 +87,6 @@ impl Shift for AlphaVar {
         Some(AlphaVar {
             normal: self.normal.shift(delta, &var.normal)?,
             alpha: self.alpha.shift(delta, &var.alpha)?,
-            binder_uid: self.binder_uid,
         })
     }
 }
@@ -108,6 +97,7 @@ impl std::cmp::PartialEq for AlphaVar {
         self.alpha == other.alpha
     }
 }
+/// Equality up to alpha-equivalence
 impl std::cmp::PartialEq for Binder {
     fn eq(&self, _other: &Self) -> bool {
         true
@@ -131,18 +121,14 @@ impl<'a> From<&'a Label> for AlphaVar {
         AlphaVar {
             normal: V(x.clone(), 0),
             alpha: V((), 0),
-            // TODO: evil evil but only used in shift
-            binder_uid: 0,
         }
     }
 }
 impl From<Binder> for AlphaVar {
     fn from(x: Binder) -> AlphaVar {
-        let binder_uid = x.uid;
         AlphaVar {
             normal: V(x.into(), 0),
             alpha: V((), 0),
-            binder_uid,
         }
     }
 }
