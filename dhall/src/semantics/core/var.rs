@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::syntax::{Label, V};
 
 /// Stores a pair of variables: a normal one and one
@@ -18,44 +16,6 @@ pub struct Binder {
     name: Label,
 }
 
-pub(crate) trait Shift: Sized {
-    // Shift an expression to move it around binders without changing the meaning of its free
-    // variables. Shift by 1 to move an expression under a binder. Shift by -1 to extract an
-    // expression from under a binder, if the expression does not refer to that bound variable.
-    // Returns None if delta was negative and the variable was free in the expression.
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self>;
-
-    fn over_binder<T>(&self, x: T) -> Option<Self>
-    where
-        T: Into<AlphaVar>,
-    {
-        self.shift(-1, &x.into())
-    }
-
-    fn under_binder<T>(&self, x: T) -> Self
-    where
-        T: Into<AlphaVar>,
-    {
-        // Can't fail since delta is positive
-        self.shift(1, &x.into()).unwrap()
-    }
-
-    fn under_multiple_binders(&self, shift_map: &HashMap<Label, usize>) -> Self
-    where
-        Self: Clone,
-    {
-        let mut v = self.clone();
-        for (x, n) in shift_map {
-            v = v.shift(*n as isize, &x.into()).unwrap();
-        }
-        v
-    }
-}
-
-pub(crate) trait Subst<S> {
-    fn subst_shift(&self, var: &AlphaVar, val: &S) -> Self;
-}
-
 impl AlphaVar {
     pub(crate) fn to_var_maybe_alpha(&self, alpha: bool) -> V<Label> {
         if alpha {
@@ -63,6 +23,20 @@ impl AlphaVar {
         } else {
             self.normal.clone()
         }
+    }
+
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(AlphaVar {
+            normal: self.normal.shift(delta, &var.normal)?,
+            alpha: self.alpha.shift(delta, &var.alpha)?,
+        })
+    }
+    pub(crate) fn under_binder<T>(&self, x: T) -> Self
+    where
+        T: Into<AlphaVar>,
+    {
+        // Can't fail since delta is positive
+        self.shift(1, &x.into()).unwrap()
     }
 }
 
@@ -79,15 +53,6 @@ impl Binder {
     }
     pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
-    }
-}
-
-impl Shift for AlphaVar {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(AlphaVar {
-            normal: self.normal.shift(delta, &var.normal)?,
-            alpha: self.alpha.shift(delta, &var.alpha)?,
-        })
     }
 }
 

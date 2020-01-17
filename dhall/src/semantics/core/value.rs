@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
-use crate::semantics::core::var::{AlphaVar, Binder, Shift, Subst};
+use crate::semantics::core::var::{AlphaVar, Binder};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{Normalized, NormalizedExpr, Typed};
@@ -238,6 +238,40 @@ impl Value {
         self.get_type()
             .expect("Internal type error: value is `Sort` but shouldn't be")
     }
+
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(Value(Rc::new(RefCell::new(
+            self.0.borrow().shift(delta, var)?,
+        ))))
+    }
+    pub(crate) fn over_binder<T>(&self, x: T) -> Option<Self>
+    where
+        T: Into<AlphaVar>,
+    {
+        self.shift(-1, &x.into())
+    }
+    pub(crate) fn under_binder<T>(&self, x: T) -> Self
+    where
+        T: Into<AlphaVar>,
+    {
+        // Can't fail since delta is positive
+        self.shift(1, &x.into()).unwrap()
+    }
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
+        match &*self.as_kind() {
+            // If the var matches, we can just reuse the provided value instead of copying it.
+            // We also check that the types match, if in debug mode.
+            ValueKind::Var(v) if v == var => {
+                if let Ok(self_ty) = self.get_type() {
+                    val.check_type(&self_ty.subst_shift(var, val));
+                }
+                val.clone()
+            }
+            _ => Value(Rc::new(RefCell::new(
+                self.0.borrow().subst_shift(var, val),
+            ))),
+        }
+    }
 }
 
 impl ValueInternal {
@@ -296,6 +330,27 @@ impl ValueInternal {
         match &self.ty {
             Some(t) => Ok(t),
             None => Err(TypeError::new(&TyCtx::new(), TypeMessage::Sort)),
+        }
+    }
+
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(ValueInternal {
+            form: self.form,
+            kind: self.kind.shift(delta, var)?,
+            ty: match &self.ty {
+                None => None,
+                Some(ty) => Some(ty.shift(delta, var)?),
+            },
+            span: self.span.clone(),
+        })
+    }
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
+        ValueInternal {
+            // The resulting value may not stay in wnhf after substitution
+            form: Unevaled,
+            kind: self.kind.subst_shift(var, val),
+            ty: self.ty.as_ref().map(|x| x.subst_shift(var, val)),
+            span: self.span.clone(),
         }
     }
 }
@@ -378,6 +433,28 @@ impl ValueKind<Value> {
     pub(crate) fn from_builtin(b: Builtin) -> ValueKind<Value> {
         ValueKind::AppliedBuiltin(b, vec![])
     }
+
+    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+        Some(match self {
+            ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
+            _ => self.traverse_ref_with_special_handling_of_binders(
+                |x| Ok(x.shift(delta, var)?),
+                |b, x| Ok(x.shift(delta, &var.under_binder(b))?),
+            )?,
+        })
+    }
+    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
+        match self {
+            ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
+            ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
+            _ => self.map_ref_with_special_handling_of_binders(
+                |x| x.subst_shift(var, val),
+                |b, x| {
+                    x.subst_shift(&var.under_binder(b), &val.under_binder(b))
+                },
+            ),
+        }
+    }
 }
 
 impl<V> ValueKind<V> {
@@ -415,85 +492,6 @@ impl<V> ValueKind<V> {
         self.map_ref_with_special_handling_of_binders(&map_val, |_, x| {
             map_val(x)
         })
-    }
-}
-
-impl Shift for Value {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(Value(Rc::new(RefCell::new(
-            self.0.borrow().shift(delta, var)?,
-        ))))
-    }
-}
-
-impl Shift for ValueInternal {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(ValueInternal {
-            form: self.form,
-            kind: self.kind.shift(delta, var)?,
-            ty: match &self.ty {
-                None => None,
-                Some(ty) => Some(ty.shift(delta, var)?),
-            },
-            span: self.span.clone(),
-        })
-    }
-}
-
-impl Shift for ValueKind<Value> {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
-            _ => self.traverse_ref_with_special_handling_of_binders(
-                |x| Ok(x.shift(delta, var)?),
-                |b, x| Ok(x.shift(delta, &var.under_binder(b))?),
-            )?,
-        })
-    }
-}
-
-impl Subst<Value> for Value {
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        match &*self.as_kind() {
-            // If the var matches, we can just reuse the provided value instead of copying it.
-            // We also check that the types match, if in debug mode.
-            ValueKind::Var(v) if v == var => {
-                if let Ok(self_ty) = self.get_type() {
-                    val.check_type(&self_ty.subst_shift(var, val));
-                }
-                val.clone()
-            }
-            _ => Value(Rc::new(RefCell::new(
-                self.0.borrow().subst_shift(var, val),
-            ))),
-        }
-    }
-}
-
-impl Subst<Value> for ValueInternal {
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        ValueInternal {
-            // The resulting value may not stay in wnhf after substitution
-            form: Unevaled,
-            kind: self.kind.subst_shift(var, val),
-            ty: self.ty.as_ref().map(|x| x.subst_shift(var, val)),
-            span: self.span.clone(),
-        }
-    }
-}
-
-impl Subst<Value> for ValueKind<Value> {
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        match self {
-            ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
-            ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
-            _ => self.map_ref_with_special_handling_of_binders(
-                |x| x.subst_shift(var, val),
-                |b, x| {
-                    x.subst_shift(&var.under_binder(b), &val.under_binder(b))
-                },
-            ),
-        }
     }
 }
 

@@ -3,7 +3,6 @@ use std::convert::TryInto;
 
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
-use crate::semantics::core::var::Subst;
 use crate::semantics::phase::typecheck::{rc, typecheck};
 use crate::semantics::phase::Normalized;
 use crate::syntax;

@@ -6,7 +6,7 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
-use crate::semantics::{Binder, Shift, Subst, Value, ValueKind};
+use crate::semantics::{Binder, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, Span,
