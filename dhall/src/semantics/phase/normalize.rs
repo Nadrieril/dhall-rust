@@ -590,9 +590,9 @@ pub(crate) fn normalize_one_layer(
     ty: &Value,
 ) -> ValueKind<Value> {
     use ValueKind::{
-        AppliedBuiltin, BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit,
-        IntegerLit, NEListLit, NEOptionalLit, NaturalLit, RecordLit, TextLit,
-        UnionConstructor, UnionLit, UnionType,
+        BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
+        NEOptionalLit, NaturalLit, RecordLit, TextLit, UnionConstructor,
+        UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -609,6 +609,7 @@ pub(crate) fn normalize_one_layer(
         | ExprKind::Builtin(_)
         | ExprKind::Var(_)
         | ExprKind::Annot(_, _)
+        | ExprKind::EmptyListLit(_)
         | ExprKind::RecordType(_)
         | ExprKind::UnionType(_) => {
             unreachable!("This case should have been handled in typecheck")
@@ -620,19 +621,6 @@ pub(crate) fn normalize_one_layer(
         ExprKind::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
         ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
-        ExprKind::EmptyListLit(ref t) => {
-            // Check if the type is of the form `List x`
-            let t_borrow = t.as_whnf();
-            match &*t_borrow {
-                AppliedBuiltin(Builtin::List, args) if args.len() == 1 => {
-                    Ret::ValueKind(EmptyListLit(args[0].clone()))
-                }
-                _ => {
-                    drop(t_borrow);
-                    Ret::Expr(expr)
-                }
-            }
-        }
         ExprKind::NEListLit(elts) => {
             Ret::ValueKind(NEListLit(elts.into_iter().collect()))
         }

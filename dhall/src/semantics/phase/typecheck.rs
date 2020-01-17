@@ -433,12 +433,18 @@ fn type_last_layer(
             RetTypeOnly(y.get_type()?)
         }
         EmptyListLit(t) => {
-            match &*t.as_whnf() {
+            let arg = match &*t.as_whnf() {
                 ValueKind::AppliedBuiltin(syntax::Builtin::List, args)
-                    if args.len() == 1 => {}
+                    if args.len() == 1 =>
+                {
+                    args[0].clone()
+                }
                 _ => return mkerr(InvalidListType(t.clone())),
-            }
-            RetTypeOnly(t.clone())
+            };
+            RetWhole(Value::from_kind_and_type(
+                ValueKind::EmptyListLit(arg),
+                t.clone(),
+            ))
         }
         NEListLit(xs) => {
             let mut iter = xs.iter().enumerate();
