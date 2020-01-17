@@ -240,9 +240,7 @@ impl Value {
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(Value(Rc::new(RefCell::new(
-            self.0.borrow().shift(delta, var)?,
-        ))))
+        Some(self.0.borrow().shift(delta, var)?.into_value())
     }
     pub(crate) fn over_binder<T>(&self, x: T) -> Option<Self>
     where
@@ -257,6 +255,20 @@ impl Value {
         // Can't fail since delta is positive
         self.shift(1, &x.into()).unwrap()
     }
+    pub(crate) fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self
+    where
+        Self: Clone,
+    {
+        let mut v = self.clone();
+        for (x, n) in shift_map {
+            // Can't fail since delta is positive
+            v = v.shift(*n as isize, &x.into()).unwrap();
+        }
+        v
+    }
     pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match &*self.as_kind() {
             // If the var matches, we can just reuse the provided value instead of copying it.
@@ -267,9 +279,7 @@ impl Value {
                 }
                 val.clone()
             }
-            _ => Value(Rc::new(RefCell::new(
-                self.0.borrow().subst_shift(var, val),
-            ))),
+            _ => self.0.borrow().subst_shift(var, val).into_value(),
         }
     }
 }
@@ -434,7 +444,7 @@ impl ValueKind<Value> {
         ValueKind::AppliedBuiltin(b, vec![])
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
             ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
             _ => self.traverse_ref_with_special_handling_of_binders(
@@ -443,7 +453,7 @@ impl ValueKind<Value> {
             )?,
         })
     }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
             ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
             ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),

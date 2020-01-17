@@ -17,27 +17,6 @@ pub(crate) struct TyCtx {
     ctx: Vec<(Binder, CtxItem)>,
 }
 
-impl CtxItem {
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            CtxItem::Kept(v, t) => {
-                CtxItem::Kept(v.shift(delta, var)?, t.shift(delta, var)?)
-            }
-            CtxItem::Replaced(e) => CtxItem::Replaced(e.shift(delta, var)?),
-        })
-    }
-    fn under_multiple_binders(&self, shift_map: &HashMap<Label, usize>) -> Self
-    where
-        Self: Clone,
-    {
-        let mut v = self.clone();
-        for (x, n) in shift_map {
-            v = v.shift(*n as isize, &x.into()).unwrap();
-        }
-        v
-    }
-}
-
 impl TyCtx {
     pub fn new() -> Self {
         TyCtx { ctx: Vec::new() }
@@ -66,12 +45,16 @@ impl TyCtx {
             let l = b.to_label();
             match var.over_binder(&l) {
                 None => {
-                    let i = i.under_multiple_binders(&shift_map);
                     return Some(match i {
-                        CtxItem::Kept(newvar, t) => {
-                            Value::from_kind_and_type(ValueKind::Var(newvar), t)
+                        CtxItem::Kept(newvar, t) => Value::from_kind_and_type(
+                            ValueKind::Var(
+                                newvar.under_multiple_binders(&shift_map),
+                            ),
+                            t.under_multiple_binders(&shift_map),
+                        ),
+                        CtxItem::Replaced(v) => {
+                            v.under_multiple_binders(&shift_map)
                         }
-                        CtxItem::Replaced(v) => v,
                     });
                 }
                 Some(newvar) => var = newvar,

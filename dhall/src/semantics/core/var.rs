@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::syntax::{Label, V};
 
 /// Stores a pair of variables: a normal one and one
@@ -37,6 +39,20 @@ impl AlphaVar {
     {
         // Can't fail since delta is positive
         self.shift(1, &x.into()).unwrap()
+    }
+    pub(crate) fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self
+    where
+        Self: Clone,
+    {
+        let mut v = self.clone();
+        for (x, n) in shift_map {
+            // Can't fail since delta is positive
+            v = v.shift(*n as isize, &x.into()).unwrap();
+        }
+        v
     }
 }
 
