@@ -209,9 +209,9 @@ impl Value {
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {
-            ValueKind::Pi(x, t, e) => {
+            ValueKind::Pi(_, t, e) => {
                 v.check_type(t);
-                e.subst_shift(&x.into(), &v)
+                e.subst_shift(&AlphaVar::default(), &v)
             }
             _ => unreachable!("Internal type error"),
         };
@@ -242,18 +242,12 @@ impl Value {
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(self.as_internal().shift(delta, var)?.into_value())
     }
-    pub(crate) fn over_binder<T>(&self, x: T) -> Option<Self>
-    where
-        T: Into<AlphaVar>,
-    {
-        self.shift(-1, &x.into())
+    pub(crate) fn over_binder(&self) -> Option<Self> {
+        self.shift(-1, &AlphaVar::default())
     }
-    pub(crate) fn under_binder<T>(&self, x: T) -> Self
-    where
-        T: Into<AlphaVar>,
-    {
+    pub(crate) fn under_binder(&self) -> Self {
         // Can't fail since delta is positive
-        self.shift(1, &x.into()).unwrap()
+        self.shift(1, &AlphaVar::default()).unwrap()
     }
     pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match &*self.as_kind() {
@@ -456,18 +450,18 @@ impl ValueKind<Value> {
             ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
             _ => self.traverse_ref_with_special_handling_of_binders(
                 |x| Ok(x.shift(delta, var)?),
-                |b, _, x| Ok(x.shift(delta, &var.under_binder(b))?),
+                |_, _, x| Ok(x.shift(delta, &var.under_binder())?),
             )?,
         })
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
             ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
-            ValueKind::Var(v) => ValueKind::Var(v.over_binder(var).unwrap()),
+            ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
             _ => self.map_ref_with_special_handling_of_binders(
                 |x| x.subst_shift(var, val),
-                |b, _, x| {
-                    x.subst_shift(&var.under_binder(b), &val.under_binder(b))
+                |_, _, x| {
+                    x.subst_shift(&var.under_binder(), &val.under_binder())
                 },
             ),
         }

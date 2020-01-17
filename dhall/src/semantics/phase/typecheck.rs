@@ -6,7 +6,7 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
-use crate::semantics::{Binder, Value, ValueKind};
+use crate::semantics::{AlphaVar, Binder, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, Span,
@@ -385,15 +385,15 @@ fn type_last_layer(
         App(f, a) => {
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();
-            let (x, tx, tb) = match &*tf_borrow {
-                ValueKind::Pi(x, tx, tb) => (x, tx, tb),
+            let (tx, tb) = match &*tf_borrow {
+                ValueKind::Pi(_, tx, tb) => (tx, tb),
                 _ => return mkerr(NotAFunction(f.clone())),
             };
             if &a.get_type()? != tx {
                 return mkerr(TypeMismatch(f.clone(), tx.clone(), a.clone()));
             }
 
-            let ret = tb.subst_shift(&x.into(), a);
+            let ret = tb.subst_shift(&AlphaVar::default(), a);
             ret.normalize_nf();
             RetTypeOnly(ret)
         }
@@ -500,13 +500,12 @@ fn type_last_layer(
                         ValueKind::UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(t)) => {
-                                let x = ctx.new_binder(x);
                                 RetTypeOnly(
                                     tck_pi_type(
                                         ctx,
-                                        x.clone(),
+                                        ctx.new_binder(x),
                                         t.clone(),
-                                        r.under_binder(x),
+                                        r.under_binder(),
                                     )?
                                 )
                             },
@@ -719,8 +718,8 @@ fn type_last_layer(
                         // Union alternative with type
                         Some(Some(variant_type)) => {
                             let handler_type_borrow = handler_type.as_whnf();
-                            let (x, tx, tb) = match &*handler_type_borrow {
-                                ValueKind::Pi(x, tx, tb) => (x, tx, tb),
+                            let (tx, tb) = match &*handler_type_borrow {
+                                ValueKind::Pi(_, tx, tb) => (tx, tb),
                                 _ => {
                                     return mkerr(NotAFunction(
                                         handler_type.clone(),
@@ -736,8 +735,9 @@ fn type_last_layer(
                                 ));
                             }
 
-                            // Extract `tb` from under the `x` binder. Fails is `x` was free in `tb`.
-                            match tb.over_binder(x) {
+                            // Extract `tb` from under the binder. Fails if the variable was used
+                            // in `tb`.
+                            match tb.over_binder() {
                                 Some(x) => x,
                                 None => return mkerr(
                                     MergeHandlerReturnTypeMustNotBeDependent,

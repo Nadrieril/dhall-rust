@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::semantics::core::value::Value;
-use crate::semantics::core::value::ValueKind;
 use crate::semantics::phase::typecheck::{rc, typecheck};
 use crate::semantics::phase::Normalized;
+use crate::semantics::{AlphaVar, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
@@ -367,9 +366,9 @@ pub(crate) fn apply_builtin(
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
-        ValueKind::Lam(x, _, e) => {
-            e.subst_shift(&x.into(), &a).to_whnf_check_type(ty)
-        }
+        ValueKind::Lam(_, _, e) => e
+            .subst_shift(&AlphaVar::default(), &a)
+            .to_whnf_check_type(ty),
         ValueKind::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();

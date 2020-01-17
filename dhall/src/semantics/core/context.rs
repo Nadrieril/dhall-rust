@@ -6,7 +6,9 @@ use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
 enum CtxItem {
-    Kept(AlphaVar, Value),
+    // Variable is bound with given type
+    Kept(Value),
+    // Variable has been replaced by corresponding value
     Replaced(Value),
 }
 
@@ -24,7 +26,7 @@ impl TyCtx {
     }
     pub fn insert_type(&self, x: &Binder, t: Value) -> Self {
         let mut vec = self.ctx.clone();
-        vec.push((x.clone(), CtxItem::Kept(x.into(), t.under_binder(x))));
+        vec.push((x.clone(), CtxItem::Kept(t.under_binder())));
         self.with_vec(vec)
     }
     pub fn insert_value(
@@ -47,7 +49,7 @@ impl TyCtx {
                     Some(newvar) => newvar,
                     None => break item,
                 };
-                if let CtxItem::Kept(_, _) = item {
+                if let CtxItem::Kept(_) = item {
                     shift_delta += 1;
                 }
             } else {
@@ -57,8 +59,8 @@ impl TyCtx {
         };
 
         let v = match found_item {
-            CtxItem::Kept(newvar, t) => Value::from_kind_and_type(
-                ValueKind::Var(newvar.clone()),
+            CtxItem::Kept(t) => Value::from_kind_and_type(
+                ValueKind::Var(AlphaVar::default()),
                 t.clone(),
             ),
             CtxItem::Replaced(v) => v.clone(),

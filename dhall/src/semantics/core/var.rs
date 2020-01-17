@@ -26,15 +26,9 @@ impl AlphaVar {
             alpha: self.alpha.shift(delta, &var.alpha)?,
         })
     }
-    pub(crate) fn under_binder<T>(&self, x: T) -> Self
-    where
-        T: Into<AlphaVar>,
-    {
+    pub(crate) fn under_binder(&self) -> Self {
         // Can't fail since delta is positive
-        self.shift(1, &x.into()).unwrap()
-    }
-    pub(crate) fn over_binder(&self, x: &AlphaVar) -> Option<Self> {
-        self.shift(-1, x)
+        self.shift(1, &AlphaVar::default()).unwrap()
     }
 }
 
@@ -79,17 +73,6 @@ impl std::fmt::Debug for AlphaVar {
 impl std::fmt::Debug for Binder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Binder({})", &self.name)
-    }
-}
-
-impl From<Binder> for AlphaVar {
-    fn from(x: Binder) -> AlphaVar {
-        AlphaVar { alpha: V((), 0) }
-    }
-}
-impl<'a> From<&'a Binder> for AlphaVar {
-    fn from(x: &'a Binder) -> AlphaVar {
-        AlphaVar { alpha: V((), 0) }
     }
 }
 
