@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
 use crate::syntax::*;
@@ -302,7 +304,7 @@ impl<E> Expr<E> {
 }
 
 impl<Label: PartialEq + Clone> V<Label> {
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
+    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
         let V(x, n) = var;
         let V(y, m) = self;
         Some(if x == y && n <= m {
@@ -312,8 +314,32 @@ impl<Label: PartialEq + Clone> V<Label> {
         })
     }
 
-    pub fn over_binder(&self, x: &Label) -> Option<Self> {
+    pub(crate) fn over_binder(&self, x: &Label) -> Option<Self> {
         self.shift(-1, &V(x.clone(), 0))
+    }
+}
+
+impl V<Label> {
+    pub(crate) fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self {
+        let name = &self.0;
+        let idx = self.1 + shift_map.get(name).unwrap_or(&0);
+        V(name.clone(), idx)
+    }
+}
+
+impl V<()> {
+    pub(crate) fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self {
+        let mut idx = self.1;
+        for (_, n) in shift_map {
+            idx += n;
+        }
+        V((), idx)
     }
 }
 
@@ -363,8 +389,7 @@ impl From<NaiveDouble> for f64 {
     }
 }
 
-/// This is only for the specific `Label` type, not generic
-impl From<Label> for V<Label> {
+impl<Label> From<Label> for V<Label> {
     fn from(x: Label) -> V<Label> {
         V(x, 0)
     }

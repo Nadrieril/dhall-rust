@@ -40,19 +40,17 @@ impl AlphaVar {
         // Can't fail since delta is positive
         self.shift(1, &x.into()).unwrap()
     }
+    pub(crate) fn over_binder(&self, x: &AlphaVar) -> Option<Self> {
+        self.shift(-1, x)
+    }
     pub(crate) fn under_multiple_binders(
         &self,
         shift_map: &HashMap<Label, usize>,
-    ) -> Self
-    where
-        Self: Clone,
-    {
-        let mut v = self.clone();
-        for (x, n) in shift_map {
-            // Can't fail since delta is positive
-            v = v.shift(*n as isize, &x.into()).unwrap();
+    ) -> Self {
+        AlphaVar {
+            normal: self.normal.under_multiple_binders(shift_map),
+            alpha: self.alpha.under_multiple_binders(shift_map),
         }
-        v
     }
 }
 

@@ -10,12 +10,13 @@ pub(crate) trait ValueKindVisitor<'a, V1, V2>: Sized {
     type Error;
 
     fn visit_val(&mut self, val: &'a V1) -> Result<V2, Self::Error>;
-    fn visit_val_under_binder(
+    fn visit_binder(
         mut self,
         _label: &'a Binder,
+        ty: &'a V1,
         val: &'a V1,
-    ) -> Result<V2, Self::Error> {
-        self.visit_val(val)
+    ) -> Result<(V2, V2), Self::Error> {
+        Ok((self.visit_val(ty)?, self.visit_val(val)?))
     }
     fn visit_vec(&mut self, x: &'a [V1]) -> Result<Vec<V2>, Self::Error> {
         x.iter().map(|e| self.visit_val(e)).collect()
@@ -72,10 +73,12 @@ where
     use ValueKind::*;
     Ok(match input {
         Lam(l, t, e) => {
-            Lam(l.clone(), v.visit_val(t)?, v.visit_val_under_binder(l, e)?)
+            let (t, e) = v.visit_binder(l, t, e)?;
+            Lam(l.clone(), t, e)
         }
         Pi(l, t, e) => {
-            Pi(l.clone(), v.visit_val(t)?, v.visit_val_under_binder(l, e)?)
+            let (t, e) = v.visit_binder(l, t, e)?;
+            Pi(l.clone(), t, e)
         }
         AppliedBuiltin(b, xs) => AppliedBuiltin(*b, v.visit_vec(xs)?),
         Var(v) => Var(v.clone()),
@@ -117,18 +120,21 @@ impl<'a, V1, V2, Err, F1, F2> ValueKindVisitor<'a, V1, V2>
 where
     V1: 'a,
     F1: FnMut(&'a V1) -> Result<V2, Err>,
-    F2: FnOnce(&'a Binder, &'a V1) -> Result<V2, Err>,
+    F2: for<'b> FnOnce(&'a Binder, &'b V1, &'a V1) -> Result<V2, Err>,
 {
     type Error = Err;
 
     fn visit_val(&mut self, val: &'a V1) -> Result<V2, Self::Error> {
         (self.visit_val)(val)
     }
-    fn visit_val_under_binder(
-        self,
+    fn visit_binder<'b>(
+        mut self,
         label: &'a Binder,
+        ty: &'a V1,
         val: &'a V1,
-    ) -> Result<V2, Self::Error> {
-        (self.visit_under_binder)(label, val)
+    ) -> Result<(V2, V2), Self::Error> {
+        let val = (self.visit_under_binder)(label, ty, val)?;
+        let ty = (self.visit_val)(ty)?;
+        Ok((ty, val))
     }
 }

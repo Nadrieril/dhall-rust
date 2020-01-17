@@ -240,7 +240,7 @@ impl Value {
     }
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(self.0.borrow().shift(delta, var)?.into_value())
+        Some(self.as_internal().shift(delta, var)?.into_value())
     }
     pub(crate) fn over_binder<T>(&self, x: T) -> Option<Self>
     where
@@ -258,16 +258,10 @@ impl Value {
     pub(crate) fn under_multiple_binders(
         &self,
         shift_map: &HashMap<Label, usize>,
-    ) -> Self
-    where
-        Self: Clone,
-    {
-        let mut v = self.clone();
-        for (x, n) in shift_map {
-            // Can't fail since delta is positive
-            v = v.shift(*n as isize, &x.into()).unwrap();
-        }
-        v
+    ) -> Self {
+        self.as_internal()
+            .under_multiple_binders(shift_map)
+            .into_value()
     }
     pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match &*self.as_kind() {
@@ -279,9 +273,30 @@ impl Value {
                 }
                 val.clone()
             }
-            _ => self.0.borrow().subst_shift(var, val).into_value(),
+            _ => self.as_internal().subst_shift(var, val).into_value(),
         }
     }
+    // pub(crate) fn subst_ctx(&self, ctx: &TyCtx) -> Self {
+    //     match &*self.as_kind() {
+    //         ValueKind::Var(var) => match ctx.lookup_alpha(var) {
+    //             Some(val) => val,
+    //             None => unreachable!("Internal type error"),
+    //         },
+    //         kind => {
+    //             let kind = kind.map_ref_with_special_handling_of_binders(
+    //                 |x| x.subst_ctx(ctx),
+    //                 |b, t, x| x.subst_ctx(&ctx.insert_type(b, t.clone())),
+    //             );
+    //             ValueInternal {
+    //                 form: Unevaled,
+    //                 kind,
+    //                 ty: self.as_internal().ty.clone(),
+    //                 span: self.as_internal().span.clone(),
+    //             }
+    //             .into_value()
+    //         }
+    //     }
+    // }
 }
 
 impl ValueInternal {
@@ -343,7 +358,7 @@ impl ValueInternal {
         }
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
+    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(ValueInternal {
             form: self.form,
             kind: self.kind.shift(delta, var)?,
@@ -354,7 +369,21 @@ impl ValueInternal {
             span: self.span.clone(),
         })
     }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
+    fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self {
+        ValueInternal {
+            form: self.form,
+            kind: self.kind.under_multiple_binders(shift_map),
+            ty: match &self.ty {
+                None => None,
+                Some(ty) => Some(ty.under_multiple_binders(shift_map)),
+            },
+            span: self.span.clone(),
+        }
+    }
+    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
@@ -449,17 +478,40 @@ impl ValueKind<Value> {
             ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
             _ => self.traverse_ref_with_special_handling_of_binders(
                 |x| Ok(x.shift(delta, var)?),
-                |b, x| Ok(x.shift(delta, &var.under_binder(b))?),
+                |b, _, x| Ok(x.shift(delta, &var.under_binder(b))?),
             )?,
         })
+    }
+    #[allow(dead_code)]
+    fn under_multiple_binders(
+        &self,
+        shift_map: &HashMap<Label, usize>,
+    ) -> Self {
+        match self {
+            ValueKind::Var(v) => {
+                ValueKind::Var(v.under_multiple_binders(shift_map))
+            }
+            _ => self.map_ref_with_special_handling_of_binders(
+                |v| v.under_multiple_binders(shift_map),
+                |b, _, v| {
+                    let mut v = v.clone();
+                    for (x, n) in shift_map {
+                        let x: AlphaVar = x.into();
+                        // Can't fail since delta is positive
+                        v = v.shift(*n as isize, &x.under_binder(b)).unwrap();
+                    }
+                    v
+                },
+            ),
+        }
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
             ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
-            ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
+            ValueKind::Var(v) => ValueKind::Var(v.over_binder(var).unwrap()),
             _ => self.map_ref_with_special_handling_of_binders(
                 |x| x.subst_shift(var, val),
-                |b, x| {
+                |b, _, x| {
                     x.subst_shift(&var.under_binder(b), &val.under_binder(b))
                 },
             ),
@@ -471,7 +523,11 @@ impl<V> ValueKind<V> {
     pub(crate) fn traverse_ref_with_special_handling_of_binders<'a, V2, E>(
         &'a self,
         visit_val: impl FnMut(&'a V) -> Result<V2, E>,
-        visit_under_binder: impl FnMut(&'a Binder, &'a V) -> Result<V2, E>,
+        visit_under_binder: impl for<'b> FnMut(
+            &'a Binder,
+            &'b V,
+            &'a V,
+        ) -> Result<V2, E>,
     ) -> Result<ValueKind<V2>, E> {
         use crate::semantics::visitor;
         use visitor::ValueKindVisitor;
@@ -485,12 +541,12 @@ impl<V> ValueKind<V> {
     pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
         &'a self,
         mut map_val: impl FnMut(&'a V) -> V2,
-        mut map_under_binder: impl FnMut(&'a Binder, &'a V) -> V2,
+        mut map_under_binder: impl for<'b> FnMut(&'a Binder, &'b V, &'a V) -> V2,
     ) -> ValueKind<V2> {
         use crate::syntax::trivial_result;
         trivial_result(self.traverse_ref_with_special_handling_of_binders(
             |x| Ok(map_val(x)),
-            |l, x| Ok(map_under_binder(l, x)),
+            |l, t, x| Ok(map_under_binder(l, t, x)),
         ))
     }
 
@@ -499,7 +555,7 @@ impl<V> ValueKind<V> {
         &'a self,
         map_val: impl Fn(&'a V) -> V2,
     ) -> ValueKind<V2> {
-        self.map_ref_with_special_handling_of_binders(&map_val, |_, x| {
+        self.map_ref_with_special_handling_of_binders(&map_val, |_, _, x| {
             map_val(x)
         })
     }
