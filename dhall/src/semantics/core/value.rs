@@ -381,21 +381,30 @@ impl ValueKind<Value> {
 }
 
 impl<V> ValueKind<V> {
+    pub(crate) fn traverse_ref_with_special_handling_of_binders<'a, V2, E>(
+        &'a self,
+        visit_val: impl FnMut(&'a V) -> Result<V2, E>,
+        visit_under_binder: impl FnMut(&'a Binder, &'a V) -> Result<V2, E>,
+    ) -> Result<ValueKind<V2>, E> {
+        use crate::semantics::visitor;
+        use visitor::ValueKindVisitor;
+        visitor::TraverseRefWithBindersVisitor {
+            visit_val,
+            visit_under_binder,
+        }
+        .visit(self)
+    }
+
     pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
         &'a self,
         mut map_val: impl FnMut(&'a V) -> V2,
         mut map_under_binder: impl FnMut(&'a Binder, &'a V) -> V2,
     ) -> ValueKind<V2> {
-        use crate::semantics::visitor;
         use crate::syntax::trivial_result;
-        use visitor::ValueKindVisitor;
-        trivial_result(
-            visitor::TraverseRefWithBindersVisitor {
-                visit_val: |x| Ok(map_val(x)),
-                visit_under_binder: |l, x| Ok(map_under_binder(l, x)),
-            }
-            .visit(self),
-        )
+        trivial_result(self.traverse_ref_with_special_handling_of_binders(
+            |x| Ok(map_val(x)),
+            |l, x| Ok(map_under_binder(l, x)),
+        ))
     }
 
     #[allow(dead_code)]
@@ -411,7 +420,9 @@ impl<V> ValueKind<V> {
 
 impl Shift for Value {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(Value(self.0.shift(delta, var)?))
+        Some(Value(Rc::new(RefCell::new(
+            self.0.borrow().shift(delta, var)?,
+        ))))
     }
 }
 
@@ -420,7 +431,10 @@ impl Shift for ValueInternal {
         Some(ValueInternal {
             form: self.form,
             kind: self.kind.shift(delta, var)?,
-            ty: self.ty.shift(delta, var)?,
+            ty: match &self.ty {
+                None => None,
+                Some(ty) => Some(ty.shift(delta, var)?),
+            },
             span: self.span.clone(),
         })
     }
@@ -429,64 +443,11 @@ impl Shift for ValueInternal {
 impl Shift for ValueKind<Value> {
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ValueKind::Lam(x, t, e) => ValueKind::Lam(
-                x.clone(),
-                t.shift(delta, var)?,
-                e.shift(delta, &var.under_binder(x))?,
-            ),
-            ValueKind::AppliedBuiltin(b, args) => {
-                ValueKind::AppliedBuiltin(*b, args.shift(delta, var)?)
-            }
-            ValueKind::Pi(x, t, e) => ValueKind::Pi(
-                x.clone(),
-                t.shift(delta, var)?,
-                e.shift(delta, &var.under_binder(x))?,
-            ),
             ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
-            ValueKind::Const(c) => ValueKind::Const(*c),
-            ValueKind::BoolLit(b) => ValueKind::BoolLit(*b),
-            ValueKind::NaturalLit(n) => ValueKind::NaturalLit(*n),
-            ValueKind::IntegerLit(n) => ValueKind::IntegerLit(*n),
-            ValueKind::DoubleLit(n) => ValueKind::DoubleLit(*n),
-            ValueKind::EmptyOptionalLit(tth) => {
-                ValueKind::EmptyOptionalLit(tth.shift(delta, var)?)
-            }
-            ValueKind::NEOptionalLit(th) => {
-                ValueKind::NEOptionalLit(th.shift(delta, var)?)
-            }
-            ValueKind::EmptyListLit(tth) => {
-                ValueKind::EmptyListLit(tth.shift(delta, var)?)
-            }
-            ValueKind::NEListLit(elts) => {
-                ValueKind::NEListLit(elts.shift(delta, var)?)
-            }
-            ValueKind::RecordLit(kvs) => {
-                ValueKind::RecordLit(kvs.shift(delta, var)?)
-            }
-            ValueKind::RecordType(kvs) => {
-                ValueKind::RecordType(kvs.shift(delta, var)?)
-            }
-            ValueKind::UnionType(kts) => {
-                ValueKind::UnionType(kts.shift(delta, var)?)
-            }
-            ValueKind::UnionConstructor(x, kts) => {
-                ValueKind::UnionConstructor(x.clone(), kts.shift(delta, var)?)
-            }
-            ValueKind::UnionLit(x, v, kts) => ValueKind::UnionLit(
-                x.clone(),
-                v.shift(delta, var)?,
-                kts.shift(delta, var)?,
-            ),
-            ValueKind::TextLit(elts) => {
-                ValueKind::TextLit(elts.shift(delta, var)?)
-            }
-            ValueKind::Equivalence(x, y) => ValueKind::Equivalence(
-                x.shift(delta, var)?,
-                y.shift(delta, var)?,
-            ),
-            ValueKind::PartialExpr(e) => {
-                ValueKind::PartialExpr(e.shift(delta, var)?)
-            }
+            _ => self.traverse_ref_with_special_handling_of_binders(
+                |x| Ok(x.shift(delta, var)?),
+                |b, x| Ok(x.shift(delta, &var.under_binder(b))?),
+            )?,
         })
     }
 }
@@ -502,7 +463,9 @@ impl Subst<Value> for Value {
                 }
                 val.clone()
             }
-            _ => Value(self.0.subst_shift(var, val)),
+            _ => Value(Rc::new(RefCell::new(
+                self.0.borrow().subst_shift(var, val),
+            ))),
         }
     }
 }
@@ -513,7 +476,7 @@ impl Subst<Value> for ValueInternal {
             // The resulting value may not stay in wnhf after substitution
             form: Unevaled,
             kind: self.kind.subst_shift(var, val),
-            ty: self.ty.subst_shift(var, val),
+            ty: self.ty.as_ref().map(|x| x.subst_shift(var, val)),
             span: self.span.clone(),
         }
     }
@@ -522,65 +485,13 @@ impl Subst<Value> for ValueInternal {
 impl Subst<Value> for ValueKind<Value> {
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
-            ValueKind::AppliedBuiltin(b, args) => {
-                ValueKind::AppliedBuiltin(*b, args.subst_shift(var, val))
-            }
-            ValueKind::PartialExpr(e) => {
-                ValueKind::PartialExpr(e.subst_shift(var, val))
-            }
-            ValueKind::TextLit(elts) => {
-                ValueKind::TextLit(elts.subst_shift(var, val))
-            }
-            ValueKind::Lam(x, t, e) => ValueKind::Lam(
-                x.clone(),
-                t.subst_shift(var, val),
-                e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
-            ),
-            ValueKind::Pi(x, t, e) => ValueKind::Pi(
-                x.clone(),
-                t.subst_shift(var, val),
-                e.subst_shift(&var.under_binder(x), &val.under_binder(x)),
-            ),
             ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
             ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
-            ValueKind::Const(c) => ValueKind::Const(*c),
-            ValueKind::BoolLit(b) => ValueKind::BoolLit(*b),
-            ValueKind::NaturalLit(n) => ValueKind::NaturalLit(*n),
-            ValueKind::IntegerLit(n) => ValueKind::IntegerLit(*n),
-            ValueKind::DoubleLit(n) => ValueKind::DoubleLit(*n),
-            ValueKind::EmptyOptionalLit(tth) => {
-                ValueKind::EmptyOptionalLit(tth.subst_shift(var, val))
-            }
-            ValueKind::NEOptionalLit(th) => {
-                ValueKind::NEOptionalLit(th.subst_shift(var, val))
-            }
-            ValueKind::EmptyListLit(tth) => {
-                ValueKind::EmptyListLit(tth.subst_shift(var, val))
-            }
-            ValueKind::NEListLit(elts) => {
-                ValueKind::NEListLit(elts.subst_shift(var, val))
-            }
-            ValueKind::RecordLit(kvs) => {
-                ValueKind::RecordLit(kvs.subst_shift(var, val))
-            }
-            ValueKind::RecordType(kvs) => {
-                ValueKind::RecordType(kvs.subst_shift(var, val))
-            }
-            ValueKind::UnionType(kts) => {
-                ValueKind::UnionType(kts.subst_shift(var, val))
-            }
-            ValueKind::UnionConstructor(x, kts) => ValueKind::UnionConstructor(
-                x.clone(),
-                kts.subst_shift(var, val),
-            ),
-            ValueKind::UnionLit(x, v, kts) => ValueKind::UnionLit(
-                x.clone(),
-                v.subst_shift(var, val),
-                kts.subst_shift(var, val),
-            ),
-            ValueKind::Equivalence(x, y) => ValueKind::Equivalence(
-                x.subst_shift(var, val),
-                y.subst_shift(var, val),
+            _ => self.map_ref_with_special_handling_of_binders(
+                |x| x.subst_shift(var, val),
+                |b, x| {
+                    x.subst_shift(&var.under_binder(b), &val.under_binder(b))
+                },
             ),
         }
     }

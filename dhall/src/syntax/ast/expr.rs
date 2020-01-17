@@ -174,9 +174,6 @@ pub enum ExprKind<SubExpr, Embed> {
 }
 
 impl<Label> V<Label> {
-    pub(crate) fn name(&self) -> &Label {
-        &self.0
-    }
     pub(crate) fn idx(&self) -> usize {
         self.1
     }
