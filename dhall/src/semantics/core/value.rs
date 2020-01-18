@@ -288,7 +288,68 @@ impl Value {
     // }
 
     pub fn to_tyexpr(&self) -> TyExpr {
-        value_to_tyexpr(self)
+        let self_kind = self.as_kind();
+        let self_ty = self.as_internal().ty.clone();
+        let self_span = self.as_internal().span.clone();
+        if let ValueKind::Var(v) = &*self_kind {
+            return TyExpr::new(TyExprKind::Var(*v), self_ty, self_span);
+        }
+
+        // TODO: properly recover intermediate types; `None` is a time-bomb here.
+        let rc =
+            |expr| TyExpr::new(TyExprKind::Expr(expr), None, Span::Artificial);
+
+        let self_kind = self_kind.map_ref(|v| v.to_tyexpr());
+        let expr = match self_kind {
+            ValueKind::Var(_) => unreachable!(),
+            ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
+            ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
+            ValueKind::AppliedBuiltin(b, args) => args
+                .into_iter()
+                .fold(ExprKind::Builtin(b), |acc, v| ExprKind::App(rc(acc), v)),
+            ValueKind::Const(c) => ExprKind::Const(c),
+            ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
+            ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
+            ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
+            ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
+            ValueKind::EmptyOptionalLit(n) => {
+                ExprKind::App(rc(ExprKind::Builtin(Builtin::OptionalNone)), n)
+            }
+            ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
+            ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(rc(
+                ExprKind::App(rc(ExprKind::Builtin(Builtin::List)), n),
+            )),
+            ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
+            ValueKind::RecordLit(kvs) => {
+                ExprKind::RecordLit(kvs.into_iter().collect())
+            }
+            ValueKind::RecordType(kts) => {
+                ExprKind::RecordType(kts.into_iter().collect())
+            }
+            ValueKind::UnionType(kts) => {
+                ExprKind::UnionType(kts.into_iter().collect())
+            }
+            ValueKind::UnionConstructor(l, kts) => ExprKind::Field(
+                rc(ExprKind::UnionType(kts.into_iter().collect())),
+                l,
+            ),
+            ValueKind::UnionLit(l, v, kts) => ExprKind::App(
+                rc(ExprKind::Field(
+                    rc(ExprKind::UnionType(kts.into_iter().collect())),
+                    l,
+                )),
+                v,
+            ),
+            ValueKind::TextLit(elts) => {
+                ExprKind::TextLit(elts.into_iter().collect())
+            }
+            ValueKind::Equivalence(x, y) => {
+                ExprKind::BinOp(BinOp::Equivalence, x, y)
+            }
+            ValueKind::PartialExpr(e) => e,
+        };
+
+        TyExpr::new(TyExprKind::Expr(expr), self_ty, self_span)
     }
 }
 
@@ -515,70 +576,6 @@ impl<V> ValueKind<V> {
             map_val(x)
         })
     }
-}
-
-fn value_to_tyexpr(val: &Value) -> TyExpr {
-    let val_kind = val.as_kind();
-    let val_ty = val.as_internal().ty.clone();
-    let val_span = val.as_internal().span.clone();
-    if let ValueKind::Var(v) = &*val_kind {
-        return TyExpr::new(TyExprKind::Var(*v), val_ty, val_span);
-    }
-
-    // TODO: properly recover intermediate types; `None` is a time-bomb here.
-    let rc = |expr| TyExpr::new(TyExprKind::Expr(expr), None, Span::Artificial);
-
-    let val_kind = val_kind.map_ref(|v| v.to_tyexpr());
-    let expr = match val_kind {
-        ValueKind::Var(_) => unreachable!(),
-        ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
-        ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
-        ValueKind::AppliedBuiltin(b, args) => args
-            .into_iter()
-            .fold(ExprKind::Builtin(b), |acc, v| ExprKind::App(rc(acc), v)),
-        ValueKind::Const(c) => ExprKind::Const(c),
-        ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
-        ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
-        ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
-        ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
-        ValueKind::EmptyOptionalLit(n) => {
-            ExprKind::App(rc(ExprKind::Builtin(Builtin::OptionalNone)), n)
-        }
-        ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
-        ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(rc(
-            ExprKind::App(rc(ExprKind::Builtin(Builtin::List)), n),
-        )),
-        ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
-        ValueKind::RecordLit(kvs) => {
-            ExprKind::RecordLit(kvs.into_iter().collect())
-        }
-        ValueKind::RecordType(kts) => {
-            ExprKind::RecordType(kts.into_iter().collect())
-        }
-        ValueKind::UnionType(kts) => {
-            ExprKind::UnionType(kts.into_iter().collect())
-        }
-        ValueKind::UnionConstructor(l, kts) => ExprKind::Field(
-            rc(ExprKind::UnionType(kts.into_iter().collect())),
-            l,
-        ),
-        ValueKind::UnionLit(l, v, kts) => ExprKind::App(
-            rc(ExprKind::Field(
-                rc(ExprKind::UnionType(kts.into_iter().collect())),
-                l,
-            )),
-            v,
-        ),
-        ValueKind::TextLit(elts) => {
-            ExprKind::TextLit(elts.into_iter().collect())
-        }
-        ValueKind::Equivalence(x, y) => {
-            ExprKind::BinOp(BinOp::Equivalence, x, y)
-        }
-        ValueKind::PartialExpr(e) => e,
-    };
-
-    TyExpr::new(TyExprKind::Expr(expr), val_ty, val_span)
 }
 
 // TODO: use Rc comparison to shortcut on identical pointers
