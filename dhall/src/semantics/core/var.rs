@@ -1,7 +1,7 @@
 use crate::syntax::{Label, V};
 
 /// Stores an alpha-normalized variable.
-#[derive(Clone, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AlphaVar {
     alpha: V<()>,
 }
@@ -36,27 +36,11 @@ impl Binder {
     pub(crate) fn new(name: Label) -> Self {
         Binder { name }
     }
-    pub(crate) fn to_label_maybe_alpha(&self, alpha: bool) -> Label {
-        if alpha {
-            "_".into()
-        } else {
-            self.to_label()
-        }
-    }
     pub(crate) fn to_label(&self) -> Label {
         self.clone().into()
     }
-    pub(crate) fn name(&self) -> &Label {
-        &self.name
-    }
 }
 
-/// Equality up to alpha-equivalence
-impl std::cmp::PartialEq for AlphaVar {
-    fn eq(&self, other: &Self) -> bool {
-        self.alpha == other.alpha
-    }
-}
 /// Equality up to alpha-equivalence
 impl std::cmp::PartialEq for Binder {
     fn eq(&self, _other: &Self) -> bool {

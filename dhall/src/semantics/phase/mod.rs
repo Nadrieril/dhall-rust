@@ -4,7 +4,6 @@ use std::path::Path;
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
-use crate::semantics::to_expr::ToExprOptions;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
@@ -37,6 +36,15 @@ pub struct Typed(Value);
 /// Invariant: the contained Typed expression must be in normal form,
 #[derive(Debug, Clone)]
 pub struct Normalized(Typed);
+
+/// Controls conversion from `Value` to `Expr`
+#[derive(Copy, Clone)]
+pub(crate) struct ToExprOptions {
+    /// Whether to convert all variables to `_`
+    pub(crate) alpha: bool,
+    /// Whether to normalize before converting
+    pub(crate) normalize: bool,
+}
 
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {

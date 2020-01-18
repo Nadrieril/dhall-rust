@@ -23,7 +23,7 @@ pub enum Const {
 /// The `Label` field is the variable's name (i.e. \"`x`\").
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct V<Label>(pub Label, pub usize);
 
 // Definition order must match precedence order for

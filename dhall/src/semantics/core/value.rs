@@ -7,10 +7,12 @@ use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::var::{AlphaVar, Binder};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
-use crate::semantics::phase::{Normalized, NormalizedExpr, Typed};
-use crate::semantics::to_expr;
+use crate::semantics::phase::{
+    Normalized, NormalizedExpr, ToExprOptions, Typed,
+};
+use crate::semantics::{TyExpr, TyExprKind};
 use crate::syntax::{
-    Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
+    BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
 };
 
@@ -159,11 +161,12 @@ impl Value {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(
-        &self,
-        opts: to_expr::ToExprOptions,
-    ) -> NormalizedExpr {
-        to_expr::value_to_expr(self, opts, &vec![])
+    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
+        if opts.normalize {
+            self.normalize_nf();
+        }
+
+        self.to_tyexpr().to_expr(opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
@@ -283,6 +286,10 @@ impl Value {
     //         }
     //     }
     // }
+
+    pub fn to_tyexpr(&self) -> TyExpr {
+        value_to_tyexpr(self)
+    }
 }
 
 impl ValueInternal {
@@ -508,6 +515,70 @@ impl<V> ValueKind<V> {
             map_val(x)
         })
     }
+}
+
+fn value_to_tyexpr(val: &Value) -> TyExpr {
+    let val_kind = val.as_kind();
+    let val_ty = val.as_internal().ty.clone();
+    let val_span = val.as_internal().span.clone();
+    if let ValueKind::Var(v) = &*val_kind {
+        return TyExpr::new(TyExprKind::Var(*v), val_ty, val_span);
+    }
+
+    // TODO: properly recover intermediate types; `None` is a time-bomb here.
+    let rc = |expr| TyExpr::new(TyExprKind::Expr(expr), None, Span::Artificial);
+
+    let val_kind = val_kind.map_ref(|v| v.to_tyexpr());
+    let expr = match val_kind {
+        ValueKind::Var(_) => unreachable!(),
+        ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
+        ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
+        ValueKind::AppliedBuiltin(b, args) => args
+            .into_iter()
+            .fold(ExprKind::Builtin(b), |acc, v| ExprKind::App(rc(acc), v)),
+        ValueKind::Const(c) => ExprKind::Const(c),
+        ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
+        ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
+        ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
+        ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
+        ValueKind::EmptyOptionalLit(n) => {
+            ExprKind::App(rc(ExprKind::Builtin(Builtin::OptionalNone)), n)
+        }
+        ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
+        ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(rc(
+            ExprKind::App(rc(ExprKind::Builtin(Builtin::List)), n),
+        )),
+        ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
+        ValueKind::RecordLit(kvs) => {
+            ExprKind::RecordLit(kvs.into_iter().collect())
+        }
+        ValueKind::RecordType(kts) => {
+            ExprKind::RecordType(kts.into_iter().collect())
+        }
+        ValueKind::UnionType(kts) => {
+            ExprKind::UnionType(kts.into_iter().collect())
+        }
+        ValueKind::UnionConstructor(l, kts) => ExprKind::Field(
+            rc(ExprKind::UnionType(kts.into_iter().collect())),
+            l,
+        ),
+        ValueKind::UnionLit(l, v, kts) => ExprKind::App(
+            rc(ExprKind::Field(
+                rc(ExprKind::UnionType(kts.into_iter().collect())),
+                l,
+            )),
+            v,
+        ),
+        ValueKind::TextLit(elts) => {
+            ExprKind::TextLit(elts.into_iter().collect())
+        }
+        ValueKind::Equivalence(x, y) => {
+            ExprKind::BinOp(BinOp::Equivalence, x, y)
+        }
+        ValueKind::PartialExpr(e) => e,
+    };
+
+    TyExpr::new(TyExprKind::Expr(expr), val_ty, val_span)
 }
 
 // TODO: use Rc comparison to shortcut on identical pointers
