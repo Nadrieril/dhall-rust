@@ -180,29 +180,38 @@ impl<Label> V<Label> {
 }
 
 impl<SE, E> ExprKind<SE, E> {
-    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
+    pub fn traverse_ref_maybe_binder<'a, SE2, Err>(
         &'a self,
-        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-        visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
+        visit: impl FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
-        visitor::TraverseRefWithBindersVisitor {
-            visit_subexpr,
-            visit_under_binder,
-        }
-        .visit(self)
+        visitor::TraverseRefMaybeBinderVisitor(visit).visit(self)
+    }
+
+    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
+        &'a self,
+        mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        mut visit_under_binder: impl FnMut(&'a Label, &'a SE) -> Result<SE2, Err>,
+    ) -> Result<ExprKind<SE2, E>, Err>
+    where
+        E: Clone,
+    {
+        self.traverse_ref_maybe_binder(|l, x| match l {
+            None => visit_subexpr(x),
+            Some(l) => visit_under_binder(l, x),
+        })
     }
 
     pub(crate) fn traverse_ref<'a, SE2, Err>(
         &'a self,
-        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
-        visitor::TraverseRefVisitor { visit_subexpr }.visit(self)
+        self.traverse_ref_maybe_binder(|_, e| visit_subexpr(e))
     }
 
     fn traverse_mut<'a, Err>(
@@ -210,6 +219,16 @@ impl<SE, E> ExprKind<SE, E> {
         visit_subexpr: impl FnMut(&'a mut SE) -> Result<(), Err>,
     ) -> Result<(), Err> {
         visitor::TraverseMutVisitor { visit_subexpr }.visit(self)
+    }
+
+    pub fn map_ref_maybe_binder<'a, SE2>(
+        &'a self,
+        mut map: impl FnMut(Option<&'a Label>, &'a SE) -> SE2,
+    ) -> ExprKind<SE2, E>
+    where
+        E: Clone,
+    {
+        trivial_result(self.traverse_ref_maybe_binder(|l, x| Ok(map(l, x))))
     }
 
     pub fn map_ref_with_special_handling_of_binders<'a, SE2>(
@@ -220,10 +239,10 @@ impl<SE, E> ExprKind<SE, E> {
     where
         E: Clone,
     {
-        trivial_result(self.traverse_ref_with_special_handling_of_binders(
-            |x| Ok(map_subexpr(x)),
-            |l, x| Ok(map_under_binder(l, x)),
-        ))
+        self.map_ref_maybe_binder(|l, x| match l {
+            None => map_subexpr(x),
+            Some(l) => map_under_binder(l, x),
+        })
     }
 
     pub fn map_ref<'a, SE2>(
@@ -233,7 +252,7 @@ impl<SE, E> ExprKind<SE, E> {
     where
         E: Clone,
     {
-        trivial_result(self.traverse_ref(|x| Ok(map_subexpr(x))))
+        self.map_ref_maybe_binder(|_, e| map_subexpr(e))
     }
 
     pub fn map_mut<'a>(&'a mut self, mut map_subexpr: impl FnMut(&'a mut SE)) {

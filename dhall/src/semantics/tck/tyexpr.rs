@@ -36,15 +36,14 @@ impl TyExpr {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr<'a>(&'a self, opts: ToExprOptions) -> NormalizedExpr {
-        tyexpr_to_expr(self, opts, &Vec::new())
+        tyexpr_to_expr(self, opts, &mut Vec::new())
     }
 }
 
-// TODO: mutate context once map_ref gets simplified
 fn tyexpr_to_expr<'a>(
     tyexpr: &'a TyExpr,
     opts: ToExprOptions,
-    ctx: &Vec<&'a Label>,
+    ctx: &mut Vec<&'a Label>,
 ) -> NormalizedExpr {
     rc(match tyexpr.kind() {
         TyExprKind::Var(v) if opts.alpha => {
@@ -61,13 +60,16 @@ fn tyexpr_to_expr<'a>(
             ExprKind::Var(V(name.clone(), idx))
         }
         TyExprKind::Expr(e) => {
-            let e = e.map_ref_with_special_handling_of_binders(
-                |tye| tyexpr_to_expr(tye, opts, ctx),
-                |l, tye| {
-                    let ctx = ctx.iter().copied().chain(Some(l)).collect();
-                    tyexpr_to_expr(tye, opts, &ctx)
-                },
-            );
+            let e = e.map_ref_maybe_binder(|l, tye| {
+                if let Some(l) = l {
+                    ctx.push(l);
+                }
+                let e = tyexpr_to_expr(tye, opts, ctx);
+                if let Some(_) = l {
+                    ctx.pop();
+                }
+                e
+            });
 
             match e {
                 ExprKind::Lam(_, t, e) if opts.alpha => {
