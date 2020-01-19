@@ -374,9 +374,13 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
             let args = args.iter().cloned().chain(once(a.clone())).collect();
             apply_builtin(*b, args, ty)
         }
-        ValueKind::UnionConstructor(l, kts) => {
-            ValueKind::UnionLit(l.clone(), a, kts.clone())
-        }
+        ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
+            l.clone(),
+            a,
+            kts.clone(),
+            uniont.clone(),
+            f.get_type().unwrap(),
+        ),
         _ => {
             drop(f_borrow);
             ValueKind::PartialExpr(ExprKind::App(f, a))
@@ -692,9 +696,11 @@ pub(crate) fn normalize_one_layer(
                         Ret::Expr(expr)
                     }
                 },
-                UnionType(kts) => {
-                    Ret::ValueKind(UnionConstructor(l.clone(), kts.clone()))
-                }
+                UnionType(kts) => Ret::ValueKind(UnionConstructor(
+                    l.clone(),
+                    kts.clone(),
+                    v.get_type().unwrap(),
+                )),
                 _ => {
                     drop(v_borrow);
                     Ret::Expr(expr)
@@ -710,7 +716,8 @@ pub(crate) fn normalize_one_layer(
             let handlers_borrow = handlers.as_whnf();
             let variant_borrow = variant.as_whnf();
             match (&*handlers_borrow, &*variant_borrow) {
-                (RecordLit(kvs), UnionConstructor(l, _)) => match kvs.get(l) {
+                (RecordLit(kvs), UnionConstructor(l, _, _)) => match kvs.get(l)
+                {
                     Some(h) => Ret::Value(h.clone()),
                     None => {
                         drop(handlers_borrow);
@@ -718,7 +725,7 @@ pub(crate) fn normalize_one_layer(
                         Ret::Expr(expr)
                     }
                 },
-                (RecordLit(kvs), UnionLit(l, v, _)) => match kvs.get(l) {
+                (RecordLit(kvs), UnionLit(l, v, _, _, _)) => match kvs.get(l) {
                     Some(h) => Ret::Value(h.app(v.clone())),
                     None => {
                         drop(handlers_borrow);

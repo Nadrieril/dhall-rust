@@ -10,7 +10,7 @@ use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{
     Normalized, NormalizedExpr, ToExprOptions, Typed,
 };
-use crate::semantics::{TyExpr, TyExprKind};
+use crate::semantics::{TyExpr, TyExprKind, Type};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
@@ -75,8 +75,10 @@ pub(crate) enum ValueKind<Value> {
     RecordType(HashMap<Label, Value>),
     RecordLit(HashMap<Label, Value>),
     UnionType(HashMap<Label, Option<Value>>),
-    UnionConstructor(Label, HashMap<Label, Option<Value>>),
-    UnionLit(Label, Value, HashMap<Label, Option<Value>>),
+    // Also keep the type of the uniontype around
+    UnionConstructor(Label, HashMap<Label, Option<Value>>, Type),
+    // Also keep the type of the uniontype and the constructor around
+    UnionLit(Label, Value, HashMap<Label, Option<Value>>, Type, Type),
     // Invariant: in whnf, this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Value>>),
@@ -296,28 +298,40 @@ impl Value {
         }
 
         // TODO: properly recover intermediate types; `None` is a time-bomb here.
-        let rc =
-            |expr| TyExpr::new(TyExprKind::Expr(expr), None, Span::Artificial);
-
         let self_kind = self_kind.map_ref(|v| v.to_tyexpr());
         let expr = match self_kind {
             ValueKind::Var(_) => unreachable!(),
             ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
             ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
-            ValueKind::AppliedBuiltin(b, args) => args
-                .into_iter()
-                .fold(ExprKind::Builtin(b), |acc, v| ExprKind::App(rc(acc), v)),
+            ValueKind::AppliedBuiltin(b, args) => {
+                args.into_iter().fold(ExprKind::Builtin(b), |acc, v| {
+                    ExprKind::App(
+                        TyExpr::new(
+                            TyExprKind::Expr(acc),
+                            None, // TODO
+                            Span::Artificial,
+                        ),
+                        v,
+                    )
+                })
+            }
             ValueKind::Const(c) => ExprKind::Const(c),
             ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
             ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
             ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
             ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
-            ValueKind::EmptyOptionalLit(n) => {
-                ExprKind::App(rc(ExprKind::Builtin(Builtin::OptionalNone)), n)
-            }
+            ValueKind::EmptyOptionalLit(n) => ExprKind::App(
+                builtin_to_value(Builtin::OptionalNone).to_tyexpr(),
+                n,
+            ),
             ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
-            ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(rc(
-                ExprKind::App(rc(ExprKind::Builtin(Builtin::List)), n),
+            ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(TyExpr::new(
+                TyExprKind::Expr(ExprKind::App(
+                    builtin_to_value(Builtin::List).to_tyexpr(),
+                    n,
+                )),
+                Some(const_to_value(Const::Type)),
+                Span::Artificial,
             )),
             ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
             ValueKind::RecordLit(kvs) => {
@@ -329,15 +343,31 @@ impl Value {
             ValueKind::UnionType(kts) => {
                 ExprKind::UnionType(kts.into_iter().collect())
             }
-            ValueKind::UnionConstructor(l, kts) => ExprKind::Field(
-                rc(ExprKind::UnionType(kts.into_iter().collect())),
+            ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
+                TyExpr::new(
+                    TyExprKind::Expr(ExprKind::UnionType(
+                        kts.into_iter().collect(),
+                    )),
+                    Some(t),
+                    Span::Artificial,
+                ),
                 l,
             ),
-            ValueKind::UnionLit(l, v, kts) => ExprKind::App(
-                rc(ExprKind::Field(
-                    rc(ExprKind::UnionType(kts.into_iter().collect())),
-                    l,
-                )),
+            ValueKind::UnionLit(l, v, kts, uniont, ctort) => ExprKind::App(
+                TyExpr::new(
+                    TyExprKind::Expr(ExprKind::Field(
+                        TyExpr::new(
+                            TyExprKind::Expr(ExprKind::UnionType(
+                                kts.into_iter().collect(),
+                            )),
+                            Some(uniont),
+                            Span::Artificial,
+                        ),
+                        l,
+                    )),
+                    Some(ctort),
+                    Span::Artificial,
+                ),
                 v,
             ),
             ValueKind::TextLit(elts) => {
@@ -483,12 +513,13 @@ impl ValueKind<Value> {
                     x.normalize_mut();
                 }
             }
-            ValueKind::UnionType(kts) | ValueKind::UnionConstructor(_, kts) => {
+            ValueKind::UnionType(kts)
+            | ValueKind::UnionConstructor(_, kts, _) => {
                 for x in kts.values_mut().flat_map(|opt| opt) {
                     x.normalize_mut();
                 }
             }
-            ValueKind::UnionLit(_, v, kts) => {
+            ValueKind::UnionLit(_, v, kts, _, _) => {
                 v.normalize_mut();
                 for x in kts.values_mut().flat_map(|opt| opt) {
                     x.normalize_mut();

@@ -94,12 +94,16 @@ where
         RecordType(kts) => RecordType(v.visit_map(kts)?),
         RecordLit(kvs) => RecordLit(v.visit_map(kvs)?),
         UnionType(kts) => UnionType(v.visit_optmap(kts)?),
-        UnionConstructor(l, kts) => {
-            UnionConstructor(l.clone(), v.visit_optmap(kts)?)
+        UnionConstructor(l, kts, t) => {
+            UnionConstructor(l.clone(), v.visit_optmap(kts)?, t.clone())
         }
-        UnionLit(l, t, kts) => {
-            UnionLit(l.clone(), v.visit_val(t)?, v.visit_optmap(kts)?)
-        }
+        UnionLit(l, x, kts, uniont, ctort) => UnionLit(
+            l.clone(),
+            v.visit_val(x)?,
+            v.visit_optmap(kts)?,
+            uniont.clone(),
+            ctort.clone(),
+        ),
         TextLit(ts) => TextLit(
             ts.iter()
                 .map(|t| t.traverse_ref(|e| v.visit_val(e)))
