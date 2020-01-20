@@ -174,3 +174,8 @@ impl From<TypeError> for Error {
         Error::Typecheck(err)
     }
 }
+impl From<crate::semantics::nze::nzexpr::TypeError> for Error {
+    fn from(_: crate::semantics::nze::nzexpr::TypeError) -> Error {
+        Error::Decode(DecodeError::WrongFormatError("type error".to_string()))
+    }
+}

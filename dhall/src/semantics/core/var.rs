@@ -14,6 +14,9 @@ pub struct Binder {
 }
 
 impl AlphaVar {
+    pub(crate) fn new(alpha: V<()>) -> Self {
+        AlphaVar { alpha }
+    }
     pub(crate) fn default() -> Self {
         AlphaVar { alpha: V((), 0) }
     }

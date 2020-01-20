@@ -11,15 +11,17 @@ use crate::syntax::{ExprKind, Label, Span, V};
 pub(crate) type Type = Value;
 
 // An expression with inferred types at every node and resolved variables.
+#[derive(Debug, Clone)]
 pub(crate) struct TyExpr {
     kind: Box<TyExprKind>,
     ty: Option<Type>,
     span: Span,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) enum TyExprKind {
     Var(AlphaVar),
-    // Forbidden ExprKind variants: Var
+    // Forbidden ExprKind variants: Var, Import, Embed
     Expr(ExprKind<TyExpr, Normalized>),
 }
 
@@ -63,12 +65,12 @@ fn tyexpr_to_expr<'a>(
         }
         TyExprKind::Var(v) => {
             let name = ctx[ctx.len() - 1 - v.idx()];
-            let mut idx = 0;
-            for l in ctx.iter().rev().take(v.idx()) {
-                if *l == name {
-                    idx += 1;
-                }
-            }
+            let idx = ctx
+                .iter()
+                .rev()
+                .take(v.idx())
+                .filter(|l| **l == name)
+                .count();
             ExprKind::Var(V(name.clone(), idx))
         }
         TyExprKind::Expr(e) => {
