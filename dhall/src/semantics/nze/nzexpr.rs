@@ -36,24 +36,24 @@ pub(crate) enum NzExprKind {
     Lam {
         binder: Binder,
         annot: NzExpr,
-        env: TyEnv,
+        env: NzEnv,
         body: TyExpr,
     },
     Pi {
         binder: Binder,
         annot: NzExpr,
-        env: TyEnv,
+        env: NzEnv,
         body: TyExpr,
     },
     Expr(ExprKind<NzExpr, Normalized>),
     // Unevaled {
-    //     env: TyEnv,
+    //     env: NzEnv,
     //     expr: TyExprKind,
     // },
 }
 
 #[derive(Debug, Clone)]
-enum TyEnvItem {
+enum NzEnvItem {
     // Variable is bound with given type
     Kept(Type),
     // Variable has been replaced by corresponding value
@@ -62,7 +62,18 @@ enum TyEnvItem {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TyEnv {
-    env: Vec<(Binder, TyEnvItem)>,
+    names: NameEnv,
+    items: NzEnv,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NzEnv {
+    items: Vec<NzEnvItem>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NameEnv {
+    names: Vec<Binder>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,57 +89,119 @@ pub(crate) struct NzVar {
 
 impl TyEnv {
     pub fn new() -> Self {
-        TyEnv { env: Vec::new() }
-    }
-    pub fn to_quoteenv(&self) -> QuoteEnv {
-        QuoteEnv {
-            size: self.env.len(),
+        TyEnv {
+            names: NameEnv::new(),
+            items: NzEnv::new(),
         }
     }
-    fn with_vec(&self, vec: Vec<(Binder, TyEnvItem)>) -> Self {
-        TyEnv { env: vec }
+    pub fn as_quoteenv(&self) -> QuoteEnv {
+        self.names.as_quoteenv()
+    }
+    pub fn as_nzenv(&self) -> &NzEnv {
+        &self.items
+    }
+    pub fn as_nameenv(&self) -> &NameEnv {
+        &self.names
     }
 
     pub fn insert_type(&self, x: &Binder, t: NzExpr) -> Self {
-        let mut vec = self.env.clone();
-        vec.push((x.clone(), TyEnvItem::Kept(t)));
-        self.with_vec(vec)
+        TyEnv {
+            names: self.names.insert(x),
+            items: self.items.insert_type(t),
+        }
     }
     pub fn insert_value(&self, x: &Binder, e: NzExpr) -> Self {
-        let mut vec = self.env.clone();
-        vec.push((x.clone(), TyEnvItem::Replaced(e)));
-        self.with_vec(vec)
+        TyEnv {
+            names: self.names.insert(x),
+            items: self.items.insert_value(e),
+        }
     }
     pub fn lookup_var(&self, var: &V<Binder>) -> Option<TyExpr> {
+        let var = self.names.unlabel_var(var)?;
+        let ty = self.lookup_val(&var).get_type().unwrap();
+        Some(TyExpr::new(TyExprKind::Var(var), Some(ty)))
+    }
+    pub fn lookup_val(&self, var: &AlphaVar) -> NzExpr {
+        self.items.lookup_val(var)
+    }
+    pub fn size(&self) -> usize {
+        self.names.size()
+    }
+}
+
+impl NameEnv {
+    pub fn new() -> Self {
+        NameEnv { names: Vec::new() }
+    }
+    pub fn as_quoteenv(&self) -> QuoteEnv {
+        QuoteEnv {
+            size: self.names.len(),
+        }
+    }
+
+    pub fn insert(&self, x: &Binder) -> Self {
+        let mut env = self.clone();
+        env.insert_mut(x);
+        env
+    }
+    pub fn insert_mut(&mut self, x: &Binder) {
+        self.names.push(x.clone())
+    }
+    pub fn remove_mut(&mut self) {
+        self.names.pop();
+    }
+
+    pub fn unlabel_var(&self, var: &V<Binder>) -> Option<AlphaVar> {
         let V(name, idx) = var;
-        let (idx, (_, item)) = self
-            .env
+        let (idx, _) = self
+            .names
             .iter()
             .rev()
             .enumerate()
-            .filter(|(_, (x, _))| x == name)
+            .filter(|(_, n)| *n == name)
             .nth(*idx)?;
-        let ty = match item {
-            TyEnvItem::Kept(ty) => ty.clone(),
-            TyEnvItem::Replaced(e) => e.get_type().unwrap(),
-        };
-        Some(TyExpr::new(
-            TyExprKind::Var(AlphaVar::new(V((), idx))),
-            Some(ty),
-        ))
+        Some(AlphaVar::new(V((), idx)))
+    }
+    pub fn label_var(&self, var: &AlphaVar) -> V<Binder> {
+        let name = &self.names[self.names.len() - 1 - var.idx()];
+        let idx = self
+            .names
+            .iter()
+            .rev()
+            .take(var.idx())
+            .filter(|n| *n == name)
+            .count();
+        V(name.clone(), idx)
+    }
+    pub fn size(&self) -> usize {
+        self.names.len()
+    }
+}
+
+impl NzEnv {
+    pub fn new() -> Self {
+        NzEnv { items: Vec::new() }
+    }
+
+    pub fn insert_type(&self, t: NzExpr) -> Self {
+        let mut env = self.clone();
+        env.items.push(NzEnvItem::Kept(t));
+        env
+    }
+    pub fn insert_value(&self, e: NzExpr) -> Self {
+        let mut env = self.clone();
+        env.items.push(NzEnvItem::Replaced(e));
+        env
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> NzExpr {
-        let idx = self.env.len() - 1 - var.idx();
-        match &self.env[idx].1 {
-            TyEnvItem::Kept(ty) => NzExpr::new(
+        let idx = self.items.len() - 1 - var.idx();
+        match &self.items[idx] {
+            NzEnvItem::Kept(ty) => NzExpr::new(
                 NzExprKind::Var { var: NzVar { idx } },
                 Some(ty.clone()),
             ),
-            TyEnvItem::Replaced(x) => x.clone(),
+            NzEnvItem::Replaced(x) => x.clone(),
         }
-    }
-    pub fn size(&self) -> usize {
-        self.env.len()
     }
 }
 
@@ -166,54 +239,39 @@ impl TyExpr {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        fn tyexpr_to_expr<'a>(
-            tyexpr: &'a TyExpr,
-            opts: ToExprOptions,
-            env: &mut Vec<&'a Binder>,
-        ) -> NormalizedExpr {
-            rc(match tyexpr.kind() {
-                TyExprKind::Var(var) if opts.alpha => {
-                    ExprKind::Var(V("_".into(), var.idx()))
-                }
-                TyExprKind::Var(var) => {
-                    let name = env[env.len() - 1 - var.idx()];
-                    let idx = env
-                        .iter()
-                        .rev()
-                        .take(var.idx())
-                        .filter(|l| **l == name)
-                        .count();
-                    ExprKind::Var(V(name.clone(), idx))
-                }
-                TyExprKind::Expr(e) => {
-                    let e = e.map_ref_maybe_binder(|l, tye| {
-                        if let Some(l) = l {
-                            env.push(l);
-                        }
-                        let e = tyexpr_to_expr(tye, opts, env);
-                        if let Some(_) = l {
-                            env.pop();
-                        }
-                        e
-                    });
-
-                    match e {
-                        ExprKind::Lam(_, t, e) if opts.alpha => {
-                            ExprKind::Lam("_".into(), t, e)
-                        }
-                        ExprKind::Pi(_, t, e) if opts.alpha => {
-                            ExprKind::Pi("_".into(), t, e)
-                        }
-                        e => e,
-                    }
-                }
-            })
+        if opts.alpha {
+            self.to_expr_alpha()
+        } else {
+            self.to_expr_noalpha(&mut NameEnv::new())
         }
-
-        tyexpr_to_expr(self, opts, &mut Vec::new())
+    }
+    fn to_expr_noalpha(&self, env: &mut NameEnv) -> NormalizedExpr {
+        rc(match self.kind() {
+            TyExprKind::Var(var) => ExprKind::Var(env.label_var(var)),
+            TyExprKind::Expr(e) => e.map_ref_maybe_binder(|l, tye| {
+                if let Some(l) = l {
+                    env.insert_mut(l);
+                }
+                let e = tye.to_expr_noalpha(env);
+                if let Some(_) = l {
+                    env.remove_mut();
+                }
+                e
+            }),
+        })
+    }
+    fn to_expr_alpha(&self) -> NormalizedExpr {
+        rc(match self.kind() {
+            TyExprKind::Var(var) => ExprKind::Var(V("_".into(), var.idx())),
+            TyExprKind::Expr(e) => match e.map_ref(TyExpr::to_expr_alpha) {
+                ExprKind::Lam(_, t, e) => ExprKind::Lam("_".into(), t, e),
+                ExprKind::Pi(_, t, e) => ExprKind::Pi("_".into(), t, e),
+                e => e,
+            },
+        })
     }
 
-    pub fn normalize_nf(&self, env: &TyEnv) -> NzExpr {
+    pub fn normalize_nf(&self, env: &NzEnv) -> NzExpr {
         let kind = match self.kind() {
             TyExprKind::Var(var) => return env.lookup_val(var),
             TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
@@ -236,11 +294,8 @@ impl TyExpr {
                 let e = e.map_ref(|tye| tye.normalize_nf(env));
                 match e {
                     ExprKind::App(f, arg) => match f.kind() {
-                        NzExprKind::Lam {
-                            binder, env, body, ..
-                        } => {
-                            return body
-                                .normalize_nf(&env.insert_value(binder, arg))
+                        NzExprKind::Lam { env, body, .. } => {
+                            return body.normalize_nf(&env.insert_value(arg))
                         }
                         _ => NzExprKind::Expr(ExprKind::App(f, arg)),
                     },
@@ -253,7 +308,7 @@ impl TyExpr {
     }
 
     pub fn normalize(&self) -> NzExpr {
-        self.normalize_nf(&TyEnv::new())
+        self.normalize_nf(&NzEnv::new())
     }
 }
 
@@ -287,7 +342,7 @@ impl NzExpr {
             } => TyExprKind::Expr(ExprKind::Lam(
                 binder.clone(),
                 annot.quote(qenv),
-                body.normalize_nf(&env.insert_type(binder, annot.clone()))
+                body.normalize_nf(&env.insert_type(annot.clone()))
                     .quote(qenv.insert()),
             )),
             NzExprKind::Pi {
@@ -298,7 +353,7 @@ impl NzExpr {
             } => TyExprKind::Expr(ExprKind::Pi(
                 binder.clone(),
                 annot.quote(qenv),
-                body.normalize_nf(&env.insert_type(binder, annot.clone()))
+                body.normalize_nf(&env.insert_type(annot.clone()))
                     .quote(qenv.insert()),
             )),
             NzExprKind::Expr(e) => {
@@ -329,7 +384,7 @@ fn type_with(env: &TyEnv, e: Expr<Normalized>) -> Result<TyExpr, TypeError> {
         },
         ExprKind::Lam(binder, annot, body) => {
             let annot = type_with(env, annot.clone())?;
-            let annot_nf = annot.normalize_nf(env);
+            let annot_nf = annot.normalize_nf(env.as_nzenv());
             let body = type_with(
                 &env.insert_type(&binder, annot_nf.clone()),
                 body.clone(),
@@ -338,8 +393,8 @@ fn type_with(env: &TyEnv, e: Expr<Normalized>) -> Result<TyExpr, TypeError> {
                 NzExprKind::Pi {
                     binder: binder.clone(),
                     annot: annot_nf,
-                    env: env.clone(),
-                    body: body.get_type()?.quote(env.to_quoteenv()),
+                    env: env.as_nzenv().clone(),
+                    body: body.get_type()?.quote(env.as_quoteenv()),
                 },
                 None, // TODO: function_check
             );
@@ -350,7 +405,7 @@ fn type_with(env: &TyEnv, e: Expr<Normalized>) -> Result<TyExpr, TypeError> {
         }
         ExprKind::Pi(binder, annot, body) => {
             let annot = type_with(env, annot.clone())?;
-            let annot_nf = annot.normalize_nf(env);
+            let annot_nf = annot.normalize_nf(env.as_nzenv());
             let body = type_with(
                 &env.insert_type(&binder, annot_nf.clone()),
                 body.clone(),
@@ -364,23 +419,18 @@ fn type_with(env: &TyEnv, e: Expr<Normalized>) -> Result<TyExpr, TypeError> {
             let f = type_with(env, f.clone())?;
             let arg = type_with(env, arg.clone())?;
             let tf = f.get_type()?;
-            let (binder, _expected_arg_ty, body_env, body_ty) = match tf.kind()
-            {
+            let (_expected_arg_ty, body_env, body_ty) = match tf.kind() {
                 NzExprKind::Pi {
-                    binder,
-                    annot,
-                    env,
-                    body,
-                } => (binder, annot, env, body),
+                    annot, env, body, ..
+                } => (annot, env, body),
                 _ => return Err(TypeError),
             };
             // if arg.get_type()? != *expected_arg_ty {
             //     return Err(TypeError);
             // }
 
-            let arg_nf = arg.normalize_nf(env);
-            let ty =
-                body_ty.normalize_nf(&body_env.insert_value(&binder, arg_nf));
+            let arg_nf = arg.normalize_nf(env.as_nzenv());
+            let ty = body_ty.normalize_nf(&body_env.insert_value(arg_nf));
 
             Ok(TyExpr::new(
                 TyExprKind::Expr(ExprKind::App(f, arg)),
