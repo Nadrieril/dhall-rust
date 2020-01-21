@@ -14,27 +14,20 @@ use crate::syntax::{
 };
 
 fn tck_pi_type(
-    ctx: &TyCtx,
     binder: Binder,
     tx: Value,
     te: Value,
 ) -> Result<Value, TypeError> {
     use TypeMessage::*;
-    let ctx2 = ctx.insert_type(&binder, tx.clone());
 
     let ka = match tx.get_type()?.as_const() {
         Some(k) => k,
-        _ => return Err(TypeError::new(ctx, InvalidInputType(tx))),
+        _ => return Err(TypeError::new(InvalidInputType(tx))),
     };
 
     let kb = match te.get_type()?.as_const() {
         Some(k) => k,
-        _ => {
-            return Err(TypeError::new(
-                &ctx2,
-                InvalidOutputType(te.get_type()?),
-            ))
-        }
+        _ => return Err(TypeError::new(InvalidOutputType(te.get_type()?))),
     };
 
     let k = function_check(ka, kb);
@@ -46,7 +39,6 @@ fn tck_pi_type(
 }
 
 fn tck_record_type(
-    ctx: &TyCtx,
     kts: impl IntoIterator<Item = Result<(Label, Value), TypeError>>,
 ) -> Result<Value, TypeError> {
     use std::collections::hash_map::Entry;
@@ -59,13 +51,13 @@ fn tck_record_type(
         // Construct the union of the contained `Const`s
         match t.get_type()?.as_const() {
             Some(k2) => k = max(k, k2),
-            None => return Err(TypeError::new(ctx, InvalidFieldType(x, t))),
+            None => return Err(TypeError::new(InvalidFieldType(x, t))),
         }
         // Check for duplicated entries
         let entry = new_kts.entry(x);
         match &entry {
             Entry::Occupied(_) => {
-                return Err(TypeError::new(ctx, RecordTypeDuplicateField))
+                return Err(TypeError::new(RecordTypeDuplicateField))
             }
             Entry::Vacant(_) => entry.or_insert_with(|| t),
         };
@@ -77,7 +69,7 @@ fn tck_record_type(
     ))
 }
 
-fn tck_union_type<Iter>(ctx: &TyCtx, kts: Iter) -> Result<Value, TypeError>
+fn tck_union_type<Iter>(kts: Iter) -> Result<Value, TypeError>
 where
     Iter: IntoIterator<Item = Result<(Label, Option<Value>), TypeError>>,
 {
@@ -93,17 +85,14 @@ where
                 (None, Some(k2)) => k = Some(k2),
                 (Some(k1), Some(k2)) if k1 == k2 => {}
                 _ => {
-                    return Err(TypeError::new(
-                        ctx,
-                        InvalidFieldType(x, t.clone()),
-                    ))
+                    return Err(TypeError::new(InvalidFieldType(x, t.clone())))
                 }
             }
         }
         let entry = new_kts.entry(x);
         match &entry {
             Entry::Occupied(_) => {
-                return Err(TypeError::new(ctx, UnionTypeDuplicateField))
+                return Err(TypeError::new(UnionTypeDuplicateField))
             }
             Entry::Vacant(_) => entry.or_insert_with(|| t),
         };
@@ -313,7 +302,7 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
             let body_type = body.get_type()?;
             Ok(Value::from_kind_and_type(
                 ValueKind::Lam(binder.clone(), annot.clone(), body),
-                tck_pi_type(ctx, binder, annot, body_type)?,
+                tck_pi_type(binder, annot, body_type)?,
             ))
         }
         Pi(x, ta, tb) => {
@@ -321,7 +310,7 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
             let ta = type_with(ctx, ta.clone())?;
             let ctx2 = ctx.insert_type(&binder, ta.clone());
             let tb = type_with(&ctx2, tb.clone())?;
-            tck_pi_type(ctx, binder, ta, tb)
+            tck_pi_type(binder, ta, tb)
         }
         Let(x, t, v, e) => {
             let v = if let Some(t) = t {
@@ -337,9 +326,7 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
         Embed(p) => Ok(p.clone().into_typed().into_value()),
         Var(var) => match ctx.lookup(&var) {
             Some(typed) => Ok(typed.clone()),
-            None => {
-                Err(TypeError::new(ctx, TypeMessage::UnboundVariable(span)))
-            }
+            None => Err(TypeError::new(TypeMessage::UnboundVariable(span))),
         },
         e => {
             // Typecheck recursively all subexpressions
@@ -364,7 +351,7 @@ fn type_last_layer(
     use syntax::Const::Type;
     use syntax::ExprKind::*;
     use TypeMessage::*;
-    let mkerr = |msg: TypeMessage| Err(TypeError::new(ctx, msg));
+    let mkerr = |msg: TypeMessage| Err(TypeError::new(msg));
 
     /// Intermediary return type
     enum Ret {
@@ -474,15 +461,12 @@ fn type_last_layer(
             RetTypeOnly(Value::from_builtin(syntax::Builtin::Optional).app(t))
         }
         RecordType(kts) => RetWhole(tck_record_type(
-            ctx,
             kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
         )?),
         UnionType(kts) => RetWhole(tck_union_type(
-            ctx,
             kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
         )?),
         RecordLit(kvs) => RetTypeOnly(tck_record_type(
-            ctx,
             kvs.iter().map(|(x, v)| Ok((x.clone(), v.get_type()?))),
         )?),
         Field(r, x) => {
@@ -502,7 +486,6 @@ fn type_last_layer(
                             Some(Some(t)) => {
                                 RetTypeOnly(
                                     tck_pi_type(
-                                        ctx,
                                         ctx.new_binder(x),
                                         t.clone(),
                                         r.under_binder(),
@@ -577,7 +560,6 @@ fn type_last_layer(
 
             // Construct the final record type from the union
             RetTypeOnly(tck_record_type(
-                ctx,
                 kts.into_iter().map(|(x, v)| Ok((x.clone(), v))),
             )?)
         }
@@ -627,7 +609,7 @@ fn type_last_layer(
                 },
             )?;
 
-            RetWhole(tck_record_type(ctx, kts.into_iter().map(Ok))?)
+            RetWhole(tck_record_type(kts.into_iter().map(Ok))?)
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {

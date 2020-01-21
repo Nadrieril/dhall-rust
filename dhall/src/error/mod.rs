@@ -1,6 +1,5 @@
 use std::io::Error as IOError;
 
-use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::value::Value;
 use crate::semantics::phase::resolve::ImportStack;
 use crate::semantics::phase::NormalizedExpr;
@@ -37,11 +36,10 @@ pub enum EncodeError {
     CBORError(serde_cbor::error::Error),
 }
 
-/// A structured type error that includes context
+/// A structured type error
 #[derive(Debug)]
 pub struct TypeError {
     message: TypeMessage,
-    context: TyCtx,
 }
 
 /// The specific type error
@@ -88,11 +86,8 @@ pub(crate) enum TypeMessage {
 }
 
 impl TypeError {
-    pub(crate) fn new(context: &TyCtx, message: TypeMessage) -> Self {
-        TypeError {
-            context: context.clone(),
-            message,
-        }
+    pub(crate) fn new(message: TypeMessage) -> Self {
+        TypeError { message }
     }
 }
 
@@ -100,7 +95,7 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            UnboundVariable(span) => span.error("Type error: Unbound variable"),
+            UnboundVariable(var) => var.error("Type error: Unbound variable"),
             InvalidInputType(v) => {
                 v.span().error("Type error: Invalid function input")
             }

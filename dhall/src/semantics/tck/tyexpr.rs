@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::TyCtx;
 use crate::semantics::core::var::AlphaVar;
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
@@ -40,7 +39,7 @@ impl TyExpr {
     pub fn get_type(&self) -> Result<Type, TypeError> {
         match &self.ty {
             Some(t) => Ok(t.clone()),
-            None => Err(TypeError::new(&TyCtx::new(), TypeMessage::Sort)),
+            None => Err(TypeError::new(TypeMessage::Sort)),
         }
     }
 

@@ -158,12 +158,12 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             parse_file_str(&file_path)?.resolve().unwrap_err();
         }
         TypeInferenceSuccess(expr_file_path, expected_file_path) => {
-            // let expr =
-            //     parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
-            // let ty = expr.get_type()?.to_expr();
-            let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            let tyexpr = crate::semantics::nze::nzexpr::typecheck(expr)?;
-            let ty = tyexpr.get_type()?.to_expr();
+            let expr =
+                parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
+            let ty = expr.get_type()?.to_expr();
+            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
+            // let tyexpr = crate::semantics::nze::nzexpr::typecheck(expr)?;
+            // let ty = tyexpr.get_type()?.to_expr();
             let expected = parse_file_str(&expected_file_path)?.to_expr();
             assert_eq_display!(ty, expected);
         }
@@ -206,15 +206,15 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             }
         }
         Normalization(expr_file_path, expected_file_path) => {
-            // let expr = parse_file_str(&expr_file_path)?
-            //     .resolve()?
-            //     .typecheck()?
-            //     .normalize()
-            //     .to_expr();
-            let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            let expr = crate::semantics::nze::nzexpr::typecheck(expr)?
+            let expr = parse_file_str(&expr_file_path)?
+                .resolve()?
+                .typecheck()?
                 .normalize()
                 .to_expr();
+            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
+            // let expr = crate::semantics::nze::nzexpr::typecheck(expr)?
+            //     .normalize()
+            //     .to_expr();
             let expected = parse_file_str(&expected_file_path)?.to_expr();
 
             assert_eq_display!(expr, expected);
