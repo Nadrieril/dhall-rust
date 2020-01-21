@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::{AlphaVar, Binder};
+use crate::semantics::nze::{NzVar, QuoteEnv};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{
@@ -60,7 +61,7 @@ pub(crate) enum ValueKind<Value> {
     // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
-    Var(AlphaVar),
+    Var(AlphaVar, NzVar),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
@@ -167,7 +168,7 @@ impl Value {
             self.normalize_nf();
         }
 
-        self.to_tyexpr().to_expr(opts)
+        self.to_tyexpr(QuoteEnv::new()).to_expr(opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
@@ -257,7 +258,7 @@ impl Value {
         match &*self.as_kind() {
             // If the var matches, we can just reuse the provided value instead of copying it.
             // We also check that the types match, if in debug mode.
-            ValueKind::Var(v) if v == var => {
+            ValueKind::Var(v, _) if v == var => {
                 if let Ok(self_ty) = self.get_type() {
                     val.check_type(&self_ty.subst_shift(var, val));
                 }
@@ -288,18 +289,27 @@ impl Value {
     //     }
     // }
 
-    pub fn to_tyexpr(&self) -> TyExpr {
+    pub fn to_tyexpr(&self, qenv: QuoteEnv) -> TyExpr {
         let self_kind = self.as_kind();
         let self_ty = self.as_internal().ty.clone();
         let self_span = self.as_internal().span.clone();
-        if let ValueKind::Var(v) = &*self_kind {
-            return TyExpr::new(TyExprKind::Var(*v), self_ty, self_span);
+        if let ValueKind::Var(v, _w) = &*self_kind {
+            return TyExpr::new(
+                // TODO: Only works when we don't normalize under lambdas
+                // TyExprKind::Var(qenv.lookup(w)),
+                TyExprKind::Var(*v),
+                self_ty,
+                self_span,
+            );
         }
 
         // TODO: properly recover intermediate types; `None` is a time-bomb here.
-        let self_kind = self_kind.map_ref(|v| v.to_tyexpr());
+        let self_kind = self_kind.map_ref_with_special_handling_of_binders(
+            |v| v.to_tyexpr(qenv),
+            |_, _, v| v.to_tyexpr(qenv.insert()),
+        );
         let expr = match self_kind {
-            ValueKind::Var(_) => unreachable!(),
+            ValueKind::Var(..) => unreachable!(),
             ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
             ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
             ValueKind::AppliedBuiltin(b, args) => {
@@ -320,13 +330,13 @@ impl Value {
             ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
             ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
             ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                builtin_to_value(Builtin::OptionalNone).to_tyexpr(),
+                builtin_to_value(Builtin::OptionalNone).to_tyexpr(qenv),
                 n,
             ),
             ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
             ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(TyExpr::new(
                 TyExprKind::Expr(ExprKind::App(
-                    builtin_to_value(Builtin::List).to_tyexpr(),
+                    builtin_to_value(Builtin::List).to_tyexpr(qenv),
                     n,
                 )),
                 Some(const_to_value(Const::Type)),
@@ -470,7 +480,7 @@ impl ValueKind<Value> {
 
     pub(crate) fn normalize_mut(&mut self) {
         match self {
-            ValueKind::Var(_)
+            ValueKind::Var(..)
             | ValueKind::Const(_)
             | ValueKind::BoolLit(_)
             | ValueKind::NaturalLit(_)
@@ -545,7 +555,7 @@ impl ValueKind<Value> {
 
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ValueKind::Var(v) => ValueKind::Var(v.shift(delta, var)?),
+            ValueKind::Var(v, w) => ValueKind::Var(v.shift(delta, var)?, *w),
             _ => self.traverse_ref_with_special_handling_of_binders(
                 |x| Ok(x.shift(delta, var)?),
                 |_, _, x| Ok(x.shift(delta, &var.under_binder())?),
@@ -554,8 +564,10 @@ impl ValueKind<Value> {
     }
     fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
         match self {
-            ValueKind::Var(v) if v == var => val.to_whnf_ignore_type(),
-            ValueKind::Var(v) => ValueKind::Var(v.shift(-1, var).unwrap()),
+            ValueKind::Var(v, _) if v == var => val.to_whnf_ignore_type(),
+            ValueKind::Var(v, w) => {
+                ValueKind::Var(v.shift(-1, var).unwrap(), *w)
+            }
             _ => self.map_ref_with_special_handling_of_binders(
                 |x| x.subst_shift(var, val),
                 |_, _, x| {

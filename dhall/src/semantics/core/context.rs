@@ -2,6 +2,7 @@ use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Binder};
+use crate::semantics::nze::NzVar;
 use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
@@ -42,7 +43,6 @@ impl TyCtx {
         let mut var = var.clone();
         let mut shift_delta: isize = 0;
         let mut rev_ctx = self.ctx.iter().rev().map(|(b, i)| (b.to_label(), i));
-
         let found_item = loop {
             if let Some((label, item)) = rev_ctx.next() {
                 var = match var.over_binder(&label) {
@@ -57,10 +57,16 @@ impl TyCtx {
                 return None;
             }
         };
+        let var_idx = rev_ctx
+            .filter(|(_, i)| match i {
+                CtxItem::Kept(_) => true,
+                CtxItem::Replaced(_) => false,
+            })
+            .count();
 
         let v = match found_item {
             CtxItem::Kept(t) => Value::from_kind_and_type(
-                ValueKind::Var(AlphaVar::default()),
+                ValueKind::Var(AlphaVar::default(), NzVar::new(var_idx)),
                 t.clone(),
             ),
             CtxItem::Replaced(v) => v.clone(),

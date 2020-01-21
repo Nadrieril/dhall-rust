@@ -81,7 +81,7 @@ where
             Pi(l.clone(), t, e)
         }
         AppliedBuiltin(b, xs) => AppliedBuiltin(*b, v.visit_vec(xs)?),
-        Var(v) => Var(v.clone()),
+        Var(v, w) => Var(v.clone(), *w),
         Const(k) => Const(*k),
         BoolLit(b) => BoolLit(*b),
         NaturalLit(n) => NaturalLit(*n),

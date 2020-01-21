@@ -1,2 +1,2 @@
 pub mod nzexpr;
-// pub(crate) use nzexpr::*;
+pub(crate) use nzexpr::*;
