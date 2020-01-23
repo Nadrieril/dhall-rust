@@ -206,11 +206,21 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             }
         }
         Normalization(expr_file_path, expected_file_path) => {
+            // let expr = parse_file_str(&expr_file_path)?
+            //     .resolve()?
+            //     .typecheck()?
+            //     .normalize()
+            //     .to_expr();
             let expr = parse_file_str(&expr_file_path)?
                 .resolve()?
                 .typecheck()?
-                .normalize()
-                .to_expr();
+                .to_value()
+                .to_tyexpr_noenv()
+                .normalize_whnf_noenv()
+                .to_expr(crate::semantics::phase::ToExprOptions {
+                    alpha: false,
+                    normalize: true,
+                });
             // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
             // let expr = crate::semantics::nze::nzexpr::typecheck(expr)?
             //     .normalize()

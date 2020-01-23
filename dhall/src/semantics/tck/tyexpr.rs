@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::AlphaVar;
+use crate::semantics::phase::normalize::{normalize_tyexpr_whnf, NzEnv};
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
@@ -50,6 +51,13 @@ impl TyExpr {
     // TODO: temporary hack
     pub fn to_value(&self) -> Value {
         todo!()
+    }
+
+    pub fn normalize_whnf(&self, env: &NzEnv) -> Value {
+        normalize_tyexpr_whnf(self, env)
+    }
+    pub fn normalize_whnf_noenv(&self) -> Value {
+        normalize_tyexpr_whnf(self, &NzEnv::new())
     }
 }
 

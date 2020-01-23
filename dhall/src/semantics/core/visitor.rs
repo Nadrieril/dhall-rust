@@ -80,6 +80,24 @@ where
             let (t, e) = v.visit_binder(l, t, e)?;
             Pi(l.clone(), t, e)
         }
+        LamClosure {
+            binder,
+            annot,
+            closure,
+        } => LamClosure {
+            binder: binder.clone(),
+            annot: v.visit_val(annot)?,
+            closure: closure.clone(),
+        },
+        PiClosure {
+            binder,
+            annot,
+            closure,
+        } => PiClosure {
+            binder: binder.clone(),
+            annot: v.visit_val(annot)?,
+            closure: closure.clone(),
+        },
         AppliedBuiltin(b, xs) => AppliedBuiltin(*b, v.visit_vec(xs)?),
         Var(v, w) => Var(v.clone(), *w),
         Const(k) => Const(*k),

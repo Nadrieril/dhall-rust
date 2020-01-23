@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::{AlphaVar, Binder};
 use crate::semantics::nze::{NzVar, QuoteEnv};
-use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
+use crate::semantics::phase::normalize::{apply_any, normalize_whnf, NzEnv};
 use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{
     Normalized, NormalizedExpr, ToExprOptions, Typed,
@@ -53,11 +53,27 @@ pub(crate) enum Form {
     NF,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct Closure {
+    env: NzEnv,
+    body: TyExpr,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind<Value> {
     /// Closures
     Lam(Binder, Value, Value),
     Pi(Binder, Value, Value),
+    LamClosure {
+        binder: Binder,
+        annot: Value,
+        closure: Closure,
+    },
+    PiClosure {
+        binder: Binder,
+        annot: Value,
+        closure: Closure,
+    },
     // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(Builtin, Vec<Value>),
 
@@ -267,128 +283,136 @@ impl Value {
             _ => self.as_internal().subst_shift(var, val).into_value(),
         }
     }
-    // pub(crate) fn subst_ctx(&self, ctx: &TyCtx) -> Self {
-    //     match &*self.as_kind() {
-    //         ValueKind::Var(var) => match ctx.lookup_alpha(var) {
-    //             Some(val) => val,
-    //             None => unreachable!("Internal type error"),
-    //         },
-    //         kind => {
-    //             let kind = kind.map_ref_with_special_handling_of_binders(
-    //                 |x| x.subst_ctx(ctx),
-    //                 |b, t, x| x.subst_ctx(&ctx.insert_type(b, t.clone())),
-    //             );
-    //             ValueInternal {
-    //                 form: Unevaled,
-    //                 kind,
-    //                 ty: self.as_internal().ty.clone(),
-    //                 span: self.as_internal().span.clone(),
-    //             }
-    //             .into_value()
-    //         }
-    //     }
-    // }
 
     pub fn to_tyexpr(&self, qenv: QuoteEnv) -> TyExpr {
-        let self_kind = self.as_kind();
-        let self_ty = self.as_internal().ty.clone();
-        let self_span = self.as_internal().span.clone();
-        if let ValueKind::Var(v, _w) = &*self_kind {
-            return TyExpr::new(
+        let tye = match &*self.as_kind() {
+            ValueKind::Var(v, _w) => {
+                TyExprKind::Var(*v)
                 // TODO: Only works when we don't normalize under lambdas
-                // TyExprKind::Var(qenv.lookup(w)),
-                TyExprKind::Var(*v),
-                self_ty,
-                self_span,
-            );
-        }
-
-        // TODO: properly recover intermediate types; `None` is a time-bomb here.
-        let self_kind = self_kind.map_ref_with_special_handling_of_binders(
-            |v| v.to_tyexpr(qenv),
-            |_, _, v| v.to_tyexpr(qenv.insert()),
-        );
-        let expr = match self_kind {
-            ValueKind::Var(..) => unreachable!(),
-            ValueKind::Lam(x, t, e) => ExprKind::Lam(x.to_label(), t, e),
-            ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
-            ValueKind::AppliedBuiltin(b, args) => {
-                args.into_iter().fold(ExprKind::Builtin(b), |acc, v| {
-                    ExprKind::App(
-                        TyExpr::new(
-                            TyExprKind::Expr(acc),
-                            None, // TODO
-                            Span::Artificial,
-                        ),
-                        v,
-                    )
-                })
+                // TyExprKind::Var(qenv.lookup(w))
             }
-            ValueKind::Const(c) => ExprKind::Const(c),
-            ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
-            ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
-            ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
-            ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
-            ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                builtin_to_value(Builtin::OptionalNone).to_tyexpr(qenv),
-                n,
-            ),
-            ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
-            ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(TyExpr::new(
-                TyExprKind::Expr(ExprKind::App(
-                    builtin_to_value(Builtin::List).to_tyexpr(qenv),
-                    n,
-                )),
-                Some(const_to_value(Const::Type)),
-                Span::Artificial,
+            ValueKind::LamClosure {
+                binder,
+                annot,
+                closure,
+            } => TyExprKind::Expr(ExprKind::Lam(
+                binder.to_label(),
+                annot.to_tyexpr(qenv),
+                closure.apply_ty(annot.clone()).to_tyexpr(qenv.insert()),
             )),
-            ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
-            ValueKind::RecordLit(kvs) => {
-                ExprKind::RecordLit(kvs.into_iter().collect())
-            }
-            ValueKind::RecordType(kts) => {
-                ExprKind::RecordType(kts.into_iter().collect())
-            }
-            ValueKind::UnionType(kts) => {
-                ExprKind::UnionType(kts.into_iter().collect())
-            }
-            ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
-                TyExpr::new(
-                    TyExprKind::Expr(ExprKind::UnionType(
-                        kts.into_iter().collect(),
-                    )),
-                    Some(t),
-                    Span::Artificial,
-                ),
-                l,
-            ),
-            ValueKind::UnionLit(l, v, kts, uniont, ctort) => ExprKind::App(
-                TyExpr::new(
-                    TyExprKind::Expr(ExprKind::Field(
+            ValueKind::PiClosure {
+                binder,
+                annot,
+                closure,
+            } => TyExprKind::Expr(ExprKind::Pi(
+                binder.to_label(),
+                annot.to_tyexpr(qenv),
+                closure.apply_ty(annot.clone()).to_tyexpr(qenv.insert()),
+            )),
+            self_kind => {
+                // TODO: properly recover intermediate types; `None` is a time-bomb here.
+                let self_kind = self_kind
+                    .map_ref_with_special_handling_of_binders(
+                        |v| v.to_tyexpr(qenv),
+                        |_, _, v| v.to_tyexpr(qenv.insert()),
+                    );
+                let expr = match self_kind {
+                    ValueKind::Var(..)
+                    | ValueKind::LamClosure { .. }
+                    | ValueKind::PiClosure { .. } => unreachable!(),
+                    ValueKind::Lam(x, t, e) => {
+                        ExprKind::Lam(x.to_label(), t, e)
+                    }
+                    ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
+                    ValueKind::AppliedBuiltin(b, args) => {
+                        args.into_iter().fold(ExprKind::Builtin(b), |acc, v| {
+                            ExprKind::App(
+                                TyExpr::new(
+                                    TyExprKind::Expr(acc),
+                                    None, // TODO
+                                    Span::Artificial,
+                                ),
+                                v,
+                            )
+                        })
+                    }
+                    ValueKind::Const(c) => ExprKind::Const(c),
+                    ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
+                    ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
+                    ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
+                    ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
+                    ValueKind::EmptyOptionalLit(n) => ExprKind::App(
+                        builtin_to_value(Builtin::OptionalNone).to_tyexpr(qenv),
+                        n,
+                    ),
+                    ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
+                    ValueKind::EmptyListLit(n) => {
+                        ExprKind::EmptyListLit(TyExpr::new(
+                            TyExprKind::Expr(ExprKind::App(
+                                builtin_to_value(Builtin::List).to_tyexpr(qenv),
+                                n,
+                            )),
+                            Some(const_to_value(Const::Type)),
+                            Span::Artificial,
+                        ))
+                    }
+                    ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
+                    ValueKind::RecordLit(kvs) => {
+                        ExprKind::RecordLit(kvs.into_iter().collect())
+                    }
+                    ValueKind::RecordType(kts) => {
+                        ExprKind::RecordType(kts.into_iter().collect())
+                    }
+                    ValueKind::UnionType(kts) => {
+                        ExprKind::UnionType(kts.into_iter().collect())
+                    }
+                    ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
                         TyExpr::new(
                             TyExprKind::Expr(ExprKind::UnionType(
                                 kts.into_iter().collect(),
                             )),
-                            Some(uniont),
+                            Some(t),
                             Span::Artificial,
                         ),
                         l,
-                    )),
-                    Some(ctort),
-                    Span::Artificial,
-                ),
-                v,
-            ),
-            ValueKind::TextLit(elts) => {
-                ExprKind::TextLit(elts.into_iter().collect())
+                    ),
+                    ValueKind::UnionLit(l, v, kts, uniont, ctort) => {
+                        ExprKind::App(
+                            TyExpr::new(
+                                TyExprKind::Expr(ExprKind::Field(
+                                    TyExpr::new(
+                                        TyExprKind::Expr(ExprKind::UnionType(
+                                            kts.into_iter().collect(),
+                                        )),
+                                        Some(uniont),
+                                        Span::Artificial,
+                                    ),
+                                    l,
+                                )),
+                                Some(ctort),
+                                Span::Artificial,
+                            ),
+                            v,
+                        )
+                    }
+                    ValueKind::TextLit(elts) => {
+                        ExprKind::TextLit(elts.into_iter().collect())
+                    }
+                    ValueKind::Equivalence(x, y) => {
+                        ExprKind::BinOp(BinOp::Equivalence, x, y)
+                    }
+                    ValueKind::PartialExpr(e) => e,
+                };
+                TyExprKind::Expr(expr)
             }
-            ValueKind::Equivalence(x, y) => {
-                ExprKind::BinOp(BinOp::Equivalence, x, y)
-            }
-            ValueKind::PartialExpr(e) => e,
         };
 
-        TyExpr::new(TyExprKind::Expr(expr), self_ty, self_span)
+        let self_ty = self.as_internal().ty.clone();
+        let self_span = self.as_internal().span.clone();
+        TyExpr::new(tye, self_ty, self_span)
+    }
+    pub fn to_tyexpr_noenv(&self) -> TyExpr {
+        self.to_tyexpr(QuoteEnv::new())
     }
 }
 
@@ -501,6 +525,10 @@ impl ValueKind<Value> {
             ValueKind::Pi(_, t, e) => {
                 t.normalize_mut();
                 e.normalize_mut();
+            }
+            ValueKind::LamClosure { annot, .. }
+            | ValueKind::PiClosure { annot, .. } => {
+                annot.normalize_mut();
             }
             ValueKind::AppliedBuiltin(_, args) => {
                 for x in args.iter_mut() {
@@ -620,6 +648,21 @@ impl<V> ValueKind<V> {
     }
 }
 
+impl Closure {
+    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
+        Closure {
+            env: env.clone(),
+            body: body,
+        }
+    }
+    pub fn apply(&self, val: Value) -> Value {
+        self.body.normalize_whnf(&self.env.insert_value(val))
+    }
+    pub fn apply_ty(&self, ty: Value) -> Value {
+        self.body.normalize_whnf(&self.env.insert_type(ty))
+    }
+}
+
 // TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -627,6 +670,14 @@ impl std::cmp::PartialEq for Value {
     }
 }
 impl std::cmp::Eq for Value {}
+
+// TODO: panics
+impl std::cmp::PartialEq for Closure {
+    fn eq(&self, _other: &Self) -> bool {
+        panic!("comparing closures for equality seems like a bad idea")
+    }
+}
+impl std::cmp::Eq for Closure {}
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -200,6 +200,7 @@ impl NzEnv {
         env
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> NzExpr {
+        // TODO: use VarEnv
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             NzEnvItem::Kept(ty) => NzExpr::new(
@@ -211,6 +212,7 @@ impl NzEnv {
     }
 }
 
+// TODO: rename to VarEnv
 impl QuoteEnv {
     pub fn new() -> Self {
         QuoteEnv { size: 0 }

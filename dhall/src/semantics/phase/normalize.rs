@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
+use crate::semantics::nze::NzVar;
 use crate::semantics::phase::typecheck::{rc, typecheck};
 use crate::semantics::phase::Normalized;
-use crate::semantics::{AlphaVar, Value, ValueKind};
+use crate::semantics::{
+    AlphaVar, Binder, Closure, TyExpr, TyExprKind, Value, ValueKind,
+};
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
@@ -785,4 +788,84 @@ pub(crate) fn normalize_whnf(
         // All other cases are already in WHNF
         v => v,
     }
+}
+
+#[derive(Debug, Clone)]
+enum NzEnvItem {
+    // Variable is bound with given type
+    Kept(Value),
+    // Variable has been replaced by corresponding value
+    Replaced(Value),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NzEnv {
+    items: Vec<NzEnvItem>,
+}
+
+impl NzEnv {
+    pub fn new() -> Self {
+        NzEnv { items: Vec::new() }
+    }
+
+    pub fn insert_type(&self, t: Value) -> Self {
+        let mut env = self.clone();
+        env.items.push(NzEnvItem::Kept(t));
+        env
+    }
+    pub fn insert_value(&self, e: Value) -> Self {
+        let mut env = self.clone();
+        env.items.push(NzEnvItem::Replaced(e));
+        env
+    }
+    pub fn lookup_val(&self, var: &AlphaVar) -> Value {
+        let idx = self.items.len() - 1 - var.idx();
+        match &self.items[idx] {
+            NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
+                ValueKind::Var(var.clone(), NzVar::new(idx)),
+                ty.clone(),
+            ),
+            NzEnvItem::Replaced(x) => x.clone(),
+        }
+    }
+}
+
+/// Normalize a TyExpr into WHNF
+pub(crate) fn normalize_tyexpr_whnf(e: &TyExpr, env: &NzEnv) -> Value {
+    let kind = match e.kind() {
+        TyExprKind::Var(var) => return env.lookup_val(var),
+        TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
+            ValueKind::LamClosure {
+                binder: Binder::new(binder.clone()),
+                annot: annot.normalize_whnf(env),
+                closure: Closure::new(env, body.clone()),
+            }
+        }
+        TyExprKind::Expr(ExprKind::Pi(binder, annot, body)) => {
+            ValueKind::PiClosure {
+                binder: Binder::new(binder.clone()),
+                annot: annot.normalize_whnf(env),
+                closure: Closure::new(env, body.clone()),
+            }
+        }
+        TyExprKind::Expr(e) => {
+            let e = e.map_ref(|tye| tye.normalize_whnf(env));
+            match e {
+                ExprKind::App(f, arg) => {
+                    let f_borrow = f.as_whnf();
+                    match &*f_borrow {
+                        ValueKind::LamClosure { closure, .. } => {
+                            return closure.apply(arg)
+                        }
+                        _ => {
+                            drop(f_borrow);
+                            ValueKind::PartialExpr(ExprKind::App(f, arg))
+                        }
+                    }
+                }
+                _ => ValueKind::PartialExpr(e),
+            }
+        }
+    };
+    Value::from_kind_and_type_whnf(kind, e.get_type().unwrap())
 }
