@@ -1,1 +1,1 @@
-Type error: Unhandled error: InvalidListType(Value@WHNF { value: AppliedBuiltin(Optional, [Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type }]), type: Type })
+Type error: Unhandled error: InvalidListType(Value@WHNF { value: AppliedBuiltin(Optional, [Value@Unevaled { value: AppliedBuiltin(Bool, [], []), type: Type }], [Value@WHNF { value: Pi(Binder(`_`), Type, Type), type: Kind }]), type: Type })

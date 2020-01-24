@@ -4,10 +4,10 @@
 1 | (λ(_ : Natural) → _) True␊
   |                      ^--^
   |
-  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }
+  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, [], []), type: Type }
  --> 1:8
   |
 1 | (λ(_ : Natural) → _) True␊
   |        ^-----^
   |
-  = But the function expected an argument of type Value@NF { value: AppliedBuiltin(Natural, []), type: Type }
+  = But the function expected an argument of type Value@NF { value: AppliedBuiltin(Natural, [], []), type: Type }

@@ -1,1 +1,1 @@
-Type error: Unhandled error: AssertMismatch(Value@WHNF { value: NaturalLit(1), type: Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type } }, Value@WHNF { value: NaturalLit(2), type: Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type } })
+Type error: Unhandled error: AssertMismatch(Value@WHNF { value: NaturalLit(1), type: Value@WHNF { value: AppliedBuiltin(Natural, [], []), type: Type } }, Value@WHNF { value: NaturalLit(2), type: Value@WHNF { value: AppliedBuiltin(Natural, [], []), type: Type } })

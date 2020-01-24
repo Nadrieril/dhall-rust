@@ -9,5 +9,5 @@
 1 | Natural/subtract True True␊
   |                  ^--^
   |
-  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type }
-[unknown location] But the function expected an argument of type Value@WHNF { value: AppliedBuiltin(Natural, []), type: Type }
+  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, [], []), type: Type }
+[unknown location] But the function expected an argument of type Value@WHNF { value: AppliedBuiltin(Natural, [], []), type: Type }

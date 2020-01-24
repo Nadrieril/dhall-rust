@@ -1,1 +1,1 @@
-Type error: Unhandled error: MissingUnionField(Label("y"), Value@WHNF { value: UnionType({Label("x"): Some(Value@Unevaled { value: AppliedBuiltin(Bool, []), type: Type })}), type: Type })
+Type error: Unhandled error: MissingUnionField(Label("y"), Value@WHNF { value: UnionType({Label("x"): Some(Value@Unevaled { value: AppliedBuiltin(Bool, [], []), type: Type })}), type: Type })
