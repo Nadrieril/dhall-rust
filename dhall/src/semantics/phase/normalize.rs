@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use crate::semantics::nze::NzVar;
-use crate::semantics::phase::typecheck::{rc, typecheck};
+use crate::semantics::phase::typecheck::{
+    builtin_to_value, const_to_value, rc, typecheck,
+};
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
     AlphaVar, Binder, Closure, TyExpr, TyExprKind, Value, ValueKind,
@@ -372,6 +374,9 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
         ValueKind::Lam(_, _, e) => e
             .subst_shift(&AlphaVar::default(), &a)
             .to_whnf_check_type(ty),
+        ValueKind::LamClosure { closure, .. } => {
+            closure.apply(a).to_whnf_check_type(ty)
+        }
         ValueKind::AppliedBuiltin(b, args) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
@@ -597,8 +602,8 @@ pub(crate) fn normalize_one_layer(
 ) -> ValueKind<Value> {
     use ValueKind::{
         BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
-        NEOptionalLit, NaturalLit, RecordLit, TextLit, UnionConstructor,
-        UnionLit, UnionType,
+        NEOptionalLit, NaturalLit, RecordLit, RecordType, TextLit,
+        UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -611,15 +616,12 @@ pub(crate) fn normalize_one_layer(
         | ExprKind::Pi(_, _, _)
         | ExprKind::Let(_, _, _, _)
         | ExprKind::Embed(_)
-        | ExprKind::Const(_)
-        | ExprKind::Builtin(_)
         | ExprKind::Var(_)
-        | ExprKind::Annot(_, _)
-        | ExprKind::EmptyListLit(_)
-        | ExprKind::RecordType(_)
-        | ExprKind::UnionType(_) => {
+        | ExprKind::Annot(_, _) => {
             unreachable!("This case should have been handled in typecheck")
         }
+        ExprKind::Const(c) => Ret::Value(const_to_value(c)),
+        ExprKind::Builtin(b) => Ret::Value(builtin_to_value(b)),
         ExprKind::Assert(_) => Ret::Expr(expr),
         ExprKind::App(v, a) => Ret::Value(v.app(a)),
         ExprKind::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
@@ -627,11 +629,28 @@ pub(crate) fn normalize_one_layer(
         ExprKind::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
         ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
+        ExprKind::EmptyListLit(t) => {
+            let arg = match &*t.as_whnf() {
+                ValueKind::AppliedBuiltin(syntax::Builtin::List, args)
+                    if args.len() == 1 =>
+                {
+                    args[0].clone()
+                }
+                _ => panic!("internal type error"),
+            };
+            Ret::ValueKind(ValueKind::EmptyListLit(arg))
+        }
         ExprKind::NEListLit(elts) => {
             Ret::ValueKind(NEListLit(elts.into_iter().collect()))
         }
         ExprKind::RecordLit(kvs) => {
             Ret::ValueKind(RecordLit(kvs.into_iter().collect()))
+        }
+        ExprKind::RecordType(kvs) => {
+            Ret::ValueKind(RecordType(kvs.into_iter().collect()))
+        }
+        ExprKind::UnionType(kvs) => {
+            Ret::ValueKind(UnionType(kvs.into_iter().collect()))
         }
         ExprKind::TextLit(elts) => {
             use InterpolatedTextContents::Expr;
@@ -665,6 +684,13 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
+        // ExprKind::BinOp(RecursiveRecordTypeMerge, l, r) => { }
+        // ExprKind::BinOp(Equivalence, l, r) => {
+        //     RetWhole(Value::from_kind_and_type(
+        //         ValueKind::Equivalence(l.clone(), r.clone()),
+        //         Value::from_const(Type),
+        //     ))
+        // }
         ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
             Some(ret) => ret,
             None => Ret::Expr(expr),
@@ -831,8 +857,9 @@ impl NzEnv {
 }
 
 /// Normalize a TyExpr into WHNF
-pub(crate) fn normalize_tyexpr_whnf(e: &TyExpr, env: &NzEnv) -> Value {
-    let kind = match e.kind() {
+pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
+    let ty = tye.get_type().unwrap();
+    let kind = match tye.kind() {
         TyExprKind::Var(var) => return env.lookup_val(var),
         TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             ValueKind::LamClosure {
@@ -850,22 +877,9 @@ pub(crate) fn normalize_tyexpr_whnf(e: &TyExpr, env: &NzEnv) -> Value {
         }
         TyExprKind::Expr(e) => {
             let e = e.map_ref(|tye| tye.normalize_whnf(env));
-            match e {
-                ExprKind::App(f, arg) => {
-                    let f_borrow = f.as_whnf();
-                    match &*f_borrow {
-                        ValueKind::LamClosure { closure, .. } => {
-                            return closure.apply(arg)
-                        }
-                        _ => {
-                            drop(f_borrow);
-                            ValueKind::PartialExpr(ExprKind::App(f, arg))
-                        }
-                    }
-                }
-                _ => ValueKind::PartialExpr(e),
-            }
+            normalize_one_layer(e, &ty)
         }
     };
-    Value::from_kind_and_type_whnf(kind, e.get_type().unwrap())
+
+    Value::from_kind_and_type_whnf(kind, ty)
 }
