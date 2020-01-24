@@ -594,8 +594,12 @@ fn apply_binop<'a>(
             Ret::ValueKind(RecordLit(kvs))
         }
 
-        (RecursiveRecordTypeMerge, _, _) | (Equivalence, _, _) => {
+        (RecursiveRecordTypeMerge, _, _) => {
             unreachable!("This case should have been handled in typecheck")
+        }
+
+        (Equivalence, _, _) => {
+            Ret::ValueKind(ValueKind::Equivalence(x.clone(), y.clone()))
         }
 
         _ => return None,
@@ -690,13 +694,6 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        // ExprKind::BinOp(RecursiveRecordTypeMerge, l, r) => { }
-        // ExprKind::BinOp(Equivalence, l, r) => {
-        //     RetWhole(Value::from_kind_and_type(
-        //         ValueKind::Equivalence(l.clone(), r.clone()),
-        //         Value::from_const(Type),
-        //     ))
-        // }
         ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
             Some(ret) => ret,
             None => Ret::Expr(expr),

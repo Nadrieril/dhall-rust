@@ -10,7 +10,7 @@ use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
 use crate::semantics::phase::{
     Normalized, NormalizedExpr, ToExprOptions, Typed,
 };
-use crate::semantics::{TyExpr, TyExprKind, Type};
+use crate::semantics::{TyExpr, TyExprKind};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
@@ -234,6 +234,10 @@ impl Value {
             ValueKind::Pi(_, t, e) => {
                 v.check_type(t);
                 e.subst_shift(&AlphaVar::default(), &v)
+            }
+            ValueKind::PiClosure { annot, closure, .. } => {
+                v.check_type(annot);
+                closure.apply(v.clone())
             }
             _ => unreachable!("Internal type error"),
         };
