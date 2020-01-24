@@ -12,8 +12,8 @@ use crate::semantics::{
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
-    BinOp, Builtin, ExprKind, InterpolatedText, InterpolatedTextContents,
-    Label, NaiveDouble,
+    BinOp, Builtin, Const, ExprKind, InterpolatedText,
+    InterpolatedTextContents, Label, NaiveDouble,
 };
 
 // Ad-hoc macro to help construct closures
@@ -822,7 +822,7 @@ pub(crate) fn normalize_whnf(
 }
 
 #[derive(Debug, Clone)]
-enum NzEnvItem {
+pub(crate) enum NzEnvItem {
     // Variable is bound with given type
     Kept(Value),
     // Variable has been replaced by corresponding value
@@ -838,6 +838,9 @@ impl NzEnv {
     pub fn new() -> Self {
         NzEnv { items: Vec::new() }
     }
+    pub fn construct(items: Vec<NzEnvItem>) -> Self {
+        NzEnv { items }
+    }
 
     pub fn insert_type(&self, t: Value) -> Self {
         let mut env = self.clone();
@@ -851,9 +854,16 @@ impl NzEnv {
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> Value {
         let idx = self.items.len() - 1 - var.idx();
+        let var_idx = self.items[..idx]
+            .iter()
+            .filter(|i| match i {
+                NzEnvItem::Kept(_) => true,
+                NzEnvItem::Replaced(_) => false,
+            })
+            .count();
         match &self.items[idx] {
             NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
-                ValueKind::Var(var.clone(), NzVar::new(idx)),
+                ValueKind::Var(var.clone(), NzVar::new(var_idx)),
                 ty.clone(),
             ),
             NzEnvItem::Replaced(x) => x.clone(),
@@ -863,7 +873,11 @@ impl NzEnv {
 
 /// Normalize a TyExpr into WHNF
 pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
-    let ty = tye.get_type().unwrap();
+    let ty = match tye.get_type() {
+        Ok(ty) => ty,
+        Err(_) => return Value::from_const(Const::Sort),
+    };
+
     let kind = match tye.kind() {
         TyExprKind::Var(var) => return env.lookup_val(var),
         TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {

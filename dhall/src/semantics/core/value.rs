@@ -185,7 +185,7 @@ impl Value {
             self.normalize_nf();
         }
 
-        self.to_tyexpr(QuoteEnv::new()).to_expr(opts)
+        self.to_tyexpr_noenv().to_expr(opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
         self.as_whnf().clone()
@@ -292,11 +292,9 @@ impl Value {
 
     pub fn to_tyexpr(&self, qenv: QuoteEnv) -> TyExpr {
         let tye = match &*self.as_kind() {
-            ValueKind::Var(v, _w) => {
-                TyExprKind::Var(*v)
-                // TODO: Only works when we don't normalize under lambdas
-                // TyExprKind::Var(qenv.lookup(w))
-            }
+            // ValueKind::Var(v, _w) => TyExprKind::Var(*v),
+            // TODO: Only works when we don't normalize under lambdas
+            ValueKind::Var(_v, w) => TyExprKind::Var(qenv.lookup(w)),
             ValueKind::LamClosure {
                 binder,
                 annot,
@@ -611,7 +609,13 @@ impl ValueKind<Value> {
 
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(match self {
-            ValueKind::Var(v, w) => ValueKind::Var(v.shift(delta, var)?, *w),
+            ValueKind::Var(v, w) if var.idx() <= v.idx() => {
+                ValueKind::Var(v.shift(delta, var)?, *w)
+            }
+            ValueKind::Var(v, w) => {
+                ValueKind::Var(v.shift(delta, var)?, w.shift(delta))
+            }
+            // ValueKind::Var(v, w) => ValueKind::Var(v.shift(delta, var)?, *w),
             _ => self.traverse_ref_with_special_handling_of_binders(
                 |x| Ok(x.shift(delta, var)?),
                 |_, _, x| Ok(x.shift(delta, &var.under_binder())?),

@@ -217,6 +217,9 @@ impl QuoteEnv {
     pub fn new() -> Self {
         QuoteEnv { size: 0 }
     }
+    pub fn construct(size: usize) -> Self {
+        QuoteEnv { size }
+    }
     pub fn insert(&self) -> Self {
         QuoteEnv {
             size: self.size + 1,
@@ -230,6 +233,11 @@ impl QuoteEnv {
 impl NzVar {
     pub fn new(idx: usize) -> Self {
         NzVar { idx }
+    }
+    pub fn shift(&self, delta: isize) -> Self {
+        NzVar {
+            idx: (self.idx as isize + delta) as usize,
+        }
     }
 }
 

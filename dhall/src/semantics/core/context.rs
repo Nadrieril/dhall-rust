@@ -2,7 +2,8 @@ use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Binder};
-use crate::semantics::nze::NzVar;
+use crate::semantics::nze::{NzVar, QuoteEnv};
+use crate::semantics::phase::normalize::{NzEnv, NzEnvItem};
 use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
@@ -69,7 +70,19 @@ impl TyCtx {
                 ValueKind::Var(AlphaVar::default(), NzVar::new(var_idx)),
                 t.clone(),
             ),
-            CtxItem::Replaced(v) => v.clone(),
+            CtxItem::Replaced(v) => v.clone()
+                // .to_tyexpr(QuoteEnv::construct(var_idx))
+                // .normalize_whnf(&NzEnv::construct(
+                //     self.ctx
+                //         .iter()
+                //         .filter_map(|(_, i)| match i {
+                //             CtxItem::Kept(t) => {
+                //                 Some(NzEnvItem::Kept(t.clone()))
+                //             }
+                //             CtxItem::Replaced(_) => None,
+                //         })
+                //         .collect(),
+                // )),
         };
         // Can't fail because delta is positive
         let v = v.shift(shift_delta, &AlphaVar::default()).unwrap();
