@@ -2,8 +2,8 @@ use crate::error::TypeError;
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
 use crate::semantics::core::var::{AlphaVar, Binder};
-use crate::semantics::nze::{NzVar, QuoteEnv};
-use crate::semantics::phase::normalize::{NzEnv, NzEnvItem};
+use crate::semantics::nze::NzVar;
+// use crate::semantics::phase::normalize::{NzEnv, NzEnvItem};
 use crate::syntax::{Label, V};
 
 #[derive(Debug, Clone)]
@@ -71,7 +71,6 @@ impl TyCtx {
                 t.clone(),
             ),
             CtxItem::Replaced(v) => v.clone()
-                // .to_tyexpr(QuoteEnv::construct(var_idx))
                 // .normalize_whnf(&NzEnv::construct(
                 //     self.ctx
                 //         .iter()
