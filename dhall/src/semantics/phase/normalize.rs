@@ -71,6 +71,7 @@ pub(crate) fn apply_builtin(
     b: Builtin,
     args: Vec<Value>,
     ty: &Value,
+    types: Vec<Value>,
 ) -> ValueKind<Value> {
     use syntax::Builtin::*;
     use ValueKind::*;
@@ -364,7 +365,7 @@ pub(crate) fn apply_builtin(
             }
             v.to_whnf_check_type(ty)
         }
-        Ret::DoneAsIs => AppliedBuiltin(b, args),
+        Ret::DoneAsIs => AppliedBuiltin(b, args, types),
     }
 }
 
@@ -377,10 +378,15 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
         }
-        ValueKind::AppliedBuiltin(b, args) => {
+        ValueKind::AppliedBuiltin(b, args, types) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
-            apply_builtin(*b, args, ty)
+            let types = types
+                .iter()
+                .cloned()
+                .chain(once(f.get_type().unwrap()))
+                .collect();
+            apply_builtin(*b, args, ty, types)
         }
         ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
             l.clone(),
@@ -631,7 +637,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(syntax::Builtin::List, args)
+                ValueKind::AppliedBuiltin(syntax::Builtin::List, args, _)
                     if args.len() == 1 =>
                 {
                     args[0].clone()
@@ -806,7 +812,9 @@ pub(crate) fn normalize_whnf(
     ty: &Value,
 ) -> ValueKind<Value> {
     match v {
-        ValueKind::AppliedBuiltin(b, args) => apply_builtin(b, args, ty),
+        ValueKind::AppliedBuiltin(b, args, types) => {
+            apply_builtin(b, args, ty, types)
+        }
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty),
         ValueKind::TextLit(elts) => {
             ValueKind::TextLit(squash_textlit(elts.into_iter()))

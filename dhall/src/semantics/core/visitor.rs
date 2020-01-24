@@ -98,7 +98,9 @@ where
             annot: v.visit_val(annot)?,
             closure: closure.clone(),
         },
-        AppliedBuiltin(b, xs) => AppliedBuiltin(*b, v.visit_vec(xs)?),
+        AppliedBuiltin(b, xs, types) => {
+            AppliedBuiltin(*b, v.visit_vec(xs)?, v.visit_vec(types)?)
+        }
         Var(v, w) => Var(v.clone(), *w),
         Const(k) => Const(*k),
         BoolLit(b) => BoolLit(*b),
@@ -112,15 +114,17 @@ where
         RecordType(kts) => RecordType(v.visit_map(kts)?),
         RecordLit(kvs) => RecordLit(v.visit_map(kvs)?),
         UnionType(kts) => UnionType(v.visit_optmap(kts)?),
-        UnionConstructor(l, kts, t) => {
-            UnionConstructor(l.clone(), v.visit_optmap(kts)?, t.clone())
-        }
+        UnionConstructor(l, kts, uniont) => UnionConstructor(
+            l.clone(),
+            v.visit_optmap(kts)?,
+            v.visit_val(uniont)?,
+        ),
         UnionLit(l, x, kts, uniont, ctort) => UnionLit(
             l.clone(),
             v.visit_val(x)?,
             v.visit_optmap(kts)?,
-            uniont.clone(),
-            ctort.clone(),
+            v.visit_val(uniont)?,
+            v.visit_val(ctort)?,
         ),
         TextLit(ts) => TextLit(
             ts.iter()

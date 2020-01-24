@@ -75,7 +75,8 @@ pub(crate) enum ValueKind<Value> {
         closure: Closure,
     },
     // Invariant: in whnf, the evaluation must not be able to progress further.
-    AppliedBuiltin(Builtin, Vec<Value>),
+    // Keep types around to be able to recover the types of partial applications.
+    AppliedBuiltin(Builtin, Vec<Value>, Vec<Value>),
 
     Var(AlphaVar, NzVar),
     Const(Const),
@@ -92,9 +93,9 @@ pub(crate) enum ValueKind<Value> {
     RecordLit(HashMap<Label, Value>),
     UnionType(HashMap<Label, Option<Value>>),
     // Also keep the type of the uniontype around
-    UnionConstructor(Label, HashMap<Label, Option<Value>>, Type),
+    UnionConstructor(Label, HashMap<Label, Option<Value>>, Value),
     // Also keep the type of the uniontype and the constructor around
-    UnionLit(Label, Value, HashMap<Label, Option<Value>>, Type, Type),
+    UnionLit(Label, Value, HashMap<Label, Option<Value>>, Value, Value),
     // Invariant: in whnf, this must not contain interpolations that are themselves TextLits, and
     // contiguous text values must be merged.
     TextLit(Vec<InterpolatedTextContents<Value>>),
@@ -309,8 +310,68 @@ impl Value {
                 annot.to_tyexpr(qenv),
                 closure.apply_ty(annot.clone()).to_tyexpr(qenv.insert()),
             )),
+            ValueKind::AppliedBuiltin(b, args, types) => {
+                TyExprKind::Expr(args.into_iter().zip(types.into_iter()).fold(
+                    ExprKind::Builtin(*b),
+                    |acc, (v, ty)| {
+                        ExprKind::App(
+                            TyExpr::new(
+                                TyExprKind::Expr(acc),
+                                Some(ty.clone()),
+                                Span::Artificial,
+                            ),
+                            v.to_tyexpr(qenv),
+                        )
+                    },
+                ))
+            }
+            ValueKind::UnionConstructor(l, kts, t) => {
+                TyExprKind::Expr(ExprKind::Field(
+                    TyExpr::new(
+                        TyExprKind::Expr(ExprKind::UnionType(
+                            kts.into_iter()
+                                .map(|(k, v)| {
+                                    (
+                                        k.clone(),
+                                        v.as_ref().map(|v| v.to_tyexpr(qenv)),
+                                    )
+                                })
+                                .collect(),
+                        )),
+                        Some(t.clone()),
+                        Span::Artificial,
+                    ),
+                    l.clone(),
+                ))
+            }
+            ValueKind::UnionLit(l, v, kts, uniont, ctort) => {
+                TyExprKind::Expr(ExprKind::App(
+                    TyExpr::new(
+                        TyExprKind::Expr(ExprKind::Field(
+                            TyExpr::new(
+                                TyExprKind::Expr(ExprKind::UnionType(
+                                    kts.into_iter()
+                                        .map(|(k, v)| {
+                                            (
+                                                k.clone(),
+                                                v.as_ref()
+                                                    .map(|v| v.to_tyexpr(qenv)),
+                                            )
+                                        })
+                                        .collect(),
+                                )),
+                                Some(uniont.clone()),
+                                Span::Artificial,
+                            ),
+                            l.clone(),
+                        )),
+                        Some(ctort.clone()),
+                        Span::Artificial,
+                    ),
+                    v.to_tyexpr(qenv),
+                ))
+            }
             self_kind => {
-                // TODO: properly recover intermediate types; `None` is a time-bomb here.
                 let self_kind = self_kind
                     .map_ref_with_special_handling_of_binders(
                         |v| v.to_tyexpr(qenv),
@@ -319,23 +380,14 @@ impl Value {
                 let expr = match self_kind {
                     ValueKind::Var(..)
                     | ValueKind::LamClosure { .. }
-                    | ValueKind::PiClosure { .. } => unreachable!(),
+                    | ValueKind::PiClosure { .. }
+                    | ValueKind::AppliedBuiltin(..)
+                    | ValueKind::UnionConstructor(..)
+                    | ValueKind::UnionLit(..) => unreachable!(),
                     ValueKind::Lam(x, t, e) => {
                         ExprKind::Lam(x.to_label(), t, e)
                     }
                     ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
-                    ValueKind::AppliedBuiltin(b, args) => {
-                        args.into_iter().fold(ExprKind::Builtin(b), |acc, v| {
-                            ExprKind::App(
-                                TyExpr::new(
-                                    TyExprKind::Expr(acc),
-                                    None, // TODO
-                                    Span::Artificial,
-                                ),
-                                v,
-                            )
-                        })
-                    }
                     ValueKind::Const(c) => ExprKind::Const(c),
                     ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
                     ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
@@ -365,35 +417,6 @@ impl Value {
                     }
                     ValueKind::UnionType(kts) => {
                         ExprKind::UnionType(kts.into_iter().collect())
-                    }
-                    ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
-                        TyExpr::new(
-                            TyExprKind::Expr(ExprKind::UnionType(
-                                kts.into_iter().collect(),
-                            )),
-                            Some(t),
-                            Span::Artificial,
-                        ),
-                        l,
-                    ),
-                    ValueKind::UnionLit(l, v, kts, uniont, ctort) => {
-                        ExprKind::App(
-                            TyExpr::new(
-                                TyExprKind::Expr(ExprKind::Field(
-                                    TyExpr::new(
-                                        TyExprKind::Expr(ExprKind::UnionType(
-                                            kts.into_iter().collect(),
-                                        )),
-                                        Some(uniont),
-                                        Span::Artificial,
-                                    ),
-                                    l,
-                                )),
-                                Some(ctort),
-                                Span::Artificial,
-                            ),
-                            v,
-                        )
                     }
                     ValueKind::TextLit(elts) => {
                         ExprKind::TextLit(elts.into_iter().collect())
@@ -530,7 +553,7 @@ impl ValueKind<Value> {
             | ValueKind::PiClosure { annot, .. } => {
                 annot.normalize_mut();
             }
-            ValueKind::AppliedBuiltin(_, args) => {
+            ValueKind::AppliedBuiltin(_, args, _) => {
                 for x in args.iter_mut() {
                     x.normalize_mut();
                 }
@@ -578,7 +601,7 @@ impl ValueKind<Value> {
     }
 
     pub(crate) fn from_builtin(b: Builtin) -> ValueKind<Value> {
-        ValueKind::AppliedBuiltin(b, vec![])
+        ValueKind::AppliedBuiltin(b, vec![], vec![])
     }
 
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {

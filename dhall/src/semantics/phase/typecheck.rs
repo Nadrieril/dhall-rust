@@ -421,7 +421,7 @@ fn type_last_layer(
         }
         EmptyListLit(t) => {
             let arg = match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(syntax::Builtin::List, args)
+                ValueKind::AppliedBuiltin(syntax::Builtin::List, args, _)
                     if args.len() == 1 =>
                 {
                     args[0].clone()
@@ -613,7 +613,7 @@ fn type_last_layer(
         }
         BinOp(o @ ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {
-                ValueKind::AppliedBuiltin(List, _) => {}
+                ValueKind::AppliedBuiltin(List, _, _) => {}
                 _ => return mkerr(BinOpTypeMismatch(*o, l.clone())),
             }
 
@@ -679,9 +679,11 @@ fn type_last_layer(
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
                 ValueKind::UnionType(kts) => Cow::Borrowed(kts),
-                ValueKind::AppliedBuiltin(syntax::Builtin::Optional, args)
-                    if args.len() == 1 =>
-                {
+                ValueKind::AppliedBuiltin(
+                    syntax::Builtin::Optional,
+                    args,
+                    _,
+                ) if args.len() == 1 => {
                     let ty = &args[0];
                     let mut kts = HashMap::new();
                     kts.insert("None".into(), None);
