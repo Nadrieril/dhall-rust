@@ -163,8 +163,9 @@ fn type_with(
             let ty = Value::from_kind_and_type(
                 ValueKind::PiClosure {
                     binder: Binder::new(binder.clone()),
-                    annot: annot_nf,
+                    annot: annot_nf.clone(),
                     closure: Closure::new(
+                        annot_nf,
                         env.as_nzenv(),
                         body.get_type()?.to_tyexpr(env.as_quoteenv().insert()),
                     ),

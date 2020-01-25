@@ -884,17 +884,20 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
     let kind = match tye.kind() {
         TyExprKind::Var(var) => return env.lookup_val(var),
         TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
+            let annot = annot.normalize_whnf(env);
             ValueKind::LamClosure {
                 binder: Binder::new(binder.clone()),
-                annot: annot.normalize_whnf(env),
-                closure: Closure::new(env, body.clone()),
+                annot: annot.clone(),
+                closure: Closure::new(annot, env, body.clone()),
             }
         }
         TyExprKind::Expr(ExprKind::Pi(binder, annot, body)) => {
+            let annot = annot.normalize_whnf(env);
+            let closure = Closure::new(annot.clone(), env, body.clone());
             ValueKind::PiClosure {
                 binder: Binder::new(binder.clone()),
-                annot: annot.normalize_whnf(env),
-                closure: Closure::new(env, body.clone()),
+                annot,
+                closure,
             }
         }
         TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {

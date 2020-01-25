@@ -55,6 +55,7 @@ pub(crate) enum Form {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Closure {
+    arg_ty: Value,
     env: NzEnv,
     body: TyExpr,
 }
@@ -302,7 +303,7 @@ impl Value {
             } => TyExprKind::Expr(ExprKind::Lam(
                 binder.to_label(),
                 annot.to_tyexpr(qenv),
-                closure.apply_ty(annot.clone()).to_tyexpr(qenv.insert()),
+                closure.normalize().to_tyexpr(qenv.insert()),
             )),
             ValueKind::PiClosure {
                 binder,
@@ -311,7 +312,7 @@ impl Value {
             } => TyExprKind::Expr(ExprKind::Pi(
                 binder.to_label(),
                 annot.to_tyexpr(qenv),
-                closure.apply_ty(annot.clone()).to_tyexpr(qenv.insert()),
+                closure.normalize().to_tyexpr(qenv.insert()),
             )),
             ValueKind::AppliedBuiltin(b, args, types) => {
                 TyExprKind::Expr(args.into_iter().zip(types.into_iter()).fold(
@@ -681,17 +682,19 @@ impl<V> ValueKind<V> {
 }
 
 impl Closure {
-    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
+    pub fn new(arg_ty: Value, env: &NzEnv, body: TyExpr) -> Self {
         Closure {
+            arg_ty,
             env: env.clone(),
-            body: body,
+            body,
         }
     }
     pub fn apply(&self, val: Value) -> Value {
         self.body.normalize_whnf(&self.env.insert_value(val))
     }
-    pub fn apply_ty(&self, ty: Value) -> Value {
-        self.body.normalize_whnf(&self.env.insert_type(ty))
+    pub fn normalize(&self) -> Value {
+        self.body
+            .normalize_whnf(&self.env.insert_type(self.arg_ty.clone()))
     }
 }
 
@@ -703,10 +706,9 @@ impl std::cmp::PartialEq for Value {
 }
 impl std::cmp::Eq for Value {}
 
-// TODO: panics
 impl std::cmp::PartialEq for Closure {
-    fn eq(&self, _other: &Self) -> bool {
-        panic!("comparing closures for equality seems like a bad idea")
+    fn eq(&self, other: &Self) -> bool {
+        self.normalize() == other.normalize()
     }
 }
 impl std::cmp::Eq for Closure {}
