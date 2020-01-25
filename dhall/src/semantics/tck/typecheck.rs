@@ -19,8 +19,8 @@ use crate::semantics::{
 };
 use crate::syntax;
 use crate::syntax::{
-    Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label, Span,
-    UnspannedExpr, V,
+    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
+    Span, UnspannedExpr, V,
 };
 
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ impl TyEnv {
         &self.names
     }
 
-    pub fn insert_type(&self, x: &Label, t: Value) -> Self {
+    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
             items: self.items.insert_type(t),
@@ -58,7 +58,7 @@ impl TyEnv {
             items: self.items.insert_value(e),
         }
     }
-    pub fn lookup(&self, var: &V<Label>) -> Option<(TyExprKind, Value)> {
+    pub fn lookup(&self, var: &V<Label>) -> Option<(TyExprKind, Type)> {
         let var = self.names.unlabel_var(var)?;
         let ty = self.items.lookup_val(&var).get_type().unwrap();
         Some((TyExprKind::Var(var), ty))
@@ -72,10 +72,10 @@ fn mkerr<T>(x: impl ToString) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
 
-fn type_last_layer(
+fn type_one_layer(
     env: &TyEnv,
     kind: &ExprKind<TyExpr, Normalized>,
-) -> Result<Value, TypeError> {
+) -> Result<Type, TypeError> {
     Ok(match &kind {
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
@@ -85,7 +85,7 @@ fn type_last_layer(
         | ExprKind::Pi(..)
         | ExprKind::Let(..)
         | ExprKind::Const(Const::Sort)
-        | ExprKind::Embed(..) => unreachable!(),
+        | ExprKind::Embed(..) => unreachable!(), // Handled in type_with
 
         ExprKind::Const(Const::Type) => const_to_value(Const::Kind),
         ExprKind::Const(Const::Kind) => const_to_value(Const::Sort),
@@ -96,7 +96,99 @@ fn type_last_layer(
         ExprKind::NaturalLit(_) => builtin_to_value(Builtin::Natural),
         ExprKind::IntegerLit(_) => builtin_to_value(Builtin::Integer),
         ExprKind::DoubleLit(_) => builtin_to_value(Builtin::Double),
+        ExprKind::TextLit(interpolated) => {
+            let text_type = builtin_to_value(Builtin::Text);
+            for contents in interpolated.iter() {
+                use InterpolatedTextContents::Expr;
+                if let Expr(x) = contents {
+                    if x.get_type()? != text_type {
+                        return mkerr("InvalidTextInterpolation");
+                    }
+                }
+            }
+            text_type
+        }
 
+        // ExprKind::EmptyListLit(t) => {
+        //     let arg = match &*t.as_whnf() {
+        //         ValueKind::AppliedBuiltin(Builtin::List, args, _)
+        //             if args.len() == 1 =>
+        //         {
+        //             args[0].clone()
+        //         }
+        //         _ => return mkerr("InvalidListType"),
+        //     };
+        //     RetWhole(Value::from_kind_and_type(
+        //         ValueKind::EmptyListLit(arg),
+        //         t.clone(),
+        //     ))
+        // }
+        ExprKind::NEListLit(xs) => {
+            let mut iter = xs.iter().enumerate();
+            let (_, x) = iter.next().unwrap();
+            for (i, y) in iter {
+                if x.get_type()? != y.get_type()? {
+                    return mkerr("InvalidListElement");
+                }
+            }
+            let t = x.get_type()?;
+            if t.get_type()?.as_const() != Some(Const::Type) {
+                return mkerr("InvalidListType");
+            }
+
+            Value::from_builtin(Builtin::List).app(t)
+        }
+        ExprKind::SomeLit(x) => {
+            let t = x.get_type()?;
+            if t.get_type()?.as_const() != Some(Const::Type) {
+                return mkerr("InvalidOptionalType");
+            }
+
+            Value::from_builtin(Builtin::Optional).app(t)
+        }
+        // ExprKind::RecordType(kts) => RetWhole(tck_record_type(
+        //     kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
+        // )?),
+        // ExprKind::UnionType(kts) => RetWhole(tck_union_type(
+        //     kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
+        // )?),
+        // ExprKind::RecordLit(kvs) => RetTypeOnly(tck_record_type(
+        //     kvs.iter().map(|(x, v)| Ok((x.clone(), v.get_type()?))),
+        // )?),
+        ExprKind::Field(r, x) => {
+            match &*r.get_type()?.as_whnf() {
+                ValueKind::RecordType(kts) => match kts.get(&x) {
+                    Some(tth) => tth.clone(),
+                    None => return mkerr("MissingRecordField"),
+                },
+                // TODO: branch here only when r.get_type() is a Const
+                _ => {
+                    let r_nf = r.normalize_whnf(env.as_nzenv());
+                    let r_nf_borrow = r_nf.as_whnf();
+                    match &*r_nf_borrow {
+                        ValueKind::UnionType(kts) => match kts.get(x) {
+                            // Constructor has type T -> < x: T, ... >
+                            // TODO: check pi type properly
+                            Some(Some(t)) => Value::from_kind_and_type(
+                                ValueKind::PiClosure {
+                                    binder: Binder::new(x.clone()),
+                                    annot: t.clone(),
+                                    closure: Closure::new(
+                                        t.clone(),
+                                        env.as_nzenv(),
+                                        r.clone(),
+                                    ),
+                                },
+                                Value::from_const(Const::Type),
+                            ),
+                            Some(None) => r_nf.clone(),
+                            None => return mkerr("MissingUnionField"),
+                        },
+                        _ => return mkerr("NotARecord"),
+                    }
+                } // _ => mkerr("NotARecord"),
+            }
+        }
         ExprKind::Annot(x, t) => {
             if x.get_type()? != t.normalize_whnf(env.as_nzenv()) {
                 return mkerr("annot mismatch");
@@ -139,7 +231,138 @@ fn type_last_layer(
 
             y.get_type()?
         }
+        // ExprKind::BinOp(BinOp::RightBiasedRecordMerge, l, r) => {
+        //     let l_type = l.get_type()?;
+        //     let r_type = r.get_type()?;
 
+        //     // Extract the LHS record type
+        //     let l_type_borrow = l_type.as_whnf();
+        //     let kts_x = match &*l_type_borrow {
+        //         ValueKind::RecordType(kts) => kts,
+        //         _ => return mkerr("MustCombineRecord"),
+        //     };
+
+        //     // Extract the RHS record type
+        //     let r_type_borrow = r_type.as_whnf();
+        //     let kts_y = match &*r_type_borrow {
+        //         ValueKind::RecordType(kts) => kts,
+        //         _ => return mkerr("MustCombineRecord"),
+        //     };
+
+        //     // Union the two records, prefering
+        //     // the values found in the RHS.
+        //     let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, _, r_t| {
+        //         Ok(r_t.clone())
+        //     })?;
+
+        //     // Construct the final record type from the union
+        //     RetTypeOnly(tck_record_type(
+        //         kts.into_iter().map(|(x, v)| Ok((x.clone(), v))),
+        //     )?)
+        // }
+        // ExprKind::BinOp(BinOp::RecursiveRecordMerge, l, r) => RetTypeOnly(type_last_layer(
+        //     ctx,
+        //     ExprKind::BinOp(
+        //         RecursiveRecordTypeMerge,
+        //         l.get_type()?,
+        //         r.get_type()?,
+        //     ),
+        //     Span::Artificial,
+        // )?),
+        // ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, l, r) => {
+        //     // Extract the LHS record type
+        //     let borrow_l = l.as_whnf();
+        //     let kts_x = match &*borrow_l {
+        //         ValueKind::RecordType(kts) => kts,
+        //         _ => {
+        //             return mkerr("RecordTypeMergeRequiresRecordType")
+        //         }
+        //     };
+
+        //     // Extract the RHS record type
+        //     let borrow_r = r.as_whnf();
+        //     let kts_y = match &*borrow_r {
+        //         ValueKind::RecordType(kts) => kts,
+        //         _ => {
+        //             return mkerr("RecordTypeMergeRequiresRecordType")
+        //         }
+        //     };
+
+        //     // Ensure that the records combine without a type error
+        //     let kts = merge_maps(
+        //         kts_x,
+        //         kts_y,
+        //         // If the Label exists for both records, then we hit the recursive case.
+        //         |_, l: &Value, r: &Value| {
+        //             type_last_layer(
+        //                 ctx,
+        //                 ExprKind::BinOp(
+        //                     RecursiveRecordTypeMerge,
+        //                     l.clone(),
+        //                     r.clone(),
+        //                 ),
+        //                 Span::Artificial,
+        //             )
+        //         },
+        //     )?;
+
+        //     RetWhole(tck_record_type(kts.into_iter().map(Ok))?)
+        // }
+        // ExprKind::BinOp(o @ BinOp::ListAppend, l, r) => {
+        //     match &*l.get_type()?.as_whnf() {
+        //         ValueKind::AppliedBuiltin(List, _, _) => {}
+        //         _ => return mkerr("BinOpTypeMismatch"),
+        //     }
+
+        //     if l.get_type()? != r.get_type()? {
+        //         return mkerr("BinOpTypeMismatch");
+        //     }
+
+        //     l.get_type()?
+        // }
+        // ExprKind::BinOp(BinOp::Equivalence, l, r) => {
+        //     if l.get_type()?.get_type()?.as_const() != Some(Const::Type) {
+        //         return mkerr("EquivalenceArgumentMustBeTerm");
+        //     }
+        //     if r.get_type()?.get_type()?.as_const() != Some(Const::Type) {
+        //         return mkerr("EquivalenceArgumentMustBeTerm");
+        //     }
+
+        //     if l.get_type()? != r.get_type()? {
+        //         return mkerr("EquivalenceTypeMismatch");
+        //     }
+
+        //     RetWhole(Value::from_kind_and_type(
+        //         ValueKind::Equivalence(l.clone(), r.clone()),
+        //         Value::from_const(Type),
+        //     ))
+        // }
+        ExprKind::BinOp(o, l, r) => {
+            let t = builtin_to_value(match o {
+                BinOp::BoolAnd
+                | BinOp::BoolOr
+                | BinOp::BoolEQ
+                | BinOp::BoolNE => Builtin::Bool,
+                BinOp::NaturalPlus | BinOp::NaturalTimes => Builtin::Natural,
+                BinOp::TextAppend => Builtin::Text,
+                BinOp::ListAppend
+                | BinOp::RightBiasedRecordMerge
+                | BinOp::RecursiveRecordMerge
+                | BinOp::RecursiveRecordTypeMerge
+                | BinOp::Equivalence => unreachable!(),
+                BinOp::ImportAlt => unreachable!("ImportAlt leftover in tck"),
+            });
+
+            if l.get_type()? != t {
+                return mkerr("BinOpTypeMismatch");
+            }
+
+            if r.get_type()? != t {
+                return mkerr("BinOpTypeMismatch");
+            }
+
+            t
+        }
         _ => Value::from_const(Const::Type), // TODO
     })
 }
@@ -216,7 +439,7 @@ fn type_with(
         }
         ekind => {
             let ekind = ekind.traverse_ref(|e| type_with(env, e))?;
-            let ty = type_last_layer(env, &ekind)?;
+            let ty = type_one_layer(env, &ekind)?;
             (TyExprKind::Expr(ekind), Some(ty))
         }
     };

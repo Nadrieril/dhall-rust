@@ -595,8 +595,23 @@ fn apply_binop<'a>(
             Ret::ValueKind(RecordLit(kvs))
         }
 
-        (RecursiveRecordTypeMerge, _, _) => {
-            unreachable!("This case should have been handled in typecheck")
+        (RecursiveRecordTypeMerge, RecordType(kts_x), RecordType(kts_y)) => {
+            let kts = merge_maps::<_, _, _, !>(
+                kts_x,
+                kts_y,
+                // If the Label exists for both records, then we hit the recursive case.
+                |_, l: &Value, r: &Value| {
+                    Ok(Value::from_kind_and_type(
+                        ValueKind::PartialExpr(ExprKind::BinOp(
+                            RecursiveRecordTypeMerge,
+                            l.clone(),
+                            r.clone(),
+                        )),
+                        ty.clone(),
+                    ))
+                },
+            )?;
+            Ret::ValueKind(RecordType(kts))
         }
 
         (Equivalence, _, _) => {
