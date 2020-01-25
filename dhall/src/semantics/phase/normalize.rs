@@ -625,12 +625,14 @@ pub(crate) fn normalize_one_layer(
         // `RetWhole`), so they won't appear here.
         ExprKind::Lam(_, _, _)
         | ExprKind::Pi(_, _, _)
-        | ExprKind::Let(_, _, _, _)
         | ExprKind::Embed(_)
-        | ExprKind::Var(_)
-        | ExprKind::Annot(_, _) => {
+        | ExprKind::Var(_) => {
             unreachable!("This case should have been handled in typecheck")
         }
+        ExprKind::Let(_, _, val, body) => {
+            Ret::Value(body.subst_shift(&AlphaVar::default(), &val))
+        }
+        ExprKind::Annot(x, _) => Ret::Value(x),
         ExprKind::Const(c) => Ret::Value(const_to_value(c)),
         ExprKind::Builtin(b) => Ret::Value(builtin_to_value(b)),
         ExprKind::Assert(_) => Ret::Expr(expr),
@@ -895,11 +897,16 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
                 closure: Closure::new(env, body.clone()),
             }
         }
+        TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
+            let val = val.normalize_whnf(env);
+            return body.normalize_whnf(&env.insert_value(val));
+        }
         TyExprKind::Expr(e) => {
             let e = e.map_ref(|tye| tye.normalize_whnf(env));
             normalize_one_layer(e, &ty)
         }
     };
 
+    // dbg!(tye.kind(), env, &kind);
     Value::from_kind_and_type_whnf(kind, ty)
 }

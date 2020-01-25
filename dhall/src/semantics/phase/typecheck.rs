@@ -189,7 +189,7 @@ macro_rules! make_type {
     };
 }
 
-fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
+pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
     use syntax::Builtin::*;
     rc(match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -321,7 +321,14 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
 
             let v = type_with(ctx, v)?;
             let binder = ctx.new_binder(x);
-            type_with(&ctx.insert_value(&binder, v.clone())?, e.clone())
+            let e =
+                type_with(&ctx.insert_value(&binder, v.clone())?, e.clone())?;
+            // let e_ty = e.get_type()?;
+            // Ok(Value::from_kind_and_type(
+            //     ValueKind::PartialExpr(ExprKind::Let(x.clone(), None, v, e)),
+            //     e_ty,
+            // ))
+            Ok(e)
         }
         Embed(p) => Ok(p.clone().into_typed().into_value()),
         Var(var) => match ctx.lookup(&var) {

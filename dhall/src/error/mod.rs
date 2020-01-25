@@ -83,6 +83,7 @@ pub(crate) enum TypeMessage {
     EquivalenceTypeMismatch(Value, Value),
     AssertMismatch(Value, Value),
     AssertMustTakeEquivalence,
+    Custom(String),
 }
 
 impl TypeError {
