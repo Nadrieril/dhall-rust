@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![allow(unused_variables)]
 #![allow(unreachable_code)]
 #![allow(unused_imports)]
 use std::borrow::Cow;
@@ -68,6 +67,41 @@ impl TyEnv {
     }
 }
 
+fn type_of_recordtype<'a>(
+    tys: impl Iterator<Item = Cow<'a, TyExpr>>,
+) -> Result<Type, TypeError> {
+    // An empty record type has type Type
+    let mut k = Const::Type;
+    for t in tys {
+        match t.get_type()?.as_const() {
+            Some(c) => k = max(k, c),
+            None => return mkerr("InvalidFieldType"),
+        }
+    }
+    Ok(Value::from_const(k))
+}
+
+fn function_check(a: Const, b: Const) -> Const {
+    if b == Const::Type {
+        Const::Type
+    } else {
+        max(a, b)
+    }
+}
+
+fn type_of_function(src: Type, tgt: Type) -> Result<Type, TypeError> {
+    let ks = match src.as_const() {
+        Some(k) => k,
+        _ => return Err(TypeError::new(TypeMessage::InvalidInputType(src))),
+    };
+    let kt = match tgt.as_const() {
+        Some(k) => k,
+        _ => return Err(TypeError::new(TypeMessage::InvalidOutputType(tgt))),
+    };
+
+    Ok(Value::from_const(function_check(ks, kt)))
+}
+
 fn mkerr<T>(x: impl ToString) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
@@ -76,7 +110,7 @@ fn type_one_layer(
     env: &TyEnv,
     kind: &ExprKind<TyExpr, Normalized>,
 ) -> Result<Type, TypeError> {
-    Ok(match &kind {
+    Ok(match kind {
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
@@ -90,7 +124,9 @@ fn type_one_layer(
         ExprKind::Const(Const::Type) => const_to_value(Const::Kind),
         ExprKind::Const(Const::Kind) => const_to_value(Const::Sort),
         ExprKind::Builtin(b) => {
-            type_with(env, &type_of_builtin(*b))?.normalize_whnf(env.as_nzenv())
+            let t_expr = type_of_builtin(*b);
+            let t_tyexpr = type_with(env, &t_expr)?;
+            t_tyexpr.normalize_whnf(env.as_nzenv())
         }
         ExprKind::BoolLit(_) => builtin_to_value(Builtin::Bool),
         ExprKind::NaturalLit(_) => builtin_to_value(Builtin::Natural),
@@ -108,25 +144,19 @@ fn type_one_layer(
             }
             text_type
         }
-
-        // ExprKind::EmptyListLit(t) => {
-        //     let arg = match &*t.as_whnf() {
-        //         ValueKind::AppliedBuiltin(Builtin::List, args, _)
-        //             if args.len() == 1 =>
-        //         {
-        //             args[0].clone()
-        //         }
-        //         _ => return mkerr("InvalidListType"),
-        //     };
-        //     RetWhole(Value::from_kind_and_type(
-        //         ValueKind::EmptyListLit(arg),
-        //         t.clone(),
-        //     ))
-        // }
+        ExprKind::EmptyListLit(t) => {
+            let t = t.normalize_whnf(env.as_nzenv());
+            match &*t.as_whnf() {
+                ValueKind::AppliedBuiltin(Builtin::List, args, _)
+                    if args.len() == 1 => {}
+                _ => return mkerr("InvalidListType"),
+            };
+            t
+        }
         ExprKind::NEListLit(xs) => {
-            let mut iter = xs.iter().enumerate();
-            let (_, x) = iter.next().unwrap();
-            for (i, y) in iter {
+            let mut iter = xs.iter();
+            let x = iter.next().unwrap();
+            for y in iter {
                 if x.get_type()? != y.get_type()? {
                     return mkerr("InvalidListElement");
                 }
@@ -146,42 +176,96 @@ fn type_one_layer(
 
             Value::from_builtin(Builtin::Optional).app(t)
         }
-        // ExprKind::RecordType(kts) => RetWhole(tck_record_type(
-        //     kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
-        // )?),
-        // ExprKind::UnionType(kts) => RetWhole(tck_union_type(
-        //     kts.iter().map(|(x, t)| Ok((x.clone(), t.clone()))),
-        // )?),
-        // ExprKind::RecordLit(kvs) => RetTypeOnly(tck_record_type(
-        //     kvs.iter().map(|(x, v)| Ok((x.clone(), v.get_type()?))),
-        // )?),
-        ExprKind::Field(r, x) => {
-            match &*r.get_type()?.as_whnf() {
+        ExprKind::RecordLit(kvs) => {
+            use std::collections::hash_map::Entry;
+            let mut kts = HashMap::new();
+            for (x, v) in kvs {
+                // Check for duplicated entries
+                match kts.entry(x.clone()) {
+                    Entry::Occupied(_) => {
+                        return mkerr("RecordTypeDuplicateField")
+                    }
+                    Entry::Vacant(e) => e.insert(v.get_type()?),
+                };
+            }
+
+            let ty = type_of_recordtype(
+                kts.iter()
+                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_quoteenv()))),
+            )?;
+            Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
+        }
+        ExprKind::RecordType(kts) => {
+            use std::collections::hash_map::Entry;
+            let mut seen_fields = HashMap::new();
+            for (x, _) in kts {
+                // Check for duplicated entries
+                match seen_fields.entry(x.clone()) {
+                    Entry::Occupied(_) => {
+                        return mkerr("RecordTypeDuplicateField")
+                    }
+                    Entry::Vacant(e) => e.insert(()),
+                };
+            }
+
+            type_of_recordtype(kts.iter().map(|(_, t)| Cow::Borrowed(t)))?
+        }
+        ExprKind::UnionType(kts) => {
+            use std::collections::hash_map::Entry;
+            let mut seen_fields = HashMap::new();
+            // Check that all types are the same const
+            let mut k = None;
+            for (x, t) in kts {
+                if let Some(t) = t {
+                    match (k, t.get_type()?.as_const()) {
+                        (None, Some(k2)) => k = Some(k2),
+                        (Some(k1), Some(k2)) if k1 == k2 => {}
+                        _ => return mkerr("InvalidFieldType"),
+                    }
+                }
+                match seen_fields.entry(x) {
+                    Entry::Occupied(_) => {
+                        return mkerr("UnionTypeDuplicateField")
+                    }
+                    Entry::Vacant(e) => e.insert(()),
+                };
+            }
+
+            // An empty union type has type Type;
+            // an union type with only unary variants also has type Type
+            let k = k.unwrap_or(Const::Type);
+
+            Value::from_const(k)
+        }
+        ExprKind::Field(scrut, x) => {
+            match &*scrut.get_type()?.as_whnf() {
                 ValueKind::RecordType(kts) => match kts.get(&x) {
                     Some(tth) => tth.clone(),
                     None => return mkerr("MissingRecordField"),
                 },
-                // TODO: branch here only when r.get_type() is a Const
+                // TODO: branch here only when scrut.get_type() is a Const
                 _ => {
-                    let r_nf = r.normalize_whnf(env.as_nzenv());
-                    let r_nf_borrow = r_nf.as_whnf();
-                    match &*r_nf_borrow {
+                    let scrut_nf = scrut.normalize_whnf(env.as_nzenv());
+                    let scrut_nf_borrow = scrut_nf.as_whnf();
+                    match &*scrut_nf_borrow {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
-                            // TODO: check pi type properly
-                            Some(Some(t)) => Value::from_kind_and_type(
+                            Some(Some(ty)) => Value::from_kind_and_type(
                                 ValueKind::PiClosure {
                                     binder: Binder::new(x.clone()),
-                                    annot: t.clone(),
+                                    annot: ty.clone(),
                                     closure: Closure::new(
-                                        t.clone(),
+                                        ty.clone(),
                                         env.as_nzenv(),
-                                        r.clone(),
+                                        scrut.clone(),
                                     ),
                                 },
-                                Value::from_const(Const::Type),
+                                type_of_function(
+                                    ty.get_type()?,
+                                    scrut.get_type()?,
+                                )?,
                             ),
-                            Some(None) => r_nf.clone(),
+                            Some(None) => scrut_nf.clone(),
                             None => return mkerr("MissingUnionField"),
                         },
                         _ => return mkerr("NotARecord"),
@@ -190,28 +274,45 @@ fn type_one_layer(
             }
         }
         ExprKind::Annot(x, t) => {
-            if x.get_type()? != t.normalize_whnf(env.as_nzenv()) {
+            let t = t.normalize_whnf(env.as_nzenv());
+            if x.get_type()? != t {
                 return mkerr("annot mismatch");
             }
-            x.normalize_whnf(env.as_nzenv())
+            t
         }
         ExprKind::App(f, arg) => {
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();
-            let (expected_arg_ty, ty_closure) = match &*tf_borrow {
-                ValueKind::PiClosure { annot, closure, .. } => (annot, closure),
-                _ => return mkerr(format!("apply to not Pi: {:?}", tf_borrow)),
-            };
-            // if arg.get_type()? != *expected_arg_ty {
-            //     return mkerr(format!(
-            //         "function annot mismatch: {:?}, {:?}",
-            //         arg.get_type()?,
-            //         expected_arg_ty
-            //     ));
-            // }
+            match &*tf_borrow {
+                // ValueKind::PiClosure { annot, closure, .. } => (annot, closure),
+                ValueKind::PiClosure {
+                    annot: _expected_arg_ty,
+                    closure: ty_closure,
+                    ..
+                } => {
+                    // if arg.get_type()? != *expected_arg_ty {
+                    //     return mkerr(format!(
+                    //         "function annot mismatch: {:?}, {:?}",
+                    //         arg.get_type()?,
+                    //         expected_arg_ty
+                    //     ));
+                    // }
 
-            let arg_nf = arg.normalize_whnf(env.as_nzenv());
-            ty_closure.apply(arg_nf)
+                    let arg_nf = arg.normalize_whnf(env.as_nzenv());
+                    ty_closure.apply(arg_nf)
+                }
+                // ValueKind::Pi(_, _expected_arg_ty, body) => {
+                //     // if arg.get_type()? != *tx {
+                //     //     return mkerr("TypeMismatch");
+                //     // }
+
+                //     let arg_nf = arg.normalize_whnf(env.as_nzenv());
+                //     let ret = body.subst_shift(&AlphaVar::default(), &arg_nf);
+                //     ret.normalize_nf();
+                //     ret
+                // }
+                _ => return mkerr(format!("apply to not Pi: {:?}", tf_borrow)),
+            }
         }
         ExprKind::BoolIf(x, y, z) => {
             if *x.get_type()?.as_whnf()
@@ -231,83 +332,63 @@ fn type_one_layer(
 
             y.get_type()?
         }
-        // ExprKind::BinOp(BinOp::RightBiasedRecordMerge, l, r) => {
-        //     let l_type = l.get_type()?;
-        //     let r_type = r.get_type()?;
+        ExprKind::BinOp(BinOp::RightBiasedRecordMerge, x, y) => {
+            let x_type = x.get_type()?;
+            let y_type = y.get_type()?;
 
-        //     // Extract the LHS record type
-        //     let l_type_borrow = l_type.as_whnf();
-        //     let kts_x = match &*l_type_borrow {
-        //         ValueKind::RecordType(kts) => kts,
-        //         _ => return mkerr("MustCombineRecord"),
-        //     };
+            // Extract the LHS record type
+            let x_type_borrow = x_type.as_whnf();
+            let kts_x = match &*x_type_borrow {
+                ValueKind::RecordType(kts) => kts,
+                _ => return mkerr("MustCombineRecord"),
+            };
 
-        //     // Extract the RHS record type
-        //     let r_type_borrow = r_type.as_whnf();
-        //     let kts_y = match &*r_type_borrow {
-        //         ValueKind::RecordType(kts) => kts,
-        //         _ => return mkerr("MustCombineRecord"),
-        //     };
+            // Extract the RHS record type
+            let y_type_borrow = y_type.as_whnf();
+            let kts_y = match &*y_type_borrow {
+                ValueKind::RecordType(kts) => kts,
+                _ => return mkerr("MustCombineRecord"),
+            };
 
-        //     // Union the two records, prefering
-        //     // the values found in the RHS.
-        //     let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, _, r_t| {
-        //         Ok(r_t.clone())
-        //     })?;
+            // Union the two records, prefering
+            // the values found in the RHS.
+            let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, _, r_t| {
+                Ok(r_t.clone())
+            })?;
 
-        //     // Construct the final record type from the union
-        //     RetTypeOnly(tck_record_type(
-        //         kts.into_iter().map(|(x, v)| Ok((x.clone(), v))),
-        //     )?)
-        // }
-        // ExprKind::BinOp(BinOp::RecursiveRecordMerge, l, r) => RetTypeOnly(type_last_layer(
-        //     ctx,
-        //     ExprKind::BinOp(
-        //         RecursiveRecordTypeMerge,
-        //         l.get_type()?,
-        //         r.get_type()?,
-        //     ),
-        //     Span::Artificial,
-        // )?),
-        // ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, l, r) => {
-        //     // Extract the LHS record type
-        //     let borrow_l = l.as_whnf();
-        //     let kts_x = match &*borrow_l {
-        //         ValueKind::RecordType(kts) => kts,
-        //         _ => {
-        //             return mkerr("RecordTypeMergeRequiresRecordType")
-        //         }
-        //     };
-
-        //     // Extract the RHS record type
-        //     let borrow_r = r.as_whnf();
-        //     let kts_y = match &*borrow_r {
-        //         ValueKind::RecordType(kts) => kts,
-        //         _ => {
-        //             return mkerr("RecordTypeMergeRequiresRecordType")
-        //         }
-        //     };
-
-        //     // Ensure that the records combine without a type error
-        //     let kts = merge_maps(
-        //         kts_x,
-        //         kts_y,
-        //         // If the Label exists for both records, then we hit the recursive case.
-        //         |_, l: &Value, r: &Value| {
-        //             type_last_layer(
-        //                 ctx,
-        //                 ExprKind::BinOp(
-        //                     RecursiveRecordTypeMerge,
-        //                     l.clone(),
-        //                     r.clone(),
-        //                 ),
-        //                 Span::Artificial,
-        //             )
-        //         },
-        //     )?;
-
-        //     RetWhole(tck_record_type(kts.into_iter().map(Ok))?)
-        // }
+            // Construct the final record type
+            let ty = type_of_recordtype(
+                kts.iter()
+                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_quoteenv()))),
+            )?;
+            Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
+        }
+        ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
+            let ekind = ExprKind::BinOp(
+                BinOp::RecursiveRecordTypeMerge,
+                x.get_type()?.to_tyexpr(env.as_quoteenv()),
+                y.get_type()?.to_tyexpr(env.as_quoteenv()),
+            );
+            let ty = type_one_layer(env, &ekind)?;
+            TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
+                .normalize_whnf(env.as_nzenv())
+        }
+        ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
+            let x_val = x.normalize_whnf(env.as_nzenv());
+            let y_val = y.normalize_whnf(env.as_nzenv());
+            match &*x_val.as_whnf() {
+                ValueKind::RecordType(_) => {}
+                _ => return mkerr("RecordTypeMergeRequiresRecordType"),
+            }
+            match &*y_val.as_whnf() {
+                ValueKind::RecordType(_) => {}
+                _ => return mkerr("RecordTypeMergeRequiresRecordType"),
+            }
+            // A RecordType's type is always a const
+            let xk = x.get_type()?.as_const().unwrap();
+            let yk = y.get_type()?.as_const().unwrap();
+            Value::from_const(max(xk, yk))
+        }
         // ExprKind::BinOp(o @ BinOp::ListAppend, l, r) => {
         //     match &*l.get_type()?.as_whnf() {
         //         ValueKind::AppliedBuiltin(List, _, _) => {}
@@ -363,6 +444,122 @@ fn type_one_layer(
 
             t
         }
+        // ExprKind::Merge(record, union, type_annot) => {
+        //     let record_type = record.get_type()?;
+        //     let record_borrow = record_type.as_whnf();
+        //     let handlers = match &*record_borrow {
+        //         ValueKind::RecordType(kts) => kts,
+        //         _ => return mkerr("Merge1ArgMustBeRecord"),
+        //     };
+
+        //     let union_type = union.get_type()?;
+        //     let union_borrow = union_type.as_whnf();
+        //     let variants = match &*union_borrow {
+        //         ValueKind::UnionType(kts) => Cow::Borrowed(kts),
+        //         ValueKind::AppliedBuiltin(
+        //             syntax::Builtin::Optional,
+        //             args,
+        //             _,
+        //         ) if args.len() == 1 => {
+        //             let ty = &args[0];
+        //             let mut kts = HashMap::new();
+        //             kts.insert("None".into(), None);
+        //             kts.insert("Some".into(), Some(ty.clone()));
+        //             Cow::Owned(kts)
+        //         }
+        //         _ => return mkerr("Merge2ArgMustBeUnionOrOptional"),
+        //     };
+
+        //     let mut inferred_type = None;
+        //     for (x, handler_type) in handlers {
+        //         let handler_return_type =
+        //             match variants.get(x) {
+        //                 // Union alternative with type
+        //                 Some(Some(variant_type)) => {
+        //                     let handler_type_borrow = handler_type.as_whnf();
+        //                     let (tx, tb) = match &*handler_type_borrow {
+        //                         ValueKind::Pi(_, tx, tb) => (tx, tb),
+        //                         _ => return mkerr("NotAFunction"),
+        //                     };
+
+        //                     if variant_type != tx {
+        //                         return mkerr("TypeMismatch");
+        //                     }
+
+        //                     // Extract `tb` from under the binder. Fails if the variable was used
+        //                     // in `tb`.
+        //                     match tb.over_binder() {
+        //                         Some(x) => x,
+        //                         None => return mkerr(
+        //                             "MergeHandlerReturnTypeMustNotBeDependent",
+        //                         ),
+        //                     }
+        //                 }
+        //                 // Union alternative without type
+        //                 Some(None) => handler_type.clone(),
+        //                 None => return mkerr("MergeHandlerMissingVariant"),
+        //             };
+        //         match &inferred_type {
+        //             None => inferred_type = Some(handler_return_type),
+        //             Some(t) => {
+        //                 if t != &handler_return_type {
+        //                     return mkerr("MergeHandlerTypeMismatch");
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     for x in variants.keys() {
+        //         if !handlers.contains_key(x) {
+        //             return mkerr("MergeVariantMissingHandler");
+        //         }
+        //     }
+
+        //     match (inferred_type, type_annot.as_ref()) {
+        //         (Some(t1), Some(t2)) => {
+        //             if &t1 != t2 {
+        //                 return mkerr("MergeAnnotMismatch");
+        //             }
+        //             RetTypeOnly(t1)
+        //         }
+        //         (Some(t), None) => RetTypeOnly(t),
+        //         (None, Some(t)) => RetTypeOnly(t.clone()),
+        //         (None, None) => return mkerr("MergeEmptyNeedsAnnotation"),
+        //     }
+        // }
+        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::Projection(record, labels) => {
+            let record_type = record.get_type()?;
+            let record_type_borrow = record_type.as_whnf();
+            let kts = match &*record_type_borrow {
+                ValueKind::RecordType(kts) => kts,
+                _ => return mkerr("ProjectionMustBeRecord"),
+            };
+
+            let mut new_kts = HashMap::new();
+            for l in labels {
+                match kts.get(l) {
+                    None => return mkerr("ProjectionMissingEntry"),
+                    Some(t) => {
+                        use std::collections::hash_map::Entry;
+                        match new_kts.entry(l.clone()) {
+                            Entry::Occupied(_) => {
+                                return mkerr("ProjectionDuplicateField")
+                            }
+                            Entry::Vacant(e) => e.insert(t.clone()),
+                        }
+                    }
+                };
+            }
+
+            Value::from_kind_and_type(
+                ValueKind::RecordType(new_kts),
+                record_type.get_type()?,
+            )
+        }
+        ExprKind::ProjectionByExpr(_, _) => {
+            unimplemented!("selection by expression")
+        }
+        ExprKind::Completion(_, _) => unimplemented!("record completion"),
         _ => Value::from_const(Const::Type), // TODO
     })
 }
@@ -383,18 +580,17 @@ fn type_with(
             let annot_nf = annot.normalize_whnf(env.as_nzenv());
             let body =
                 type_with(&env.insert_type(&binder, annot_nf.clone()), body)?;
-            let ty = Value::from_kind_and_type(
-                ValueKind::PiClosure {
-                    binder: Binder::new(binder.clone()),
-                    annot: annot_nf.clone(),
-                    closure: Closure::new(
-                        annot_nf,
-                        env.as_nzenv(),
-                        body.get_type()?.to_tyexpr(env.as_quoteenv().insert()),
-                    ),
-                },
-                Value::from_const(Const::Type), // TODO: function_check
+            let body_ty = body.get_type()?;
+            let ty = TyExpr::new(
+                TyExprKind::Expr(ExprKind::Pi(
+                    binder.clone(),
+                    annot.clone(),
+                    body_ty.to_tyexpr(env.as_quoteenv().insert()),
+                )),
+                Some(type_of_function(annot.get_type()?, body_ty.get_type()?)?),
+                Span::Artificial,
             );
+            let ty = ty.normalize_whnf(env.as_nzenv());
             (
                 TyExprKind::Expr(ExprKind::Lam(binder.clone(), annot, body)),
                 Some(ty),
@@ -405,19 +601,20 @@ fn type_with(
             let annot_nf = annot.normalize_whnf(env.as_nzenv());
             let body =
                 type_with(&env.insert_type(binder, annot_nf.clone()), body)?;
+            let ty = type_of_function(annot.get_type()?, body.get_type()?)?;
             (
                 TyExprKind::Expr(ExprKind::Pi(binder.clone(), annot, body)),
-                Some(Value::from_const(Const::Type)), // TODO: function_check
+                Some(ty),
             )
         }
         ExprKind::Let(binder, annot, val, body) => {
-            let v = if let Some(t) = annot {
+            let val = if let Some(t) = annot {
                 t.rewrap(ExprKind::Annot(val.clone(), t.clone()))
             } else {
                 val.clone()
             };
 
-            let val = type_with(env, val)?;
+            let val = type_with(env, &val)?;
             let val_nf = val.normalize_whnf(&env.as_nzenv());
             let body = type_with(&env.insert_value(&binder, val_nf), body)?;
             let body_ty = body.get_type().ok();
