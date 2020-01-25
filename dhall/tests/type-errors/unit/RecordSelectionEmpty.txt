@@ -1,1 +1,1 @@
-Type error: Unhandled error: MissingRecordField(Label("x"), Value@Unevaled { value: PartialExpr(RecordLit(DupTreeMap { map: {}, size: 0 })), type: Value@WHNF { value: RecordType({}), type: Type } })
+Type error: Unhandled error: MissingRecordField

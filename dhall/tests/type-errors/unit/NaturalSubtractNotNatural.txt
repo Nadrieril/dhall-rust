@@ -1,13 +1,1 @@
- --> 1:1
-  |
-1 | Natural/subtract True True␊
-  | ^--------------^
-  |
-  = Type error: Wrong type of function argument
- --> 1:18
-  |
-1 | Natural/subtract True True␊
-  |                  ^--^
-  |
-  = This argument has type Value@WHNF { value: AppliedBuiltin(Bool, [], []), type: Type }
-[unknown location] But the function expected an argument of type Value@WHNF { value: AppliedBuiltin(Natural, [], []), type: Type }
+Type error: Unhandled error: TypeMismatch

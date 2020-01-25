@@ -1,1 +1,1 @@
-Type error: Unhandled error: Merge2ArgMustBeUnionOrOptional(Value@Unevaled { value: UnionType({}), type: Type })
+Type error: Unhandled error: Merge2ArgMustBeUnionOrOptional

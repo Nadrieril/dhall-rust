@@ -1,1 +1,1 @@
-Type error: Unhandled error: MergeVariantMissingHandler(Label("y"))
+Type error: Unhandled error: MergeVariantMissingHandler

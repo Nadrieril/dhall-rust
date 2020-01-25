@@ -1,13 +1,1 @@
-[unknown location] Type error: Wrong type of function argument
- --> 1:38
-  |
-1 | merge { x = λ(_ : Bool) → _ } (< x : Natural >.x 1)␊
-  |                                      ^-----^
-  |
-  = This argument has type Type
- --> 1:19
-  |
-1 | merge { x = λ(_ : Bool) → _ } (< x : Natural >.x 1)␊
-  |                   ^--^
-  |
-  = But the function expected an argument of type Value@NF { value: AppliedBuiltin(Bool, [], []), type: Type }
+Type error: Unhandled error: TypeMismatch

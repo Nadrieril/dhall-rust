@@ -1,1 +1,1 @@
-Type error: Unhandled error: IfBranchMustBeTerm(true, Type)
+Type error: Unhandled error: IfBranchMustBeTerm

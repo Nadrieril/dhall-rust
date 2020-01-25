@@ -1,1 +1,1 @@
-Type error: Unhandled error: IfBranchMismatch(Value@Unevaled { value: PartialExpr(NaturalLit(1)), type: Value@WHNF { value: AppliedBuiltin(Natural, [], []), type: Type } }, Value@Unevaled { value: PartialExpr(TextLit(InterpolatedText { head: "", tail: [] })), type: Value@WHNF { value: AppliedBuiltin(Text, [], []), type: Type } })
+Type error: Unhandled error: IfBranchMismatch

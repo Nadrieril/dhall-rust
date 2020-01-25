@@ -1,1 +1,1 @@
-Type error: Unhandled error: InvalidOptionalType(Type)
+Type error: Unhandled error: InvalidOptionalType
