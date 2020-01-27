@@ -692,10 +692,117 @@ impl Closure {
     pub fn apply(&self, val: Value) -> Value {
         self.body.normalize_whnf(&self.env.insert_value(val))
     }
+    pub fn apply_fresh(&self, env: QuoteEnv) -> Value {
+        let val = Value::from_kind_and_type(
+            ValueKind::Var(AlphaVar::default(), NzVar::new(env.size())),
+            self.arg_ty.clone(),
+        );
+        self.apply(val)
+    }
     pub fn normalize(&self) -> Value {
         self.body
             .normalize_whnf(&self.env.insert_type(self.arg_ty.clone()))
     }
+}
+
+/// Compare two values for equality modulo alpha/beta-equivalence.
+// TODO: use Rc comparison to shortcut on identical pointers
+fn equiv(val1: &Value, val2: &Value) -> bool {
+    struct ValueWithEnv<'v> {
+        val: &'v Value,
+        env: QuoteEnv,
+    }
+    impl<'v> PartialEq for ValueWithEnv<'v> {
+        fn eq(&self, other: &ValueWithEnv<'v>) -> bool {
+            equiv_with_env(self.env, self.val, other.env, other.val)
+        }
+    }
+    // Push the given context into every subnode of the ValueKind. That way, normal equality of the
+    // resulting value will take into account the context.
+    fn push_context<'v>(
+        env: QuoteEnv,
+        kind: &'v ValueKind<Value>,
+    ) -> ValueKind<ValueWithEnv<'v>> {
+        kind.map_ref_with_special_handling_of_binders(
+            |val| ValueWithEnv { val, env },
+            |_, _, val| ValueWithEnv {
+                val,
+                env: env.insert(),
+            },
+        )
+    }
+
+    fn equiv_with_env<'v>(
+        env1: QuoteEnv,
+        val1: &'v Value,
+        env2: QuoteEnv,
+        val2: &'v Value,
+    ) -> bool {
+        use ValueKind::Var;
+        let kind1 = val1.as_whnf();
+        let kind2 = val2.as_whnf();
+        match (&*kind1, &*kind2) {
+            (Var(_, v1), Var(_, v2)) => {
+                v1 == v2
+                // match (env1.lookup(v1), env2.lookup(v2)) {
+                //     // Both vars were found in the environment, check they point to the same
+                //     // binder.
+                //     // Does that even make any sense with an incomplete environment ?
+                //     // I have no clue what I'm doing anymore.
+                //     (Some(i), Some(j)) => i == j,
+                //     // Both vars point to outside the environment ????
+                //     // (None, None) => v1 == v2,
+                //     _ => false,
+                // }
+            }
+            // (Var(_, v1), Var(_, v2)) => env1.lookup(v1) == env2.lookup(v2),
+            (
+                ValueKind::LamClosure {
+                    annot: a1,
+                    closure: cl1,
+                    ..
+                },
+                ValueKind::LamClosure {
+                    annot: a2,
+                    closure: cl2,
+                    ..
+                },
+            ) => {
+                equiv_with_env(env1, a1, env2, a2)
+                    && equiv_with_env(
+                        env1.insert(),
+                        &cl1.apply_fresh(env1),
+                        env2.insert(),
+                        &cl2.apply_fresh(env2),
+                    )
+            }
+            (
+                ValueKind::PiClosure {
+                    annot: a1,
+                    closure: cl1,
+                    ..
+                },
+                ValueKind::PiClosure {
+                    annot: a2,
+                    closure: cl2,
+                    ..
+                },
+            ) => {
+                equiv_with_env(env1, a1, env2, a2)
+                    && equiv_with_env(
+                        env1.insert(),
+                        &cl1.apply_fresh(env1),
+                        env2.insert(),
+                        &cl2.apply_fresh(env2),
+                    )
+            }
+            (k1, k2) => push_context(env1, k1) == push_context(env2, k2),
+        }
+    }
+
+    // TODO: need to use ambiant env instead of creating new one
+    // Might be possible to generate free variables differently to avoid this
+    equiv_with_env(QuoteEnv::new(), val1, QuoteEnv::new(), val2)
 }
 
 // TODO: use Rc comparison to shortcut on identical pointers
