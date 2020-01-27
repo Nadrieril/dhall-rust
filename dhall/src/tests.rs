@@ -232,13 +232,10 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             //         alpha: false,
             //         normalize: true,
             //     });
-            let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            let expr = crate::semantics::tck::typecheck::typecheck(&expr)?
-                .normalize_whnf_noenv()
-                .to_expr(crate::semantics::phase::ToExprOptions {
-                    alpha: false,
-                    normalize: true,
-                });
+            let expr = parse_file_str(&expr_file_path)?
+                .resolve()?
+                .tck_and_normalize_new_flow()?
+                .to_expr();
             let expected = parse_file_str(&expected_file_path)?.to_expr();
 
             assert_eq_display!(expr, expected);

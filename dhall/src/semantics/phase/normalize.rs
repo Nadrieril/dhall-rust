@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::semantics::nze::NzVar;
+use crate::semantics::nze::{NzVar, QuoteEnv};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, const_to_value, rc, typecheck,
 };
@@ -858,6 +858,9 @@ impl NzEnv {
     }
     pub fn construct(items: Vec<NzEnvItem>) -> Self {
         NzEnv { items }
+    }
+    pub fn as_quoteenv(&self) -> QuoteEnv {
+        QuoteEnv::construct(self.items.len())
     }
 
     pub fn insert_type(&self, t: Value) -> Self {

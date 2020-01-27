@@ -89,6 +89,11 @@ impl Resolved {
     pub fn to_expr(&self) -> ResolvedExpr {
         self.0.clone()
     }
+    pub fn tck_and_normalize_new_flow(&self) -> Result<Normalized, TypeError> {
+        let val = crate::semantics::tck::typecheck::typecheck(&self.0)?
+            .normalize_whnf_noenv();
+        Ok(Normalized(Typed(val)))
+    }
 }
 
 impl Typed {

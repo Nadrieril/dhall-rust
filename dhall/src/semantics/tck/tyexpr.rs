@@ -5,6 +5,7 @@ use crate::semantics::phase::normalize::{normalize_tyexpr_whnf, NzEnv};
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
+use crate::semantics::tck::typecheck::TyEnv;
 use crate::semantics::Value;
 use crate::syntax::{ExprKind, Label, Span, V};
 
@@ -47,6 +48,15 @@ impl TyExpr {
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         tyexpr_to_expr(self, opts, &mut Vec::new())
+    }
+    pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
+        let opts = ToExprOptions {
+            normalize: true,
+            alpha: false,
+        };
+        let env = env.as_nameenv().names();
+        let mut env = env.iter().collect();
+        tyexpr_to_expr(self, opts, &mut env)
     }
     // TODO: temporary hack
     pub fn to_value(&self) -> Value {

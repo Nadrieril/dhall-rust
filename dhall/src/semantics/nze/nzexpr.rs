@@ -82,16 +82,16 @@ pub(crate) struct QuoteEnv {
 }
 
 // Reverse-debruijn index: counts number of binders from the bottom of the stack.
-#[derive(Debug, Clone, Copy, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NzVar {
     idx: usize,
 }
 // TODO: temporary hopefully
-impl std::cmp::PartialEq for NzVar {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
+// impl std::cmp::PartialEq for NzVar {
+//     fn eq(&self, _other: &Self) -> bool {
+//         true
+//     }
+// }
 
 impl TyEnv {
     pub fn new() -> Self {
@@ -143,6 +143,9 @@ impl NameEnv {
         QuoteEnv {
             size: self.names.len(),
         }
+    }
+    pub fn names(&self) -> &[Binder] {
+        &self.names
     }
 
     pub fn insert(&self, x: &Binder) -> Self {
@@ -220,13 +223,20 @@ impl QuoteEnv {
     pub fn construct(size: usize) -> Self {
         QuoteEnv { size }
     }
+    pub fn size(&self) -> usize {
+        self.size
+    }
     pub fn insert(&self) -> Self {
         QuoteEnv {
             size: self.size + 1,
         }
     }
     pub fn lookup(&self, var: &NzVar) -> AlphaVar {
-        AlphaVar::new(V((), self.size - var.idx - 1))
+        self.lookup_fallible(var).unwrap()
+    }
+    pub fn lookup_fallible(&self, var: &NzVar) -> Option<AlphaVar> {
+        let idx = self.size.checked_sub(var.idx + 1)?;
+        Some(AlphaVar::new(V((), idx)))
     }
 }
 

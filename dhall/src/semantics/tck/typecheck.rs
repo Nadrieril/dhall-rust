@@ -275,10 +275,22 @@ fn type_one_layer(
         }
         ExprKind::Annot(x, t) => {
             let t = t.normalize_whnf(env.as_nzenv());
-            if x.get_type()? != t {
-                return mkerr("annot mismatch");
+            let x_ty = x.get_type()?;
+            if x_ty != t {
+                return mkerr(format!(
+                    "annot mismatch: ({} : {}) : {}",
+                    x.to_expr_tyenv(env),
+                    x_ty.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env),
+                    t.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env)
+                ));
+                // return mkerr(format!(
+                //     "annot mismatch: {} != {}",
+                //     x_ty.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env),
+                //     t.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env)
+                // ));
+                // return mkerr(format!("annot mismatch: {:#?} : {:#?}", x, t,));
             }
-            t
+            x_ty
         }
         ExprKind::App(f, arg) => {
             let tf = f.get_type()?;
@@ -389,35 +401,29 @@ fn type_one_layer(
             let yk = y.get_type()?.as_const().unwrap();
             Value::from_const(max(xk, yk))
         }
-        // ExprKind::BinOp(o @ BinOp::ListAppend, l, r) => {
-        //     match &*l.get_type()?.as_whnf() {
-        //         ValueKind::AppliedBuiltin(List, _, _) => {}
-        //         _ => return mkerr("BinOpTypeMismatch"),
-        //     }
+        ExprKind::BinOp(BinOp::ListAppend, l, r) => {
+            let l_ty = l.get_type()?;
+            match &*l_ty.as_whnf() {
+                ValueKind::AppliedBuiltin(Builtin::List, _, _) => {}
+                _ => return mkerr("BinOpTypeMismatch"),
+            }
 
-        //     if l.get_type()? != r.get_type()? {
-        //         return mkerr("BinOpTypeMismatch");
-        //     }
+            if l_ty != r.get_type()? {
+                return mkerr("BinOpTypeMismatch");
+            }
 
-        //     l.get_type()?
-        // }
-        // ExprKind::BinOp(BinOp::Equivalence, l, r) => {
-        //     if l.get_type()?.get_type()?.as_const() != Some(Const::Type) {
-        //         return mkerr("EquivalenceArgumentMustBeTerm");
-        //     }
-        //     if r.get_type()?.get_type()?.as_const() != Some(Const::Type) {
-        //         return mkerr("EquivalenceArgumentMustBeTerm");
-        //     }
+            l_ty
+        }
+        ExprKind::BinOp(BinOp::Equivalence, l, r) => {
+            if l.get_type()? != r.get_type()? {
+                return mkerr("EquivalenceTypeMismatch");
+            }
+            if l.get_type()?.get_type()?.as_const() != Some(Const::Type) {
+                return mkerr("EquivalenceArgumentsMustBeTerms");
+            }
 
-        //     if l.get_type()? != r.get_type()? {
-        //         return mkerr("EquivalenceTypeMismatch");
-        //     }
-
-        //     RetWhole(Value::from_kind_and_type(
-        //         ValueKind::Equivalence(l.clone(), r.clone()),
-        //         Value::from_const(Type),
-        //     ))
-        // }
+            Value::from_const(Const::Type)
+        }
         ExprKind::BinOp(o, l, r) => {
             let t = builtin_to_value(match o {
                 BinOp::BoolAnd

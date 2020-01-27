@@ -1,9 +1,15 @@
 use crate::syntax::{Label, V};
 
 /// Stores an alpha-normalized variable.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Eq)]
 pub struct AlphaVar {
     alpha: V<()>,
+}
+// TODO: temporary hopefully
+impl std::cmp::PartialEq for AlphaVar {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 // Exactly like a Label, but equality returns always true.

@@ -280,7 +280,9 @@ pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
     Value::from_kind_and_type(
         ValueKind::from_builtin(b),
-        typecheck(type_of_builtin(b)).unwrap(),
+        crate::semantics::tck::typecheck::typecheck(&type_of_builtin(b))
+            .unwrap()
+            .normalize_whnf_noenv(),
     )
 }
 
@@ -380,17 +382,21 @@ fn type_last_layer(
         ExprKind::App(f, a) => {
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();
-            let (tx, tb) = match &*tf_borrow {
-                ValueKind::Pi(_, tx, tb) => (tx, tb),
-                _ => return mkerr("NotAFunction"),
-            };
-            if &a.get_type()? != tx {
-                return mkerr("TypeMismatch");
-            }
+            match &*tf_borrow {
+                ValueKind::Pi(_, tx, tb) => {
+                    if &a.get_type()? != tx {
+                        return mkerr("TypeMismatch");
+                    }
 
-            let ret = tb.subst_shift(&AlphaVar::default(), a);
-            ret.normalize_nf();
-            RetTypeOnly(ret)
+                    let ret = tb.subst_shift(&AlphaVar::default(), a);
+                    ret.normalize_nf();
+                    RetTypeOnly(ret)
+                }
+                ValueKind::PiClosure { closure, .. } => {
+                    RetTypeOnly(closure.apply(a.clone()))
+                }
+                _ => return mkerr("NotAFunction"),
+            }
         }
         ExprKind::Annot(x, t) => {
             if &x.get_type()? != t {

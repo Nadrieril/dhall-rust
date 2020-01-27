@@ -52,10 +52,14 @@ fn load_import(
     import_cache: &mut ImportCache,
     import_stack: &ImportStack,
 ) -> Result<Normalized, Error> {
+    // Ok(
+    //     do_resolve_expr(Parsed::parse_file(f)?, import_cache, import_stack)?
+    //         .typecheck()?
+    //         .normalize(),
+    // )
     Ok(
         do_resolve_expr(Parsed::parse_file(f)?, import_cache, import_stack)?
-            .typecheck()?
-            .normalize(),
+            .tck_and_normalize_new_flow()?,
     )
 }
 
