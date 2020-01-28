@@ -98,9 +98,12 @@ where
             annot: v.visit_val(annot)?,
             closure: closure.clone(),
         },
-        AppliedBuiltin(b, xs, types) => {
-            AppliedBuiltin(*b, v.visit_vec(xs)?, v.visit_vec(types)?)
-        }
+        AppliedBuiltin(b, xs, types, env) => AppliedBuiltin(
+            *b,
+            v.visit_vec(xs)?,
+            v.visit_vec(types)?,
+            env.clone(),
+        ),
         Var(v, w) => Var(v.clone(), *w),
         Const(k) => Const(*k),
         BoolLit(b) => BoolLit(*b),

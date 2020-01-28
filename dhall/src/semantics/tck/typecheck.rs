@@ -35,6 +35,14 @@ impl TyEnv {
             items: NzEnv::new(),
         }
     }
+    pub fn from_nzenv_alpha(items: &NzEnv) -> Self {
+        TyEnv {
+            names: NameEnv::from_binders(
+                std::iter::repeat("_".into()).take(items.size()),
+            ),
+            items: items.clone(),
+        }
+    }
     pub fn as_quoteenv(&self) -> QuoteEnv {
         self.names.as_quoteenv()
     }
@@ -147,7 +155,7 @@ fn type_one_layer(
         ExprKind::EmptyListLit(t) => {
             let t = t.normalize_whnf(env.as_nzenv());
             match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(Builtin::List, args, _)
+                ValueKind::AppliedBuiltin(Builtin::List, args, _, _)
                     if args.len() == 1 => {}
                 _ => return mkerr("InvalidListType"),
             };
@@ -404,7 +412,7 @@ fn type_one_layer(
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             let l_ty = l.get_type()?;
             match &*l_ty.as_whnf() {
-                ValueKind::AppliedBuiltin(Builtin::List, _, _) => {}
+                ValueKind::AppliedBuiltin(Builtin::List, _, _, _) => {}
                 _ => return mkerr("BinOpTypeMismatch"),
             }
 
@@ -572,7 +580,7 @@ fn type_one_layer(
 
 /// Type-check an expression and return the expression alongside its type if type-checking
 /// succeeded, or an error if type-checking failed.
-fn type_with(
+pub(crate) fn type_with(
     env: &TyEnv,
     expr: &Expr<Normalized>,
 ) -> Result<TyExpr, TypeError> {

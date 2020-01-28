@@ -4,9 +4,11 @@ use std::convert::TryInto;
 
 use crate::semantics::nze::{NzVar, QuoteEnv};
 use crate::semantics::phase::typecheck::{
-    builtin_to_value, const_to_value, rc, typecheck,
+    builtin_to_value_env, const_to_value, rc,
 };
 use crate::semantics::phase::Normalized;
+use crate::semantics::tck::typecheck::type_with;
+use crate::semantics::tck::typecheck::TyEnv;
 use crate::semantics::{
     AlphaVar, Binder, Closure, TyExpr, TyExprKind, Value, ValueKind,
 };
@@ -73,6 +75,7 @@ pub(crate) fn apply_builtin(
     args: Vec<Value>,
     ty: &Value,
     types: Vec<Value>,
+    env: NzEnv,
 ) -> ValueKind<Value> {
     use syntax::Builtin::*;
     use ValueKind::*;
@@ -86,6 +89,11 @@ pub(crate) fn apply_builtin(
         ValueWithRemainingArgs(&'a [Value], Value),
         DoneAsIs,
     }
+    let make_closure = |e| {
+        type_with(&env.to_alpha_tyenv(), &e)
+            .unwrap()
+            .normalize_whnf(&env)
+    };
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),
@@ -272,13 +280,12 @@ pub(crate) fn apply_builtin(
             Ret::Value(
                 f.app(list_t.clone())
                     .app(
-                        typecheck(make_closure!(
+                        make_closure(make_closure!(
                             λ(T : Type) ->
                             λ(a : var(T)) ->
                             λ(as : List var(T)) ->
                             [ var(a) ] # var(as)
                         ))
-                        .unwrap()
                         .app(t.clone()),
                     )
                     .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
@@ -300,12 +307,11 @@ pub(crate) fn apply_builtin(
             Ret::Value(
                 f.app(optional_t.clone())
                     .app(
-                        typecheck(make_closure!(
+                        make_closure(make_closure!(
                             λ(T : Type) ->
                             λ(a : var(T)) ->
                             Some(var(a))
                         ))
-                        .unwrap()
                         .app(t.clone()),
                     )
                     .app(
@@ -326,13 +332,10 @@ pub(crate) fn apply_builtin(
         },
         (NaturalBuild, [f]) => Ret::Value(
             f.app(Value::from_builtin(Natural))
-                .app(
-                    typecheck(make_closure!(
-                        λ(x : Natural) ->
-                        1 + var(x)
-                    ))
-                    .unwrap(),
-                )
+                .app(make_closure(make_closure!(
+                    λ(x : Natural) ->
+                    1 + var(x)
+                )))
                 .app(
                     NaturalLit(0)
                         .into_value_with_type(Value::from_builtin(Natural)),
@@ -366,7 +369,7 @@ pub(crate) fn apply_builtin(
             }
             v.to_whnf_check_type(ty)
         }
-        Ret::DoneAsIs => AppliedBuiltin(b, args, types),
+        Ret::DoneAsIs => AppliedBuiltin(b, args, types, env),
     }
 }
 
@@ -379,7 +382,7 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
         }
-        ValueKind::AppliedBuiltin(b, args, types) => {
+        ValueKind::AppliedBuiltin(b, args, types, env) => {
             use std::iter::once;
             let args = args.iter().cloned().chain(once(a.clone())).collect();
             let types = types
@@ -387,7 +390,7 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
                 .cloned()
                 .chain(once(f.get_type().unwrap()))
                 .collect();
-            apply_builtin(*b, args, ty, types)
+            apply_builtin(*b, args, ty, types, env.clone())
         }
         ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
             l.clone(),
@@ -625,6 +628,7 @@ fn apply_binop<'a>(
 pub(crate) fn normalize_one_layer(
     expr: ExprKind<Value, Normalized>,
     ty: &Value,
+    env: &NzEnv,
 ) -> ValueKind<Value> {
     use ValueKind::{
         BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
@@ -649,7 +653,7 @@ pub(crate) fn normalize_one_layer(
         }
         ExprKind::Annot(x, _) => Ret::Value(x),
         ExprKind::Const(c) => Ret::Value(const_to_value(c)),
-        ExprKind::Builtin(b) => Ret::Value(builtin_to_value(b)),
+        ExprKind::Builtin(b) => Ret::Value(builtin_to_value_env(b, env)),
         ExprKind::Assert(_) => Ret::Expr(expr),
         ExprKind::App(v, a) => Ret::Value(v.app(a)),
         ExprKind::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
@@ -659,11 +663,12 @@ pub(crate) fn normalize_one_layer(
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(syntax::Builtin::List, args, _)
-                    if args.len() == 1 =>
-                {
-                    args[0].clone()
-                }
+                ValueKind::AppliedBuiltin(
+                    syntax::Builtin::List,
+                    args,
+                    _,
+                    _,
+                ) if args.len() == 1 => args[0].clone(),
                 _ => panic!("internal type error"),
             };
             Ret::ValueKind(ValueKind::EmptyListLit(arg))
@@ -827,10 +832,10 @@ pub(crate) fn normalize_whnf(
     ty: &Value,
 ) -> ValueKind<Value> {
     match v {
-        ValueKind::AppliedBuiltin(b, args, types) => {
-            apply_builtin(b, args, ty, types)
+        ValueKind::AppliedBuiltin(b, args, types, env) => {
+            apply_builtin(b, args, ty, types, env)
         }
-        ValueKind::PartialExpr(e) => normalize_one_layer(e, ty),
+        ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
         ValueKind::TextLit(elts) => {
             ValueKind::TextLit(squash_textlit(elts.into_iter()))
         }
@@ -862,6 +867,9 @@ impl NzEnv {
     pub fn as_quoteenv(&self) -> QuoteEnv {
         QuoteEnv::construct(self.items.len())
     }
+    pub fn to_alpha_tyenv(&self) -> TyEnv {
+        TyEnv::from_nzenv_alpha(self)
+    }
 
     pub fn insert_type(&self, t: Value) -> Self {
         let mut env = self.clone();
@@ -889,6 +897,10 @@ impl NzEnv {
             ),
             NzEnvItem::Replaced(x) => x.clone(),
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.items.len()
     }
 }
 
@@ -924,10 +936,18 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
         }
         TyExprKind::Expr(e) => {
             let e = e.map_ref(|tye| tye.normalize_whnf(env));
-            normalize_one_layer(e, &ty)
+            normalize_one_layer(e, &ty, env)
         }
     };
 
     // dbg!(tye.kind(), env, &kind);
     Value::from_kind_and_type_whnf(kind, ty)
 }
+
+/// Ignore NzEnv when comparing
+impl std::cmp::PartialEq for NzEnv {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+impl std::cmp::Eq for NzEnv {}

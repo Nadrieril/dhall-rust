@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
 use crate::semantics::phase::normalize::merge_maps;
+use crate::semantics::phase::normalize::NzEnv;
 use crate::semantics::phase::Normalized;
 use crate::semantics::{AlphaVar, Binder, Value, ValueKind};
 use crate::syntax;
@@ -278,8 +279,11 @@ pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 }
 
 pub(crate) fn builtin_to_value(b: Builtin) -> Value {
+    builtin_to_value_env(b, &NzEnv::new())
+}
+pub(crate) fn builtin_to_value_env(b: Builtin, env: &NzEnv) -> Value {
     Value::from_kind_and_type(
-        ValueKind::from_builtin(b),
+        ValueKind::from_builtin_env(b, env.clone()),
         crate::semantics::tck::typecheck::typecheck(&type_of_builtin(b))
             .unwrap()
             .normalize_whnf_noenv(),
@@ -433,11 +437,12 @@ fn type_last_layer(
         }
         ExprKind::EmptyListLit(t) => {
             let arg = match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(syntax::Builtin::List, args, _)
-                    if args.len() == 1 =>
-                {
-                    args[0].clone()
-                }
+                ValueKind::AppliedBuiltin(
+                    syntax::Builtin::List,
+                    args,
+                    _,
+                    _,
+                ) if args.len() == 1 => args[0].clone(),
                 _ => return mkerr("InvalidListType"),
             };
             RetWhole(Value::from_kind_and_type(
@@ -596,7 +601,7 @@ fn type_last_layer(
         }
         ExprKind::BinOp(ListAppend, l, r) => {
             match &*l.get_type()?.as_whnf() {
-                ValueKind::AppliedBuiltin(List, _, _) => {}
+                ValueKind::AppliedBuiltin(List, _, _, _) => {}
                 _ => return mkerr("BinOpTypeMismatch"),
             }
 
@@ -665,6 +670,7 @@ fn type_last_layer(
                 ValueKind::AppliedBuiltin(
                     syntax::Builtin::Optional,
                     args,
+                    _,
                     _,
                 ) if args.len() == 1 => {
                     let ty = &args[0];

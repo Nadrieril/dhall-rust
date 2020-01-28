@@ -141,6 +141,11 @@ impl NameEnv {
     pub fn new() -> Self {
         NameEnv { names: Vec::new() }
     }
+    pub fn from_binders(names: impl Iterator<Item = Binder>) -> Self {
+        NameEnv {
+            names: names.collect(),
+        }
+    }
     pub fn as_quoteenv(&self) -> QuoteEnv {
         QuoteEnv {
             size: self.names.len(),

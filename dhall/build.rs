@@ -276,13 +276,6 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
-                    // TODO: fix variables in Foo/build
-                    || path == "unit/ListBuildFoldFusion"
-                    || path == "unit/ListBuildImplementation"
-                    || path == "unit/NaturalBuildFoldFusion"
-                    || path == "unit/NaturalBuildImplementation"
-                    || path == "unit/OptionalBuildFoldFusion"
-                    || path == "unit/OptionalBuildImplementation"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),

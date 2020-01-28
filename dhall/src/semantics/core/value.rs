@@ -6,7 +6,9 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::{AlphaVar, Binder};
 use crate::semantics::nze::{NzVar, QuoteEnv};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf, NzEnv};
-use crate::semantics::phase::typecheck::{builtin_to_value, const_to_value};
+use crate::semantics::phase::typecheck::{
+    builtin_to_value, builtin_to_value_env, const_to_value,
+};
 use crate::semantics::phase::{
     Normalized, NormalizedExpr, ToExprOptions, Typed,
 };
@@ -77,7 +79,8 @@ pub(crate) enum ValueKind<Value> {
     },
     // Invariant: in whnf, the evaluation must not be able to progress further.
     // Keep types around to be able to recover the types of partial applications.
-    AppliedBuiltin(Builtin, Vec<Value>, Vec<Value>),
+    // Keep env around to construct Foo/build closures; hopefully temporary.
+    AppliedBuiltin(Builtin, Vec<Value>, Vec<Value>, NzEnv),
 
     Var(AlphaVar, NzVar),
     Const(Const),
@@ -144,7 +147,10 @@ impl Value {
         const_to_value(c)
     }
     pub(crate) fn from_builtin(b: Builtin) -> Self {
-        builtin_to_value(b)
+        Self::from_builtin_env(b, &NzEnv::new())
+    }
+    pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
+        builtin_to_value_env(b, env)
     }
     pub(crate) fn with_span(self, span: Span) -> Self {
         self.as_internal_mut().span = span;
@@ -318,7 +324,7 @@ impl Value {
                     .apply_var(NzVar::new(qenv.size()))
                     .to_tyexpr(qenv.insert()),
             )),
-            ValueKind::AppliedBuiltin(b, args, types) => {
+            ValueKind::AppliedBuiltin(b, args, types, _) => {
                 TyExprKind::Expr(args.into_iter().zip(types.into_iter()).fold(
                     ExprKind::Builtin(*b),
                     |acc, (v, ty)| {
@@ -561,7 +567,7 @@ impl ValueKind<Value> {
             | ValueKind::PiClosure { annot, .. } => {
                 annot.normalize_mut();
             }
-            ValueKind::AppliedBuiltin(_, args, _) => {
+            ValueKind::AppliedBuiltin(_, args, _, _) => {
                 for x in args.iter_mut() {
                     x.normalize_mut();
                 }
@@ -609,7 +615,10 @@ impl ValueKind<Value> {
     }
 
     pub(crate) fn from_builtin(b: Builtin) -> ValueKind<Value> {
-        ValueKind::AppliedBuiltin(b, vec![], vec![])
+        ValueKind::from_builtin_env(b, NzEnv::new())
+    }
+    pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind<Value> {
+        ValueKind::AppliedBuiltin(b, vec![], vec![], env)
     }
 
     fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
