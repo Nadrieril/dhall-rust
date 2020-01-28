@@ -81,10 +81,12 @@ pub(crate) struct QuoteEnv {
     size: usize,
 }
 
-// Reverse-debruijn index: counts number of binders from the bottom of the stack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NzVar {
-    idx: usize,
+pub(crate) enum NzVar {
+    /// Reverse-debruijn index: counts number of binders from the bottom of the stack.
+    Bound(usize),
+    /// Fake fresh variable generated for expression equality checking.
+    Fresh(usize),
 }
 // TODO: temporary hopefully
 // impl std::cmp::PartialEq for NzVar {
@@ -207,7 +209,9 @@ impl NzEnv {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             NzEnvItem::Kept(ty) => NzExpr::new(
-                NzExprKind::Var { var: NzVar { idx } },
+                NzExprKind::Var {
+                    var: NzVar::new(idx),
+                },
                 Some(ty.clone()),
             ),
             NzEnvItem::Replaced(x) => x.clone(),
@@ -235,18 +239,32 @@ impl QuoteEnv {
         self.lookup_fallible(var).unwrap()
     }
     pub fn lookup_fallible(&self, var: &NzVar) -> Option<AlphaVar> {
-        let idx = self.size.checked_sub(var.idx + 1)?;
+        let idx = self.size.checked_sub(var.idx() + 1)?;
         Some(AlphaVar::new(V((), idx)))
     }
 }
 
 impl NzVar {
     pub fn new(idx: usize) -> Self {
-        NzVar { idx }
+        NzVar::Bound(idx)
+    }
+    pub fn fresh() -> Self {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // Global counter to ensure uniqueness of the generated id.
+        static FRESH_VAR_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let id = FRESH_VAR_COUNTER.fetch_add(1, Ordering::SeqCst);
+        NzVar::Fresh(id)
     }
     pub fn shift(&self, delta: isize) -> Self {
-        NzVar {
-            idx: (self.idx as isize + delta) as usize,
+        NzVar::new((self.idx() as isize + delta) as usize)
+    }
+    // Panics on a fresh variable.
+    pub fn idx(&self) -> usize {
+        match self {
+            NzVar::Bound(i) => *i,
+            NzVar::Fresh(_) => panic!(
+                "Trying to use a fresh variable outside of equality checking"
+            ),
         }
     }
 }

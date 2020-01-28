@@ -12,7 +12,7 @@ use crate::syntax::{ExprKind, Label, Span, V};
 pub(crate) type Type = Value;
 
 // An expression with inferred types at every node and resolved variables.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TyExpr {
     kind: Box<TyExprKind>,
     ty: Option<Type>,
@@ -113,4 +113,17 @@ fn tyexpr_to_expr<'a>(
             }
         }
     })
+}
+
+impl std::fmt::Debug for TyExpr {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut x = fmt.debug_struct("TyExpr");
+        x.field("kind", self.kind());
+        if let Some(ty) = self.ty.as_ref() {
+            x.field("type", &ty);
+        } else {
+            x.field("type", &None::<()>);
+        }
+        x.finish()
+    }
 }

@@ -164,6 +164,7 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
             // let tyexpr = crate::semantics::nze::nzexpr::typecheck(expr)?;
             // let ty = tyexpr.get_type()?.to_expr();
+            //
             let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
             let ty = crate::semantics::tck::typecheck::typecheck(&expr)?
                 .get_type()?
@@ -173,6 +174,23 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
                 });
             let expected = parse_file_str(&expected_file_path)?.to_expr();
             assert_eq_display!(ty, expected);
+            //
+            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
+            // let ty = crate::semantics::tck::typecheck::typecheck(&expr)?
+            //     .get_type()?;
+            // let expected = parse_file_str(&expected_file_path)?.to_expr();
+            // let expected = crate::semantics::tck::typecheck::typecheck(&expected)?
+            //     .normalize_whnf_noenv();
+            // // if ty != expected {
+            // //     assert_eq_display!(ty.to_expr(crate::semantics::phase::ToExprOptions {
+            // //         alpha: false,
+            // //         normalize: true,
+            // //     }), expected.to_expr(crate::semantics::phase::ToExprOptions {
+            // //         alpha: false,
+            // //         normalize: true,
+            // //     }))
+            // // }
+            // assert_eq_pretty!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
             let mut res =
