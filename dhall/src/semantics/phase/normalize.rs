@@ -855,17 +855,30 @@ pub(crate) enum NzEnvItem {
 #[derive(Debug, Clone)]
 pub(crate) struct NzEnv {
     items: Vec<NzEnvItem>,
+    vars: QuoteEnv,
 }
 
 impl NzEnv {
     pub fn new() -> Self {
-        NzEnv { items: Vec::new() }
+        NzEnv {
+            items: Vec::new(),
+            vars: QuoteEnv::new(),
+        }
     }
     pub fn construct(items: Vec<NzEnvItem>) -> Self {
-        NzEnv { items }
+        let vars = QuoteEnv::construct(
+            items
+                .iter()
+                .filter(|i| match i {
+                    NzEnvItem::Kept(_) => true,
+                    NzEnvItem::Replaced(_) => false,
+                })
+                .count(),
+        );
+        NzEnv { items, vars }
     }
     pub fn as_quoteenv(&self) -> QuoteEnv {
-        QuoteEnv::construct(self.items.len())
+        self.vars
     }
     pub fn to_alpha_tyenv(&self) -> TyEnv {
         TyEnv::from_nzenv_alpha(self)
@@ -874,6 +887,7 @@ impl NzEnv {
     pub fn insert_type(&self, t: Value) -> Self {
         let mut env = self.clone();
         env.items.push(NzEnvItem::Kept(t));
+        env.vars = env.vars.insert();
         env
     }
     pub fn insert_value(&self, e: Value) -> Self {

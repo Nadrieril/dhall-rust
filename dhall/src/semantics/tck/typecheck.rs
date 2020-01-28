@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::context::TyCtx;
-use crate::semantics::nze::{NameEnv, QuoteEnv};
+use crate::semantics::nze::{NameEnv, NzVar, QuoteEnv};
 use crate::semantics::phase::normalize::{merge_maps, NzEnv};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, const_to_value, type_of_builtin,
@@ -44,7 +44,7 @@ impl TyEnv {
         }
     }
     pub fn as_quoteenv(&self) -> QuoteEnv {
-        self.names.as_quoteenv()
+        self.items.as_quoteenv()
     }
     pub fn as_nzenv(&self) -> &NzEnv {
         &self.items
@@ -262,8 +262,7 @@ fn type_one_layer(
                                 ValueKind::PiClosure {
                                     binder: Binder::new(x.clone()),
                                     annot: ty.clone(),
-                                    closure: Closure::new(
-                                        ty.clone(),
+                                    closure: Closure::new_constant(
                                         env.as_nzenv(),
                                         scrut.clone(),
                                     ),
@@ -299,6 +298,15 @@ fn type_one_layer(
                 // return mkerr(format!("annot mismatch: {:#?} : {:#?}", x, t,));
             }
             x_ty
+        }
+        ExprKind::Assert(t) => {
+            let t = t.normalize_whnf(env.as_nzenv());
+            match &*t.as_whnf() {
+                ValueKind::Equivalence(x, y) if x == y => {}
+                ValueKind::Equivalence(..) => return mkerr("AssertMismatch"),
+                _ => return mkerr("AssertMustTakeEquivalence"),
+            }
+            t
         }
         ExprKind::App(f, arg) => {
             let tf = f.get_type()?;
@@ -458,88 +466,109 @@ fn type_one_layer(
 
             t
         }
-        // ExprKind::Merge(record, union, type_annot) => {
-        //     let record_type = record.get_type()?;
-        //     let record_borrow = record_type.as_whnf();
-        //     let handlers = match &*record_borrow {
-        //         ValueKind::RecordType(kts) => kts,
-        //         _ => return mkerr("Merge1ArgMustBeRecord"),
-        //     };
+        ExprKind::Merge(record, union, type_annot) => {
+            let record_type = record.get_type()?;
+            let record_borrow = record_type.as_whnf();
+            let handlers = match &*record_borrow {
+                ValueKind::RecordType(kts) => kts,
+                _ => return mkerr("Merge1ArgMustBeRecord"),
+            };
 
-        //     let union_type = union.get_type()?;
-        //     let union_borrow = union_type.as_whnf();
-        //     let variants = match &*union_borrow {
-        //         ValueKind::UnionType(kts) => Cow::Borrowed(kts),
-        //         ValueKind::AppliedBuiltin(
-        //             syntax::Builtin::Optional,
-        //             args,
-        //             _,
-        //         ) if args.len() == 1 => {
-        //             let ty = &args[0];
-        //             let mut kts = HashMap::new();
-        //             kts.insert("None".into(), None);
-        //             kts.insert("Some".into(), Some(ty.clone()));
-        //             Cow::Owned(kts)
-        //         }
-        //         _ => return mkerr("Merge2ArgMustBeUnionOrOptional"),
-        //     };
+            let union_type = union.get_type()?;
+            let union_borrow = union_type.as_whnf();
+            let variants = match &*union_borrow {
+                ValueKind::UnionType(kts) => Cow::Borrowed(kts),
+                ValueKind::AppliedBuiltin(
+                    syntax::Builtin::Optional,
+                    args,
+                    _,
+                    _,
+                ) if args.len() == 1 => {
+                    let ty = &args[0];
+                    let mut kts = HashMap::new();
+                    kts.insert("None".into(), None);
+                    kts.insert("Some".into(), Some(ty.clone()));
+                    Cow::Owned(kts)
+                }
+                _ => return mkerr("Merge2ArgMustBeUnionOrOptional"),
+            };
 
-        //     let mut inferred_type = None;
-        //     for (x, handler_type) in handlers {
-        //         let handler_return_type =
-        //             match variants.get(x) {
-        //                 // Union alternative with type
-        //                 Some(Some(variant_type)) => {
-        //                     let handler_type_borrow = handler_type.as_whnf();
-        //                     let (tx, tb) = match &*handler_type_borrow {
-        //                         ValueKind::Pi(_, tx, tb) => (tx, tb),
-        //                         _ => return mkerr("NotAFunction"),
-        //                     };
+            let mut inferred_type = None;
+            for (x, handler_type) in handlers {
+                let handler_return_type = match variants.get(x) {
+                    // Union alternative with type
+                    Some(Some(variant_type)) => {
+                        let handler_type_borrow = handler_type.as_whnf();
+                        match &*handler_type_borrow {
+                            ValueKind::Pi(_, tx, tb) => {
+                                if variant_type != tx {
+                                    return mkerr("MergeHandlerTypeMismatch");
+                                }
 
-        //                     if variant_type != tx {
-        //                         return mkerr("TypeMismatch");
-        //                     }
+                                // Extract `tb` from under the binder. Fails if the variable was used
+                                // in `tb`.
+                                match tb.over_binder() {
+                                    Some(x) => x,
+                                    None => return mkerr(
+                                        "MergeHandlerReturnTypeMustNotBeDependent",
+                                    ),
+                                }
+                            }
+                            ValueKind::PiClosure { closure, annot, .. } => {
+                                if variant_type != annot {
+                                    // return mkerr("MergeHandlerTypeMismatch");
+                                    return mkerr(format!(
+                                        "MergeHandlerTypeMismatch: {:#?} != {:#?}",
+                                        variant_type,
+                                        annot
+                                    ));
+                                }
 
-        //                     // Extract `tb` from under the binder. Fails if the variable was used
-        //                     // in `tb`.
-        //                     match tb.over_binder() {
-        //                         Some(x) => x,
-        //                         None => return mkerr(
-        //                             "MergeHandlerReturnTypeMustNotBeDependent",
-        //                         ),
-        //                     }
-        //                 }
-        //                 // Union alternative without type
-        //                 Some(None) => handler_type.clone(),
-        //                 None => return mkerr("MergeHandlerMissingVariant"),
-        //             };
-        //         match &inferred_type {
-        //             None => inferred_type = Some(handler_return_type),
-        //             Some(t) => {
-        //                 if t != &handler_return_type {
-        //                     return mkerr("MergeHandlerTypeMismatch");
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     for x in variants.keys() {
-        //         if !handlers.contains_key(x) {
-        //             return mkerr("MergeVariantMissingHandler");
-        //         }
-        //     }
+                                let v = NzVar::fresh();
+                                // TODO: handle case where variable is used in closure
+                                closure.apply_var(v)
+                            }
+                            _ => return mkerr("NotAFunction"),
+                        }
+                    }
+                    // Union alternative without type
+                    Some(None) => handler_type.clone(),
+                    None => return mkerr("MergeHandlerMissingVariant"),
+                };
+                match &inferred_type {
+                    None => inferred_type = Some(handler_return_type),
+                    Some(t) => {
+                        if t != &handler_return_type {
+                            // return mkerr("MergeHandlerTypeMismatch");
+                            return mkerr(format!(
+                                "MergeHandlerTypeMismatch: {:#?} != {:#?}",
+                                t, handler_return_type,
+                            ));
+                        }
+                    }
+                }
+            }
+            for x in variants.keys() {
+                if !handlers.contains_key(x) {
+                    return mkerr("MergeVariantMissingHandler");
+                }
+            }
 
-        //     match (inferred_type, type_annot.as_ref()) {
-        //         (Some(t1), Some(t2)) => {
-        //             if &t1 != t2 {
-        //                 return mkerr("MergeAnnotMismatch");
-        //             }
-        //             RetTypeOnly(t1)
-        //         }
-        //         (Some(t), None) => RetTypeOnly(t),
-        //         (None, Some(t)) => RetTypeOnly(t.clone()),
-        //         (None, None) => return mkerr("MergeEmptyNeedsAnnotation"),
-        //     }
-        // }
+            let type_annot = type_annot
+                .as_ref()
+                .map(|t| t.normalize_whnf(env.as_nzenv()));
+            match (inferred_type, type_annot) {
+                (Some(t1), Some(t2)) => {
+                    if t1 != t2 {
+                        return mkerr("MergeAnnotMismatch");
+                    }
+                    t1
+                }
+                (Some(t), None) => t,
+                (None, Some(t)) => t,
+                (None, None) => return mkerr("MergeEmptyNeedsAnnotation"),
+            }
+        }
         ExprKind::ToMap(_, _) => unimplemented!("toMap"),
         ExprKind::Projection(record, labels) => {
             let record_type = record.get_type()?;
@@ -574,7 +603,6 @@ fn type_one_layer(
             unimplemented!("selection by expression")
         }
         ExprKind::Completion(_, _) => unimplemented!("record completion"),
-        _ => Value::from_const(Const::Type), // TODO
     })
 }
 
@@ -592,14 +620,14 @@ pub(crate) fn type_with(
         ExprKind::Lam(binder, annot, body) => {
             let annot = type_with(env, annot)?;
             let annot_nf = annot.normalize_whnf(env.as_nzenv());
-            let body =
-                type_with(&env.insert_type(&binder, annot_nf.clone()), body)?;
+            let body_env = env.insert_type(&binder, annot_nf.clone());
+            let body = type_with(&body_env, body)?;
             let body_ty = body.get_type()?;
             let ty = TyExpr::new(
                 TyExprKind::Expr(ExprKind::Pi(
                     binder.clone(),
                     annot.clone(),
-                    body_ty.to_tyexpr(env.as_quoteenv().insert()),
+                    body_ty.to_tyexpr(body_env.as_quoteenv()),
                 )),
                 Some(type_of_function(annot.get_type()?, body_ty.get_type()?)?),
                 Span::Artificial,

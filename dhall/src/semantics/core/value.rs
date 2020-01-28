@@ -56,10 +56,15 @@ pub(crate) enum Form {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Closure {
-    arg_ty: Value,
-    env: NzEnv,
-    body: TyExpr,
+pub(crate) enum Closure {
+    /// Normal closure
+    Closure {
+        arg_ty: Value,
+        env: NzEnv,
+        body: TyExpr,
+    },
+    /// Closure that ignores the argument passed
+    ConstantClosure { env: NzEnv, body: TyExpr },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -696,21 +701,41 @@ impl<V> ValueKind<V> {
 
 impl Closure {
     pub fn new(arg_ty: Value, env: &NzEnv, body: TyExpr) -> Self {
-        Closure {
+        Closure::Closure {
             arg_ty,
             env: env.clone(),
             body,
         }
     }
+    pub fn new_constant(env: &NzEnv, body: TyExpr) -> Self {
+        Closure::ConstantClosure {
+            env: env.clone(),
+            body,
+        }
+    }
     pub fn apply(&self, val: Value) -> Value {
-        self.body.normalize_whnf(&self.env.insert_value(val))
+        match self {
+            Closure::Closure { env, body, .. } => {
+                body.normalize_whnf(&env.insert_value(val))
+            }
+            Closure::ConstantClosure { env, body, .. } => {
+                body.normalize_whnf(env)
+            }
+        }
     }
     pub fn apply_var(&self, var: NzVar) -> Value {
-        let val = Value::from_kind_and_type(
-            ValueKind::Var(AlphaVar::default(), var),
-            self.arg_ty.clone(),
-        );
-        self.apply(val)
+        match self {
+            Closure::Closure { arg_ty, .. } => {
+                let val = Value::from_kind_and_type(
+                    ValueKind::Var(AlphaVar::default(), var),
+                    arg_ty.clone(),
+                );
+                self.apply(val)
+            }
+            Closure::ConstantClosure { env, body, .. } => {
+                body.normalize_whnf(env)
+            }
+        }
     }
 }
 
