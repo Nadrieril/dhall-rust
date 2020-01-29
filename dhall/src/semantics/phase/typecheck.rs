@@ -1,5 +1,4 @@
-use crate::semantics::phase::normalize::NzEnv;
-use crate::semantics::{Value, ValueKind};
+use crate::semantics::{NzEnv, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::{
     Builtin, Const, Expr, ExprKind, Label, Span, UnspannedExpr,

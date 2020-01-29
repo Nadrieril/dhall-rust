@@ -4,12 +4,12 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::{AlphaVar, Binder};
-use crate::semantics::nze::{NzVar, VarEnv};
-use crate::semantics::phase::normalize::{apply_any, normalize_whnf, NzEnv};
+use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, builtin_to_value_env, const_to_value,
 };
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
+use crate::semantics::{NzEnv, NzVar, VarEnv};
 use crate::semantics::{TyExpr, TyExprKind};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,

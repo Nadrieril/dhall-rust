@@ -1,16 +1,13 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::semantics::nze::NzVar;
 use crate::semantics::phase::typecheck::{
     builtin_to_value_env, const_to_value, rc,
 };
 use crate::semantics::phase::Normalized;
 use crate::semantics::tck::typecheck::type_with;
-use crate::semantics::tck::typecheck::TyEnv;
-use crate::semantics::{
-    AlphaVar, Binder, Closure, TyExpr, TyExprKind, Value, ValueKind,
-};
+use crate::semantics::NzEnv;
+use crate::semantics::{Binder, Closure, TyExpr, TyExprKind, Value, ValueKind};
 use crate::syntax;
 use crate::syntax::Const::Type;
 use crate::syntax::{
@@ -838,53 +835,6 @@ pub(crate) fn normalize_whnf(
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum NzEnvItem {
-    // Variable is bound with given type
-    Kept(Value),
-    // Variable has been replaced by corresponding value
-    Replaced(Value),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct NzEnv {
-    items: Vec<NzEnvItem>,
-}
-
-impl NzEnv {
-    pub fn new() -> Self {
-        NzEnv { items: Vec::new() }
-    }
-    pub fn to_alpha_tyenv(&self) -> TyEnv {
-        TyEnv::from_nzenv_alpha(self)
-    }
-
-    pub fn insert_type(&self, t: Value) -> Self {
-        let mut env = self.clone();
-        env.items.push(NzEnvItem::Kept(t));
-        env
-    }
-    pub fn insert_value(&self, e: Value) -> Self {
-        let mut env = self.clone();
-        env.items.push(NzEnvItem::Replaced(e));
-        env
-    }
-    pub fn lookup_val(&self, var: &AlphaVar) -> Value {
-        let idx = self.items.len() - 1 - var.idx();
-        match &self.items[idx] {
-            NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
-                ValueKind::Var(var.clone(), NzVar::new(idx)),
-                ty.clone(),
-            ),
-            NzEnvItem::Replaced(x) => x.clone(),
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        self.items.len()
-    }
-}
-
 /// Normalize a TyExpr into WHNF
 pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
     let ty = match tye.get_type() {
@@ -924,11 +874,3 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
     // dbg!(tye.kind(), env, &kind);
     Value::from_kind_and_type_whnf(kind, ty)
 }
-
-/// Ignore NzEnv when comparing
-impl std::cmp::PartialEq for NzEnv {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-impl std::cmp::Eq for NzEnv {}

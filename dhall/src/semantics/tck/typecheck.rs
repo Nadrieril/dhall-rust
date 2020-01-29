@@ -3,70 +3,18 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::nze::{NameEnv, NzVar, VarEnv};
-use crate::semantics::phase::normalize::{merge_maps, NzEnv};
+use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::typecheck::{
     builtin_to_value, const_to_value, type_of_builtin,
 };
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
-    Binder, Closure, TyExpr, TyExprKind, Type, Value, ValueKind,
+    Binder, Closure, NzVar, TyEnv, TyExpr, TyExprKind, Type, Value, ValueKind,
 };
 use crate::syntax;
 use crate::syntax::{
-    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
-    Span, V,
+    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Span,
 };
-
-#[derive(Debug, Clone)]
-pub(crate) struct TyEnv {
-    names: NameEnv,
-    items: NzEnv,
-}
-
-impl TyEnv {
-    pub fn new() -> Self {
-        TyEnv {
-            names: NameEnv::new(),
-            items: NzEnv::new(),
-        }
-    }
-    pub fn from_nzenv_alpha(items: &NzEnv) -> Self {
-        TyEnv {
-            names: NameEnv::from_binders(
-                std::iter::repeat("_".into()).take(items.size()),
-            ),
-            items: items.clone(),
-        }
-    }
-    pub fn as_varenv(&self) -> VarEnv {
-        self.names.as_varenv()
-    }
-    pub fn as_nzenv(&self) -> &NzEnv {
-        &self.items
-    }
-    pub fn as_nameenv(&self) -> &NameEnv {
-        &self.names
-    }
-
-    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
-        TyEnv {
-            names: self.names.insert(x),
-            items: self.items.insert_type(t),
-        }
-    }
-    pub fn insert_value(&self, x: &Label, e: Value) -> Self {
-        TyEnv {
-            names: self.names.insert(x),
-            items: self.items.insert_value(e),
-        }
-    }
-    pub fn lookup(&self, var: &V<Label>) -> Option<(TyExprKind, Type)> {
-        let var = self.names.unlabel_var(var)?;
-        let ty = self.items.lookup_val(&var).get_type().unwrap();
-        Some((TyExprKind::Var(var), ty))
-    }
-}
 
 fn type_of_recordtype<'a>(
     tys: impl Iterator<Item = Cow<'a, TyExpr>>,

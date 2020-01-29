@@ -1,12 +1,10 @@
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::AlphaVar;
-use crate::semantics::nze::nzexpr::NameEnv;
-use crate::semantics::phase::normalize::{normalize_tyexpr_whnf, NzEnv};
+use crate::semantics::phase::normalize::normalize_tyexpr_whnf;
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
-use crate::semantics::tck::typecheck::TyEnv;
-use crate::semantics::Value;
+use crate::semantics::{NameEnv, NzEnv, TyEnv, Value};
 use crate::syntax::{ExprKind, Span, V};
 
 pub(crate) type Type = Value;
