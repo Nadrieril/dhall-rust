@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::{AlphaVar, Binder};
-use crate::semantics::nze::{NzVar, QuoteEnv};
+use crate::semantics::nze::{NzVar, VarEnv};
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf, NzEnv};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, builtin_to_value_env, const_to_value,
@@ -277,21 +277,21 @@ impl Value {
         }
     }
 
-    pub fn to_tyexpr(&self, qenv: QuoteEnv) -> TyExpr {
+    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
         let tye = match &*self.as_kind() {
             // ValueKind::Var(v, _w) => TyExprKind::Var(*v),
             // TODO: Only works when we don't normalize under lambdas
-            ValueKind::Var(_v, w) => TyExprKind::Var(qenv.lookup(w)),
+            ValueKind::Var(_v, w) => TyExprKind::Var(venv.lookup(w)),
             ValueKind::LamClosure {
                 binder,
                 annot,
                 closure,
             } => TyExprKind::Expr(ExprKind::Lam(
                 binder.to_label(),
-                annot.to_tyexpr(qenv),
+                annot.to_tyexpr(venv),
                 closure
-                    .apply_var(NzVar::new(qenv.size()))
-                    .to_tyexpr(qenv.insert()),
+                    .apply_var(NzVar::new(venv.size()))
+                    .to_tyexpr(venv.insert()),
             )),
             ValueKind::PiClosure {
                 binder,
@@ -299,10 +299,10 @@ impl Value {
                 closure,
             } => TyExprKind::Expr(ExprKind::Pi(
                 binder.to_label(),
-                annot.to_tyexpr(qenv),
+                annot.to_tyexpr(venv),
                 closure
-                    .apply_var(NzVar::new(qenv.size()))
-                    .to_tyexpr(qenv.insert()),
+                    .apply_var(NzVar::new(venv.size()))
+                    .to_tyexpr(venv.insert()),
             )),
             ValueKind::AppliedBuiltin(b, args, types, _) => {
                 TyExprKind::Expr(args.into_iter().zip(types.into_iter()).fold(
@@ -314,7 +314,7 @@ impl Value {
                                 Some(ty.clone()),
                                 Span::Artificial,
                             ),
-                            v.to_tyexpr(qenv),
+                            v.to_tyexpr(venv),
                         )
                     },
                 ))
@@ -327,7 +327,7 @@ impl Value {
                                 .map(|(k, v)| {
                                     (
                                         k.clone(),
-                                        v.as_ref().map(|v| v.to_tyexpr(qenv)),
+                                        v.as_ref().map(|v| v.to_tyexpr(venv)),
                                     )
                                 })
                                 .collect(),
@@ -349,7 +349,7 @@ impl Value {
                                             (
                                                 k.clone(),
                                                 v.as_ref()
-                                                    .map(|v| v.to_tyexpr(qenv)),
+                                                    .map(|v| v.to_tyexpr(venv)),
                                             )
                                         })
                                         .collect(),
@@ -362,14 +362,14 @@ impl Value {
                         Some(ctort.clone()),
                         Span::Artificial,
                     ),
-                    v.to_tyexpr(qenv),
+                    v.to_tyexpr(venv),
                 ))
             }
             self_kind => {
                 let self_kind = self_kind
                     .map_ref_with_special_handling_of_binders(
-                        |v| v.to_tyexpr(qenv),
-                        |_, _, v| v.to_tyexpr(qenv.insert()),
+                        |v| v.to_tyexpr(venv),
+                        |_, _, v| v.to_tyexpr(venv.insert()),
                     );
                 let expr = match self_kind {
                     ValueKind::Var(..)
@@ -384,14 +384,14 @@ impl Value {
                     ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
                     ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
                     ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                        builtin_to_value(Builtin::OptionalNone).to_tyexpr(qenv),
+                        builtin_to_value(Builtin::OptionalNone).to_tyexpr(venv),
                         n,
                     ),
                     ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
                     ValueKind::EmptyListLit(n) => {
                         ExprKind::EmptyListLit(TyExpr::new(
                             TyExprKind::Expr(ExprKind::App(
-                                builtin_to_value(Builtin::List).to_tyexpr(qenv),
+                                builtin_to_value(Builtin::List).to_tyexpr(venv),
                                 n,
                             )),
                             Some(const_to_value(Const::Type)),
@@ -425,7 +425,7 @@ impl Value {
         TyExpr::new(tye, self_ty, self_span)
     }
     pub fn to_tyexpr_noenv(&self) -> TyExpr {
-        self.to_tyexpr(QuoteEnv::new())
+        self.to_tyexpr(VarEnv::new())
     }
 }
 

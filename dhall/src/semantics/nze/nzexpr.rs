@@ -9,7 +9,7 @@ pub(crate) struct NameEnv {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct QuoteEnv {
+pub(crate) struct VarEnv {
     size: usize,
 }
 
@@ -30,8 +30,8 @@ impl NameEnv {
             names: names.collect(),
         }
     }
-    pub fn as_quoteenv(&self) -> QuoteEnv {
-        QuoteEnv {
+    pub fn as_varenv(&self) -> VarEnv {
+        VarEnv {
             size: self.names.len(),
         }
     }
@@ -72,16 +72,15 @@ impl NameEnv {
     }
 }
 
-// TODO: rename to VarEnv
-impl QuoteEnv {
+impl VarEnv {
     pub fn new() -> Self {
-        QuoteEnv { size: 0 }
+        VarEnv { size: 0 }
     }
     pub fn size(&self) -> usize {
         self.size
     }
     pub fn insert(&self) -> Self {
-        QuoteEnv {
+        VarEnv {
             size: self.size + 1,
         }
     }

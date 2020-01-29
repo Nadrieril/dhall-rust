@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::nze::{NameEnv, NzVar, QuoteEnv};
+use crate::semantics::nze::{NameEnv, NzVar, VarEnv};
 use crate::semantics::phase::normalize::{merge_maps, NzEnv};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, const_to_value, type_of_builtin,
@@ -39,8 +39,8 @@ impl TyEnv {
             items: items.clone(),
         }
     }
-    pub fn as_quoteenv(&self) -> QuoteEnv {
-        self.names.as_quoteenv()
+    pub fn as_varenv(&self) -> VarEnv {
+        self.names.as_varenv()
     }
     pub fn as_nzenv(&self) -> &NzEnv {
         &self.items
@@ -194,7 +194,7 @@ fn type_one_layer(
 
             let ty = type_of_recordtype(
                 kts.iter()
-                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_quoteenv()))),
+                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
             )?;
             Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
         }
@@ -282,13 +282,13 @@ fn type_one_layer(
                 return mkerr(format!(
                     "annot mismatch: ({} : {}) : {}",
                     x.to_expr_tyenv(env),
-                    x_ty.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env),
-                    t.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env)
+                    x_ty.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
+                    t.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
                 ));
                 // return mkerr(format!(
                 //     "annot mismatch: {} != {}",
-                //     x_ty.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env),
-                //     t.to_tyexpr(env.as_quoteenv()).to_expr_tyenv(env)
+                //     x_ty.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
+                //     t.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
                 // ));
                 // return mkerr(format!("annot mismatch: {:#?} : {:#?}", x, t,));
             }
@@ -314,11 +314,9 @@ fn type_one_layer(
                             "function annot mismatch: ({} : {}) : {}",
                             arg.to_expr_tyenv(env),
                             arg.get_type()?
-                                .to_tyexpr(env.as_quoteenv())
+                                .to_tyexpr(env.as_varenv())
                                 .to_expr_tyenv(env),
-                            annot
-                                .to_tyexpr(env.as_quoteenv())
-                                .to_expr_tyenv(env),
+                            annot.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
                         ));
                     }
 
@@ -373,15 +371,15 @@ fn type_one_layer(
             // Construct the final record type
             let ty = type_of_recordtype(
                 kts.iter()
-                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_quoteenv()))),
+                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
             )?;
             Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             let ekind = ExprKind::BinOp(
                 BinOp::RecursiveRecordTypeMerge,
-                x.get_type()?.to_tyexpr(env.as_quoteenv()),
-                y.get_type()?.to_tyexpr(env.as_quoteenv()),
+                x.get_type()?.to_tyexpr(env.as_varenv()),
+                y.get_type()?.to_tyexpr(env.as_varenv()),
             );
             let ty = type_one_layer(env, &ekind)?;
             TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
@@ -406,8 +404,8 @@ fn type_one_layer(
                         env,
                         &ExprKind::BinOp(
                             BinOp::RecursiveRecordTypeMerge,
-                            tx.to_tyexpr(env.as_quoteenv()),
-                            ty.to_tyexpr(env.as_quoteenv()),
+                            tx.to_tyexpr(env.as_varenv()),
+                            ty.to_tyexpr(env.as_varenv()),
                         ),
                     )?;
                 }
@@ -613,7 +611,7 @@ pub(crate) fn type_with(
                 TyExprKind::Expr(ExprKind::Pi(
                     binder.clone(),
                     annot.clone(),
-                    body_ty.to_tyexpr(body_env.as_quoteenv()),
+                    body_ty.to_tyexpr(body_env.as_varenv()),
                 )),
                 Some(type_of_function(annot.get_type()?, body_ty.get_type()?)?),
                 Span::Artificial,
