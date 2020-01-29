@@ -68,8 +68,6 @@ pub(crate) enum Closure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind<Value> {
     /// Closures
-    Lam(Binder, Value, Value),
-    Pi(Binder, Value, Value),
     LamClosure {
         binder: Binder,
         annot: Value,
@@ -133,13 +131,6 @@ impl Value {
     pub(crate) fn from_kind_and_type(v: ValueKind<Value>, t: Value) -> Value {
         Value::new(v, Unevaled, t, Span::Artificial)
     }
-    pub(crate) fn from_kind_and_type_and_span(
-        v: ValueKind<Value>,
-        t: Value,
-        span: Span,
-    ) -> Value {
-        Value::new(v, Unevaled, t, span)
-    }
     pub(crate) fn from_kind_and_type_whnf(
         v: ValueKind<Value>,
         t: Value,
@@ -154,10 +145,6 @@ impl Value {
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
         builtin_to_value_env(b, env)
-    }
-    pub(crate) fn with_span(self, span: Span) -> Self {
-        self.as_internal_mut().span = span;
-        self
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
@@ -238,10 +225,6 @@ impl Value {
 
     pub(crate) fn app(&self, v: Value) -> Value {
         let body_t = match &*self.get_type_not_sort().as_whnf() {
-            ValueKind::Pi(_, t, e) => {
-                v.check_type(t);
-                e.subst_shift(&AlphaVar::default(), &v)
-            }
             ValueKind::PiClosure { annot, closure, .. } => {
                 v.check_type(annot);
                 closure.apply(v.clone())
@@ -275,9 +258,6 @@ impl Value {
 
     pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
         Some(self.as_internal().shift(delta, var)?.into_value())
-    }
-    pub(crate) fn over_binder(&self) -> Option<Self> {
-        self.shift(-1, &AlphaVar::default())
     }
     pub(crate) fn under_binder(&self) -> Self {
         // Can't fail since delta is positive
@@ -398,10 +378,6 @@ impl Value {
                     | ValueKind::AppliedBuiltin(..)
                     | ValueKind::UnionConstructor(..)
                     | ValueKind::UnionLit(..) => unreachable!(),
-                    ValueKind::Lam(x, t, e) => {
-                        ExprKind::Lam(x.to_label(), t, e)
-                    }
-                    ValueKind::Pi(x, t, e) => ExprKind::Pi(x.to_label(), t, e),
                     ValueKind::Const(c) => ExprKind::Const(c),
                     ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
                     ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
@@ -554,14 +530,6 @@ impl ValueKind<Value> {
 
             ValueKind::NEOptionalLit(th) => {
                 th.normalize_mut();
-            }
-            ValueKind::Lam(_, t, e) => {
-                t.normalize_mut();
-                e.normalize_mut();
-            }
-            ValueKind::Pi(_, t, e) => {
-                t.normalize_mut();
-                e.normalize_mut();
             }
             ValueKind::LamClosure { annot, .. }
             | ValueKind::PiClosure { annot, .. } => {

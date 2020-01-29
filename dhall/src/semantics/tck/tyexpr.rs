@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::AlphaVar;
 use crate::semantics::phase::normalize::{normalize_tyexpr_whnf, NzEnv};
@@ -57,10 +56,6 @@ impl TyExpr {
         let env = env.as_nameenv().names();
         let mut env = env.iter().collect();
         tyexpr_to_expr(self, opts, &mut env)
-    }
-    // TODO: temporary hack
-    pub fn to_value(&self) -> Value {
-        todo!()
     }
 
     pub fn normalize_whnf(&self, env: &NzEnv) -> Value {

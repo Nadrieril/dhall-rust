@@ -72,14 +72,6 @@ where
 {
     use ValueKind::*;
     Ok(match input {
-        Lam(l, t, e) => {
-            let (t, e) = v.visit_binder(l, t, e)?;
-            Lam(l.clone(), t, e)
-        }
-        Pi(l, t, e) => {
-            let (t, e) = v.visit_binder(l, t, e)?;
-            Pi(l.clone(), t, e)
-        }
         LamClosure {
             binder,
             annot,

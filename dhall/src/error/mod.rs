@@ -3,7 +3,7 @@ use std::io::Error as IOError;
 use crate::semantics::core::value::Value;
 use crate::semantics::phase::resolve::ImportStack;
 use crate::semantics::phase::NormalizedExpr;
-use crate::syntax::{Import, Label, ParseError, Span};
+use crate::syntax::{Import, ParseError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -45,7 +45,7 @@ pub struct TypeError {
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    UnboundVariable(Span),
+    // UnboundVariable(Span),
     InvalidInputType(Value),
     InvalidOutputType(Value),
     // NotAFunction(Value),
@@ -57,7 +57,7 @@ pub(crate) enum TypeMessage {
     // InvalidPredicate(Value),
     // IfBranchMismatch(Value, Value),
     // IfBranchMustBeTerm(bool, Value),
-    InvalidFieldType(Label, Value),
+    // InvalidFieldType(Label, Value),
     // NotARecord(Label, Value),
     // MustCombineRecord(Value),
     // MissingRecordField(Label, Value),
@@ -76,9 +76,9 @@ pub(crate) enum TypeMessage {
     // ProjectionMissingEntry,
     // ProjectionDuplicateField,
     Sort,
-    RecordTypeDuplicateField,
+    // RecordTypeDuplicateField,
     // RecordTypeMergeRequiresRecordType(Value),
-    UnionTypeDuplicateField,
+    // UnionTypeDuplicateField,
     // EquivalenceArgumentMustBeTerm(bool, Value),
     // EquivalenceTypeMismatch(Value, Value),
     // AssertMismatch(Value, Value),
@@ -96,7 +96,7 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            UnboundVariable(var) => var.error("Type error: Unbound variable"),
+            // UnboundVariable(var) => var.error("Type error: Unbound variable"),
             InvalidInputType(v) => {
                 v.span().error("Type error: Invalid function input")
             }
@@ -169,10 +169,5 @@ impl From<ImportError> for Error {
 impl From<TypeError> for Error {
     fn from(err: TypeError) -> Error {
         Error::Typecheck(err)
-    }
-}
-impl From<crate::semantics::nze::nzexpr::TypeError> for Error {
-    fn from(_: crate::semantics::nze::nzexpr::TypeError) -> Error {
-        Error::Decode(DecodeError::WrongFormatError("type error".to_string()))
     }
 }

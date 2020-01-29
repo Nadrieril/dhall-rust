@@ -330,10 +330,6 @@ impl<Label: PartialEq + Clone> V<Label> {
             V(y.clone(), *m)
         })
     }
-
-    pub(crate) fn over_binder(&self, x: &Label) -> Option<Self> {
-        self.shift(-1, &V(x.clone(), 0))
-    }
 }
 
 pub fn trivial_result<T>(x: Result<T, !>) -> T {

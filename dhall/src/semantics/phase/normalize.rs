@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -376,9 +375,6 @@ pub(crate) fn apply_builtin(
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
     let f_borrow = f.as_whnf();
     match &*f_borrow {
-        ValueKind::Lam(_, _, e) => e
-            .subst_shift(&AlphaVar::default(), &a)
-            .to_whnf_check_type(ty),
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
         }
@@ -860,9 +856,6 @@ pub(crate) struct NzEnv {
 impl NzEnv {
     pub fn new() -> Self {
         NzEnv { items: Vec::new() }
-    }
-    pub fn construct(items: Vec<NzEnvItem>) -> Self {
-        NzEnv { items }
     }
     pub fn to_alpha_tyenv(&self) -> TyEnv {
         TyEnv::from_nzenv_alpha(self)

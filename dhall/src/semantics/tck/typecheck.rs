@@ -1,12 +1,8 @@
-#![allow(dead_code)]
-#![allow(unreachable_code)]
-#![allow(unused_imports)]
 use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::context::TyCtx;
 use crate::semantics::nze::{NameEnv, NzVar, QuoteEnv};
 use crate::semantics::phase::normalize::{merge_maps, NzEnv};
 use crate::semantics::phase::typecheck::{
@@ -14,12 +10,12 @@ use crate::semantics::phase::typecheck::{
 };
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
-    AlphaVar, Binder, Closure, TyExpr, TyExprKind, Type, Value, ValueKind,
+    Binder, Closure, TyExpr, TyExprKind, Type, Value, ValueKind,
 };
 use crate::syntax;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
-    Span, UnspannedExpr, V,
+    Span, V,
 };
 
 #[derive(Debug, Clone)]
@@ -111,6 +107,8 @@ fn mkerr<T>(x: impl ToString) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
 
+/// When all sub-expressions have been typed, check the remaining toplevel
+/// layer.
 fn type_one_layer(
     env: &TyEnv,
     kind: &ExprKind<TyExpr, Normalized>,
@@ -503,20 +501,6 @@ fn type_one_layer(
                     Some(Some(variant_type)) => {
                         let handler_type_borrow = handler_type.as_whnf();
                         match &*handler_type_borrow {
-                            ValueKind::Pi(_, tx, tb) => {
-                                if variant_type != tx {
-                                    return mkerr("MergeHandlerTypeMismatch");
-                                }
-
-                                // Extract `tb` from under the binder. Fails if the variable was used
-                                // in `tb`.
-                                match tb.over_binder() {
-                                    Some(x) => x,
-                                    None => return mkerr(
-                                        "MergeHandlerReturnTypeMustNotBeDependent",
-                                    ),
-                                }
-                            }
                             ValueKind::PiClosure { closure, annot, .. } => {
                                 if variant_type != annot {
                                     // return mkerr("MergeHandlerTypeMismatch");
@@ -609,8 +593,7 @@ fn type_one_layer(
     })
 }
 
-/// Type-check an expression and return the expression alongside its type if type-checking
-/// succeeded, or an error if type-checking failed.
+/// `type_with` typechecks an expressio in the provided environment.
 pub(crate) fn type_with(
     env: &TyEnv,
     expr: &Expr<Normalized>,
@@ -689,10 +672,13 @@ pub(crate) fn type_with(
     Ok(TyExpr::new(tyekind, ty, expr.span()))
 }
 
+/// Typecheck an expression and return the expression annotated with types if type-checking
+/// succeeded, or an error if type-checking failed.
 pub(crate) fn typecheck(e: &Expr<Normalized>) -> Result<TyExpr, TypeError> {
     type_with(&TyEnv::new(), e)
 }
 
+/// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
 pub(crate) fn typecheck_with(
     expr: &Expr<Normalized>,
     ty: Expr<Normalized>,
