@@ -35,7 +35,7 @@ pub struct Typed(Value);
 ///
 /// Invariant: the contained Typed expression must be in normal form,
 #[derive(Debug, Clone)]
-pub struct Normalized(Typed);
+pub struct Normalized(Value);
 
 /// Controls conversion from `Value` to `Expr`
 #[derive(Copy, Clone)]
@@ -81,9 +81,8 @@ impl Resolved {
     pub fn typecheck(self) -> Result<Typed, TypeError> {
         Ok(typecheck::typecheck(self.0)?.into_typed())
     }
-    pub fn typecheck_with(self, ty: &Typed) -> Result<Typed, TypeError> {
-        Ok(typecheck::typecheck_with(self.0, ty.normalize_to_expr())?
-            .into_typed())
+    pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
+        Ok(typecheck::typecheck_with(self.0, ty.to_expr())?.into_typed())
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
@@ -92,39 +91,30 @@ impl Resolved {
     pub fn tck_and_normalize_new_flow(&self) -> Result<Normalized, TypeError> {
         let val = crate::semantics::tck::typecheck::typecheck(&self.0)?
             .normalize_whnf_noenv();
-        Ok(Normalized(Typed(val)))
+        Ok(Normalized(val))
     }
 }
 
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(mut self) -> Normalized {
-        self.normalize_mut();
-        Normalized(self)
+        self.0.normalize_mut();
+        Normalized(self.0)
     }
 
-    pub(crate) fn from_const(c: Const) -> Self {
-        Typed(Value::from_const(c))
-    }
-    pub(crate) fn from_kind_and_type(v: ValueKind<Value>, t: Typed) -> Self {
-        Typed(Value::from_kind_and_type(v, t.into_value()))
-    }
     pub(crate) fn from_value(th: Value) -> Self {
         Typed(th)
     }
-    pub(crate) fn const_type() -> Self {
-        Typed::from_const(Const::Type)
-    }
 
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> ResolvedExpr {
+    pub(crate) fn to_expr(&self) -> ResolvedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,
         })
     }
     /// Converts a value back to the corresponding AST expression, beta-normalizing in the process.
-    pub fn normalize_to_expr(&self) -> NormalizedExpr {
+    pub(crate) fn normalize_to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: true,
@@ -138,52 +128,12 @@ impl Typed {
             normalize: true,
         })
     }
-    pub(crate) fn to_value(&self) -> Value {
-        self.0.clone()
-    }
     pub(crate) fn into_value(self) -> Value {
         self.0
     }
 
-    pub(crate) fn normalize_mut(&mut self) {
-        self.0.normalize_mut()
-    }
-
     pub(crate) fn get_type(&self) -> Result<Typed, TypeError> {
         Ok(self.0.get_type()?.into_typed())
-    }
-
-    pub fn make_builtin_type(b: Builtin) -> Self {
-        Typed::from_value(Value::from_builtin(b))
-    }
-    pub fn make_optional_type(t: Typed) -> Self {
-        Typed::from_value(
-            Value::from_builtin(Builtin::Optional).app(t.to_value()),
-        )
-    }
-    pub fn make_list_type(t: Typed) -> Self {
-        Typed::from_value(Value::from_builtin(Builtin::List).app(t.to_value()))
-    }
-    pub fn make_record_type(
-        kts: impl Iterator<Item = (String, Typed)>,
-    ) -> Self {
-        Typed::from_kind_and_type(
-            ValueKind::RecordType(
-                kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
-            ),
-            Typed::const_type(),
-        )
-    }
-    pub fn make_union_type(
-        kts: impl Iterator<Item = (String, Option<Typed>)>,
-    ) -> Self {
-        Typed::from_kind_and_type(
-            ValueKind::UnionType(
-                kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
-                    .collect(),
-            ),
-            Typed::const_type(),
-        )
     }
 }
 
@@ -192,14 +142,76 @@ impl Normalized {
         binary::encode(&self.to_expr())
     }
 
-    pub(crate) fn to_expr(&self) -> NormalizedExpr {
-        self.0.normalize_to_expr()
+    pub fn to_expr(&self) -> NormalizedExpr {
+        // TODO: do it directly
+        self.to_typed().normalize_to_expr()
     }
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.normalize_to_expr_alpha()
+        // TODO: do it directly
+        self.to_typed().normalize_to_expr_alpha()
+    }
+    pub(crate) fn to_typed(&self) -> Typed {
+        Typed(self.0.clone())
     }
     pub(crate) fn into_typed(self) -> Typed {
+        Typed(self.0)
+    }
+    pub(crate) fn to_value(&self) -> Value {
+        self.0.clone()
+    }
+    pub(crate) fn into_value(self) -> Value {
         self.0
+    }
+
+    pub(crate) fn from_const(c: Const) -> Self {
+        Normalized(Value::from_const(c))
+    }
+    pub(crate) fn from_kind_and_type(
+        v: ValueKind<Value>,
+        t: Normalized,
+    ) -> Self {
+        Normalized(Value::from_kind_and_type(v, t.into_value()))
+    }
+    pub(crate) fn from_value(th: Value) -> Self {
+        Normalized(th)
+    }
+    pub(crate) fn const_type() -> Self {
+        Normalized::from_const(Const::Type)
+    }
+
+    pub fn make_builtin_type(b: Builtin) -> Self {
+        Normalized::from_value(Value::from_builtin(b))
+    }
+    pub fn make_optional_type(t: Normalized) -> Self {
+        Normalized::from_value(
+            Value::from_builtin(Builtin::Optional).app(t.to_value()),
+        )
+    }
+    pub fn make_list_type(t: Normalized) -> Self {
+        Normalized::from_value(
+            Value::from_builtin(Builtin::List).app(t.to_value()),
+        )
+    }
+    pub fn make_record_type(
+        kts: impl Iterator<Item = (String, Normalized)>,
+    ) -> Self {
+        Normalized::from_kind_and_type(
+            ValueKind::RecordType(
+                kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
+            ),
+            Normalized::const_type(),
+        )
+    }
+    pub fn make_union_type(
+        kts: impl Iterator<Item = (String, Option<Normalized>)>,
+    ) -> Self {
+        Normalized::from_kind_and_type(
+            ValueKind::UnionType(
+                kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
+                    .collect(),
+            ),
+            Normalized::const_type(),
+        )
     }
 }
 
@@ -226,7 +238,6 @@ macro_rules! derive_traits_for_wrapper_struct {
 
 derive_traits_for_wrapper_struct!(Parsed);
 derive_traits_for_wrapper_struct!(Resolved);
-derive_traits_for_wrapper_struct!(Normalized);
 
 impl std::hash::Hash for Normalized {
     fn hash<H>(&self, state: &mut H)
@@ -245,8 +256,19 @@ impl PartialEq for Typed {
         self.0 == other.0
     }
 }
-
 impl Display for Typed {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.to_expr().fmt(f)
+    }
+}
+
+impl Eq for Normalized {}
+impl PartialEq for Normalized {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+impl Display for Normalized {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
