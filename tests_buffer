@@ -49,6 +49,7 @@ success/
         somehow test types added to the Foo/build closures
             λ(x : ∀(a : Type) → a) → x
             let X = 0 in λ(T : Type) → λ(x : T) → 1
+            (λ(T : Type) → let foo = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
 failure/
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >

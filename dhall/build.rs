@@ -339,6 +339,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/CompletionWithWrongDefaultType"
                     || path == "unit/CompletionWithWrongFieldName"
                     || path == "unit/CompletionWithWrongOverridenType"
+                    // TODO: enable free variable checking
+                    || path == "unit/MergeHandlerFreeVar"
             }),
             input_type: FileType::Text,
             output_type: None,
@@ -367,6 +369,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/CompletionWithWrongDefaultType"
                     || path == "unit/CompletionWithWrongFieldName"
                     || path == "unit/CompletionWithWrongOverridenType"
+                    // TODO: enable free variable checking
+                    || path == "unit/MergeHandlerFreeVar"
             }),
             input_type: FileType::Text,
             output_type: None,

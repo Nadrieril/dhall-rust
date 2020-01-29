@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::semantics::nze::{NzVar, QuoteEnv};
+use crate::semantics::nze::NzVar;
 use crate::semantics::phase::typecheck::{
     builtin_to_value_env, const_to_value, rc,
 };
@@ -855,30 +855,14 @@ pub(crate) enum NzEnvItem {
 #[derive(Debug, Clone)]
 pub(crate) struct NzEnv {
     items: Vec<NzEnvItem>,
-    vars: QuoteEnv,
 }
 
 impl NzEnv {
     pub fn new() -> Self {
-        NzEnv {
-            items: Vec::new(),
-            vars: QuoteEnv::new(),
-        }
+        NzEnv { items: Vec::new() }
     }
     pub fn construct(items: Vec<NzEnvItem>) -> Self {
-        let vars = QuoteEnv::construct(
-            items
-                .iter()
-                .filter(|i| match i {
-                    NzEnvItem::Kept(_) => true,
-                    NzEnvItem::Replaced(_) => false,
-                })
-                .count(),
-        );
-        NzEnv { items, vars }
-    }
-    pub fn as_quoteenv(&self) -> QuoteEnv {
-        self.vars
+        NzEnv { items }
     }
     pub fn to_alpha_tyenv(&self) -> TyEnv {
         TyEnv::from_nzenv_alpha(self)
@@ -887,7 +871,6 @@ impl NzEnv {
     pub fn insert_type(&self, t: Value) -> Self {
         let mut env = self.clone();
         env.items.push(NzEnvItem::Kept(t));
-        env.vars = env.vars.insert();
         env
     }
     pub fn insert_value(&self, e: Value) -> Self {
@@ -897,16 +880,9 @@ impl NzEnv {
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> Value {
         let idx = self.items.len() - 1 - var.idx();
-        let var_idx = self.items[..idx]
-            .iter()
-            .filter(|i| match i {
-                NzEnvItem::Kept(_) => true,
-                NzEnvItem::Replaced(_) => false,
-            })
-            .count();
         match &self.items[idx] {
             NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
-                ValueKind::Var(var.clone(), NzVar::new(var_idx)),
+                ValueKind::Var(var.clone(), NzVar::new(idx)),
                 ty.clone(),
             ),
             NzEnvItem::Replaced(x) => x.clone(),

@@ -193,13 +193,23 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             // assert_eq_pretty!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
-            let mut res =
-                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            // let mut res =
+            //     parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            // if let Ok(e) = &res {
+            //     // If e did typecheck, check that get_type fails
+            //     res = e.get_type();
+            // }
+            // res.unwrap_err();
+
+            let res = crate::semantics::tck::typecheck::typecheck(
+                &parse_file_str(&file_path)?.skip_resolve()?.to_expr(),
+            );
             if let Ok(e) = &res {
                 // If e did typecheck, check that get_type fails
-                res = e.get_type();
+                e.get_type().unwrap_err();
+            } else {
+                res.unwrap_err();
             }
-            res.unwrap_err();
         }
         // Checks the output of the type error against a text file. If the text file doesn't exist,
         // we instead write to it the output we got. This makes it easy to update those files: just

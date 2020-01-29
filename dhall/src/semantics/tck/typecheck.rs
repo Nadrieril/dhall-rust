@@ -44,7 +44,7 @@ impl TyEnv {
         }
     }
     pub fn as_quoteenv(&self) -> QuoteEnv {
-        self.items.as_quoteenv()
+        self.names.as_quoteenv()
     }
     pub fn as_nzenv(&self) -> &NzEnv {
         &self.items
@@ -69,9 +69,6 @@ impl TyEnv {
         let var = self.names.unlabel_var(var)?;
         let ty = self.items.lookup_val(&var).get_type().unwrap();
         Some((TyExprKind::Var(var), ty))
-    }
-    pub fn size(&self) -> usize {
-        self.names.size()
     }
 }
 
@@ -312,33 +309,24 @@ fn type_one_layer(
             let tf = f.get_type()?;
             let tf_borrow = tf.as_whnf();
             match &*tf_borrow {
-                // ValueKind::PiClosure { annot, closure, .. } => (annot, closure),
-                ValueKind::PiClosure {
-                    annot: _expected_arg_ty,
-                    closure: ty_closure,
-                    ..
-                } => {
-                    // if arg.get_type()? != *expected_arg_ty {
-                    //     return mkerr(format!(
-                    //         "function annot mismatch: {:?}, {:?}",
-                    //         arg.get_type()?,
-                    //         expected_arg_ty
-                    //     ));
-                    // }
+                ValueKind::PiClosure { annot, closure, .. } => {
+                    if arg.get_type()? != *annot {
+                        // return mkerr(format!("function annot mismatch"));
+                        return mkerr(format!(
+                            "function annot mismatch: ({} : {}) : {}",
+                            arg.to_expr_tyenv(env),
+                            arg.get_type()?
+                                .to_tyexpr(env.as_quoteenv())
+                                .to_expr_tyenv(env),
+                            annot
+                                .to_tyexpr(env.as_quoteenv())
+                                .to_expr_tyenv(env),
+                        ));
+                    }
 
                     let arg_nf = arg.normalize_whnf(env.as_nzenv());
-                    ty_closure.apply(arg_nf)
+                    closure.apply(arg_nf)
                 }
-                // ValueKind::Pi(_, _expected_arg_ty, body) => {
-                //     // if arg.get_type()? != *tx {
-                //     //     return mkerr("TypeMismatch");
-                //     // }
-
-                //     let arg_nf = arg.normalize_whnf(env.as_nzenv());
-                //     let ret = body.subst_shift(&AlphaVar::default(), &arg_nf);
-                //     ret.normalize_nf();
-                //     ret
-                // }
                 _ => return mkerr(format!("apply to not Pi: {:?}", tf_borrow)),
             }
         }
@@ -404,14 +392,29 @@ fn type_one_layer(
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
             let x_val = x.normalize_whnf(env.as_nzenv());
             let y_val = y.normalize_whnf(env.as_nzenv());
-            match &*x_val.as_whnf() {
-                ValueKind::RecordType(_) => {}
+            let x_val_borrow = x_val.as_whnf();
+            let y_val_borrow = y_val.as_whnf();
+            let kts_x = match &*x_val_borrow {
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("RecordTypeMergeRequiresRecordType"),
-            }
-            match &*y_val.as_whnf() {
-                ValueKind::RecordType(_) => {}
+            };
+            let kts_y = match &*y_val_borrow {
+                ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("RecordTypeMergeRequiresRecordType"),
+            };
+            for (k, tx) in kts_x {
+                if let Some(ty) = kts_y.get(k) {
+                    type_one_layer(
+                        env,
+                        &ExprKind::BinOp(
+                            BinOp::RecursiveRecordTypeMerge,
+                            tx.to_tyexpr(env.as_quoteenv()),
+                            ty.to_tyexpr(env.as_quoteenv()),
+                        ),
+                    )?;
+                }
             }
+
             // A RecordType's type is always a const
             let xk = x.get_type()?.as_const().unwrap();
             let yk = y.get_type()?.as_const().unwrap();
