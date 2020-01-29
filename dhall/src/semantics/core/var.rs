@@ -29,16 +29,6 @@ impl AlphaVar {
     pub(crate) fn idx(&self) -> usize {
         self.alpha.idx()
     }
-
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(AlphaVar {
-            alpha: self.alpha.shift(delta, &var.alpha)?,
-        })
-    }
-    pub(crate) fn under_binder(&self) -> Self {
-        // Can't fail since delta is positive
-        self.shift(1, &AlphaVar::default()).unwrap()
-    }
 }
 
 impl Binder {

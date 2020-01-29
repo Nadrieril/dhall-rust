@@ -638,14 +638,12 @@ pub(crate) fn normalize_one_layer(
         ),
         // Those cases have already been completely handled in the typechecking phase (using
         // `RetWhole`), so they won't appear here.
-        ExprKind::Lam(_, _, _)
-        | ExprKind::Pi(_, _, _)
+        ExprKind::Lam(..)
+        | ExprKind::Pi(..)
+        | ExprKind::Let(..)
         | ExprKind::Embed(_)
         | ExprKind::Var(_) => {
             unreachable!("This case should have been handled in typecheck")
-        }
-        ExprKind::Let(_, _, val, body) => {
-            Ret::Value(body.subst_shift(&AlphaVar::default(), &val))
         }
         ExprKind::Annot(x, _) => Ret::Value(x),
         ExprKind::Const(c) => Ret::Value(const_to_value(c)),

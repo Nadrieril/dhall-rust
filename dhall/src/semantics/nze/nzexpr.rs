@@ -104,9 +104,6 @@ impl NzVar {
         let id = FRESH_VAR_COUNTER.fetch_add(1, Ordering::SeqCst);
         NzVar::Fresh(id)
     }
-    pub fn shift(&self, delta: isize) -> Self {
-        NzVar::new((self.idx() as isize + delta) as usize)
-    }
     // Panics on a fresh variable.
     pub fn idx(&self) -> usize {
         match self {

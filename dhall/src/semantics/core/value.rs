@@ -256,27 +256,6 @@ impl Value {
             .expect("Internal type error: value is `Sort` but shouldn't be")
     }
 
-    pub(crate) fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(self.as_internal().shift(delta, var)?.into_value())
-    }
-    pub(crate) fn under_binder(&self) -> Self {
-        // Can't fail since delta is positive
-        self.shift(1, &AlphaVar::default()).unwrap()
-    }
-    pub(crate) fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        match &*self.as_kind() {
-            // If the var matches, we can just reuse the provided value instead of copying it.
-            // We also check that the types match, if in debug mode.
-            ValueKind::Var(v, _) if v == var => {
-                if let Ok(self_ty) = self.get_type() {
-                    val.check_type(&self_ty.subst_shift(var, val));
-                }
-                val.clone()
-            }
-            _ => self.as_internal().subst_shift(var, val).into_value(),
-        }
-    }
-
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
         let tye = match &*self.as_kind() {
             // ValueKind::Var(v, _w) => TyExprKind::Var(*v),
@@ -487,27 +466,6 @@ impl ValueInternal {
             None => Err(TypeError::new(TypeMessage::Sort)),
         }
     }
-
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(ValueInternal {
-            form: self.form,
-            kind: self.kind.shift(delta, var)?,
-            ty: match &self.ty {
-                None => None,
-                Some(ty) => Some(ty.shift(delta, var)?),
-            },
-            span: self.span.clone(),
-        })
-    }
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        ValueInternal {
-            // The resulting value may not stay in wnhf after substitution
-            form: Unevaled,
-            kind: self.kind.subst_shift(var, val),
-            ty: self.ty.as_ref().map(|x| x.subst_shift(var, val)),
-            span: self.span.clone(),
-        }
-    }
 }
 
 impl ValueKind<Value> {
@@ -587,36 +545,6 @@ impl ValueKind<Value> {
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind<Value> {
         ValueKind::AppliedBuiltin(b, vec![], vec![], env)
-    }
-
-    fn shift(&self, delta: isize, var: &AlphaVar) -> Option<Self> {
-        Some(match self {
-            ValueKind::Var(v, w) if var.idx() <= v.idx() => {
-                ValueKind::Var(v.shift(delta, var)?, *w)
-            }
-            ValueKind::Var(v, w) => {
-                ValueKind::Var(v.shift(delta, var)?, w.shift(delta))
-            }
-            // ValueKind::Var(v, w) => ValueKind::Var(v.shift(delta, var)?, *w),
-            _ => self.traverse_ref_with_special_handling_of_binders(
-                |x| Ok(x.shift(delta, var)?),
-                |_, _, x| Ok(x.shift(delta, &var.under_binder())?),
-            )?,
-        })
-    }
-    fn subst_shift(&self, var: &AlphaVar, val: &Value) -> Self {
-        match self {
-            ValueKind::Var(v, _) if v == var => val.to_whnf_ignore_type(),
-            ValueKind::Var(v, w) => {
-                ValueKind::Var(v.shift(-1, var).unwrap(), *w)
-            }
-            _ => self.map_ref_with_special_handling_of_binders(
-                |x| x.subst_shift(var, val),
-                |_, _, x| {
-                    x.subst_shift(&var.under_binder(), &val.under_binder())
-                },
-            ),
-        }
     }
 }
 

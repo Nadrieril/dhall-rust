@@ -320,33 +320,11 @@ impl<E> Expr<E> {
     }
 }
 
-impl<Label: PartialEq + Clone> V<Label> {
-    pub(crate) fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
-        let V(x, n) = var;
-        let V(y, m) = self;
-        Some(if x == y && n <= m {
-            V(y.clone(), add_ui(*m, delta)?)
-        } else {
-            V(y.clone(), *m)
-        })
-    }
-}
-
 pub fn trivial_result<T>(x: Result<T, !>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => e,
     }
-}
-
-/// Add an isize to an usize
-/// Returns `None` on over/underflow
-fn add_ui(u: usize, i: isize) -> Option<usize> {
-    Some(if i < 0 {
-        u.checked_sub(i.checked_neg()? as usize)?
-    } else {
-        u.checked_add(i as usize)?
-    })
 }
 
 impl PartialEq for NaiveDouble {
