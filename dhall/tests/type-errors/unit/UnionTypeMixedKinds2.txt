@@ -1,1 +1,1 @@
-Type error: Unhandled error: InvalidFieldType(Label("y"), Type)
+Type error: Unhandled error: InvalidFieldType

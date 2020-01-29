@@ -1,1 +1,1 @@
-Type error: Unhandled error: AnnotMismatch
+Type error: Unhandled error: annot mismatch: ({ x = 1 } : { x : Natural }) : { y : Natural }

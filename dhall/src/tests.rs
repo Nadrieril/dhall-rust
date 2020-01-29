@@ -158,65 +158,24 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             parse_file_str(&file_path)?.resolve().unwrap_err();
         }
         TypeInferenceSuccess(expr_file_path, expected_file_path) => {
-            // let expr =
-            //     parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
-            // let ty = expr.get_type()?.to_expr();
-            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            // let tyexpr = crate::semantics::nze::nzexpr::typecheck(expr)?;
-            // let ty = tyexpr.get_type()?.to_expr();
-            //
-            let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            let ty = crate::semantics::tck::typecheck::typecheck(&expr)?
-                .get_type()?
-                .to_expr(crate::semantics::phase::ToExprOptions {
-                    alpha: false,
-                    normalize: true,
-                });
+            let expr =
+                parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
+            let ty = expr.get_type()?.to_expr();
             let expected = parse_file_str(&expected_file_path)?.to_expr();
             assert_eq_display!(ty, expected);
-            //
-            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            // let ty = crate::semantics::tck::typecheck::typecheck(&expr)?
-            //     .get_type()?;
-            // let expected = parse_file_str(&expected_file_path)?.to_expr();
-            // let expected = crate::semantics::tck::typecheck::typecheck(&expected)?
-            //     .normalize_whnf_noenv();
-            // // if ty != expected {
-            // //     assert_eq_display!(ty.to_expr(crate::semantics::phase::ToExprOptions {
-            // //         alpha: false,
-            // //         normalize: true,
-            // //     }), expected.to_expr(crate::semantics::phase::ToExprOptions {
-            // //         alpha: false,
-            // //         normalize: true,
-            // //     }))
-            // // }
-            // assert_eq_pretty!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
-            // let mut res =
-            //     parse_file_str(&file_path)?.skip_resolve()?.typecheck();
-            // if let Ok(e) = &res {
-            //     // If e did typecheck, check that get_type fails
-            //     res = e.get_type();
-            // }
-            // res.unwrap_err();
-
-            let res = crate::semantics::tck::typecheck::typecheck(
-                &parse_file_str(&file_path)?.skip_resolve()?.to_expr(),
-            );
+            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
             if let Ok(e) = &res {
                 // If e did typecheck, check that get_type fails
                 e.get_type().unwrap_err();
-            } else {
-                res.unwrap_err();
             }
         }
         // Checks the output of the type error against a text file. If the text file doesn't exist,
         // we instead write to it the output we got. This makes it easy to update those files: just
         // `rm -r dhall/tests/type-errors` and run the tests again.
         TypeError(file_path) => {
-            let mut res =
-                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
             let file_path = PathBuf::from(file_path);
             let error_file_path = file_path
                 .strip_prefix("../dhall-lang/tests/type-inference/failure/")
@@ -224,11 +183,13 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             let error_file_path =
                 PathBuf::from("tests/type-errors/").join(error_file_path);
             let error_file_path = error_file_path.with_extension("txt");
-            if let Ok(e) = &res {
-                // If e did typecheck, check that get_type fails
-                res = e.get_type();
-            }
-            let err: Error = res.unwrap_err().into();
+            let err: Error = match res {
+                Ok(e) => {
+                    // If e did typecheck, check that get_type fails
+                    e.get_type().unwrap_err().into()
+                }
+                Err(e) => e.into(),
+            };
 
             if error_file_path.is_file() {
                 let expected_msg = std::fs::read_to_string(error_file_path)?;
@@ -241,28 +202,10 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             }
         }
         Normalization(expr_file_path, expected_file_path) => {
-            // let expr = parse_file_str(&expr_file_path)?
-            //     .resolve()?
-            //     .typecheck()?
-            //     .normalize()
-            //     .to_expr();
-            // let expr = parse_file_str(&expr_file_path)?.resolve()?.to_expr();
-            // let expr = crate::semantics::nze::nzexpr::typecheck(expr)?
-            //     .normalize()
-            //     .to_expr();
-            // let expr = parse_file_str(&expr_file_path)?
-            //     .resolve()?
-            //     .typecheck()?
-            //     .to_value()
-            //     .to_tyexpr_noenv()
-            //     .normalize_whnf_noenv()
-            //     .to_expr(crate::semantics::phase::ToExprOptions {
-            //         alpha: false,
-            //         normalize: true,
-            //     });
             let expr = parse_file_str(&expr_file_path)?
                 .resolve()?
-                .tck_and_normalize_new_flow()?
+                .typecheck()?
+                .normalize()
                 .to_expr();
             let expected = parse_file_str(&expected_file_path)?.to_expr();
 

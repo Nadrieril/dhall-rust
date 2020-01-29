@@ -9,9 +9,7 @@ use crate::semantics::phase::normalize::{apply_any, normalize_whnf, NzEnv};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, builtin_to_value_env, const_to_value,
 };
-use crate::semantics::phase::{
-    Normalized, NormalizedExpr, ToExprOptions, Typed,
-};
+use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
 use crate::semantics::{TyExpr, TyExprKind};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
@@ -206,9 +204,6 @@ impl Value {
     pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind<Value> {
         self.check_type(ty);
         self.to_whnf_ignore_type()
-    }
-    pub(crate) fn into_typed(self) -> Typed {
-        Typed::from_value(self)
     }
 
     /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.

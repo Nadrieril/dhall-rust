@@ -1,1 +1,21 @@
-Type error: Unhandled error: TypeMismatch
+Type error: Unhandled error: MergeHandlerTypeMismatch: Value@WHNF {
+    value: AppliedBuiltin(
+        Natural,
+        [],
+        [],
+        NzEnv {
+            items: [],
+        },
+    ),
+    type: Type,
+} != Value@WHNF {
+    value: AppliedBuiltin(
+        Bool,
+        [],
+        [],
+        NzEnv {
+            items: [],
+        },
+    ),
+    type: Type,
+}

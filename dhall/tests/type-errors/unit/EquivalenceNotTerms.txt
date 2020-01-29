@@ -1,1 +1,1 @@
-Type error: Unhandled error: EquivalenceArgumentMustBeTerm
+Type error: Unhandled error: EquivalenceArgumentsMustBeTerms

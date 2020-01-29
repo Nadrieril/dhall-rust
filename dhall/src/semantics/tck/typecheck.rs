@@ -677,7 +677,7 @@ pub(crate) fn type_with(
             (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
         }
         ExprKind::Embed(p) => {
-            return Ok(p.clone().into_typed().into_value().to_tyexpr_noenv())
+            return Ok(p.clone().into_value().to_tyexpr_noenv())
         }
         ekind => {
             let ekind = ekind.traverse_ref(|e| type_with(env, e))?;
@@ -691,4 +691,11 @@ pub(crate) fn type_with(
 
 pub(crate) fn typecheck(e: &Expr<Normalized>) -> Result<TyExpr, TypeError> {
     type_with(&TyEnv::new(), e)
+}
+
+pub(crate) fn typecheck_with(
+    expr: &Expr<Normalized>,
+    ty: Expr<Normalized>,
+) -> Result<TyExpr, TypeError> {
+    typecheck(&expr.rewrap(ExprKind::Annot(expr.clone(), ty)))
 }

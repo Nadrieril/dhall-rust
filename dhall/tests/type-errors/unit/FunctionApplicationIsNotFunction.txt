@@ -1,1 +1,1 @@
-Type error: Unhandled error: NotAFunction
+Type error: Unhandled error: apply to not Pi: AppliedBuiltin(Bool, [], [], NzEnv { items: [] })

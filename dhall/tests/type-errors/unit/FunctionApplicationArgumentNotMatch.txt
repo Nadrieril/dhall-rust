@@ -1,1 +1,1 @@
-Type error: Unhandled error: TypeMismatch
+Type error: Unhandled error: function annot mismatch: (True : Bool) : Natural

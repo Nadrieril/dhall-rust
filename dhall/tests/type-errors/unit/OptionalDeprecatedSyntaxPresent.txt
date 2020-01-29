@@ -1,1 +1,1 @@
-Type error: Unhandled error: AnnotMismatch
+Type error: Unhandled error: annot mismatch: ([1] : List Natural) : Optional Natural

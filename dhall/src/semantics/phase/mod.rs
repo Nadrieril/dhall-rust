@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::error::{EncodeError, Error, ImportError, TypeError};
 use crate::semantics::core::value::Value;
 use crate::semantics::core::value::ValueKind;
+use crate::semantics::tck::tyexpr::TyExpr;
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
@@ -29,7 +30,7 @@ pub struct Resolved(ResolvedExpr);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(Value);
+pub struct Typed(TyExpr);
 
 /// A normalized expression.
 ///
@@ -78,11 +79,14 @@ impl Parsed {
 }
 
 impl Resolved {
-    pub fn typecheck(self) -> Result<Typed, TypeError> {
-        Ok(typecheck::typecheck(self.0)?.into_typed())
+    pub fn typecheck(&self) -> Result<Typed, TypeError> {
+        Ok(Typed(crate::semantics::tck::typecheck::typecheck(&self.0)?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(typecheck::typecheck_with(self.0, ty.to_expr())?.into_typed())
+        Ok(Typed(crate::semantics::tck::typecheck::typecheck_with(
+            &self.0,
+            ty.to_expr(),
+        )?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
@@ -97,43 +101,22 @@ impl Resolved {
 
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
-    pub fn normalize(mut self) -> Normalized {
-        self.0.normalize_mut();
-        Normalized(self.0)
-    }
-
-    pub(crate) fn from_value(th: Value) -> Self {
-        Typed(th)
+    pub fn normalize(&self) -> Normalized {
+        let mut val = self.0.normalize_whnf_noenv();
+        val.normalize_mut();
+        Normalized(val)
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self) -> ResolvedExpr {
+    fn to_expr(&self) -> ResolvedExpr {
         self.0.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,
         })
     }
-    /// Converts a value back to the corresponding AST expression, beta-normalizing in the process.
-    pub(crate) fn normalize_to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: false,
-            normalize: true,
-        })
-    }
-    /// Converts a value back to the corresponding AST expression, (alpha,beta)-normalizing in the
-    /// process.
-    pub(crate) fn normalize_to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: true,
-            normalize: true,
-        })
-    }
-    pub(crate) fn into_value(self) -> Value {
-        self.0
-    }
 
-    pub(crate) fn get_type(&self) -> Result<Typed, TypeError> {
-        Ok(self.0.get_type()?.into_typed())
+    pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
+        Ok(Normalized(self.0.get_type()?))
     }
 }
 
@@ -142,19 +125,19 @@ impl Normalized {
         binary::encode(&self.to_expr())
     }
 
+    /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> NormalizedExpr {
-        // TODO: do it directly
-        self.to_typed().normalize_to_expr()
+        self.0.to_expr(ToExprOptions {
+            alpha: false,
+            normalize: false,
+        })
     }
+    /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        // TODO: do it directly
-        self.to_typed().normalize_to_expr_alpha()
-    }
-    pub(crate) fn to_typed(&self) -> Typed {
-        Typed(self.0.clone())
-    }
-    pub(crate) fn into_typed(self) -> Typed {
-        Typed(self.0)
+        self.0.to_expr(ToExprOptions {
+            alpha: true,
+            normalize: false,
+        })
     }
     pub(crate) fn to_value(&self) -> Value {
         self.0.clone()
@@ -253,7 +236,7 @@ impl std::hash::Hash for Normalized {
 impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.normalize() == other.normalize()
     }
 }
 impl Display for Typed {

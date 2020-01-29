@@ -336,7 +336,7 @@ fn type_with(ctx: &TyCtx, e: Expr<Normalized>) -> Result<Value, TypeError> {
             // ))
             Ok(e)
         }
-        Embed(p) => Ok(p.clone().into_typed().into_value()),
+        Embed(p) => Ok(p.clone().into_value()),
         Var(var) => match ctx.lookup(&var) {
             Some(typed) => Ok(typed.clone()),
             None => Err(TypeError::new(TypeMessage::UnboundVariable(span))),
