@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::var::{AlphaVar, Binder};
+use crate::semantics::core::var::Binder;
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::typecheck::{
     builtin_to_value, builtin_to_value_env, const_to_value,
@@ -83,7 +83,7 @@ pub(crate) enum ValueKind<Value> {
     // Keep env around to construct Foo/build closures; hopefully temporary.
     AppliedBuiltin(Builtin, Vec<Value>, Vec<Value>, NzEnv),
 
-    Var(AlphaVar, NzVar),
+    Var(NzVar),
     Const(Const),
     BoolLit(bool),
     NaturalLit(Natural),
@@ -258,9 +258,7 @@ impl Value {
 
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
         let tye = match &*self.as_kind() {
-            // ValueKind::Var(v, _w) => TyExprKind::Var(*v),
-            // TODO: Only works when we don't normalize under lambdas
-            ValueKind::Var(_v, w) => TyExprKind::Var(venv.lookup(w)),
+            ValueKind::Var(v) => TyExprKind::Var(venv.lookup(v)),
             ValueKind::LamClosure {
                 binder,
                 annot,
@@ -618,7 +616,7 @@ impl Closure {
         match self {
             Closure::Closure { arg_ty, .. } => {
                 let val = Value::from_kind_and_type(
-                    ValueKind::Var(AlphaVar::default(), var),
+                    ValueKind::Var(var),
                     arg_ty.clone(),
                 );
                 self.apply(val)

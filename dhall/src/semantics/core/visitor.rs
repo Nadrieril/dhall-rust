@@ -96,7 +96,7 @@ where
             v.visit_vec(types)?,
             env.clone(),
         ),
-        Var(v, w) => Var(v.clone(), *w),
+        Var(v) => Var(*v),
         Const(k) => Const(*k),
         BoolLit(b) => BoolLit(*b),
         NaturalLit(n) => NaturalLit(*n),

@@ -37,7 +37,7 @@ impl VarEnv {
     }
     pub fn lookup_fallible(&self, var: &NzVar) -> Option<AlphaVar> {
         let idx = self.size.checked_sub(var.idx() + 1)?;
-        Some(AlphaVar::new(V((), idx)))
+        Some(AlphaVar::new(idx))
     }
 }
 
@@ -68,7 +68,7 @@ impl NameEnv {
         self.names.pop();
     }
 
-    pub fn unlabel_var(&self, var: &V<Label>) -> Option<AlphaVar> {
+    pub fn unlabel_var(&self, var: &V) -> Option<AlphaVar> {
         let V(name, idx) = var;
         let (idx, _) = self
             .names
@@ -77,9 +77,9 @@ impl NameEnv {
             .enumerate()
             .filter(|(_, n)| *n == name)
             .nth(*idx)?;
-        Some(AlphaVar::new(V((), idx)))
+        Some(AlphaVar::new(idx))
     }
-    pub fn label_var(&self, var: &AlphaVar) -> V<Label> {
+    pub fn label_var(&self, var: &AlphaVar) -> V {
         let name = &self.names[self.names.len() - 1 - var.idx()];
         let idx = self
             .names
@@ -129,7 +129,7 @@ impl TyEnv {
             items: self.items.insert_value(e),
         }
     }
-    pub fn lookup(&self, var: &V<Label>) -> Option<(TyExprKind, Type)> {
+    pub fn lookup(&self, var: &V) -> Option<(TyExprKind, Type)> {
         let var = self.names.unlabel_var(var)?;
         let ty = self.items.lookup_val(&var).get_type().unwrap();
         Some((TyExprKind::Var(var), ty))

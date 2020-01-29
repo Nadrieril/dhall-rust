@@ -1,34 +1,10 @@
-use crate::syntax::{Label, V};
-
-/// Stores an alpha-normalized variable.
-#[derive(Clone, Copy, Eq)]
-pub struct AlphaVar {
-    alpha: V<()>,
-}
-// TODO: temporary hopefully
-impl std::cmp::PartialEq for AlphaVar {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
+use crate::syntax::Label;
 
 // Exactly like a Label, but equality returns always true.
 // This is so that ValueKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct Binder {
     name: Label,
-}
-
-impl AlphaVar {
-    pub(crate) fn new(alpha: V<()>) -> Self {
-        AlphaVar { alpha }
-    }
-    pub(crate) fn default() -> Self {
-        AlphaVar { alpha: V((), 0) }
-    }
-    pub(crate) fn idx(&self) -> usize {
-        self.alpha.idx()
-    }
 }
 
 impl Binder {
@@ -44,12 +20,6 @@ impl Binder {
 impl std::cmp::PartialEq for Binder {
     fn eq(&self, _other: &Self) -> bool {
         true
-    }
-}
-
-impl std::fmt::Debug for AlphaVar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AlphaVar({})", self.alpha.1)
     }
 }
 

@@ -422,7 +422,7 @@ impl DhallParser {
         ))
     }
 
-    fn variable(input: ParseInput) -> ParseResult<V<Label>> {
+    fn variable(input: ParseInput) -> ParseResult<V> {
         Ok(match_nodes!(input.into_children();
             [label(l), natural_literal(idx)] => V(l, idx),
             [label(l)] => V(l, 0),

@@ -8,7 +8,6 @@ Type error: Unhandled error: MergeHandlerTypeMismatch: Value@WHNF {
                 Replaced(
                     Value@Unevaled {
                         value: Var(
-                            AlphaVar(0),
                             Fresh(
                                 119,
                             ),
@@ -40,7 +39,6 @@ Type error: Unhandled error: MergeHandlerTypeMismatch: Value@WHNF {
                 Replaced(
                     Value@Unevaled {
                         value: Var(
-                            AlphaVar(0),
                             Fresh(
                                 120,
                             ),

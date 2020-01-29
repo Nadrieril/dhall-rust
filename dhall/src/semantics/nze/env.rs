@@ -66,7 +66,7 @@ impl NzEnv {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
-                ValueKind::Var(var.clone(), NzVar::new(idx)),
+                ValueKind::Var(NzVar::new(idx)),
                 ty.clone(),
             ),
             NzEnvItem::Replaced(x) => x.clone(),

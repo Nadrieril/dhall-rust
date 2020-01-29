@@ -1,5 +1,4 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::var::AlphaVar;
 use crate::semantics::phase::normalize::normalize_tyexpr_whnf;
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
@@ -9,6 +8,19 @@ use crate::syntax::{ExprKind, Span, V};
 
 pub(crate) type Type = Value;
 
+/// Stores an alpha-normalized variable.
+#[derive(Debug, Clone, Copy)]
+pub struct AlphaVar {
+    idx: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum TyExprKind {
+    Var(AlphaVar),
+    // Forbidden ExprKind variants: Var, Import, Embed
+    Expr(ExprKind<TyExpr, Normalized>),
+}
+
 // An expression with inferred types at every node and resolved variables.
 #[derive(Clone)]
 pub(crate) struct TyExpr {
@@ -17,11 +29,13 @@ pub(crate) struct TyExpr {
     span: Span,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum TyExprKind {
-    Var(AlphaVar),
-    // Forbidden ExprKind variants: Var, Import, Embed
-    Expr(ExprKind<TyExpr, Normalized>),
+impl AlphaVar {
+    pub(crate) fn new(idx: usize) -> Self {
+        AlphaVar { idx }
+    }
+    pub(crate) fn idx(&self) -> usize {
+        self.idx
+    }
 }
 
 impl TyExpr {

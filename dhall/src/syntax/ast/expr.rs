@@ -23,8 +23,8 @@ pub enum Const {
 /// The `Label` field is the variable's name (i.e. \"`x`\").
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct V<Label>(pub Label, pub usize);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct V(pub Label, pub usize);
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -112,7 +112,7 @@ pub enum ExprKind<SubExpr, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
-    Var(V<Label>),
+    Var(V),
     ///  `λ(x : A) -> b`
     Lam(Label, SubExpr, SubExpr),
     ///  `A -> B`
@@ -171,12 +171,6 @@ pub enum ExprKind<SubExpr, Embed> {
     Import(Import<SubExpr>),
     /// Embeds the result of resolving an import
     Embed(Embed),
-}
-
-impl<Label> V<Label> {
-    pub(crate) fn idx(&self) -> usize {
-        self.1
-    }
 }
 
 impl<SE, E> ExprKind<SE, E> {
@@ -356,8 +350,8 @@ impl From<NaiveDouble> for f64 {
     }
 }
 
-impl<Label> From<Label> for V<Label> {
-    fn from(x: Label) -> V<Label> {
+impl From<Label> for V {
+    fn from(x: Label) -> V {
         V(x, 0)
     }
 }
