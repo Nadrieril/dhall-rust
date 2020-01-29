@@ -102,9 +102,7 @@ impl Resolved {
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        let mut val = self.0.normalize_whnf_noenv();
-        val.normalize_mut();
-        Normalized(val)
+        Normalized(self.0.normalize_nf_noenv())
     }
 
     /// Converts a value back to the corresponding AST expression.

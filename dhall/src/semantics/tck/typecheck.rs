@@ -150,7 +150,7 @@ fn type_one_layer(
             text_type
         }
         ExprKind::EmptyListLit(t) => {
-            let t = t.normalize_whnf(env.as_nzenv());
+            let t = t.normalize_nf(env.as_nzenv());
             match &*t.as_whnf() {
                 ValueKind::AppliedBuiltin(Builtin::List, args, _, _)
                     if args.len() == 1 => {}
@@ -250,7 +250,7 @@ fn type_one_layer(
                 },
                 // TODO: branch here only when scrut.get_type() is a Const
                 _ => {
-                    let scrut_nf = scrut.normalize_whnf(env.as_nzenv());
+                    let scrut_nf = scrut.normalize_nf(env.as_nzenv());
                     let scrut_nf_borrow = scrut_nf.as_whnf();
                     match &*scrut_nf_borrow {
                         ValueKind::UnionType(kts) => match kts.get(x) {
@@ -324,7 +324,7 @@ fn type_one_layer(
                         ));
                     }
 
-                    let arg_nf = arg.normalize_whnf(env.as_nzenv());
+                    let arg_nf = arg.normalize_nf(env.as_nzenv());
                     closure.apply(arg_nf)
                 }
                 _ => return mkerr(format!("apply to not Pi: {:?}", tf_borrow)),
@@ -387,7 +387,7 @@ fn type_one_layer(
             );
             let ty = type_one_layer(env, &ekind)?;
             TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
-                .normalize_whnf(env.as_nzenv())
+                .normalize_nf(env.as_nzenv())
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
             let x_val = x.normalize_whnf(env.as_nzenv());
@@ -622,7 +622,7 @@ pub(crate) fn type_with(
         },
         ExprKind::Lam(binder, annot, body) => {
             let annot = type_with(env, annot)?;
-            let annot_nf = annot.normalize_whnf(env.as_nzenv());
+            let annot_nf = annot.normalize_nf(env.as_nzenv());
             let body_env = env.insert_type(&binder, annot_nf.clone());
             let body = type_with(&body_env, body)?;
             let body_ty = body.get_type()?;
@@ -660,7 +660,7 @@ pub(crate) fn type_with(
             };
 
             let val = type_with(env, &val)?;
-            let val_nf = val.normalize_whnf(&env.as_nzenv());
+            let val_nf = val.normalize_nf(&env.as_nzenv());
             let body = type_with(&env.insert_value(&binder, val_nf), body)?;
             let body_ty = body.get_type().ok();
             (

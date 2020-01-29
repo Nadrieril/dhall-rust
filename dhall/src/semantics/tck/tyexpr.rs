@@ -67,7 +67,15 @@ impl TyExpr {
         normalize_tyexpr_whnf(self, env)
     }
     pub fn normalize_whnf_noenv(&self) -> Value {
-        normalize_tyexpr_whnf(self, &NzEnv::new())
+        self.normalize_whnf(&NzEnv::new())
+    }
+    pub fn normalize_nf(&self, env: &NzEnv) -> Value {
+        let mut val = self.normalize_whnf(env);
+        val.normalize_mut();
+        val
+    }
+    pub fn normalize_nf_noenv(&self) -> Value {
+        self.normalize_nf(&NzEnv::new())
     }
 }
 
