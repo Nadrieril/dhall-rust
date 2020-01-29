@@ -1,12 +1,13 @@
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::AlphaVar;
+use crate::semantics::nze::nzexpr::NameEnv;
 use crate::semantics::phase::normalize::{normalize_tyexpr_whnf, NzEnv};
 use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
 use crate::semantics::tck::typecheck::TyEnv;
 use crate::semantics::Value;
-use crate::syntax::{ExprKind, Label, Span, V};
+use crate::syntax::{ExprKind, Span, V};
 
 pub(crate) type Type = Value;
 
@@ -46,15 +47,14 @@ impl TyExpr {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        tyexpr_to_expr(self, opts, &mut Vec::new())
+        tyexpr_to_expr(self, opts, &mut NameEnv::new())
     }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
         let opts = ToExprOptions {
             normalize: true,
             alpha: false,
         };
-        let env = env.as_nameenv().names();
-        let mut env = env.iter().collect();
+        let mut env = env.as_nameenv().clone();
         tyexpr_to_expr(self, opts, &mut env)
     }
 
@@ -77,30 +77,21 @@ impl TyExpr {
 fn tyexpr_to_expr<'a>(
     tyexpr: &'a TyExpr,
     opts: ToExprOptions,
-    ctx: &mut Vec<&'a Label>,
+    env: &mut NameEnv,
 ) -> NormalizedExpr {
     rc(match tyexpr.kind() {
         TyExprKind::Var(v) if opts.alpha => {
             ExprKind::Var(V("_".into(), v.idx()))
         }
-        TyExprKind::Var(v) => {
-            let name = ctx[ctx.len() - 1 - v.idx()];
-            let idx = ctx
-                .iter()
-                .rev()
-                .take(v.idx())
-                .filter(|l| **l == name)
-                .count();
-            ExprKind::Var(V(name.clone(), idx))
-        }
+        TyExprKind::Var(v) => ExprKind::Var(env.label_var(v)),
         TyExprKind::Expr(e) => {
             let e = e.map_ref_maybe_binder(|l, tye| {
                 if let Some(l) = l {
-                    ctx.push(l);
+                    env.insert_mut(l);
                 }
-                let e = tyexpr_to_expr(tye, opts, ctx);
+                let e = tyexpr_to_expr(tye, opts, env);
                 if let Some(_) = l {
-                    ctx.pop();
+                    env.remove_mut();
                 }
                 e
             });

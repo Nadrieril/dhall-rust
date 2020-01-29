@@ -35,9 +35,6 @@ impl NameEnv {
             size: self.names.len(),
         }
     }
-    pub fn names(&self) -> &[Binder] {
-        &self.names
-    }
 
     pub fn insert(&self, x: &Binder) -> Self {
         let mut env = self.clone();
@@ -47,9 +44,9 @@ impl NameEnv {
     pub fn insert_mut(&mut self, x: &Binder) {
         self.names.push(x.clone())
     }
-    // pub fn remove_mut(&mut self) {
-    //     self.names.pop();
-    // }
+    pub fn remove_mut(&mut self) {
+        self.names.pop();
+    }
 
     pub fn unlabel_var(&self, var: &V<Binder>) -> Option<AlphaVar> {
         let V(name, idx) = var;
@@ -62,17 +59,17 @@ impl NameEnv {
             .nth(*idx)?;
         Some(AlphaVar::new(V((), idx)))
     }
-    // pub fn label_var(&self, var: &AlphaVar) -> V<Binder> {
-    //     let name = &self.names[self.names.len() - 1 - var.idx()];
-    //     let idx = self
-    //         .names
-    //         .iter()
-    //         .rev()
-    //         .take(var.idx())
-    //         .filter(|n| *n == name)
-    //         .count();
-    //     V(name.clone(), idx)
-    // }
+    pub fn label_var(&self, var: &AlphaVar) -> V<Binder> {
+        let name = &self.names[self.names.len() - 1 - var.idx()];
+        let idx = self
+            .names
+            .iter()
+            .rev()
+            .take(var.idx())
+            .filter(|n| *n == name)
+            .count();
+        V(name.clone(), idx)
+    }
 }
 
 // TODO: rename to VarEnv
