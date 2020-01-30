@@ -30,23 +30,22 @@ pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
-    kind: ValueKind,
     /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum Form {
     /// No constraints; expression may not be normalized at all.
-    Unevaled,
+    Unevaled(ValueKind),
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
     /// not be normalized. This means that the first constructor of the contained ValueKind is the first
     /// constructor of the final Normal Form (NF).
     /// When all the Values in a ValueKind are in WHNF, and recursively so, then the
     /// ValueKind is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
     /// if we have the first constructor of the NF at all levels, we actually have the NF.
-    WHNF,
+    WHNF(ValueKind),
 }
 
 /// An unevaluated subexpression
@@ -118,10 +117,9 @@ pub(crate) enum ValueKind {
 }
 
 impl Value {
-    fn new(kind: ValueKind, form: Form, ty: Value, span: Span) -> Value {
+    fn new(form: Form, ty: Value, span: Span) -> Value {
         ValueInternal {
             form,
-            kind,
             ty: Some(ty),
             span,
         }
@@ -129,8 +127,7 @@ impl Value {
     }
     pub(crate) fn const_sort() -> Value {
         ValueInternal {
-            form: WHNF,
-            kind: ValueKind::Const(Const::Sort),
+            form: WHNF(ValueKind::Const(Const::Sort)),
             ty: None,
             span: Span::Artificial,
         }
@@ -138,18 +135,17 @@ impl Value {
     }
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
         ValueInternal {
-            form: Unevaled,
-            kind: ValueKind::Thunk(Thunk::new(env, tye.clone())),
+            form: Unevaled(ValueKind::Thunk(Thunk::new(env, tye.clone()))),
             ty: tye.get_type().ok(),
             span: tye.span().clone(),
         }
         .into_value()
     }
     pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
-        Value::new(v, Unevaled, t, Span::Artificial)
+        Value::new(Unevaled(v), t, Span::Artificial)
     }
     pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
-        Value::new(v, WHNF, t, Span::Artificial)
+        Value::new(WHNF(v), t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = ValueKind::Const(c);
@@ -194,7 +190,10 @@ impl Value {
     /// panics.
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
-        Ref::map(self.as_internal(), ValueInternal::as_kind)
+        Ref::map(self.as_internal(), |vint| match &vint.form {
+            Unevaled(..) => unreachable!(),
+            WHNF(k) => k,
+        })
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -232,12 +231,12 @@ impl Value {
     pub(crate) fn normalize_whnf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
-            Unevaled => {
+            Unevaled(_) => {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
             // Already in WHNF
-            WHNF => {}
+            WHNF(_) => {}
         }
     }
     pub(crate) fn normalize_nf(&self) {
@@ -400,41 +399,29 @@ impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
-    fn as_kind(&self) -> &ValueKind {
-        &self.kind
-    }
 
     fn normalize_whnf(&mut self) {
-        let dummy = ValueInternal {
-            form: Unevaled,
-            kind: ValueKind::Const(Const::Type),
-            ty: None,
-            span: Span::Artificial,
-        };
-        let vint = std::mem::replace(self, dummy);
-        *self = match (&vint.form, &vint.ty) {
-            (Unevaled, Some(ty)) => ValueInternal {
-                form: WHNF,
-                kind: normalize_whnf(vint.kind, &ty),
-                ty: vint.ty,
-                span: vint.span,
-            },
-            // `value` is `Sort`
-            (Unevaled, None) => ValueInternal {
-                form: WHNF,
-                kind: ValueKind::Const(Const::Sort),
-                ty: None,
-                span: vint.span,
-            },
+        use std::mem::replace;
+        let dummy = Unevaled(ValueKind::Const(Const::Type));
+        self.form = match replace(&mut self.form, dummy) {
+            Unevaled(kind) => {
+                WHNF(match &self.ty {
+                    Some(ty) => normalize_whnf(kind, &ty),
+                    // `value` is `Sort`
+                    None => ValueKind::Const(Const::Sort),
+                })
+            }
             // Already in WHNF
-            (WHNF, _) => vint,
-        }
+            form @ WHNF(_) => form,
+        };
     }
     fn normalize_nf(&mut self) {
-        if let Unevaled = self.form {
+        if let Unevaled(_) = self.form {
             self.normalize_whnf();
         }
-        self.kind.normalize_mut();
+        match &mut self.form {
+            Unevaled(k) | WHNF(k) => k.normalize_mut(),
+        }
     }
 
     fn get_type(&self) -> Result<&Value, TypeError> {
@@ -679,17 +666,27 @@ impl std::cmp::Eq for Closure {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.as_internal();
-        if let ValueKind::Const(c) = &vint.kind {
-            write!(fmt, "{:?}", c)
-        } else {
-            let mut x = fmt.debug_struct(&format!("Value@{:?}", &vint.form));
-            x.field("value", &vint.kind);
-            if let Some(ty) = vint.ty.as_ref() {
-                x.field("type", &ty);
-            } else {
-                x.field("type", &None::<()>);
+        let mut x = match &vint.form {
+            WHNF(kind) => {
+                if let ValueKind::Const(c) = kind {
+                    return write!(fmt, "{:?}", c);
+                } else {
+                    let mut x = fmt.debug_struct(&format!("Value@WHNF"));
+                    x.field("kind", kind);
+                    x
+                }
             }
-            x.finish()
+            Unevaled(kind) => {
+                let mut x = fmt.debug_struct(&format!("Value@Unevaled"));
+                x.field("kind", kind);
+                x
+            }
+        };
+        if let Some(ty) = vint.ty.as_ref() {
+            x.field("type", &ty);
+        } else {
+            x.field("type", &None::<()>);
         }
+        x.finish()
     }
 }
