@@ -502,12 +502,11 @@ impl Thunk {
     ) -> Self {
         Thunk::PartialExpr { env, expr, ty }
     }
-    // TODO: take by value
-    pub fn eval(&self) -> ValueKind {
+    pub fn eval(self) -> ValueKind {
         match self {
-            Thunk::Thunk { env, body } => normalize_tyexpr_whnf(body, env),
+            Thunk::Thunk { env, body } => normalize_tyexpr_whnf(&body, &env),
             Thunk::PartialExpr { env, expr, ty } => {
-                normalize_one_layer(expr.clone(), ty, env)
+                normalize_one_layer(expr, &ty, &env)
             }
         }
     }
