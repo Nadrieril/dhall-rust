@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -21,11 +21,11 @@ use crate::{Normalized, NormalizedExpr, ToExprOptions};
 /// (renaming of bound variables) and beta-equivalence (normalization). It will recursively
 /// normalize as needed.
 #[derive(Clone)]
-pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
+pub(crate) struct Value(Rc<ValueInternal>);
 
 #[derive(Debug)]
 struct ValueInternal {
-    form: Form,
+    form: RefCell<Form>,
     /// This is None if and only if `form` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -117,28 +117,23 @@ pub(crate) enum ValueKind {
 
 impl Value {
     fn new(form: Form, ty: Value, span: Span) -> Value {
-        ValueInternal {
-            form,
-            ty: Some(ty),
-            span,
-        }
-        .into_value()
+        ValueInternal::new(form, Some(ty), span).into_value()
     }
     pub(crate) fn const_sort() -> Value {
-        ValueInternal {
-            form: Form::WHNF(ValueKind::Const(Const::Sort)),
-            ty: None,
-            span: Span::Artificial,
-        }
+        ValueInternal::new(
+            Form::WHNF(ValueKind::Const(Const::Sort)),
+            None,
+            Span::Artificial,
+        )
         .into_value()
     }
     /// Construct a Value from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
-        ValueInternal {
-            form: Form::Thunk(Thunk::new(env, tye.clone())),
-            ty: tye.get_type().ok(),
-            span: tye.span().clone(),
-        }
+        ValueInternal::new(
+            Form::Thunk(Thunk::new(env, tye.clone())),
+            tye.get_type().ok(),
+            tye.span().clone(),
+        )
         .into_value()
     }
     /// Construct a Value from a partially normalized expression that's not in WHNF.
@@ -181,21 +176,18 @@ impl Value {
         }
     }
     pub(crate) fn span(&self) -> Span {
-        self.as_internal().span.clone()
+        self.0.span.clone()
     }
 
-    fn as_internal(&self) -> Ref<ValueInternal> {
-        self.0.borrow()
-    }
-    fn as_internal_mut(&self) -> RefMut<ValueInternal> {
-        self.0.borrow_mut()
+    fn as_form(&self) -> Ref<Form> {
+        self.0.form.borrow()
     }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
-        Ref::map(self.as_internal(), |vint| match &vint.form {
+        Ref::map(self.as_form(), |form| match form {
             Form::Thunk(..) | Form::PartialExpr(..) => unreachable!(),
             Form::WHNF(k) => k,
         })
@@ -219,33 +211,25 @@ impl Value {
     }
 
     /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
-    fn mutate_internal(&mut self, f: impl FnOnce(&mut ValueInternal)) {
+    fn mutate_form(&mut self, f: impl FnOnce(&mut Form, &Option<Value>)) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
-            Some(refcell) => f(RefCell::get_mut(refcell)),
+            Some(vint) => f(RefCell::get_mut(&mut vint.form), &vint.ty),
             // Otherwise mutate through the refcell
-            None => f(&mut self.as_internal_mut()),
+            None => f(&mut self.0.form.borrow_mut(), &self.0.ty),
         }
     }
     /// Normalizes contents to normal form; faster than `normalize_nf` if
     /// no one else shares this.
     pub(crate) fn normalize_mut(&mut self) {
-        self.mutate_internal(|vint| vint.normalize_nf())
+        self.mutate_form(|form, ty| form.normalize_nf(ty))
     }
 
     pub(crate) fn normalize_whnf(&self) {
-        let borrow = self.as_internal();
-        match borrow.form {
-            Form::Thunk(..) | Form::PartialExpr(_) => {
-                drop(borrow);
-                self.as_internal_mut().normalize_whnf();
-            }
-            // Already in WHNF
-            Form::WHNF(_) => {}
-        }
+        self.0.normalize_whnf()
     }
     pub(crate) fn normalize_nf(&self) {
-        self.as_internal_mut().normalize_nf();
+        self.0.normalize_nf()
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
@@ -270,7 +254,7 @@ impl Value {
         // );
     }
     pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
-        Ok(self.as_internal().get_type()?.clone())
+        Ok(self.0.get_type()?.clone())
     }
     /// When we know the value isn't `Sort`, this gets the type directly
     pub(crate) fn get_type_not_sort(&self) -> Value {
@@ -387,9 +371,7 @@ impl Value {
             }),
         };
 
-        let self_ty = self.as_internal().ty.clone();
-        let self_span = self.as_internal().span.clone();
-        TyExpr::new(tye, self_ty, self_span)
+        TyExpr::new(tye, self.0.ty.clone(), self.0.span.clone())
     }
     pub fn to_tyexpr_noenv(&self) -> TyExpr {
         self.to_tyexpr(VarEnv::new())
@@ -397,17 +379,48 @@ impl Value {
 }
 
 impl ValueInternal {
+    fn new(form: Form, ty: Option<Value>, span: Span) -> Self {
+        ValueInternal {
+            form: RefCell::new(form),
+            ty,
+            span,
+        }
+    }
     fn into_value(self) -> Value {
-        Value(Rc::new(RefCell::new(self)))
+        Value(Rc::new(self))
     }
 
-    fn normalize_whnf(&mut self) {
+    fn normalize_whnf(&self) {
+        if !self.form.borrow().is_whnf() {
+            self.form.borrow_mut().normalize_whnf(&self.ty)
+        }
+    }
+    fn normalize_nf(&self) {
+        self.form.borrow_mut().normalize_nf(&self.ty)
+    }
+
+    fn get_type(&self) -> Result<&Value, TypeError> {
+        match &self.ty {
+            Some(t) => Ok(t),
+            None => Err(TypeError::new(TypeMessage::Sort)),
+        }
+    }
+}
+
+impl Form {
+    fn is_whnf(&self) -> bool {
+        match self {
+            Form::Thunk(..) | Form::PartialExpr(..) => false,
+            Form::WHNF(..) => true,
+        }
+    }
+    fn normalize_whnf(&mut self, ty: &Option<Value>) {
         use std::mem::replace;
         let dummy = Form::PartialExpr(ExprKind::Const(Const::Type));
-        self.form = match replace(&mut self.form, dummy) {
+        *self = match replace(self, dummy) {
             Form::Thunk(th) => Form::WHNF(th.eval()),
             Form::PartialExpr(e) => {
-                Form::WHNF(match &self.ty {
+                Form::WHNF(match ty {
                     // TODO: env
                     Some(ty) => normalize_one_layer(e, &ty, &NzEnv::new()),
                     // `value` is `Sort`
@@ -418,20 +431,13 @@ impl ValueInternal {
             form @ Form::WHNF(_) => form,
         };
     }
-    fn normalize_nf(&mut self) {
-        if let Form::Thunk(..) | Form::PartialExpr(_) = self.form {
-            self.normalize_whnf();
+    fn normalize_nf(&mut self, ty: &Option<Value>) {
+        if !self.is_whnf() {
+            self.normalize_whnf(ty);
         }
-        match &mut self.form {
+        match self {
             Form::Thunk(..) | Form::PartialExpr(_) => unreachable!(),
             Form::WHNF(k) => k.normalize_mut(),
-        }
-    }
-
-    fn get_type(&self) -> Result<&Value, TypeError> {
-        match &self.ty {
-            Some(t) => Ok(t),
-            None => Err(TypeError::new(TypeMessage::Sort)),
         }
     }
 }
@@ -665,8 +671,8 @@ impl std::cmp::Eq for Closure {}
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let vint: &ValueInternal = &self.as_internal();
-        let mut x = match &vint.form {
+        let vint: &ValueInternal = &self.0;
+        let mut x = match &*vint.form.borrow() {
             Form::Thunk(th) => {
                 let mut x = fmt.debug_struct(&format!("Value@Thunk"));
                 x.field("thunk", th);
