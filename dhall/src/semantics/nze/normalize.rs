@@ -11,8 +11,7 @@ use crate::syntax::{
 use crate::Normalized;
 
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
-    let f_borrow = f.kind();
-    match &*f_borrow {
+    match f.kind() {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
         }
@@ -26,10 +25,7 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
             uniont.clone(),
             f.get_type().unwrap(),
         ),
-        _ => {
-            drop(f_borrow);
-            ValueKind::PartialExpr(ExprKind::App(f, a))
-        }
+        _ => ValueKind::PartialExpr(ExprKind::App(f, a)),
     }
 }
 
@@ -47,21 +43,17 @@ pub(crate) fn squash_textlit(
         for contents in elts {
             match contents {
                 Text(s) => crnt_str.push_str(&s),
-                Expr(e) => {
-                    let e_borrow = e.kind();
-                    match &*e_borrow {
-                        ValueKind::TextLit(elts2) => {
-                            inner(elts2.iter().cloned(), crnt_str, ret)
-                        }
-                        _ => {
-                            drop(e_borrow);
-                            if !crnt_str.is_empty() {
-                                ret.push(Text(replace(crnt_str, String::new())))
-                            }
-                            ret.push(Expr(e.clone()))
-                        }
+                Expr(e) => match e.kind() {
+                    ValueKind::TextLit(elts2) => {
+                        inner(elts2.iter().cloned(), crnt_str, ret)
                     }
-                }
+                    _ => {
+                        if !crnt_str.is_empty() {
+                            ret.push(Text(replace(crnt_str, String::new())))
+                        }
+                        ret.push(Expr(e.clone()))
+                    }
+                },
             }
         }
     }
@@ -123,9 +115,7 @@ fn apply_binop<'a>(
     use ValueKind::{
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
     };
-    let x_borrow = x.kind();
-    let y_borrow = y.kind();
-    Some(match (o, &*x_borrow, &*y_borrow) {
+    Some(match (o, x.kind(), y.kind()) {
         (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
         (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
         (BoolAnd, BoolLit(false), _) => Ret::ValueKind(BoolLit(false)),
@@ -202,8 +192,7 @@ fn apply_binop<'a>(
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let ty_borrow = ty.kind();
-            let kts = match &*ty_borrow {
+            let kts = match ty.kind() {
                 RecordType(kts) => kts,
                 _ => unreachable!("Internal type error"),
             };
@@ -314,23 +303,15 @@ pub(crate) fn normalize_one_layer(
             }
         }
         ExprKind::BoolIf(ref b, ref e1, ref e2) => {
-            let b_borrow = b.kind();
-            match &*b_borrow {
+            match b.kind() {
                 BoolLit(true) => Ret::ValueRef(e1),
                 BoolLit(false) => Ret::ValueRef(e2),
                 _ => {
-                    let e1_borrow = e1.kind();
-                    let e2_borrow = e2.kind();
-                    match (&*e1_borrow, &*e2_borrow) {
+                    match (e1.kind(), e2.kind()) {
                         // Simplify `if b then True else False`
                         (BoolLit(true), BoolLit(false)) => Ret::ValueRef(b),
                         _ if e1 == e2 => Ret::ValueRef(e1),
-                        _ => {
-                            drop(b_borrow);
-                            drop(e1_borrow);
-                            drop(e2_borrow);
-                            Ret::Expr(expr)
-                        }
+                        _ => Ret::Expr(expr),
                     }
                 }
             }
@@ -343,94 +324,53 @@ pub(crate) fn normalize_one_layer(
         ExprKind::Projection(_, ref ls) if ls.is_empty() => {
             Ret::ValueKind(RecordLit(HashMap::new()))
         }
-        ExprKind::Projection(ref v, ref ls) => {
-            let v_borrow = v.kind();
-            match &*v_borrow {
-                RecordLit(kvs) => Ret::ValueKind(RecordLit(
-                    ls.iter()
-                        .filter_map(|l| {
-                            kvs.get(l).map(|x| (l.clone(), x.clone()))
-                        })
-                        .collect(),
-                )),
-                _ => {
-                    drop(v_borrow);
-                    Ret::Expr(expr)
-                }
-            }
-        }
-        ExprKind::Field(ref v, ref l) => {
-            let v_borrow = v.kind();
-            match &*v_borrow {
-                RecordLit(kvs) => match kvs.get(l) {
-                    Some(r) => Ret::Value(r.clone()),
-                    None => {
-                        drop(v_borrow);
-                        Ret::Expr(expr)
-                    }
-                },
-                UnionType(kts) => Ret::ValueKind(UnionConstructor(
-                    l.clone(),
-                    kts.clone(),
-                    v.get_type().unwrap(),
-                )),
-                _ => {
-                    drop(v_borrow);
-                    Ret::Expr(expr)
-                }
-            }
-        }
+        ExprKind::Projection(ref v, ref ls) => match v.kind() {
+            RecordLit(kvs) => Ret::ValueKind(RecordLit(
+                ls.iter()
+                    .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
+                    .collect(),
+            )),
+            _ => Ret::Expr(expr),
+        },
+        ExprKind::Field(ref v, ref l) => match v.kind() {
+            RecordLit(kvs) => match kvs.get(l) {
+                Some(r) => Ret::Value(r.clone()),
+                None => Ret::Expr(expr),
+            },
+            UnionType(kts) => Ret::ValueKind(UnionConstructor(
+                l.clone(),
+                kts.clone(),
+                v.get_type().unwrap(),
+            )),
+            _ => Ret::Expr(expr),
+        },
         ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
         ExprKind::Completion(_, _) => unimplemented!("record completion"),
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
-            let handlers_borrow = handlers.kind();
-            let variant_borrow = variant.kind();
-            match (&*handlers_borrow, &*variant_borrow) {
-                (RecordLit(kvs), UnionConstructor(l, _, _)) => match kvs.get(l)
-                {
-                    Some(h) => Ret::Value(h.clone()),
-                    None => {
-                        drop(handlers_borrow);
-                        drop(variant_borrow);
-                        Ret::Expr(expr)
-                    }
-                },
-                (RecordLit(kvs), UnionLit(l, v, _, _, _)) => match kvs.get(l) {
-                    Some(h) => Ret::Value(h.app(v.clone())),
-                    None => {
-                        drop(handlers_borrow);
-                        drop(variant_borrow);
-                        Ret::Expr(expr)
-                    }
-                },
-                (RecordLit(kvs), EmptyOptionalLit(_)) => {
-                    match kvs.get(&"None".into()) {
+            match handlers.kind() {
+                RecordLit(kvs) => match variant.kind() {
+                    UnionConstructor(l, _, _) => match kvs.get(l) {
                         Some(h) => Ret::Value(h.clone()),
-                        None => {
-                            drop(handlers_borrow);
-                            drop(variant_borrow);
-                            Ret::Expr(expr)
-                        }
-                    }
-                }
-                (RecordLit(kvs), NEOptionalLit(v)) => {
-                    match kvs.get(&"Some".into()) {
+                        None => Ret::Expr(expr),
+                    },
+                    UnionLit(l, v, _, _, _) => match kvs.get(l) {
                         Some(h) => Ret::Value(h.app(v.clone())),
-                        None => {
-                            drop(handlers_borrow);
-                            drop(variant_borrow);
-                            Ret::Expr(expr)
-                        }
-                    }
-                }
-                _ => {
-                    drop(handlers_borrow);
-                    drop(variant_borrow);
-                    Ret::Expr(expr)
-                }
+                        None => Ret::Expr(expr),
+                    },
+                    EmptyOptionalLit(_) => match kvs.get(&"None".into()) {
+                        Some(h) => Ret::Value(h.clone()),
+                        None => Ret::Expr(expr),
+                    },
+                    NEOptionalLit(v) => match kvs.get(&"Some".into()) {
+                        Some(h) => Ret::Value(h.app(v.clone())),
+                        None => Ret::Expr(expr),
+                    },
+                    _ => Ret::Expr(expr),
+                },
+                _ => Ret::Expr(expr),
             }
         }
         ExprKind::ToMap(_, _) => unimplemented!("toMap"),
