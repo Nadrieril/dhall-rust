@@ -45,11 +45,6 @@ impl NameEnv {
     pub fn new() -> Self {
         NameEnv { names: Vec::new() }
     }
-    pub fn from_binders(names: impl Iterator<Item = Label>) -> Self {
-        NameEnv {
-            names: names.collect(),
-        }
-    }
     pub fn as_varenv(&self) -> VarEnv {
         VarEnv {
             size: self.names.len(),
@@ -97,14 +92,6 @@ impl TyEnv {
         TyEnv {
             names: NameEnv::new(),
             items: NzEnv::new(),
-        }
-    }
-    pub fn from_nzenv_alpha(items: &NzEnv) -> Self {
-        TyEnv {
-            names: NameEnv::from_binders(
-                std::iter::repeat("_".into()).take(items.size()),
-            ),
-            items: items.clone(),
         }
     }
     pub fn as_varenv(&self) -> VarEnv {

@@ -224,11 +224,7 @@ pub(crate) fn apply_builtin(
         Value(Value),
         DoneAsIs,
     }
-    let make_closure = |e| {
-        type_with(&env.to_alpha_tyenv(), &e)
-            .unwrap()
-            .normalize_whnf(&env)
-    };
+    let make_closure = |e| typecheck(&e).unwrap().normalize_whnf(&env);
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),

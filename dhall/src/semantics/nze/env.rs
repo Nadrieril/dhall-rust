@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, TyEnv, Value, ValueKind};
+use crate::semantics::{AlphaVar, Value, ValueKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NzVar {
@@ -9,7 +9,7 @@ pub(crate) enum NzVar {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum NzEnvItem {
+enum NzEnvItem {
     // Variable is bound with given type
     Kept(Value),
     // Variable has been replaced by corresponding value
@@ -48,9 +48,6 @@ impl NzEnv {
     pub fn new() -> Self {
         NzEnv { items: Vec::new() }
     }
-    pub fn to_alpha_tyenv(&self) -> TyEnv {
-        TyEnv::from_nzenv_alpha(self)
-    }
 
     pub fn insert_type(&self, t: Value) -> Self {
         let mut env = self.clone();
@@ -71,10 +68,6 @@ impl NzEnv {
             ),
             NzEnvItem::Replaced(x) => x.clone(),
         }
-    }
-
-    pub fn size(&self) -> usize {
-        self.items.len()
     }
 }
 
