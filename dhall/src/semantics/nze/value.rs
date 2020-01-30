@@ -58,7 +58,7 @@ pub(crate) enum Closure {
         body: TyExpr,
     },
     /// Closure that ignores the argument passed
-    ConstantClosure { env: NzEnv, body: TyExpr },
+    ConstantClosure { body: Value },
 }
 
 /// A text literal with interpolations.
@@ -521,11 +521,8 @@ impl Closure {
         }
     }
     /// New closure that ignores its argument
-    pub fn new_constant(env: &NzEnv, body: TyExpr) -> Self {
-        Closure::ConstantClosure {
-            env: env.clone(),
-            body,
-        }
+    pub fn new_constant(body: Value) -> Self {
+        Closure::ConstantClosure { body }
     }
 
     pub fn apply(&self, val: Value) -> Value {
@@ -533,7 +530,7 @@ impl Closure {
             Closure::Closure { env, body, .. } => {
                 body.eval(&env.insert_value(val))
             }
-            Closure::ConstantClosure { env, body, .. } => body.eval(env),
+            Closure::ConstantClosure { body, .. } => body.clone(),
         }
     }
     fn apply_var(&self, var: NzVar) -> Value {
@@ -545,7 +542,7 @@ impl Closure {
                 );
                 self.apply(val)
             }
-            Closure::ConstantClosure { env, body, .. } => body.eval(env),
+            Closure::ConstantClosure { body, .. } => body.clone(),
         }
     }
 
@@ -559,17 +556,14 @@ impl Closure {
     /// If the closure variable is free in the closure, return Err. Otherwise, return the value
     /// with that free variable remove.
     pub fn remove_binder(&self) -> Result<Value, ()> {
-        let v = NzVar::fresh();
         match self {
             Closure::Closure { .. } => {
+                let v = NzVar::fresh();
                 // TODO: handle case where variable is used in closure
                 // TODO: return information about where the variable is used
                 Ok(self.apply_var(v))
             }
-            Closure::ConstantClosure { .. } => {
-                // Ok: the variable is indeed ignored
-                Ok(self.apply_var(v))
-            }
+            Closure::ConstantClosure { body, .. } => Ok(body.clone()),
         }
     }
 }

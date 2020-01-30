@@ -200,20 +200,22 @@ fn type_one_layer(
                     match scrut_nf.kind() {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
-                            Some(Some(ty)) => Value::from_kind_and_type(
-                                ValueKind::PiClosure {
-                                    binder: Binder::new(x.clone()),
-                                    annot: ty.clone(),
-                                    closure: Closure::new_constant(
-                                        env.as_nzenv(),
-                                        scrut.clone(),
-                                    ),
-                                },
-                                type_of_function(
+                            Some(Some(ty)) => {
+                                let pi_ty = type_of_function(
                                     ty.get_type()?,
                                     scrut.get_type()?,
-                                )?,
-                            ),
+                                )?;
+                                Value::from_kind_and_type(
+                                    ValueKind::PiClosure {
+                                        binder: Binder::new(x.clone()),
+                                        annot: ty.clone(),
+                                        closure: Closure::new_constant(
+                                            scrut_nf,
+                                        ),
+                                    },
+                                    pi_ty,
+                                )
+                            }
                             Some(None) => scrut_nf,
                             None => return mkerr("MissingUnionField"),
                         },
