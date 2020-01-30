@@ -43,9 +43,9 @@ impl BuiltinClosure<Value> {
     }
     /// This doesn't break the invariant because we already checked that the appropriate arguments
     /// did not normalize to something that allows evaluation to proceed.
-    pub fn normalize_mut(&mut self) {
-        for x in self.args.iter_mut() {
-            x.normalize_mut();
+    pub fn normalize(&self) {
+        for x in self.args.iter() {
+            x.normalize();
         }
     }
     pub fn to_tyexprkind(&self, venv: VarEnv) -> TyExprKind {

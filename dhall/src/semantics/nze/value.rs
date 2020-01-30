@@ -1,4 +1,5 @@
-use std::cell::{Ref, RefCell};
+use once_cell::unsync::OnceCell;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -28,7 +29,7 @@ struct ValueInternal {
     /// Exactly one of `thunk` of `kind` must be set at a given time.
     /// Once `thunk` is unset and `kind` is set, we never go back.
     thunk: RefCell<Option<Thunk>>,
-    kind: RefCell<Option<ValueKind>>,
+    kind: OnceCell<ValueKind>,
     /// This is None if and only if `form` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -183,14 +184,14 @@ impl Value {
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
-    pub(crate) fn kind(&self) -> Ref<ValueKind> {
+    pub(crate) fn kind(&self) -> &ValueKind {
         self.0.kind()
     }
 
     /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         if opts.normalize {
-            self.normalize_nf();
+            self.normalize();
         }
 
         self.to_tyexpr_noenv().to_expr(opts)
@@ -204,18 +205,18 @@ impl Value {
         self.to_whnf_ignore_type()
     }
 
-    /// Normalizes contents to normal form; faster than `normalize_nf` if
+    /// Normalizes contents to normal form; faster than `normalize` if
     /// no one else shares this.
     pub(crate) fn normalize_mut(&mut self) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
-            Some(vint) => vint.normalize_nf_mut(),
+            Some(vint) => vint.normalize_mut(),
             // Otherwise mutate through the refcell
-            None => self.0.normalize_nf(),
+            None => self.normalize(),
         }
     }
-    pub(crate) fn normalize_nf(&self) {
-        self.0.normalize_nf()
+    pub(crate) fn normalize(&self) {
+        self.0.normalize()
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
@@ -366,17 +367,19 @@ impl Value {
 
 impl ValueInternal {
     fn from_whnf(k: ValueKind, ty: Option<Value>, span: Span) -> Self {
+        let kind = OnceCell::new();
+        kind.set(k).unwrap();
         ValueInternal {
             thunk: RefCell::new(None),
-            kind: RefCell::new(Some(k)),
+            kind,
             ty,
             span,
         }
     }
     fn from_thunk(th: Thunk, ty: Option<Value>, span: Span) -> Self {
         ValueInternal {
-            kind: RefCell::new(None),
             thunk: RefCell::new(Some(th)),
+            kind: OnceCell::new(),
             ty,
             span,
         }
@@ -385,38 +388,23 @@ impl ValueInternal {
         Value(Rc::new(self))
     }
 
-    fn kind(&self) -> Ref<ValueKind> {
-        self.normalize_whnf();
-        Ref::map(self.kind.borrow(), |kind| kind.as_ref().unwrap())
-    }
-    fn normalize_whnf(&self) {
-        if self.kind.borrow().is_none() {
-            let mut thunk_borrow = self.thunk.borrow_mut();
-            let kind = thunk_borrow.as_ref().unwrap().eval();
-            *thunk_borrow = None;
-            *self.kind.borrow_mut() = Some(kind);
+    fn kind(&self) -> &ValueKind {
+        if self.kind.get().is_none() {
+            let thunk = self.thunk.borrow_mut().take().unwrap();
+            self.kind.set(thunk.eval()).unwrap();
         }
+        self.kind.get().unwrap()
     }
-    fn normalize_nf(&self) {
-        self.normalize_whnf();
-        self.kind.borrow_mut().as_mut().unwrap().normalize_mut()
+    fn normalize(&self) {
+        self.kind().normalize();
     }
     // Avoids a RefCell lock
-    fn normalize_whnf_mut(&mut self) {
-        let self_thunk = RefCell::get_mut(&mut self.thunk);
-        if let Some(thunk) = &mut *self_thunk {
-            let self_kind = RefCell::get_mut(&mut self.kind);
-            let mut kind = thunk.eval();
-            kind.normalize_mut();
-            *self_kind = Some(kind);
-            *self_thunk = None;
+    fn normalize_mut(&mut self) {
+        if self.kind.get().is_none() {
+            let thunk = RefCell::get_mut(&mut self.thunk).take().unwrap();
+            self.kind.set(thunk.eval()).unwrap();
         }
-    }
-    // Avoids a RefCell lock
-    fn normalize_nf_mut(&mut self) {
-        self.normalize_whnf_mut();
-        let self_kind = RefCell::get_mut(&mut self.kind);
-        self_kind.as_mut().unwrap().normalize_mut();
+        self.normalize();
     }
 
     fn get_type(&self) -> Result<&Value, TypeError> {
@@ -432,7 +420,7 @@ impl ValueKind {
         Value::from_kind_and_type(self, t)
     }
 
-    pub(crate) fn normalize_mut(&mut self) {
+    pub(crate) fn normalize(&self) {
         match self {
             ValueKind::Var(..)
             | ValueKind::Const(_)
@@ -442,52 +430,52 @@ impl ValueKind {
             | ValueKind::DoubleLit(_) => {}
 
             ValueKind::EmptyOptionalLit(tth) | ValueKind::EmptyListLit(tth) => {
-                tth.normalize_mut();
+                tth.normalize();
             }
 
             ValueKind::NEOptionalLit(th) => {
-                th.normalize_mut();
+                th.normalize();
             }
             ValueKind::LamClosure { annot, closure, .. }
             | ValueKind::PiClosure { annot, closure, .. } => {
-                annot.normalize_mut();
-                closure.normalize_mut();
+                annot.normalize();
+                closure.normalize();
             }
-            ValueKind::AppliedBuiltin(closure) => closure.normalize_mut(),
+            ValueKind::AppliedBuiltin(closure) => closure.normalize(),
             ValueKind::NEListLit(elts) => {
-                for x in elts.iter_mut() {
-                    x.normalize_mut();
+                for x in elts.iter() {
+                    x.normalize();
                 }
             }
             ValueKind::RecordLit(kvs) => {
-                for x in kvs.values_mut() {
-                    x.normalize_mut();
+                for x in kvs.values() {
+                    x.normalize();
                 }
             }
             ValueKind::RecordType(kvs) => {
-                for x in kvs.values_mut() {
-                    x.normalize_mut();
+                for x in kvs.values() {
+                    x.normalize();
                 }
             }
             ValueKind::UnionType(kts)
             | ValueKind::UnionConstructor(_, kts, _) => {
-                for x in kts.values_mut().flat_map(|opt| opt) {
-                    x.normalize_mut();
+                for x in kts.values().flat_map(|opt| opt) {
+                    x.normalize();
                 }
             }
             ValueKind::UnionLit(_, v, kts, _, _) => {
-                v.normalize_mut();
-                for x in kts.values_mut().flat_map(|opt| opt) {
-                    x.normalize_mut();
+                v.normalize();
+                for x in kts.values().flat_map(|opt| opt) {
+                    x.normalize();
                 }
             }
-            ValueKind::TextLit(tlit) => tlit.normalize_mut(),
+            ValueKind::TextLit(tlit) => tlit.normalize(),
             ValueKind::Equivalence(x, y) => {
-                x.normalize_mut();
-                y.normalize_mut();
+                x.normalize();
+                y.normalize();
             }
             ValueKind::PartialExpr(e) => {
-                e.map_mut(Value::normalize_mut);
+                e.map_ref(Value::normalize);
             }
         }
     }
@@ -563,7 +551,7 @@ impl Closure {
     }
 
     // TODO: somehow normalize the body. Might require to pass an env.
-    pub fn normalize_mut(&mut self) {}
+    pub fn normalize(&self) {}
     /// Convert this closure to a TyExpr
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
         self.apply_var(NzVar::new(venv.size()))
@@ -634,9 +622,9 @@ impl TextLit {
     }
     /// Normalize the contained values. This does not break the invariant because we have already
     /// ensured that no contained values normalize to a TextLit.
-    pub fn normalize_mut(&mut self) {
-        for x in self.0.iter_mut() {
-            x.map_mut(Value::normalize_mut);
+    pub fn normalize(&self) {
+        for x in self.0.iter() {
+            x.map_ref(Value::normalize);
         }
     }
 }
@@ -670,8 +658,7 @@ impl std::cmp::Eq for Closure {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.0;
-        let kind_borrow = vint.kind.borrow();
-        let mut x = if let Some(kind) = kind_borrow.as_ref() {
+        let mut x = if let Some(kind) = vint.kind.get() {
             if let ValueKind::Const(c) = kind {
                 return write!(fmt, "{:?}", c);
             } else {
@@ -680,10 +667,8 @@ impl std::fmt::Debug for Value {
                 x
             }
         } else {
-            let thunk_borrow = vint.thunk.borrow();
-            let th = thunk_borrow.as_ref().unwrap();
             let mut x = fmt.debug_struct(&format!("Value@Thunk"));
-            x.field("thunk", th);
+            x.field("thunk", vint.thunk.borrow().as_ref().unwrap());
             x
         };
         if let Some(ty) = vint.ty.as_ref() {
