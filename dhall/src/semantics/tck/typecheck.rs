@@ -74,7 +74,7 @@ fn type_one_layer(
         ExprKind::Builtin(b) => {
             let t_expr = type_of_builtin(*b);
             let t_tyexpr = type_with(env, &t_expr)?;
-            t_tyexpr.normalize_whnf(env.as_nzenv())
+            t_tyexpr.eval(env.as_nzenv())
         }
         ExprKind::BoolLit(_) => Value::from_builtin(Builtin::Bool),
         ExprKind::NaturalLit(_) => Value::from_builtin(Builtin::Natural),
@@ -93,7 +93,7 @@ fn type_one_layer(
             text_type
         }
         ExprKind::EmptyListLit(t) => {
-            let t = t.normalize_nf(env.as_nzenv());
+            let t = t.eval(env.as_nzenv());
             match &*t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
@@ -196,7 +196,7 @@ fn type_one_layer(
                 },
                 // TODO: branch here only when scrut.get_type() is a Const
                 _ => {
-                    let scrut_nf = scrut.normalize_nf(env.as_nzenv());
+                    let scrut_nf = scrut.eval(env.as_nzenv());
                     let scrut_nf_borrow = scrut_nf.kind();
                     match &*scrut_nf_borrow {
                         ValueKind::UnionType(kts) => match kts.get(x) {
@@ -224,7 +224,7 @@ fn type_one_layer(
             }
         }
         ExprKind::Annot(x, t) => {
-            let t = t.normalize_whnf(env.as_nzenv());
+            let t = t.eval(env.as_nzenv());
             let x_ty = x.get_type()?;
             if x_ty != t {
                 return mkerr(format!(
@@ -243,7 +243,7 @@ fn type_one_layer(
             x_ty
         }
         ExprKind::Assert(t) => {
-            let t = t.normalize_whnf(env.as_nzenv());
+            let t = t.eval(env.as_nzenv());
             match &*t.kind() {
                 ValueKind::Equivalence(x, y) if x == y => {}
                 ValueKind::Equivalence(..) => return mkerr("AssertMismatch"),
@@ -268,7 +268,7 @@ fn type_one_layer(
                         ));
                     }
 
-                    let arg_nf = arg.normalize_nf(env.as_nzenv());
+                    let arg_nf = arg.eval(env.as_nzenv());
                     closure.apply(arg_nf)
                 }
                 _ => return mkerr(format!("apply to not Pi")),
@@ -329,11 +329,11 @@ fn type_one_layer(
             );
             let ty = type_one_layer(env, &ekind)?;
             TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
-                .normalize_nf(env.as_nzenv())
+                .eval(env.as_nzenv())
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
-            let x_val = x.normalize_whnf(env.as_nzenv());
-            let y_val = y.normalize_whnf(env.as_nzenv());
+            let x_val = x.eval(env.as_nzenv());
+            let y_val = y.eval(env.as_nzenv());
             let x_val_borrow = x_val.kind();
             let y_val_borrow = y_val.kind();
             let kts_x = match &*x_val_borrow {
@@ -478,9 +478,8 @@ fn type_one_layer(
                 }
             }
 
-            let type_annot = type_annot
-                .as_ref()
-                .map(|t| t.normalize_whnf(env.as_nzenv()));
+            let type_annot =
+                type_annot.as_ref().map(|t| t.eval(env.as_nzenv()));
             match (inferred_type, type_annot) {
                 (Some(t1), Some(t2)) => {
                     if t1 != t2 {
@@ -542,7 +541,7 @@ pub(crate) fn type_with(
         },
         ExprKind::Lam(binder, annot, body) => {
             let annot = type_with(env, annot)?;
-            let annot_nf = annot.normalize_nf(env.as_nzenv());
+            let annot_nf = annot.eval(env.as_nzenv());
             let body_env = env.insert_type(&binder, annot_nf.clone());
             let body = type_with(&body_env, body)?;
             let body_ty = body.get_type()?;
@@ -555,7 +554,7 @@ pub(crate) fn type_with(
                 Some(type_of_function(annot.get_type()?, body_ty.get_type()?)?),
                 Span::Artificial,
             );
-            let ty = ty.normalize_whnf(env.as_nzenv());
+            let ty = ty.eval(env.as_nzenv());
             (
                 TyExprKind::Expr(ExprKind::Lam(binder.clone(), annot, body)),
                 Some(ty),
@@ -563,7 +562,7 @@ pub(crate) fn type_with(
         }
         ExprKind::Pi(binder, annot, body) => {
             let annot = type_with(env, annot)?;
-            let annot_nf = annot.normalize_whnf(env.as_nzenv());
+            let annot_nf = annot.eval(env.as_nzenv());
             let body =
                 type_with(&env.insert_type(binder, annot_nf.clone()), body)?;
             let ty = type_of_function(annot.get_type()?, body.get_type()?)?;
@@ -580,7 +579,7 @@ pub(crate) fn type_with(
             };
 
             let val = type_with(env, &val)?;
-            let val_nf = val.normalize_nf(&env.as_nzenv());
+            let val_nf = val.eval(&env.as_nzenv());
             let body = type_with(&env.insert_value(&binder, val_nf), body)?;
             let body_ty = body.get_type().ok();
             (

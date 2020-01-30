@@ -4,9 +4,11 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::Binder;
-use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
+use crate::semantics::phase::normalize::{
+    apply_any, normalize_tyexpr_whnf, normalize_whnf,
+};
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
-use crate::semantics::{type_of_builtin, TyExpr, TyExprKind};
+use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
@@ -47,6 +49,14 @@ pub(crate) enum Form {
     WHNF,
 }
 
+/// An unevaluated subexpression
+#[derive(Debug, Clone)]
+pub(crate) struct Thunk {
+    env: NzEnv,
+    body: TyExpr,
+}
+
+/// An unevaluated subexpression that takes an argument.
 #[derive(Debug, Clone)]
 pub(crate) enum Closure {
     /// Normal closure
@@ -99,6 +109,8 @@ pub(crate) enum ValueKind<Value> {
     Equivalence(Value, Value),
     // Invariant: in whnf, this must not contain a value captured by one of the variants above.
     PartialExpr(ExprKind<Value, Normalized>),
+    // Invariant: absent in whnf
+    Thunk(Thunk),
 }
 
 impl Value {
@@ -117,6 +129,15 @@ impl Value {
             kind: ValueKind::Const(Const::Sort),
             ty: None,
             span: Span::Artificial,
+        }
+        .into_value()
+    }
+    pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
+        ValueInternal {
+            form: Unevaled,
+            kind: ValueKind::Thunk(Thunk::new(env, tye.clone())),
+            ty: tye.get_type().ok(),
+            span: tye.span().clone(),
         }
         .into_value()
     }
@@ -147,9 +168,7 @@ impl Value {
     pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
         Value::from_kind_and_type(
             ValueKind::from_builtin_env(b, env.clone()),
-            crate::semantics::tck::typecheck::typecheck(&type_of_builtin(b))
-                .unwrap()
-                .normalize_whnf_noenv(),
+            typecheck(&type_of_builtin(b)).unwrap().eval_closed_expr(),
         )
     }
 
@@ -325,6 +344,7 @@ impl Value {
                     v.to_tyexpr(venv),
                 ))
             }
+            ValueKind::Thunk(th) => return th.to_tyexpr(venv),
             self_kind => {
                 let self_kind = self_kind.map_ref(|v| v.to_tyexpr(venv));
                 let expr = match self_kind {
@@ -333,7 +353,8 @@ impl Value {
                     | ValueKind::PiClosure { .. }
                     | ValueKind::AppliedBuiltin(..)
                     | ValueKind::UnionConstructor(..)
-                    | ValueKind::UnionLit(..) => unreachable!(),
+                    | ValueKind::UnionLit(..)
+                    | ValueKind::Thunk(..) => unreachable!(),
                     ValueKind::Const(c) => ExprKind::Const(c),
                     ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
                     ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
@@ -501,6 +522,9 @@ impl ValueKind<Value> {
             ValueKind::PartialExpr(e) => {
                 e.map_mut(Value::normalize_mut);
             }
+            ValueKind::Thunk(..) => {
+                unreachable!("Should only normalize_mut values in WHNF")
+            }
         }
     }
 
@@ -553,6 +577,22 @@ impl<V> ValueKind<V> {
     }
 }
 
+impl Thunk {
+    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
+        Thunk {
+            env: env.clone(),
+            body,
+        }
+    }
+
+    pub fn eval(&self) -> Value {
+        normalize_tyexpr_whnf(&self.body, &self.env)
+    }
+    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
+        self.eval().to_tyexpr(venv)
+    }
+}
+
 impl Closure {
     pub fn new(arg_ty: Value, env: &NzEnv, body: TyExpr) -> Self {
         Closure::Closure {
@@ -572,11 +612,9 @@ impl Closure {
     pub fn apply(&self, val: Value) -> Value {
         match self {
             Closure::Closure { env, body, .. } => {
-                body.normalize_whnf(&env.insert_value(val))
+                body.eval(&env.insert_value(val))
             }
-            Closure::ConstantClosure { env, body, .. } => {
-                body.normalize_whnf(env)
-            }
+            Closure::ConstantClosure { env, body, .. } => body.eval(env),
         }
     }
     fn apply_var(&self, var: NzVar) -> Value {
@@ -588,9 +626,7 @@ impl Closure {
                 );
                 self.apply(val)
             }
-            Closure::ConstantClosure { env, body, .. } => {
-                body.normalize_whnf(env)
-            }
+            Closure::ConstantClosure { env, body, .. } => body.eval(env),
         }
     }
 
@@ -625,6 +661,15 @@ impl std::cmp::PartialEq for Value {
     }
 }
 impl std::cmp::Eq for Value {}
+
+impl std::cmp::PartialEq for Thunk {
+    fn eq(&self, _other: &Self) -> bool {
+        unreachable!(
+            "Trying to compare thunks but we should only compare WHNFs"
+        )
+    }
+}
+impl std::cmp::Eq for Thunk {}
 
 impl std::cmp::PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {

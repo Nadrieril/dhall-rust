@@ -457,6 +457,7 @@ pub(crate) fn normalize_whnf(
     match v {
         ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
+        ValueKind::Thunk(th) => th.eval().kind().clone(),
         ValueKind::TextLit(elts) => {
             ValueKind::TextLit(squash_textlit(elts.into_iter()))
         }
@@ -475,7 +476,7 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
     let kind = match tye.kind() {
         TyExprKind::Var(var) => return env.lookup_val(var),
         TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
-            let annot = annot.normalize_whnf(env);
+            let annot = annot.eval(env);
             ValueKind::LamClosure {
                 binder: Binder::new(binder.clone()),
                 annot: annot.clone(),
@@ -483,7 +484,7 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
             }
         }
         TyExprKind::Expr(ExprKind::Pi(binder, annot, body)) => {
-            let annot = annot.normalize_whnf(env);
+            let annot = annot.eval(env);
             let closure = Closure::new(annot.clone(), env, body.clone());
             ValueKind::PiClosure {
                 binder: Binder::new(binder.clone()),
@@ -492,11 +493,11 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
             }
         }
         TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
-            let val = val.normalize_whnf(env);
-            return body.normalize_whnf(&env.insert_value(val));
+            let val = val.eval(env);
+            return body.eval(&env.insert_value(val));
         }
         TyExprKind::Expr(e) => {
-            let e = e.map_ref(|tye| tye.normalize_whnf(env));
+            let e = e.map_ref(|tye| tye.eval(env));
             normalize_one_layer(e, &ty, env)
         }
     };

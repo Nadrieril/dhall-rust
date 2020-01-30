@@ -91,7 +91,7 @@ impl Resolved {
 impl Typed {
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        Normalized(self.0.normalize_nf_noenv())
+        Normalized(self.0.rec_eval_closed_expr())
     }
 
     /// Converts a value back to the corresponding AST expression.

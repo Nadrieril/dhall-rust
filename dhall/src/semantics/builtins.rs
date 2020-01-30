@@ -286,7 +286,7 @@ fn apply_builtin(
         Value(Value),
         DoneAsIs,
     }
-    let make_closure = |e| typecheck(&e).unwrap().normalize_whnf(&env);
+    let make_closure = |e| typecheck(&e).unwrap().eval(&env);
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),

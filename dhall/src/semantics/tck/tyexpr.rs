@@ -49,6 +49,9 @@ impl TyExpr {
     pub fn kind(&self) -> &TyExprKind {
         &*self.kind
     }
+    pub fn span(&self) -> &Span {
+        &self.span
+    }
     pub fn get_type(&self) -> Result<Type, TypeError> {
         match &self.ty {
             Some(t) => Ok(t.clone()),
@@ -69,17 +72,18 @@ impl TyExpr {
         tyexpr_to_expr(self, opts, &mut env)
     }
 
-    pub fn normalize_whnf(&self, env: &NzEnv) -> Value {
-        normalize_tyexpr_whnf(self, env)
+    /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
+    pub fn eval(&self, env: &NzEnv) -> Value {
+        Value::new_thunk(env, self.clone())
     }
-    pub fn normalize_whnf_noenv(&self) -> Value {
-        self.normalize_whnf(&NzEnv::new())
+    /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
+    /// needed on demand.
+    pub fn eval_closed_expr(&self) -> Value {
+        self.eval(&NzEnv::new())
     }
-    pub fn normalize_nf(&self, env: &NzEnv) -> Value {
-        self.normalize_whnf(env)
-    }
-    pub fn normalize_nf_noenv(&self) -> Value {
-        self.normalize_nf(&NzEnv::new())
+    /// Eval a closed TyExpr fully and recursively;
+    pub fn rec_eval_closed_expr(&self) -> Value {
+        normalize_tyexpr_whnf(self, &NzEnv::new())
     }
 }
 

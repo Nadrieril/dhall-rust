@@ -133,6 +133,7 @@ where
         ),
         Equivalence(x, y) => Equivalence(v.visit_val(x)?, v.visit_val(y)?),
         PartialExpr(e) => PartialExpr(e.traverse_ref(|e| v.visit_val(e))?),
+        Thunk(th) => Thunk(th.clone()),
     })
 }
 
