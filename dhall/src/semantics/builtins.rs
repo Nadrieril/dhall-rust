@@ -218,12 +218,9 @@ pub(crate) fn apply_builtin(
     use ValueKind::*;
 
     // Small helper enum
-    enum Ret<'a> {
+    enum Ret {
         ValueKind(ValueKind<Value>),
         Value(Value),
-        // For applications that can return a function, it's important to keep the remaining
-        // arguments to apply them to the resulting function.
-        ValueWithRemainingArgs(&'a [Value], Value),
         DoneAsIs,
     }
     let make_closure = |e| {
@@ -428,14 +425,14 @@ pub(crate) fn apply_builtin(
                     .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
             )
         }
-        (ListFold, [_, l, _, cons, nil, r @ ..]) => match &*l.as_whnf() {
-            EmptyListLit(_) => Ret::ValueWithRemainingArgs(r, nil.clone()),
+        (ListFold, [_, l, _, cons, nil]) => match &*l.as_whnf() {
+            EmptyListLit(_) => Ret::Value(nil.clone()),
             NEListLit(xs) => {
                 let mut v = nil.clone();
                 for x in xs.iter().cloned().rev() {
                     v = cons.app(x).app(v);
                 }
-                Ret::ValueWithRemainingArgs(r, v)
+                Ret::Value(v)
             }
             _ => Ret::DoneAsIs,
         },
@@ -457,14 +454,9 @@ pub(crate) fn apply_builtin(
                     ),
             )
         }
-        (OptionalFold, [_, v, _, just, nothing, r @ ..]) => match &*v.as_whnf()
-        {
-            EmptyOptionalLit(_) => {
-                Ret::ValueWithRemainingArgs(r, nothing.clone())
-            }
-            NEOptionalLit(x) => {
-                Ret::ValueWithRemainingArgs(r, just.app(x.clone()))
-            }
+        (OptionalFold, [_, v, _, just, nothing]) => match &*v.as_whnf() {
+            EmptyOptionalLit(_) => Ret::Value(nothing.clone()),
+            NEOptionalLit(x) => Ret::Value(just.app(x.clone())),
             _ => Ret::DoneAsIs,
         },
         (NaturalBuild, [f]) => Ret::Value(
@@ -479,8 +471,8 @@ pub(crate) fn apply_builtin(
                 ),
         ),
 
-        (NaturalFold, [n, t, succ, zero, r @ ..]) => match &*n.as_whnf() {
-            NaturalLit(0) => Ret::ValueWithRemainingArgs(r, zero.clone()),
+        (NaturalFold, [n, t, succ, zero]) => match &*n.as_whnf() {
+            NaturalLit(0) => Ret::Value(zero.clone()),
             NaturalLit(n) => {
                 let fold = Value::from_builtin(NaturalFold)
                     .app(
@@ -490,7 +482,7 @@ pub(crate) fn apply_builtin(
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());
-                Ret::ValueWithRemainingArgs(r, succ.app(fold))
+                Ret::Value(succ.app(fold))
             }
             _ => Ret::DoneAsIs,
         },
@@ -499,13 +491,6 @@ pub(crate) fn apply_builtin(
     match ret {
         Ret::ValueKind(v) => v,
         Ret::Value(v) => v.to_whnf_check_type(ty),
-        Ret::ValueWithRemainingArgs(unconsumed_args, mut v) => {
-            let n_consumed_args = args.len() - unconsumed_args.len();
-            for x in args.into_iter().skip(n_consumed_args) {
-                v = v.app(x);
-            }
-            v.to_whnf_check_type(ty)
-        }
         Ret::DoneAsIs => AppliedBuiltin(b, args, types, env),
     }
 }
