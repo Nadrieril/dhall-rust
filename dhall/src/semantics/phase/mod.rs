@@ -2,9 +2,7 @@ use std::fmt::Display;
 use std::path::Path;
 
 use crate::error::{EncodeError, Error, ImportError, TypeError};
-use crate::semantics::core::value::Value;
-use crate::semantics::core::value::ValueKind;
-use crate::semantics::tck::tyexpr::TyExpr;
+use crate::semantics::{typecheck, typecheck_with, TyExpr, Value, ValueKind};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
@@ -12,7 +10,6 @@ use resolve::ImportRoot;
 pub(crate) mod normalize;
 pub(crate) mod parse;
 pub(crate) mod resolve;
-pub(crate) mod typecheck;
 
 pub type ParsedExpr = Expr<Normalized>;
 pub type DecodedExpr = Expr<Normalized>;
@@ -80,22 +77,14 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed(crate::semantics::tck::typecheck::typecheck(&self.0)?))
+        Ok(Typed(typecheck(&self.0)?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed(crate::semantics::tck::typecheck::typecheck_with(
-            &self.0,
-            ty.to_expr(),
-        )?))
+        Ok(Typed(typecheck_with(&self.0, ty.to_expr())?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
         self.0.clone()
-    }
-    pub fn tck_and_normalize_new_flow(&self) -> Result<Normalized, TypeError> {
-        let val = crate::semantics::tck::typecheck::typecheck(&self.0)?
-            .normalize_whnf_noenv();
-        Ok(Normalized(val))
     }
 }
 
