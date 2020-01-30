@@ -7,7 +7,7 @@ use crate::semantics::core::var::Binder;
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
 use crate::semantics::{type_of_builtin, TyExpr, TyExprKind};
-use crate::semantics::{NzEnv, NzVar, VarEnv};
+use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
@@ -76,9 +76,7 @@ pub(crate) enum ValueKind<Value> {
         closure: Closure,
     },
     // Invariant: in whnf, the evaluation must not be able to progress further.
-    // Keep types around to be able to recover the types of partial applications.
-    // Keep env around to construct Foo/build closures; hopefully temporary.
-    AppliedBuiltin(Builtin, Vec<Value>, Vec<Value>, NzEnv),
+    AppliedBuiltin(BuiltinClosure<Value>),
 
     Var(NzVar),
     Const(Const),
@@ -292,21 +290,7 @@ impl Value {
                     .apply_var(NzVar::new(venv.size()))
                     .to_tyexpr(venv.insert()),
             )),
-            ValueKind::AppliedBuiltin(b, args, types, _) => {
-                TyExprKind::Expr(args.into_iter().zip(types.into_iter()).fold(
-                    ExprKind::Builtin(*b),
-                    |acc, (v, ty)| {
-                        ExprKind::App(
-                            TyExpr::new(
-                                TyExprKind::Expr(acc),
-                                Some(ty.clone()),
-                                Span::Artificial,
-                            ),
-                            v.to_tyexpr(venv),
-                        )
-                    },
-                ))
-            }
+            ValueKind::AppliedBuiltin(closure) => closure.to_tyexprkind(venv),
             ValueKind::UnionConstructor(l, kts, t) => {
                 TyExprKind::Expr(ExprKind::Field(
                     TyExpr::new(
@@ -504,11 +488,7 @@ impl ValueKind<Value> {
             | ValueKind::PiClosure { annot, .. } => {
                 annot.normalize_mut();
             }
-            ValueKind::AppliedBuiltin(_, args, _, _) => {
-                for x in args.iter_mut() {
-                    x.normalize_mut();
-                }
-            }
+            ValueKind::AppliedBuiltin(closure) => closure.normalize_mut(),
             ValueKind::NEListLit(elts) => {
                 for x in elts.iter_mut() {
                     x.normalize_mut();
@@ -555,7 +535,7 @@ impl ValueKind<Value> {
         ValueKind::from_builtin_env(b, NzEnv::new())
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind<Value> {
-        ValueKind::AppliedBuiltin(b, vec![], vec![], env)
+        ValueKind::AppliedBuiltin(BuiltinClosure::new(b, env))
     }
 }
 

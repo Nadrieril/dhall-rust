@@ -70,11 +70,3 @@ impl NzEnv {
         }
     }
 }
-
-/// Ignore NzEnv when comparing; useful because we store them in `AppliedBuiltin`.
-impl std::cmp::PartialEq for NzEnv {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-impl std::cmp::Eq for NzEnv {}

@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use crate::semantics::phase::Normalized;
 use crate::semantics::NzEnv;
 use crate::semantics::{
-    apply_builtin, Binder, Closure, TyExpr, TyExprKind, Value, ValueKind,
+    Binder, BuiltinClosure, Closure, TyExpr, TyExprKind, Value, ValueKind,
 };
-use crate::syntax;
-use crate::syntax::{BinOp, Const, ExprKind, InterpolatedTextContents};
+use crate::syntax::{
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents,
+};
 
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
     let f_borrow = f.as_whnf();
@@ -14,15 +15,8 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
         }
-        ValueKind::AppliedBuiltin(b, args, types, env) => {
-            use std::iter::once;
-            let args = args.iter().cloned().chain(once(a.clone())).collect();
-            let types = types
-                .iter()
-                .cloned()
-                .chain(once(f.get_type().unwrap()))
-                .collect();
-            apply_builtin(*b, args, ty, types, env.clone())
+        ValueKind::AppliedBuiltin(closure) => {
+            closure.apply(a, f.get_type().unwrap(), ty)
         }
         ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
             l.clone(),
@@ -293,12 +287,11 @@ pub(crate) fn normalize_one_layer(
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(
-                    syntax::Builtin::List,
+                ValueKind::AppliedBuiltin(BuiltinClosure {
+                    b: Builtin::List,
                     args,
-                    _,
-                    _,
-                ) if args.len() == 1 => args[0].clone(),
+                    ..
+                }) if args.len() == 1 => args[0].clone(),
                 _ => panic!("internal type error"),
             };
             Ret::ValueKind(ValueKind::EmptyListLit(arg))
@@ -462,9 +455,7 @@ pub(crate) fn normalize_whnf(
     ty: &Value,
 ) -> ValueKind<Value> {
     match v {
-        ValueKind::AppliedBuiltin(b, args, types, env) => {
-            apply_builtin(b, args, ty, types, env)
-        }
+        ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
         ValueKind::TextLit(elts) => {
             ValueKind::TextLit(squash_textlit(elts.into_iter()))

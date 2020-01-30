@@ -1,5 +1,7 @@
 use crate::semantics::phase::Normalized;
-use crate::semantics::{typecheck, NzEnv, Value, ValueKind};
+use crate::semantics::{
+    typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
+};
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
@@ -8,6 +10,66 @@ use crate::syntax::{
 };
 use std::collections::HashMap;
 use std::convert::TryInto;
+
+/// A partially applied builtin.
+/// Invariant: TODO
+#[derive(Debug, Clone)]
+pub(crate) struct BuiltinClosure<Value> {
+    pub env: NzEnv,
+    pub b: Builtin,
+    /// Arguments applied to the closure so far.
+    pub args: Vec<Value>,
+    /// Keeps the types of the partial applications around to be able to convert back to TyExpr.
+    /// If the args so far are `x_1`, ..., `x_n`, this contains the types of `b`, `b x1`, ...,
+    /// `b x_1 x_2 ... x_(n-1)`.
+    pub types: Vec<Value>,
+}
+
+impl BuiltinClosure<Value> {
+    pub fn new(b: Builtin, env: NzEnv) -> Self {
+        BuiltinClosure {
+            env,
+            b,
+            args: Vec::new(),
+            types: Vec::new(),
+        }
+    }
+
+    pub fn apply(
+        &self,
+        a: Value,
+        f_ty: Value,
+        ret_ty: &Value,
+    ) -> ValueKind<Value> {
+        use std::iter::once;
+        let args = self.args.iter().cloned().chain(once(a.clone())).collect();
+        let types = self.types.iter().cloned().chain(once(f_ty)).collect();
+        apply_builtin(self.b, args, ret_ty, types, self.env.clone())
+    }
+    pub fn ensure_whnf(self, ret_ty: &Value) -> ValueKind<Value> {
+        apply_builtin(self.b, self.args, ret_ty, self.types, self.env)
+    }
+    pub fn normalize_mut(&mut self) {
+        for x in self.args.iter_mut() {
+            x.normalize_mut();
+        }
+    }
+    pub fn to_tyexprkind(&self, venv: VarEnv) -> TyExprKind {
+        TyExprKind::Expr(self.args.iter().zip(self.types.iter()).fold(
+            ExprKind::Builtin(self.b),
+            |acc, (v, ty)| {
+                ExprKind::App(
+                    TyExpr::new(
+                        TyExprKind::Expr(acc),
+                        Some(ty.clone()),
+                        Span::Artificial,
+                    ),
+                    v.to_tyexpr(venv),
+                )
+            },
+        ))
+    }
+}
 
 pub(crate) fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
     Expr::new(x, Span::Artificial)
@@ -208,7 +270,7 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn apply_builtin(
+fn apply_builtin(
     b: Builtin,
     args: Vec<Value>,
     ty: &Value,
@@ -488,6 +550,18 @@ pub(crate) fn apply_builtin(
     match ret {
         Ret::ValueKind(v) => v,
         Ret::Value(v) => v.to_whnf_check_type(ty),
-        Ret::DoneAsIs => AppliedBuiltin(b, args, types, env),
+        Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure {
+            b,
+            args,
+            types,
+            env,
+        }),
     }
 }
+
+impl<Value: std::cmp::PartialEq> std::cmp::PartialEq for BuiltinClosure<Value> {
+    fn eq(&self, other: &Self) -> bool {
+        self.b == other.b && self.args == other.args
+    }
+}
+impl<Value: std::cmp::Eq> std::cmp::Eq for BuiltinClosure<Value> {}

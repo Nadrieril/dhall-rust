@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
 
-use crate::semantics::{Binder, ValueKind};
+use crate::semantics::{Binder, BuiltinClosure, ValueKind};
 use crate::syntax::Label;
 
 /// A visitor trait that can be used to traverse `ValueKind`s. We need this pattern so that Rust lets
@@ -90,12 +90,17 @@ where
             annot: v.visit_val(annot)?,
             closure: closure.clone(),
         },
-        AppliedBuiltin(b, xs, types, env) => AppliedBuiltin(
-            *b,
-            v.visit_vec(xs)?,
-            v.visit_vec(types)?,
-            env.clone(),
-        ),
+        AppliedBuiltin(BuiltinClosure {
+            b,
+            args,
+            types,
+            env,
+        }) => AppliedBuiltin(BuiltinClosure {
+            b: *b,
+            args: v.visit_vec(args)?,
+            types: v.visit_vec(types)?,
+            env: env.clone(),
+        }),
         Var(v) => Var(*v),
         Const(k) => Const(*k),
         BoolLit(b) => BoolLit(*b),

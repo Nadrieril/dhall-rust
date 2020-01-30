@@ -6,10 +6,9 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
-    type_of_builtin, Binder, Closure, NzVar, TyEnv, TyExpr, TyExprKind, Type,
-    Value, ValueKind,
+    type_of_builtin, Binder, BuiltinClosure, Closure, NzVar, TyEnv, TyExpr,
+    TyExprKind, Type, Value, ValueKind,
 };
-use crate::syntax;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Span,
 };
@@ -96,8 +95,11 @@ fn type_one_layer(
         ExprKind::EmptyListLit(t) => {
             let t = t.normalize_nf(env.as_nzenv());
             match &*t.as_whnf() {
-                ValueKind::AppliedBuiltin(Builtin::List, args, _, _)
-                    if args.len() == 1 => {}
+                ValueKind::AppliedBuiltin(BuiltinClosure {
+                    b: Builtin::List,
+                    args,
+                    ..
+                }) if args.len() == 1 => {}
                 _ => return mkerr("InvalidListType"),
             };
             t
@@ -365,7 +367,10 @@ fn type_one_layer(
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             let l_ty = l.get_type()?;
             match &*l_ty.as_whnf() {
-                ValueKind::AppliedBuiltin(Builtin::List, _, _, _) => {}
+                ValueKind::AppliedBuiltin(BuiltinClosure {
+                    b: Builtin::List,
+                    ..
+                }) => {}
                 _ => return mkerr("BinOpTypeMismatch"),
             }
 
@@ -423,12 +428,11 @@ fn type_one_layer(
             let union_borrow = union_type.as_whnf();
             let variants = match &*union_borrow {
                 ValueKind::UnionType(kts) => Cow::Borrowed(kts),
-                ValueKind::AppliedBuiltin(
-                    syntax::Builtin::Optional,
+                ValueKind::AppliedBuiltin(BuiltinClosure {
+                    b: Builtin::Optional,
                     args,
-                    _,
-                    _,
-                ) if args.len() == 1 => {
+                    ..
+                }) if args.len() == 1 => {
                     let ty = &args[0];
                     let mut kts = HashMap::new();
                     kts.insert("None".into(), None);
