@@ -412,33 +412,30 @@ impl ValueInternal {
     }
 
     fn normalize_whnf(&mut self) {
-        take_mut::take_or_recover(
-            self,
-            // Dummy value in case the other closure panics
-            || ValueInternal {
-                form: Unevaled,
-                kind: ValueKind::Const(Const::Type),
+        let dummy = ValueInternal {
+            form: Unevaled,
+            kind: ValueKind::Const(Const::Type),
+            ty: None,
+            span: Span::Artificial,
+        };
+        let vint = std::mem::replace(self, dummy);
+        *self = match (&vint.form, &vint.ty) {
+            (Unevaled, Some(ty)) => ValueInternal {
+                form: WHNF,
+                kind: normalize_whnf(vint.kind, &ty),
+                ty: vint.ty,
+                span: vint.span,
+            },
+            // `value` is `Sort`
+            (Unevaled, None) => ValueInternal {
+                form: NF,
+                kind: ValueKind::Const(Const::Sort),
                 ty: None,
-                span: Span::Artificial,
+                span: vint.span,
             },
-            |vint| match (&vint.form, &vint.ty) {
-                (Unevaled, Some(ty)) => ValueInternal {
-                    form: WHNF,
-                    kind: normalize_whnf(vint.kind, &ty),
-                    ty: vint.ty,
-                    span: vint.span,
-                },
-                // `value` is `Sort`
-                (Unevaled, None) => ValueInternal {
-                    form: NF,
-                    kind: ValueKind::Const(Const::Sort),
-                    ty: None,
-                    span: vint.span,
-                },
-                // Already in WHNF
-                (WHNF, _) | (NF, _) => vint,
-            },
-        )
+            // Already in WHNF
+            (WHNF, _) | (NF, _) => vint,
+        }
     }
     fn normalize_nf(&mut self) {
         match self.form {
