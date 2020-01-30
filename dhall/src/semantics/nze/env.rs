@@ -59,14 +59,18 @@ impl NzEnv {
         env.items.push(NzEnvItem::Replaced(e));
         env
     }
-    pub fn lookup_val(&self, var: &AlphaVar) -> Value {
+    pub fn lookup_val(&self, var: &AlphaVar) -> ValueKind {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            NzEnvItem::Kept(ty) => Value::from_kind_and_type(
-                ValueKind::Var(NzVar::new(idx)),
-                ty.clone(),
-            ),
-            NzEnvItem::Replaced(x) => x.clone(),
+            NzEnvItem::Kept(_) => ValueKind::Var(NzVar::new(idx)),
+            NzEnvItem::Replaced(x) => x.kind().clone(),
+        }
+    }
+    pub fn lookup_ty(&self, var: &AlphaVar) -> Value {
+        let idx = self.items.len() - 1 - var.idx();
+        match &self.items[idx] {
+            NzEnvItem::Kept(ty) => ty.clone(),
+            NzEnvItem::Replaced(x) => x.get_type().unwrap(),
         }
     }
 }

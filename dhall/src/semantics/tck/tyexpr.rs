@@ -1,5 +1,4 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::normalize_tyexpr_whnf;
 use crate::semantics::{rc, NameEnv, NzEnv, TyEnv, Value};
 use crate::syntax::{ExprKind, Span, V};
 use crate::Normalized;
@@ -83,7 +82,9 @@ impl TyExpr {
     }
     /// Eval a closed TyExpr fully and recursively;
     pub fn rec_eval_closed_expr(&self) -> Value {
-        normalize_tyexpr_whnf(self, &NzEnv::new())
+        let mut val = self.eval_closed_expr();
+        val.normalize_mut();
+        val
     }
 }
 

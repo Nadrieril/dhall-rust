@@ -118,7 +118,7 @@ impl TyEnv {
     }
     pub fn lookup(&self, var: &V) -> Option<(TyExprKind, Type)> {
         let var = self.names.unlabel_var(var)?;
-        let ty = self.items.lookup_val(&var).get_type().unwrap();
+        let ty = self.items.lookup_ty(&var);
         Some((TyExprKind::Var(var), ty))
     }
 }

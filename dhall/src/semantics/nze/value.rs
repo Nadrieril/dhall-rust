@@ -405,7 +405,7 @@ impl ValueInternal {
         use std::mem::replace;
         let dummy = Form::PartialExpr(ExprKind::Const(Const::Type));
         self.form = match replace(&mut self.form, dummy) {
-            Form::Thunk(th) => Form::WHNF(th.eval().kind().clone()),
+            Form::Thunk(th) => Form::WHNF(th.eval()),
             Form::PartialExpr(e) => {
                 Form::WHNF(match &self.ty {
                     // TODO: env
@@ -516,9 +516,7 @@ impl Thunk {
             body,
         }
     }
-
-    // TODO: maybe return a ValueKind ?
-    pub fn eval(&self) -> Value {
+    pub fn eval(&self) -> ValueKind {
         normalize_tyexpr_whnf(&self.body, &self.env)
     }
 }

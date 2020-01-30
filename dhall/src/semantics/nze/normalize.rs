@@ -445,14 +445,9 @@ pub(crate) fn normalize_one_layer(
 }
 
 /// Normalize a TyExpr into WHNF
-pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
-    let ty = match tye.get_type() {
-        Ok(ty) => ty,
-        Err(_) => return Value::from_const(Const::Sort),
-    };
-
-    let kind = match tye.kind() {
-        TyExprKind::Var(var) => return env.lookup_val(var),
+pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
+    match tye.kind() {
+        TyExprKind::Var(var) => env.lookup_val(var),
         TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             ValueKind::LamClosure {
@@ -472,13 +467,15 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
         }
         TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
             let val = val.eval(env);
-            return body.eval(&env.insert_value(val));
+            body.eval(&env.insert_value(val)).kind().clone()
         }
         TyExprKind::Expr(e) => {
+            let ty = match tye.get_type() {
+                Ok(ty) => ty,
+                Err(_) => return ValueKind::Const(Const::Sort),
+            };
             let e = e.map_ref(|tye| tye.eval(env));
             normalize_one_layer(e, &ty, env)
         }
-    };
-
-    Value::from_kind_and_type(kind, ty)
+    }
 }
