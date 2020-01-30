@@ -25,20 +25,13 @@ pub(crate) struct Value(Rc<ValueInternal>);
 
 #[derive(Debug)]
 struct ValueInternal {
-    form: RefCell<Form>,
+    /// Exactly one of `thunk` of `kind` must be set at a given time.
+    /// Once `thunk` is unset and `kind` is set, we never go back.
+    thunk: RefCell<Option<Thunk>>,
+    kind: RefCell<Option<ValueKind>>,
     /// This is None if and only if `form` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
-}
-
-/// A potentially un-evaluated expression. Once we get to WHNF we won't modify the form again, as
-/// explained in the doc for `ValueKind`.
-#[derive(Debug, Clone)]
-pub(crate) enum Form {
-    /// An unevaluated value.
-    Thunk(Thunk),
-    /// A value in WHNF.
-    WHNF(ValueKind),
 }
 
 /// An unevaluated subexpression
@@ -120,12 +113,9 @@ pub(crate) enum ValueKind {
 }
 
 impl Value {
-    fn new(form: Form, ty: Value, span: Span) -> Value {
-        ValueInternal::new(form, Some(ty), span).into_value()
-    }
     pub(crate) fn const_sort() -> Value {
-        ValueInternal::new(
-            Form::WHNF(ValueKind::Const(Const::Sort)),
+        ValueInternal::from_whnf(
+            ValueKind::Const(Const::Sort),
             None,
             Span::Artificial,
         )
@@ -133,8 +123,8 @@ impl Value {
     }
     /// Construct a Value from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
-        ValueInternal::new(
-            Form::Thunk(Thunk::new(env, tye.clone())),
+        ValueInternal::from_thunk(
+            Thunk::new(env, tye.clone()),
             tye.get_type().ok(),
             tye.span().clone(),
         )
@@ -147,15 +137,16 @@ impl Value {
     ) -> Value {
         // TODO: env
         let env = NzEnv::new();
-        Value::new(
-            Form::Thunk(Thunk::from_partial_expr(env, e, ty.clone())),
-            ty,
+        ValueInternal::from_thunk(
+            Thunk::from_partial_expr(env, e, ty.clone()),
+            Some(ty),
             Span::Artificial,
         )
+        .into_value()
     }
     /// Make a Value from a ValueKind
     pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
-        Value::new(Form::WHNF(v), t, Span::Artificial)
+        ValueInternal::from_whnf(v, Some(t), Span::Artificial).into_value()
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = ValueKind::Const(c);
@@ -189,18 +180,11 @@ impl Value {
         self.0.span.clone()
     }
 
-    fn as_form(&self) -> Ref<Form> {
-        self.0.form.borrow()
-    }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
-        self.normalize_whnf();
-        Ref::map(self.as_form(), |form| match form {
-            Form::Thunk(..) => unreachable!(),
-            Form::WHNF(k) => k,
-        })
+        self.0.kind()
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -220,23 +204,15 @@ impl Value {
         self.to_whnf_ignore_type()
     }
 
-    /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
-    fn mutate_form(&mut self, f: impl FnOnce(&mut Form)) {
-        match Rc::get_mut(&mut self.0) {
-            // Mutate directly if sole owner
-            Some(vint) => f(RefCell::get_mut(&mut vint.form)),
-            // Otherwise mutate through the refcell
-            None => f(&mut self.0.form.borrow_mut()),
-        }
-    }
     /// Normalizes contents to normal form; faster than `normalize_nf` if
     /// no one else shares this.
     pub(crate) fn normalize_mut(&mut self) {
-        self.mutate_form(|form| form.normalize_nf())
-    }
-
-    pub(crate) fn normalize_whnf(&self) {
-        self.0.normalize_whnf()
+        match Rc::get_mut(&mut self.0) {
+            // Mutate directly if sole owner
+            Some(vint) => vint.normalize_nf_mut(),
+            // Otherwise mutate through the refcell
+            None => self.0.normalize_nf(),
+        }
     }
     pub(crate) fn normalize_nf(&self) {
         self.0.normalize_nf()
@@ -389,9 +365,18 @@ impl Value {
 }
 
 impl ValueInternal {
-    fn new(form: Form, ty: Option<Value>, span: Span) -> Self {
+    fn from_whnf(k: ValueKind, ty: Option<Value>, span: Span) -> Self {
         ValueInternal {
-            form: RefCell::new(form),
+            thunk: RefCell::new(None),
+            kind: RefCell::new(Some(k)),
+            ty,
+            span,
+        }
+    }
+    fn from_thunk(th: Thunk, ty: Option<Value>, span: Span) -> Self {
+        ValueInternal {
+            kind: RefCell::new(None),
+            thunk: RefCell::new(Some(th)),
             ty,
             span,
         }
@@ -400,46 +385,44 @@ impl ValueInternal {
         Value(Rc::new(self))
     }
 
+    fn kind(&self) -> Ref<ValueKind> {
+        self.normalize_whnf();
+        Ref::map(self.kind.borrow(), |kind| kind.as_ref().unwrap())
+    }
     fn normalize_whnf(&self) {
-        if !self.form.borrow().is_whnf() {
-            self.form.borrow_mut().normalize_whnf()
+        if self.kind.borrow().is_none() {
+            let mut thunk_borrow = self.thunk.borrow_mut();
+            let kind = thunk_borrow.as_ref().unwrap().eval();
+            *thunk_borrow = None;
+            *self.kind.borrow_mut() = Some(kind);
         }
     }
     fn normalize_nf(&self) {
-        self.form.borrow_mut().normalize_nf()
+        self.normalize_whnf();
+        self.kind.borrow_mut().as_mut().unwrap().normalize_mut()
+    }
+    // Avoids a RefCell lock
+    fn normalize_whnf_mut(&mut self) {
+        let self_thunk = RefCell::get_mut(&mut self.thunk);
+        if let Some(thunk) = &mut *self_thunk {
+            let self_kind = RefCell::get_mut(&mut self.kind);
+            let mut kind = thunk.eval();
+            kind.normalize_mut();
+            *self_kind = Some(kind);
+            *self_thunk = None;
+        }
+    }
+    // Avoids a RefCell lock
+    fn normalize_nf_mut(&mut self) {
+        self.normalize_whnf_mut();
+        let self_kind = RefCell::get_mut(&mut self.kind);
+        self_kind.as_mut().unwrap().normalize_mut();
     }
 
     fn get_type(&self) -> Result<&Value, TypeError> {
         match &self.ty {
             Some(t) => Ok(t),
             None => Err(TypeError::new(TypeMessage::Sort)),
-        }
-    }
-}
-
-impl Form {
-    fn is_whnf(&self) -> bool {
-        match self {
-            Form::Thunk(..) => false,
-            Form::WHNF(..) => true,
-        }
-    }
-    fn normalize_whnf(&mut self) {
-        use std::mem::replace;
-        let dummy = Form::WHNF(ValueKind::Const(Const::Type));
-        *self = match replace(self, dummy) {
-            Form::Thunk(th) => Form::WHNF(th.eval()),
-            // Already in WHNF
-            form @ Form::WHNF(_) => form,
-        };
-    }
-    fn normalize_nf(&mut self) {
-        if !self.is_whnf() {
-            self.normalize_whnf();
-        }
-        match self {
-            Form::Thunk(..) => unreachable!(),
-            Form::WHNF(k) => k.normalize_mut(),
         }
     }
 }
@@ -687,21 +670,21 @@ impl std::cmp::Eq for Closure {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.0;
-        let mut x = match &*vint.form.borrow() {
-            Form::Thunk(th) => {
-                let mut x = fmt.debug_struct(&format!("Value@Thunk"));
-                x.field("thunk", th);
+        let kind_borrow = vint.kind.borrow();
+        let mut x = if let Some(kind) = kind_borrow.as_ref() {
+            if let ValueKind::Const(c) = kind {
+                return write!(fmt, "{:?}", c);
+            } else {
+                let mut x = fmt.debug_struct(&format!("Value@WHNF"));
+                x.field("kind", kind);
                 x
             }
-            Form::WHNF(kind) => {
-                if let ValueKind::Const(c) = kind {
-                    return write!(fmt, "{:?}", c);
-                } else {
-                    let mut x = fmt.debug_struct(&format!("Value@WHNF"));
-                    x.field("kind", kind);
-                    x
-                }
-            }
+        } else {
+            let thunk_borrow = vint.thunk.borrow();
+            let th = thunk_borrow.as_ref().unwrap();
+            let mut x = fmt.debug_struct(&format!("Value@Thunk"));
+            x.field("thunk", th);
+            x
         };
         if let Some(ty) = vint.ty.as_ref() {
             x.field("type", &ty);
