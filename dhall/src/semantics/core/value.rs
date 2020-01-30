@@ -13,7 +13,7 @@ use crate::syntax::{
     NaiveDouble, Natural, Span,
 };
 
-use self::Form::{Unevaled, NF, WHNF};
+use self::Form::{Unevaled, WHNF};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a RefCell to share computation.
@@ -25,7 +25,6 @@ use self::Form::{Unevaled, NF, WHNF};
 pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
 /// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
-/// Invariant: if `form` is `NF`, `value` must be fully normalized
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
@@ -42,12 +41,10 @@ pub(crate) enum Form {
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
     /// not be normalized. This means that the first constructor of the contained ValueKind is the first
     /// constructor of the final Normal Form (NF).
-    WHNF,
-    /// Normal Form, i.e. completely normalized.
-    /// When all the Values in a ValueKind are at least in WHNF, and recursively so, then the
+    /// When all the Values in a ValueKind are in WHNF, and recursively so, then the
     /// ValueKind is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
     /// if we have the first constructor of the NF at all levels, we actually have the NF.
-    NF,
+    WHNF,
 }
 
 #[derive(Debug, Clone)]
@@ -116,7 +113,7 @@ impl Value {
     }
     pub(crate) fn const_sort() -> Value {
         ValueInternal {
-            form: NF,
+            form: WHNF,
             kind: ValueKind::Const(Const::Sort),
             ty: None,
             span: Span::Artificial,
@@ -219,8 +216,8 @@ impl Value {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
-            // Already at least in WHNF
-            WHNF | NF => {}
+            // Already in WHNF
+            WHNF => {}
         }
     }
     pub(crate) fn normalize_nf(&self) {
@@ -415,28 +412,20 @@ impl ValueInternal {
             },
             // `value` is `Sort`
             (Unevaled, None) => ValueInternal {
-                form: NF,
+                form: WHNF,
                 kind: ValueKind::Const(Const::Sort),
                 ty: None,
                 span: vint.span,
             },
             // Already in WHNF
-            (WHNF, _) | (NF, _) => vint,
+            (WHNF, _) => vint,
         }
     }
     fn normalize_nf(&mut self) {
-        match self.form {
-            Unevaled => {
-                self.normalize_whnf();
-                self.normalize_nf();
-            }
-            WHNF => {
-                self.kind.normalize_mut();
-                self.form = NF;
-            }
-            // Already in NF
-            NF => {}
+        if let Unevaled = self.form {
+            self.normalize_whnf();
         }
+        self.kind.normalize_mut();
     }
 
     fn get_type(&self) -> Result<&Value, TypeError> {
