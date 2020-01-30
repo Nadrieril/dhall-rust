@@ -9,7 +9,7 @@ use crate::syntax::{
 };
 use crate::Normalized;
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
+pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
     let f_borrow = f.kind();
     match &*f_borrow {
         ValueKind::LamClosure { closure, .. } => {
@@ -102,7 +102,7 @@ where
 
 // Small helper enum to avoid repetition
 enum Ret<'a> {
-    ValueKind(ValueKind<Value>),
+    ValueKind(ValueKind),
     Value(Value),
     ValueRef(&'a Value),
     Expr(ExprKind<Value, Normalized>),
@@ -255,7 +255,7 @@ pub(crate) fn normalize_one_layer(
     expr: ExprKind<Value, Normalized>,
     ty: &Value,
     env: &NzEnv,
-) -> ValueKind<Value> {
+) -> ValueKind {
     use ValueKind::{
         BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
         NEOptionalLit, NaturalLit, RecordLit, RecordType, TextLit,
@@ -450,10 +450,7 @@ pub(crate) fn normalize_one_layer(
 }
 
 /// Normalize a ValueKind into WHNF
-pub(crate) fn normalize_whnf(
-    v: ValueKind<Value>,
-    ty: &Value,
-) -> ValueKind<Value> {
+pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
     match v {
         ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),

@@ -35,18 +35,13 @@ impl BuiltinClosure<Value> {
         }
     }
 
-    pub fn apply(
-        &self,
-        a: Value,
-        f_ty: Value,
-        ret_ty: &Value,
-    ) -> ValueKind<Value> {
+    pub fn apply(&self, a: Value, f_ty: Value, ret_ty: &Value) -> ValueKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a.clone())).collect();
         let types = self.types.iter().cloned().chain(once(f_ty)).collect();
         apply_builtin(self.b, args, ret_ty, types, self.env.clone())
     }
-    pub fn ensure_whnf(self, ret_ty: &Value) -> ValueKind<Value> {
+    pub fn ensure_whnf(self, ret_ty: &Value) -> ValueKind {
         apply_builtin(self.b, self.args, ret_ty, self.types, self.env)
     }
     pub fn normalize_mut(&mut self) {
@@ -276,13 +271,13 @@ fn apply_builtin(
     ty: &Value,
     types: Vec<Value>,
     env: NzEnv,
-) -> ValueKind<Value> {
+) -> ValueKind {
     use Builtin::*;
     use ValueKind::*;
 
     // Small helper enum
     enum Ret {
-        ValueKind(ValueKind<Value>),
+        ValueKind(ValueKind),
         Value(Value),
         DoneAsIs,
     }

@@ -28,7 +28,7 @@ pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
-    kind: ValueKind<Value>,
+    kind: ValueKind,
     /// This is None if and only if `value` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -68,7 +68,7 @@ pub(crate) enum Closure {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValueKind<Value> {
+pub(crate) enum ValueKind {
     /// Closures
     LamClosure {
         binder: Binder,
@@ -112,7 +112,7 @@ pub(crate) enum ValueKind<Value> {
 }
 
 impl Value {
-    fn new(kind: ValueKind<Value>, form: Form, ty: Value, span: Span) -> Value {
+    fn new(kind: ValueKind, form: Form, ty: Value, span: Span) -> Value {
         ValueInternal {
             form,
             kind,
@@ -139,13 +139,10 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_kind_and_type(v: ValueKind<Value>, t: Value) -> Value {
+    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
         Value::new(v, Unevaled, t, Span::Artificial)
     }
-    pub(crate) fn from_kind_and_type_whnf(
-        v: ValueKind<Value>,
-        t: Value,
-    ) -> Value {
+    pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
         Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
@@ -189,7 +186,7 @@ impl Value {
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
-    pub(crate) fn kind(&self) -> Ref<ValueKind<Value>> {
+    pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
         Ref::map(self.as_internal(), ValueInternal::as_kind)
     }
@@ -202,11 +199,11 @@ impl Value {
 
         self.to_tyexpr_noenv().to_expr(opts)
     }
-    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
+    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
         self.kind().clone()
     }
     /// Before discarding type information, check that it matches the expected return type.
-    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind<Value> {
+    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind {
         self.check_type(ty);
         self.to_whnf_ignore_type()
     }
@@ -397,7 +394,7 @@ impl ValueInternal {
     fn into_value(self) -> Value {
         Value(Rc::new(RefCell::new(self)))
     }
-    fn as_kind(&self) -> &ValueKind<Value> {
+    fn as_kind(&self) -> &ValueKind {
         &self.kind
     }
 
@@ -442,7 +439,7 @@ impl ValueInternal {
     }
 }
 
-impl ValueKind<Value> {
+impl ValueKind {
     pub(crate) fn into_value_with_type(self, t: Value) -> Value {
         Value::from_kind_and_type(self, t)
     }
@@ -513,10 +510,10 @@ impl ValueKind<Value> {
         }
     }
 
-    pub(crate) fn from_builtin(b: Builtin) -> ValueKind<Value> {
+    pub(crate) fn from_builtin(b: Builtin) -> ValueKind {
         ValueKind::from_builtin_env(b, NzEnv::new())
     }
-    pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind<Value> {
+    pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind {
         ValueKind::AppliedBuiltin(BuiltinClosure::new(b, env))
     }
 }
