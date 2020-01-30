@@ -35,19 +35,23 @@ struct ValueInternal {
 /// explained in the doc for `ValueKind`.
 #[derive(Debug, Clone)]
 pub(crate) enum Form {
-    /// A totally unnormalized value.
+    /// An unevaluated value.
     Thunk(Thunk),
-    /// A partially normalized value that may need to go through `normalize_one_layer`.
-    PartialExpr(ExprKind<Value, Normalized>),
     /// A value in WHNF.
     WHNF(ValueKind),
 }
 
 /// An unevaluated subexpression
 #[derive(Debug, Clone)]
-pub(crate) struct Thunk {
-    env: NzEnv,
-    body: TyExpr,
+pub(crate) enum Thunk {
+    /// A completely unnormalized expression.
+    Thunk { env: NzEnv, body: TyExpr },
+    /// A partially normalized expression that may need to go through `normalize_one_layer`.
+    PartialExpr {
+        env: NzEnv,
+        expr: ExprKind<Value, Normalized>,
+        ty: Value,
+    },
 }
 
 /// An unevaluated subexpression that takes an argument.
@@ -139,9 +143,15 @@ impl Value {
     /// Construct a Value from a partially normalized expression that's not in WHNF.
     pub(crate) fn from_partial_expr(
         e: ExprKind<Value, Normalized>,
-        t: Value,
+        ty: Value,
     ) -> Value {
-        Value::new(Form::PartialExpr(e), t, Span::Artificial)
+        // TODO: env
+        let env = NzEnv::new();
+        Value::new(
+            Form::Thunk(Thunk::from_partial_expr(env, e, ty.clone())),
+            ty,
+            Span::Artificial,
+        )
     }
     /// Make a Value from a ValueKind
     pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
@@ -188,7 +198,7 @@ impl Value {
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
         Ref::map(self.as_form(), |form| match form {
-            Form::Thunk(..) | Form::PartialExpr(..) => unreachable!(),
+            Form::Thunk(..) => unreachable!(),
             Form::WHNF(k) => k,
         })
     }
@@ -211,18 +221,18 @@ impl Value {
     }
 
     /// Mutates the contents. If no one else shares this, this avoids a RefCell lock.
-    fn mutate_form(&mut self, f: impl FnOnce(&mut Form, &Option<Value>)) {
+    fn mutate_form(&mut self, f: impl FnOnce(&mut Form)) {
         match Rc::get_mut(&mut self.0) {
             // Mutate directly if sole owner
-            Some(vint) => f(RefCell::get_mut(&mut vint.form), &vint.ty),
+            Some(vint) => f(RefCell::get_mut(&mut vint.form)),
             // Otherwise mutate through the refcell
-            None => f(&mut self.0.form.borrow_mut(), &self.0.ty),
+            None => f(&mut self.0.form.borrow_mut()),
         }
     }
     /// Normalizes contents to normal form; faster than `normalize_nf` if
     /// no one else shares this.
     pub(crate) fn normalize_mut(&mut self) {
-        self.mutate_form(|form, ty| form.normalize_nf(ty))
+        self.mutate_form(|form| form.normalize_nf())
     }
 
     pub(crate) fn normalize_whnf(&self) {
@@ -392,11 +402,11 @@ impl ValueInternal {
 
     fn normalize_whnf(&self) {
         if !self.form.borrow().is_whnf() {
-            self.form.borrow_mut().normalize_whnf(&self.ty)
+            self.form.borrow_mut().normalize_whnf()
         }
     }
     fn normalize_nf(&self) {
-        self.form.borrow_mut().normalize_nf(&self.ty)
+        self.form.borrow_mut().normalize_nf()
     }
 
     fn get_type(&self) -> Result<&Value, TypeError> {
@@ -410,33 +420,25 @@ impl ValueInternal {
 impl Form {
     fn is_whnf(&self) -> bool {
         match self {
-            Form::Thunk(..) | Form::PartialExpr(..) => false,
+            Form::Thunk(..) => false,
             Form::WHNF(..) => true,
         }
     }
-    fn normalize_whnf(&mut self, ty: &Option<Value>) {
+    fn normalize_whnf(&mut self) {
         use std::mem::replace;
-        let dummy = Form::PartialExpr(ExprKind::Const(Const::Type));
+        let dummy = Form::WHNF(ValueKind::Const(Const::Type));
         *self = match replace(self, dummy) {
             Form::Thunk(th) => Form::WHNF(th.eval()),
-            Form::PartialExpr(e) => {
-                Form::WHNF(match ty {
-                    // TODO: env
-                    Some(ty) => normalize_one_layer(e, &ty, &NzEnv::new()),
-                    // `value` is `Sort`
-                    None => ValueKind::Const(Const::Sort),
-                })
-            }
             // Already in WHNF
             form @ Form::WHNF(_) => form,
         };
     }
-    fn normalize_nf(&mut self, ty: &Option<Value>) {
+    fn normalize_nf(&mut self) {
         if !self.is_whnf() {
-            self.normalize_whnf(ty);
+            self.normalize_whnf();
         }
         match self {
-            Form::Thunk(..) | Form::PartialExpr(_) => unreachable!(),
+            Form::Thunk(..) => unreachable!(),
             Form::WHNF(k) => k.normalize_mut(),
         }
     }
@@ -517,13 +519,26 @@ impl ValueKind {
 
 impl Thunk {
     pub fn new(env: &NzEnv, body: TyExpr) -> Self {
-        Thunk {
+        Thunk::Thunk {
             env: env.clone(),
             body,
         }
     }
+    pub fn from_partial_expr(
+        env: NzEnv,
+        expr: ExprKind<Value, Normalized>,
+        ty: Value,
+    ) -> Self {
+        Thunk::PartialExpr { env, expr, ty }
+    }
+    // TODO: take by value
     pub fn eval(&self) -> ValueKind {
-        normalize_tyexpr_whnf(&self.body, &self.env)
+        match self {
+            Thunk::Thunk { env, body } => normalize_tyexpr_whnf(body, env),
+            Thunk::PartialExpr { env, expr, ty } => {
+                normalize_one_layer(expr.clone(), ty, env)
+            }
+        }
     }
 }
 
@@ -676,11 +691,6 @@ impl std::fmt::Debug for Value {
             Form::Thunk(th) => {
                 let mut x = fmt.debug_struct(&format!("Value@Thunk"));
                 x.field("thunk", th);
-                x
-            }
-            Form::PartialExpr(e) => {
-                let mut x = fmt.debug_struct(&format!("Value@PartialExpr"));
-                x.field("expr", e);
                 x
             }
             Form::WHNF(kind) => {
