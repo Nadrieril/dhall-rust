@@ -5,12 +5,9 @@ use std::rc::Rc;
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::core::var::Binder;
 use crate::semantics::phase::normalize::{apply_any, normalize_whnf};
-use crate::semantics::phase::typecheck::{
-    builtin_to_value, builtin_to_value_env, const_to_value,
-};
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
+use crate::semantics::{type_of_builtin, TyExpr, TyExprKind};
 use crate::semantics::{NzEnv, NzVar, VarEnv};
-use crate::semantics::{TyExpr, TyExprKind};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
@@ -138,13 +135,27 @@ impl Value {
         Value::new(v, WHNF, t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
-        const_to_value(c)
+        let v = ValueKind::Const(c);
+        match c {
+            Const::Type => {
+                Value::from_kind_and_type(v, Value::from_const(Const::Kind))
+            }
+            Const::Kind => {
+                Value::from_kind_and_type(v, Value::from_const(Const::Sort))
+            }
+            Const::Sort => Value::const_sort(),
+        }
     }
     pub(crate) fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
-        builtin_to_value_env(b, env)
+        Value::from_kind_and_type(
+            ValueKind::from_builtin_env(b, env.clone()),
+            crate::semantics::tck::typecheck::typecheck(&type_of_builtin(b))
+                .unwrap()
+                .normalize_whnf_noenv(),
+        )
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
@@ -361,17 +372,19 @@ impl Value {
                     ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
                     ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
                     ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                        builtin_to_value(Builtin::OptionalNone).to_tyexpr(venv),
+                        Value::from_builtin(Builtin::OptionalNone)
+                            .to_tyexpr(venv),
                         n,
                     ),
                     ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
                     ValueKind::EmptyListLit(n) => {
                         ExprKind::EmptyListLit(TyExpr::new(
                             TyExprKind::Expr(ExprKind::App(
-                                builtin_to_value(Builtin::List).to_tyexpr(venv),
+                                Value::from_builtin(Builtin::List)
+                                    .to_tyexpr(venv),
                                 n,
                             )),
-                            Some(const_to_value(Const::Type)),
+                            Some(Value::from_const(Const::Type)),
                             Span::Artificial,
                         ))
                     }

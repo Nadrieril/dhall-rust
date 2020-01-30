@@ -1,9 +1,8 @@
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::normalize_tyexpr_whnf;
-use crate::semantics::phase::typecheck::rc;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
-use crate::semantics::{NameEnv, NzEnv, TyEnv, Value};
+use crate::semantics::{rc, NameEnv, NzEnv, TyEnv, Value};
 use crate::syntax::{ExprKind, Span, V};
 
 pub(crate) type Type = Value;

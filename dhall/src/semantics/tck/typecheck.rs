@@ -4,12 +4,10 @@ use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::merge_maps;
-use crate::semantics::phase::typecheck::{
-    builtin_to_value, const_to_value, type_of_builtin,
-};
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
-    Binder, Closure, NzVar, TyEnv, TyExpr, TyExprKind, Type, Value, ValueKind,
+    type_of_builtin, Binder, Closure, NzVar, TyEnv, TyExpr, TyExprKind, Type,
+    Value, ValueKind,
 };
 use crate::syntax;
 use crate::syntax::{
@@ -72,19 +70,19 @@ fn type_one_layer(
         | ExprKind::Const(Const::Sort)
         | ExprKind::Embed(..) => unreachable!(), // Handled in type_with
 
-        ExprKind::Const(Const::Type) => const_to_value(Const::Kind),
-        ExprKind::Const(Const::Kind) => const_to_value(Const::Sort),
+        ExprKind::Const(Const::Type) => Value::from_const(Const::Kind),
+        ExprKind::Const(Const::Kind) => Value::from_const(Const::Sort),
         ExprKind::Builtin(b) => {
             let t_expr = type_of_builtin(*b);
             let t_tyexpr = type_with(env, &t_expr)?;
             t_tyexpr.normalize_whnf(env.as_nzenv())
         }
-        ExprKind::BoolLit(_) => builtin_to_value(Builtin::Bool),
-        ExprKind::NaturalLit(_) => builtin_to_value(Builtin::Natural),
-        ExprKind::IntegerLit(_) => builtin_to_value(Builtin::Integer),
-        ExprKind::DoubleLit(_) => builtin_to_value(Builtin::Double),
+        ExprKind::BoolLit(_) => Value::from_builtin(Builtin::Bool),
+        ExprKind::NaturalLit(_) => Value::from_builtin(Builtin::Natural),
+        ExprKind::IntegerLit(_) => Value::from_builtin(Builtin::Integer),
+        ExprKind::DoubleLit(_) => Value::from_builtin(Builtin::Double),
         ExprKind::TextLit(interpolated) => {
-            let text_type = builtin_to_value(Builtin::Text);
+            let text_type = Value::from_builtin(Builtin::Text);
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
@@ -388,7 +386,7 @@ fn type_one_layer(
             Value::from_const(Const::Type)
         }
         ExprKind::BinOp(o, l, r) => {
-            let t = builtin_to_value(match o {
+            let t = Value::from_builtin(match o {
                 BinOp::BoolAnd
                 | BinOp::BoolOr
                 | BinOp::BoolEQ
