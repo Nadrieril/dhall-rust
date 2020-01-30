@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::merge_maps;
-use crate::semantics::phase::Normalized;
 use crate::semantics::{
     type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
     TyExprKind, Type, Value, ValueKind,
@@ -12,6 +11,7 @@ use crate::semantics::{
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Span,
 };
+use crate::Normalized;
 
 fn type_of_recordtype<'a>(
     tys: impl Iterator<Item = Cow<'a, TyExpr>>,

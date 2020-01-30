@@ -1,4 +1,3 @@
-use crate::semantics::phase::Normalized;
 use crate::semantics::{
     typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
 };
@@ -8,6 +7,7 @@ use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
     InterpolatedTextContents, Label, NaiveDouble, Span, UnspannedExpr, V,
 };
+use crate::Normalized;
 use std::collections::HashMap;
 use std::convert::TryInto;
 

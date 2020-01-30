@@ -48,7 +48,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::error::{Error, Result};
-use crate::semantics::phase::Parsed;
+use crate::Parsed;
 
 #[allow(dead_code)]
 #[derive(Clone)]

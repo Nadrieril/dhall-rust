@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ImportError};
-use crate::semantics::phase::{Normalized, NormalizedExpr, Parsed, Resolved};
 use crate::syntax;
 use crate::syntax::{FilePath, ImportLocation, URL};
+use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
 
 type Import = syntax::Import<NormalizedExpr>;
 

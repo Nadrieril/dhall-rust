@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::semantics::phase::Normalized;
 use crate::semantics::NzEnv;
 use crate::semantics::{
     Binder, BuiltinClosure, Closure, TyExpr, TyExprKind, Value, ValueKind,
@@ -8,6 +7,7 @@ use crate::semantics::{
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents,
 };
+use crate::Normalized;
 
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
     let f_borrow = f.kind();
