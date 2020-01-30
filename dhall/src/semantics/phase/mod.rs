@@ -7,7 +7,6 @@ use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
 use resolve::ImportRoot;
 
-pub(crate) mod normalize;
 pub(crate) mod parse;
 pub(crate) mod resolve;
 

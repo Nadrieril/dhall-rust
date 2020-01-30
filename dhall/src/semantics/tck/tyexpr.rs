@@ -1,5 +1,5 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::phase::normalize::normalize_tyexpr_whnf;
+use crate::semantics::normalize_tyexpr_whnf;
 use crate::semantics::phase::Normalized;
 use crate::semantics::phase::{NormalizedExpr, ToExprOptions};
 use crate::semantics::{rc, NameEnv, NzEnv, TyEnv, Value};

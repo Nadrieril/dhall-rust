@@ -4,11 +4,9 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::nze::visitor;
-use crate::semantics::phase::normalize::{
-    apply_any, normalize_tyexpr_whnf, normalize_whnf,
-};
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
 use crate::semantics::Binder;
+use crate::semantics::{apply_any, normalize_tyexpr_whnf, normalize_whnf};
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{

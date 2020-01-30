@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::phase::normalize::merge_maps;
+use crate::semantics::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
     type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
