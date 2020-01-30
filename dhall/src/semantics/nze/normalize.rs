@@ -449,7 +449,6 @@ pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
     match v {
         ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
-        ValueKind::Thunk(th) => th.eval().kind().clone(),
         // All other cases are already in WHNF
         v => v,
     }

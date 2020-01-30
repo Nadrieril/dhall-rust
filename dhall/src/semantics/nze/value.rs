@@ -15,8 +15,6 @@ use crate::syntax::{
 };
 use crate::{Normalized, NormalizedExpr, ToExprOptions};
 
-use self::Form::{Unevaled, WHNF};
-
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a RefCell to share computation.
 /// Can optionally store a type from typechecking to preserve type information.
@@ -37,6 +35,7 @@ struct ValueInternal {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Form {
+    Thunk(Thunk),
     /// No constraints; expression may not be normalized at all.
     Unevaled(ValueKind),
     /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
@@ -112,8 +111,6 @@ pub(crate) enum ValueKind {
     Equivalence(Value, Value),
     // Invariant: in whnf, this must not contain a value captured by one of the variants above.
     PartialExpr(ExprKind<Value, Normalized>),
-    // Invariant: absent in whnf
-    Thunk(Thunk),
 }
 
 impl Value {
@@ -127,7 +124,7 @@ impl Value {
     }
     pub(crate) fn const_sort() -> Value {
         ValueInternal {
-            form: WHNF(ValueKind::Const(Const::Sort)),
+            form: Form::WHNF(ValueKind::Const(Const::Sort)),
             ty: None,
             span: Span::Artificial,
         }
@@ -135,17 +132,17 @@ impl Value {
     }
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
         ValueInternal {
-            form: Unevaled(ValueKind::Thunk(Thunk::new(env, tye.clone()))),
+            form: Form::Thunk(Thunk::new(env, tye.clone())),
             ty: tye.get_type().ok(),
             span: tye.span().clone(),
         }
         .into_value()
     }
     pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
-        Value::new(Unevaled(v), t, Span::Artificial)
+        Value::new(Form::Unevaled(v), t, Span::Artificial)
     }
     pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
-        Value::new(WHNF(v), t, Span::Artificial)
+        Value::new(Form::WHNF(v), t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = ValueKind::Const(c);
@@ -191,8 +188,8 @@ impl Value {
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
         Ref::map(self.as_internal(), |vint| match &vint.form {
-            Unevaled(..) => unreachable!(),
-            WHNF(k) => k,
+            Form::Thunk(..) | Form::Unevaled(..) => unreachable!(),
+            Form::WHNF(k) => k,
         })
     }
 
@@ -231,12 +228,12 @@ impl Value {
     pub(crate) fn normalize_whnf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
-            Unevaled(_) => {
+            Form::Thunk(..) | Form::Unevaled(_) => {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
             // Already in WHNF
-            WHNF(_) => {}
+            Form::WHNF(_) => {}
         }
     }
     pub(crate) fn normalize_nf(&self) {
@@ -290,11 +287,10 @@ impl Value {
         let tye = match &*self.kind() {
             ValueKind::Var(v) => TyExprKind::Var(venv.lookup(v)),
             ValueKind::AppliedBuiltin(closure) => closure.to_tyexprkind(venv),
-            ValueKind::Thunk(th) => return th.to_tyexpr(venv),
             self_kind => TyExprKind::Expr(match self_kind {
-                ValueKind::Var(..)
-                | ValueKind::AppliedBuiltin(..)
-                | ValueKind::Thunk(..) => unreachable!(),
+                ValueKind::Var(..) | ValueKind::AppliedBuiltin(..) => {
+                    unreachable!()
+                }
                 ValueKind::LamClosure {
                     binder,
                     annot,
@@ -402,25 +398,27 @@ impl ValueInternal {
 
     fn normalize_whnf(&mut self) {
         use std::mem::replace;
-        let dummy = Unevaled(ValueKind::Const(Const::Type));
+        let dummy = Form::Unevaled(ValueKind::Const(Const::Type));
         self.form = match replace(&mut self.form, dummy) {
-            Unevaled(kind) => {
-                WHNF(match &self.ty {
+            Form::Thunk(th) => Form::WHNF(th.eval().kind().clone()),
+            Form::Unevaled(kind) => {
+                Form::WHNF(match &self.ty {
                     Some(ty) => normalize_whnf(kind, &ty),
                     // `value` is `Sort`
                     None => ValueKind::Const(Const::Sort),
                 })
             }
             // Already in WHNF
-            form @ WHNF(_) => form,
+            form @ Form::WHNF(_) => form,
         };
     }
     fn normalize_nf(&mut self) {
-        if let Unevaled(_) = self.form {
+        if let Form::Thunk(..) | Form::Unevaled(_) = self.form {
             self.normalize_whnf();
         }
         match &mut self.form {
-            Unevaled(k) | WHNF(k) => k.normalize_mut(),
+            Form::Thunk(..) | Form::Unevaled(_) => unreachable!(),
+            Form::WHNF(k) => k.normalize_mut(),
         }
     }
 
@@ -493,9 +491,6 @@ impl ValueKind {
             ValueKind::PartialExpr(e) => {
                 e.map_mut(Value::normalize_mut);
             }
-            ValueKind::Thunk(..) => {
-                unreachable!("Should only normalize_mut values in WHNF")
-            }
         }
     }
 
@@ -515,11 +510,9 @@ impl Thunk {
         }
     }
 
+    // TODO: maybe return a ValueKind ?
     pub fn eval(&self) -> Value {
         normalize_tyexpr_whnf(&self.body, &self.env)
-    }
-    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
-        self.eval().to_tyexpr(venv)
     }
 }
 
@@ -667,7 +660,17 @@ impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.as_internal();
         let mut x = match &vint.form {
-            WHNF(kind) => {
+            Form::Thunk(th) => {
+                let mut x = fmt.debug_struct(&format!("Value@Thunk"));
+                x.field("thunk", th);
+                x
+            }
+            Form::Unevaled(kind) => {
+                let mut x = fmt.debug_struct(&format!("Value@Unevaled"));
+                x.field("kind", kind);
+                x
+            }
+            Form::WHNF(kind) => {
                 if let ValueKind::Const(c) = kind {
                     return write!(fmt, "{:?}", c);
                 } else {
@@ -675,11 +678,6 @@ impl std::fmt::Debug for Value {
                     x.field("kind", kind);
                     x
                 }
-            }
-            Unevaled(kind) => {
-                let mut x = fmt.debug_struct(&format!("Value@Unevaled"));
-                x.field("kind", kind);
-                x
             }
         };
         if let Some(ty) = vint.ty.as_ref() {
