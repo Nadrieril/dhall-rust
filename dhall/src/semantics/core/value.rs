@@ -270,9 +270,7 @@ impl Value {
             } => TyExprKind::Expr(ExprKind::Lam(
                 binder.to_label(),
                 annot.to_tyexpr(venv),
-                closure
-                    .apply_var(NzVar::new(venv.size()))
-                    .to_tyexpr(venv.insert()),
+                closure.to_tyexpr(venv),
             )),
             ValueKind::PiClosure {
                 binder,
@@ -281,9 +279,7 @@ impl Value {
             } => TyExprKind::Expr(ExprKind::Pi(
                 binder.to_label(),
                 annot.to_tyexpr(venv),
-                closure
-                    .apply_var(NzVar::new(venv.size()))
-                    .to_tyexpr(venv.insert()),
+                closure.to_tyexpr(venv),
             )),
             ValueKind::AppliedBuiltin(closure) => closure.to_tyexprkind(venv),
             ValueKind::UnionConstructor(l, kts, t) => {
@@ -576,12 +572,14 @@ impl Closure {
             body,
         }
     }
+    /// New closure that ignores its argument
     pub fn new_constant(env: &NzEnv, body: TyExpr) -> Self {
         Closure::ConstantClosure {
             env: env.clone(),
             body,
         }
     }
+
     pub fn apply(&self, val: Value) -> Value {
         match self {
             Closure::Closure { env, body, .. } => {
@@ -592,7 +590,7 @@ impl Closure {
             }
         }
     }
-    pub fn apply_var(&self, var: NzVar) -> Value {
+    fn apply_var(&self, var: NzVar) -> Value {
         match self {
             Closure::Closure { arg_ty, .. } => {
                 let val = Value::from_kind_and_type(
@@ -603,6 +601,28 @@ impl Closure {
             }
             Closure::ConstantClosure { env, body, .. } => {
                 body.normalize_whnf(env)
+            }
+        }
+    }
+
+    /// Convert this closure to a TyExpr
+    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
+        self.apply_var(NzVar::new(venv.size()))
+            .to_tyexpr(venv.insert())
+    }
+    /// If the closure variable is free in the closure, return Err. Otherwise, return the value
+    /// with that free variable remove.
+    pub fn remove_binder(&self) -> Result<Value, ()> {
+        let v = NzVar::fresh();
+        match self {
+            Closure::Closure { .. } => {
+                // TODO: handle case where variable is used in closure
+                // TODO: return information about where the variable is used
+                Ok(self.apply_var(v))
+            }
+            Closure::ConstantClosure { .. } => {
+                // Ok: the variable is indeed ignored
+                Ok(self.apply_var(v))
             }
         }
     }

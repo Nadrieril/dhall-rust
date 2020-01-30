@@ -6,7 +6,7 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::phase::normalize::merge_maps;
 use crate::semantics::phase::Normalized;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, NzVar, TyEnv, TyExpr,
+    type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
     TyExprKind, Type, Value, ValueKind,
 };
 use crate::syntax::{
@@ -48,7 +48,7 @@ fn type_of_function(src: Type, tgt: Type) -> Result<Type, TypeError> {
     Ok(Value::from_const(function_check(ks, kt)))
 }
 
-fn mkerr<T>(x: impl ToString) -> Result<T, TypeError> {
+fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
 
@@ -452,9 +452,9 @@ fn type_one_layer(
                                     return mkerr("MergeHandlerTypeMismatch");
                                 }
 
-                                let v = NzVar::fresh();
-                                // TODO: handle case where variable is used in closure
-                                closure.apply_var(v)
+                                closure.remove_binder().or_else(|()| {
+                                    mkerr("MergeReturnTypeIsDependent")
+                                })?
                             }
                             _ => return mkerr("NotAFunction"),
                         }
