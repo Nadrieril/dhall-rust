@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use crate::semantics::phase::resolve::ImportStack;
+use crate::semantics::resolve::ImportStack;
 use crate::semantics::Value;
 use crate::syntax::{Import, ParseError};
 use crate::NormalizedExpr;

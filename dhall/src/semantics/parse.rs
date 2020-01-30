@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::error::Error;
-use crate::semantics::phase::resolve::ImportRoot;
+use crate::semantics::resolve::ImportRoot;
 use crate::syntax::binary;
 use crate::syntax::parse_expr;
 use crate::Parsed;

@@ -21,9 +21,9 @@ use std::fmt::Display;
 use std::path::Path;
 
 use crate::error::{EncodeError, Error, ImportError, TypeError};
-use crate::semantics::phase::parse;
-use crate::semantics::phase::resolve;
-use crate::semantics::phase::resolve::ImportRoot;
+use crate::semantics::parse;
+use crate::semantics::resolve;
+use crate::semantics::resolve::ImportRoot;
 use crate::semantics::{typecheck, typecheck_with, TyExpr, Value, ValueKind};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Const, Expr};
