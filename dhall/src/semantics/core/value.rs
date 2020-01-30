@@ -338,11 +338,7 @@ impl Value {
                 ))
             }
             self_kind => {
-                let self_kind = self_kind
-                    .map_ref_with_special_handling_of_binders(
-                        |v| v.to_tyexpr(venv),
-                        |_, _, v| v.to_tyexpr(venv.insert()),
-                    );
+                let self_kind = self_kind.map_ref(|v| v.to_tyexpr(venv));
                 let expr = match self_kind {
                     ValueKind::Var(..)
                     | ValueKind::LamClosure { .. }
@@ -537,7 +533,7 @@ impl ValueKind<Value> {
 }
 
 impl<V> ValueKind<V> {
-    pub(crate) fn traverse_ref_with_special_handling_of_binders<'a, V2, E>(
+    fn traverse_ref_with_special_handling_of_binders<'a, V2, E>(
         &'a self,
         visit_val: impl FnMut(&'a V) -> Result<V2, E>,
         visit_under_binder: impl for<'b> FnMut(
@@ -555,7 +551,7 @@ impl<V> ValueKind<V> {
         .visit(self)
     }
 
-    pub(crate) fn map_ref_with_special_handling_of_binders<'a, V2>(
+    fn map_ref_with_special_handling_of_binders<'a, V2>(
         &'a self,
         mut map_val: impl FnMut(&'a V) -> V2,
         mut map_under_binder: impl for<'b> FnMut(&'a Binder, &'b V, &'a V) -> V2,
@@ -567,8 +563,7 @@ impl<V> ValueKind<V> {
         ))
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn map_ref<'a, V2>(
+    fn map_ref<'a, V2>(
         &'a self,
         map_val: impl Fn(&'a V) -> V2,
     ) -> ValueKind<V2> {
