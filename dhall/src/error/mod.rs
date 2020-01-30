@@ -1,8 +1,8 @@
 use std::io::Error as IOError;
 
-use crate::semantics::core::value::Value;
 use crate::semantics::phase::resolve::ImportStack;
 use crate::semantics::phase::NormalizedExpr;
+use crate::semantics::Value;
 use crate::syntax::{Import, ParseError};
 
 pub type Result<T> = std::result::Result<T, Error>;

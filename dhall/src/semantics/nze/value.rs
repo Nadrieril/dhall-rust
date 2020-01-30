@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::core::var::Binder;
+use crate::semantics::nze::visitor;
 use crate::semantics::phase::normalize::{
     apply_any, normalize_tyexpr_whnf, normalize_whnf,
 };
 use crate::semantics::phase::{Normalized, NormalizedExpr, ToExprOptions};
+use crate::semantics::Binder;
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{
@@ -546,7 +547,6 @@ impl<V> ValueKind<V> {
             &'a V,
         ) -> Result<V2, E>,
     ) -> Result<ValueKind<V2>, E> {
-        use crate::semantics::visitor;
         use visitor::ValueKindVisitor;
         visitor::TraverseRefWithBindersVisitor {
             visit_val,
