@@ -62,7 +62,7 @@ impl NzEnv {
     pub fn lookup_val(&self, var: &AlphaVar) -> Value {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            NzEnvItem::Kept(ty) => Value::from_kind_and_type_whnf(
+            NzEnvItem::Kept(ty) => Value::from_kind_and_type(
                 ValueKind::Var(NzVar::new(idx)),
                 ty.clone(),
             ),

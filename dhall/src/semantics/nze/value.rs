@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::Binder;
 use crate::semantics::{
-    apply_any, normalize_tyexpr_whnf, normalize_whnf, squash_textlit,
+    apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
 };
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
@@ -16,34 +16,30 @@ use crate::syntax::{
 use crate::{Normalized, NormalizedExpr, ToExprOptions};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
-/// automatically. Uses a RefCell to share computation.
-/// Can optionally store a type from typechecking to preserve type information.
-/// If you compare for equality two `Value`s in WHNF, then equality will be up to alpha-equivalence
+/// automatically. Uses a Rc<RefCell> to share computation.
+/// If you compare for equality two `Value`s, then equality will be up to alpha-equivalence
 /// (renaming of bound variables) and beta-equivalence (normalization). It will recursively
 /// normalize as needed.
 #[derive(Clone)]
 pub(crate) struct Value(Rc<RefCell<ValueInternal>>);
 
-/// Invariant: if `form` is `WHNF`, `value` must be in Weak Head Normal Form
 #[derive(Debug)]
 struct ValueInternal {
     form: Form,
-    /// This is None if and only if `value` is `Sort` (which doesn't have a type)
+    /// This is None if and only if `form` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
 }
 
+/// A potentially un-evaluated expression. Once we get to WHNF we won't modify the form again, as
+/// explained in the doc for `ValueKind`.
 #[derive(Debug, Clone)]
 pub(crate) enum Form {
+    /// A totally unnormalized value.
     Thunk(Thunk),
-    /// No constraints; expression may not be normalized at all.
-    Unevaled(ValueKind),
-    /// Weak Head Normal Form, i.e. normalized up to the first constructor, but subexpressions may
-    /// not be normalized. This means that the first constructor of the contained ValueKind is the first
-    /// constructor of the final Normal Form (NF).
-    /// When all the Values in a ValueKind are in WHNF, and recursively so, then the
-    /// ValueKind is in NF. This is because WHNF ensures that we have the first constructor of the NF; so
-    /// if we have the first constructor of the NF at all levels, we actually have the NF.
+    /// A partially normalized value that may need to go through `normalize_one_layer`.
+    PartialExpr(ExprKind<Value, Normalized>),
+    /// A value in WHNF.
     WHNF(ValueKind),
 }
 
@@ -73,6 +69,13 @@ pub(crate) enum Closure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextLit(Vec<InterpolatedTextContents<Value>>);
 
+/// This represents a value in Weak Head Normal Form (WHNF). This means that the value is
+/// normalized up to the first constructor, but subexpressions may not be fully normalized.
+/// When all the Values in a ValueKind are in WHNF, and recursively so, then the ValueKind is in
+/// Normal Form (NF). This is because WHNF ensures that we have the first constructor of the NF; so
+/// if we have the first constructor of the NF at all levels, we actually have the NF.
+/// In particular, this means that once we get a `ValueKind`, it can be considered immutable, and
+/// we only need to recursively normalize its sub-`Value`s to get to the NF.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind {
     /// Closures
@@ -86,7 +89,6 @@ pub(crate) enum ValueKind {
         annot: Value,
         closure: Closure,
     },
-    // Invariant: in whnf, the evaluation must not be able to progress further.
     AppliedBuiltin(BuiltinClosure<Value>),
 
     Var(NzVar),
@@ -109,7 +111,7 @@ pub(crate) enum ValueKind {
     UnionLit(Label, Value, HashMap<Label, Option<Value>>, Value, Value),
     TextLit(TextLit),
     Equivalence(Value, Value),
-    // Invariant: in whnf, this must not contain a value captured by one of the variants above.
+    /// Invariant: evaluation must not be able to progress with `normalize_one_layer`?
     PartialExpr(ExprKind<Value, Normalized>),
 }
 
@@ -130,6 +132,7 @@ impl Value {
         }
         .into_value()
     }
+    /// Construct a Value from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
         ValueInternal {
             form: Form::Thunk(Thunk::new(env, tye.clone())),
@@ -138,10 +141,15 @@ impl Value {
         }
         .into_value()
     }
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
-        Value::new(Form::Unevaled(v), t, Span::Artificial)
+    /// Construct a Value from a partially normalized expression that's not in WHNF.
+    pub(crate) fn from_partial_expr(
+        e: ExprKind<Value, Normalized>,
+        t: Value,
+    ) -> Value {
+        Value::new(Form::PartialExpr(e), t, Span::Artificial)
     }
-    pub(crate) fn from_kind_and_type_whnf(v: ValueKind, t: Value) -> Value {
+    /// Make a Value from a ValueKind
+    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
         Value::new(Form::WHNF(v), t, Span::Artificial)
     }
     pub(crate) fn from_const(c: Const) -> Self {
@@ -188,7 +196,7 @@ impl Value {
     pub(crate) fn kind(&self) -> Ref<ValueKind> {
         self.normalize_whnf();
         Ref::map(self.as_internal(), |vint| match &vint.form {
-            Form::Thunk(..) | Form::Unevaled(..) => unreachable!(),
+            Form::Thunk(..) | Form::PartialExpr(..) => unreachable!(),
             Form::WHNF(k) => k,
         })
     }
@@ -228,7 +236,7 @@ impl Value {
     pub(crate) fn normalize_whnf(&self) {
         let borrow = self.as_internal();
         match borrow.form {
-            Form::Thunk(..) | Form::Unevaled(_) => {
+            Form::Thunk(..) | Form::PartialExpr(_) => {
                 drop(borrow);
                 self.as_internal_mut().normalize_whnf();
             }
@@ -248,10 +256,7 @@ impl Value {
             }
             _ => unreachable!("Internal type error"),
         };
-        Value::from_kind_and_type_whnf(
-            apply_any(self.clone(), v, &body_t),
-            body_t,
-        )
+        Value::from_kind_and_type(apply_any(self.clone(), v, &body_t), body_t)
     }
 
     /// In debug mode, panic if the provided type doesn't match the value's type.
@@ -398,12 +403,13 @@ impl ValueInternal {
 
     fn normalize_whnf(&mut self) {
         use std::mem::replace;
-        let dummy = Form::Unevaled(ValueKind::Const(Const::Type));
+        let dummy = Form::PartialExpr(ExprKind::Const(Const::Type));
         self.form = match replace(&mut self.form, dummy) {
             Form::Thunk(th) => Form::WHNF(th.eval().kind().clone()),
-            Form::Unevaled(kind) => {
+            Form::PartialExpr(e) => {
                 Form::WHNF(match &self.ty {
-                    Some(ty) => normalize_whnf(kind, &ty),
+                    // TODO: env
+                    Some(ty) => normalize_one_layer(e, &ty, &NzEnv::new()),
                     // `value` is `Sort`
                     None => ValueKind::Const(Const::Sort),
                 })
@@ -413,11 +419,11 @@ impl ValueInternal {
         };
     }
     fn normalize_nf(&mut self) {
-        if let Form::Thunk(..) | Form::Unevaled(_) = self.form {
+        if let Form::Thunk(..) | Form::PartialExpr(_) = self.form {
             self.normalize_whnf();
         }
         match &mut self.form {
-            Form::Thunk(..) | Form::Unevaled(_) => unreachable!(),
+            Form::Thunk(..) | Form::PartialExpr(_) => unreachable!(),
             Form::WHNF(k) => k.normalize_mut(),
         }
     }
@@ -451,9 +457,10 @@ impl ValueKind {
             ValueKind::NEOptionalLit(th) => {
                 th.normalize_mut();
             }
-            ValueKind::LamClosure { annot, .. }
-            | ValueKind::PiClosure { annot, .. } => {
+            ValueKind::LamClosure { annot, closure, .. }
+            | ValueKind::PiClosure { annot, closure, .. } => {
                 annot.normalize_mut();
+                closure.normalize_mut();
             }
             ValueKind::AppliedBuiltin(closure) => closure.normalize_mut(),
             ValueKind::NEListLit(elts) => {
@@ -553,6 +560,8 @@ impl Closure {
         }
     }
 
+    // TODO: somehow normalize the body. Might require to pass an env.
+    pub fn normalize_mut(&mut self) {}
     /// Convert this closure to a TyExpr
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
         self.apply_var(NzVar::new(venv.size()))
@@ -665,9 +674,9 @@ impl std::fmt::Debug for Value {
                 x.field("thunk", th);
                 x
             }
-            Form::Unevaled(kind) => {
-                let mut x = fmt.debug_struct(&format!("Value@Unevaled"));
-                x.field("kind", kind);
+            Form::PartialExpr(e) => {
+                let mut x = fmt.debug_struct(&format!("Value@PartialExpr"));
+                x.field("expr", e);
                 x
             }
             Form::WHNF(kind) => {

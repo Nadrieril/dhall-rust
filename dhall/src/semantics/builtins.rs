@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 /// A partially applied builtin.
-/// Invariant: TODO
+/// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinClosure<Value> {
     pub env: NzEnv,
@@ -41,9 +41,8 @@ impl BuiltinClosure<Value> {
         let types = self.types.iter().cloned().chain(once(f_ty)).collect();
         apply_builtin(self.b, args, ret_ty, types, self.env.clone())
     }
-    pub fn ensure_whnf(self, ret_ty: &Value) -> ValueKind {
-        apply_builtin(self.b, self.args, ret_ty, self.types, self.env)
-    }
+    /// This doesn't break the invariant because we already checked that the appropriate arguments
+    /// did not normalize to something that allows evaluation to proceed.
     pub fn normalize_mut(&mut self) {
         for x in self.args.iter_mut() {
             x.normalize_mut();

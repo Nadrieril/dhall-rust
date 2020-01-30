@@ -208,12 +208,12 @@ fn apply_binop<'a>(
                 _ => unreachable!("Internal type error"),
             };
             let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |k, v1, v2| {
-                Ok(Value::from_kind_and_type(
-                    ValueKind::PartialExpr(ExprKind::BinOp(
+                Ok(Value::from_partial_expr(
+                    ExprKind::BinOp(
                         RecursiveRecordMerge,
                         v1.clone(),
                         v2.clone(),
-                    )),
+                    ),
                     kts.get(k).expect("Internal type error").clone(),
                 ))
             })?;
@@ -226,12 +226,12 @@ fn apply_binop<'a>(
                 kts_y,
                 // If the Label exists for both records, then we hit the recursive case.
                 |_, l: &Value, r: &Value| {
-                    Ok(Value::from_kind_and_type(
-                        ValueKind::PartialExpr(ExprKind::BinOp(
+                    Ok(Value::from_partial_expr(
+                        ExprKind::BinOp(
                             RecursiveRecordTypeMerge,
                             l.clone(),
                             r.clone(),
-                        )),
+                        ),
                         ty.clone(),
                     ))
                 },
@@ -444,16 +444,6 @@ pub(crate) fn normalize_one_layer(
     }
 }
 
-/// Normalize a ValueKind into WHNF
-pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
-    match v {
-        ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
-        ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
-        // All other cases are already in WHNF
-        v => v,
-    }
-}
-
 /// Normalize a TyExpr into WHNF
 pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
     let ty = match tye.get_type() {
@@ -490,6 +480,5 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> Value {
         }
     };
 
-    // dbg!(tye.kind(), env, &kind);
-    Value::from_kind_and_type_whnf(kind, ty)
+    Value::from_kind_and_type(kind, ty)
 }
