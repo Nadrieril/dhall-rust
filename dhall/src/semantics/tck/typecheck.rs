@@ -94,7 +94,7 @@ fn type_one_layer(
         }
         ExprKind::EmptyListLit(t) => {
             let t = t.normalize_nf(env.as_nzenv());
-            match &*t.as_whnf() {
+            match &*t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     args,
@@ -189,7 +189,7 @@ fn type_one_layer(
             Value::from_const(k)
         }
         ExprKind::Field(scrut, x) => {
-            match &*scrut.get_type()?.as_whnf() {
+            match &*scrut.get_type()?.kind() {
                 ValueKind::RecordType(kts) => match kts.get(&x) {
                     Some(tth) => tth.clone(),
                     None => return mkerr("MissingRecordField"),
@@ -197,7 +197,7 @@ fn type_one_layer(
                 // TODO: branch here only when scrut.get_type() is a Const
                 _ => {
                     let scrut_nf = scrut.normalize_nf(env.as_nzenv());
-                    let scrut_nf_borrow = scrut_nf.as_whnf();
+                    let scrut_nf_borrow = scrut_nf.kind();
                     match &*scrut_nf_borrow {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
@@ -244,7 +244,7 @@ fn type_one_layer(
         }
         ExprKind::Assert(t) => {
             let t = t.normalize_whnf(env.as_nzenv());
-            match &*t.as_whnf() {
+            match &*t.kind() {
                 ValueKind::Equivalence(x, y) if x == y => {}
                 ValueKind::Equivalence(..) => return mkerr("AssertMismatch"),
                 _ => return mkerr("AssertMustTakeEquivalence"),
@@ -253,7 +253,7 @@ fn type_one_layer(
         }
         ExprKind::App(f, arg) => {
             let tf = f.get_type()?;
-            let tf_borrow = tf.as_whnf();
+            let tf_borrow = tf.kind();
             match &*tf_borrow {
                 ValueKind::PiClosure { annot, closure, .. } => {
                     if arg.get_type()? != *annot {
@@ -275,9 +275,7 @@ fn type_one_layer(
             }
         }
         ExprKind::BoolIf(x, y, z) => {
-            if *x.get_type()?.as_whnf()
-                != ValueKind::from_builtin(Builtin::Bool)
-            {
+            if *x.get_type()?.kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return mkerr("InvalidPredicate");
             }
             if y.get_type()?.get_type()?.as_const() != Some(Const::Type) {
@@ -297,14 +295,14 @@ fn type_one_layer(
             let y_type = y.get_type()?;
 
             // Extract the LHS record type
-            let x_type_borrow = x_type.as_whnf();
+            let x_type_borrow = x_type.kind();
             let kts_x = match &*x_type_borrow {
                 ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("MustCombineRecord"),
             };
 
             // Extract the RHS record type
-            let y_type_borrow = y_type.as_whnf();
+            let y_type_borrow = y_type.kind();
             let kts_y = match &*y_type_borrow {
                 ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("MustCombineRecord"),
@@ -336,8 +334,8 @@ fn type_one_layer(
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
             let x_val = x.normalize_whnf(env.as_nzenv());
             let y_val = y.normalize_whnf(env.as_nzenv());
-            let x_val_borrow = x_val.as_whnf();
-            let y_val_borrow = y_val.as_whnf();
+            let x_val_borrow = x_val.kind();
+            let y_val_borrow = y_val.kind();
             let kts_x = match &*x_val_borrow {
                 ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("RecordTypeMergeRequiresRecordType"),
@@ -366,7 +364,7 @@ fn type_one_layer(
         }
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             let l_ty = l.get_type()?;
-            match &*l_ty.as_whnf() {
+            match &*l_ty.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     ..
@@ -418,14 +416,14 @@ fn type_one_layer(
         }
         ExprKind::Merge(record, union, type_annot) => {
             let record_type = record.get_type()?;
-            let record_borrow = record_type.as_whnf();
+            let record_borrow = record_type.kind();
             let handlers = match &*record_borrow {
                 ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("Merge1ArgMustBeRecord"),
             };
 
             let union_type = union.get_type()?;
-            let union_borrow = union_type.as_whnf();
+            let union_borrow = union_type.kind();
             let variants = match &*union_borrow {
                 ValueKind::UnionType(kts) => Cow::Borrowed(kts),
                 ValueKind::AppliedBuiltin(BuiltinClosure {
@@ -447,7 +445,7 @@ fn type_one_layer(
                 let handler_return_type = match variants.get(x) {
                     // Union alternative with type
                     Some(Some(variant_type)) => {
-                        let handler_type_borrow = handler_type.as_whnf();
+                        let handler_type_borrow = handler_type.kind();
                         match &*handler_type_borrow {
                             ValueKind::PiClosure { closure, annot, .. } => {
                                 if variant_type != annot {
@@ -498,7 +496,7 @@ fn type_one_layer(
         ExprKind::ToMap(_, _) => unimplemented!("toMap"),
         ExprKind::Projection(record, labels) => {
             let record_type = record.get_type()?;
-            let record_type_borrow = record_type.as_whnf();
+            let record_type_borrow = record_type.kind();
             let kts = match &*record_type_borrow {
                 ValueKind::RecordType(kts) => kts,
                 _ => return mkerr("ProjectionMustBeRecord"),

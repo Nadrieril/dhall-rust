@@ -157,7 +157,7 @@ impl Value {
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
-        match &*self.as_whnf() {
+        match &*self.kind() {
             ValueKind::Const(c) => Some(*c),
             _ => None,
         }
@@ -180,7 +180,7 @@ impl Value {
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
-    pub(crate) fn as_whnf(&self) -> Ref<ValueKind<Value>> {
+    pub(crate) fn kind(&self) -> Ref<ValueKind<Value>> {
         self.normalize_whnf();
         self.as_kind()
     }
@@ -194,7 +194,7 @@ impl Value {
         self.to_tyexpr_noenv().to_expr(opts)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind<Value> {
-        self.as_whnf().clone()
+        self.kind().clone()
     }
     /// Before discarding type information, check that it matches the expected return type.
     pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind<Value> {
@@ -233,7 +233,7 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        let body_t = match &*self.get_type_not_sort().as_whnf() {
+        let body_t = match &*self.get_type_not_sort().kind() {
             ValueKind::PiClosure { annot, closure, .. } => {
                 v.check_type(annot);
                 closure.apply(v.clone())
@@ -617,7 +617,7 @@ impl Closure {
 // TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        *self.as_whnf() == *other.as_whnf()
+        *self.kind() == *other.kind()
     }
 }
 impl std::cmp::Eq for Value {}

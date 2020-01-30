@@ -10,7 +10,7 @@ use crate::syntax::{
 };
 
 pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind<Value> {
-    let f_borrow = f.as_whnf();
+    let f_borrow = f.kind();
     match &*f_borrow {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).to_whnf_check_type(ty)
@@ -47,7 +47,7 @@ pub(crate) fn squash_textlit(
             match contents {
                 Text(s) => crnt_str.push_str(&s),
                 Expr(e) => {
-                    let e_borrow = e.as_whnf();
+                    let e_borrow = e.kind();
                     match &*e_borrow {
                         ValueKind::TextLit(elts2) => {
                             inner(elts2.iter().cloned(), crnt_str, ret)
@@ -123,8 +123,8 @@ fn apply_binop<'a>(
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
         TextLit,
     };
-    let x_borrow = x.as_whnf();
-    let y_borrow = y.as_whnf();
+    let x_borrow = x.kind();
+    let y_borrow = y.kind();
     Some(match (o, &*x_borrow, &*y_borrow) {
         (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
         (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
@@ -206,7 +206,7 @@ fn apply_binop<'a>(
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let ty_borrow = ty.as_whnf();
+            let ty_borrow = ty.kind();
             let kts = match &*ty_borrow {
                 RecordType(kts) => kts,
                 _ => unreachable!("Internal type error"),
@@ -286,7 +286,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
-            let arg = match &*t.as_whnf() {
+            let arg = match &*t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     args,
@@ -319,13 +319,13 @@ pub(crate) fn normalize_one_layer(
             }
         }
         ExprKind::BoolIf(ref b, ref e1, ref e2) => {
-            let b_borrow = b.as_whnf();
+            let b_borrow = b.kind();
             match &*b_borrow {
                 BoolLit(true) => Ret::ValueRef(e1),
                 BoolLit(false) => Ret::ValueRef(e2),
                 _ => {
-                    let e1_borrow = e1.as_whnf();
-                    let e2_borrow = e2.as_whnf();
+                    let e1_borrow = e1.kind();
+                    let e2_borrow = e2.kind();
                     match (&*e1_borrow, &*e2_borrow) {
                         // Simplify `if b then True else False`
                         (BoolLit(true), BoolLit(false)) => Ret::ValueRef(b),
@@ -349,7 +349,7 @@ pub(crate) fn normalize_one_layer(
             Ret::ValueKind(RecordLit(HashMap::new()))
         }
         ExprKind::Projection(ref v, ref ls) => {
-            let v_borrow = v.as_whnf();
+            let v_borrow = v.kind();
             match &*v_borrow {
                 RecordLit(kvs) => Ret::ValueKind(RecordLit(
                     ls.iter()
@@ -365,7 +365,7 @@ pub(crate) fn normalize_one_layer(
             }
         }
         ExprKind::Field(ref v, ref l) => {
-            let v_borrow = v.as_whnf();
+            let v_borrow = v.kind();
             match &*v_borrow {
                 RecordLit(kvs) => match kvs.get(l) {
                     Some(r) => Ret::Value(r.clone()),
@@ -391,8 +391,8 @@ pub(crate) fn normalize_one_layer(
         ExprKind::Completion(_, _) => unimplemented!("record completion"),
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
-            let handlers_borrow = handlers.as_whnf();
-            let variant_borrow = variant.as_whnf();
+            let handlers_borrow = handlers.kind();
+            let variant_borrow = variant.kind();
             match (&*handlers_borrow, &*variant_borrow) {
                 (RecordLit(kvs), UnionConstructor(l, _, _)) => match kvs.get(l)
                 {

@@ -290,31 +290,31 @@ fn apply_builtin(
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),
-        (NaturalIsZero, [n]) => match &*n.as_whnf() {
+        (NaturalIsZero, [n]) => match &*n.kind() {
             NaturalLit(n) => Ret::ValueKind(BoolLit(*n == 0)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalEven, [n]) => match &*n.as_whnf() {
+        (NaturalEven, [n]) => match &*n.kind() {
             NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 == 0)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalOdd, [n]) => match &*n.as_whnf() {
+        (NaturalOdd, [n]) => match &*n.kind() {
             NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 != 0)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalToInteger, [n]) => match &*n.as_whnf() {
+        (NaturalToInteger, [n]) => match &*n.kind() {
             NaturalLit(n) => Ret::ValueKind(IntegerLit(*n as isize)),
             _ => Ret::DoneAsIs,
         },
         (NaturalShow, [n]) => {
-            match &*n.as_whnf() {
+            match &*n.kind() {
                 NaturalLit(n) => Ret::ValueKind(TextLit(vec![
                     InterpolatedTextContents::Text(n.to_string()),
                 ])),
                 _ => Ret::DoneAsIs,
             }
         }
-        (NaturalSubtract, [a, b]) => match (&*a.as_whnf(), &*b.as_whnf()) {
+        (NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
             (NaturalLit(a), NaturalLit(b)) => {
                 Ret::ValueKind(NaturalLit(if b > a { b - a } else { 0 }))
             }
@@ -323,7 +323,7 @@ fn apply_builtin(
             _ if a == b => Ret::ValueKind(NaturalLit(0)),
             _ => Ret::DoneAsIs,
         },
-        (IntegerShow, [n]) => match &*n.as_whnf() {
+        (IntegerShow, [n]) => match &*n.kind() {
             IntegerLit(n) => {
                 let s = if *n < 0 {
                     n.to_string()
@@ -334,31 +334,31 @@ fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
-        (IntegerToDouble, [n]) => match &*n.as_whnf() {
+        (IntegerToDouble, [n]) => match &*n.kind() {
             IntegerLit(n) => {
                 Ret::ValueKind(DoubleLit(NaiveDouble::from(*n as f64)))
             }
             _ => Ret::DoneAsIs,
         },
-        (IntegerNegate, [n]) => match &*n.as_whnf() {
+        (IntegerNegate, [n]) => match &*n.kind() {
             IntegerLit(n) => Ret::ValueKind(IntegerLit(-n)),
             _ => Ret::DoneAsIs,
         },
-        (IntegerClamp, [n]) => match &*n.as_whnf() {
+        (IntegerClamp, [n]) => match &*n.kind() {
             IntegerLit(n) => {
                 Ret::ValueKind(NaturalLit((*n).try_into().unwrap_or(0)))
             }
             _ => Ret::DoneAsIs,
         },
         (DoubleShow, [n]) => {
-            match &*n.as_whnf() {
+            match &*n.kind() {
                 DoubleLit(n) => Ret::ValueKind(TextLit(vec![
                     InterpolatedTextContents::Text(n.to_string()),
                 ])),
                 _ => Ret::DoneAsIs,
             }
         }
-        (TextShow, [v]) => match &*v.as_whnf() {
+        (TextShow, [v]) => match &*v.kind() {
             TextLit(elts) => {
                 match elts.as_slice() {
                     // Empty string literal.
@@ -390,26 +390,26 @@ fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
-        (ListLength, [_, l]) => match &*l.as_whnf() {
+        (ListLength, [_, l]) => match &*l.kind() {
             EmptyListLit(_) => Ret::ValueKind(NaturalLit(0)),
             NEListLit(xs) => Ret::ValueKind(NaturalLit(xs.len())),
             _ => Ret::DoneAsIs,
         },
-        (ListHead, [_, l]) => match &*l.as_whnf() {
+        (ListHead, [_, l]) => match &*l.kind() {
             EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => {
                 Ret::ValueKind(NEOptionalLit(xs.iter().next().unwrap().clone()))
             }
             _ => Ret::DoneAsIs,
         },
-        (ListLast, [_, l]) => match &*l.as_whnf() {
+        (ListLast, [_, l]) => match &*l.kind() {
             EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => Ret::ValueKind(NEOptionalLit(
                 xs.iter().rev().next().unwrap().clone(),
             )),
             _ => Ret::DoneAsIs,
         },
-        (ListReverse, [_, l]) => match &*l.as_whnf() {
+        (ListReverse, [_, l]) => match &*l.kind() {
             EmptyListLit(n) => Ret::ValueKind(EmptyListLit(n.clone())),
             NEListLit(xs) => {
                 Ret::ValueKind(NEListLit(xs.iter().rev().cloned().collect()))
@@ -417,7 +417,7 @@ fn apply_builtin(
             _ => Ret::DoneAsIs,
         },
         (ListIndexed, [_, l]) => {
-            let l_whnf = l.as_whnf();
+            let l_whnf = l.kind();
             match &*l_whnf {
                 EmptyListLit(_) | NEListLit(_) => {
                     // Extract the type of the list elements
@@ -484,7 +484,7 @@ fn apply_builtin(
                     .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
             )
         }
-        (ListFold, [_, l, _, cons, nil]) => match &*l.as_whnf() {
+        (ListFold, [_, l, _, cons, nil]) => match &*l.kind() {
             EmptyListLit(_) => Ret::Value(nil.clone()),
             NEListLit(xs) => {
                 let mut v = nil.clone();
@@ -513,7 +513,7 @@ fn apply_builtin(
                     ),
             )
         }
-        (OptionalFold, [_, v, _, just, nothing]) => match &*v.as_whnf() {
+        (OptionalFold, [_, v, _, just, nothing]) => match &*v.kind() {
             EmptyOptionalLit(_) => Ret::Value(nothing.clone()),
             NEOptionalLit(x) => Ret::Value(just.app(x.clone())),
             _ => Ret::DoneAsIs,
@@ -530,7 +530,7 @@ fn apply_builtin(
                 ),
         ),
 
-        (NaturalFold, [n, t, succ, zero]) => match &*n.as_whnf() {
+        (NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
             NaturalLit(0) => Ret::Value(zero.clone()),
             NaturalLit(n) => {
                 let fold = Value::from_builtin(NaturalFold)
