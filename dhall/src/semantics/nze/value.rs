@@ -623,10 +623,9 @@ impl TextLit {
 }
 
 /// Compare two values for equality modulo alpha/beta-equivalence.
-// TODO: use Rc comparison to shortcut on identical pointers
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        *self.kind() == *other.kind()
+        Rc::ptr_eq(&self.0, &other.0) || self.kind() == other.kind()
     }
 }
 impl std::cmp::Eq for Value {}
