@@ -269,7 +269,7 @@ fn type_one_layer(
                     let arg_nf = arg.normalize_nf(env.as_nzenv());
                     closure.apply(arg_nf)
                 }
-                _ => return mkerr(format!("apply to not Pi: {:?}", tf_borrow)),
+                _ => return mkerr(format!("apply to not Pi")),
             }
         }
         ExprKind::BoolIf(x, y, z) => {
@@ -447,12 +447,7 @@ fn type_one_layer(
                         match &*handler_type_borrow {
                             ValueKind::PiClosure { closure, annot, .. } => {
                                 if variant_type != annot {
-                                    // return mkerr("MergeHandlerTypeMismatch");
-                                    return mkerr(format!(
-                                        "MergeHandlerTypeMismatch: {:#?} != {:#?}",
-                                        variant_type,
-                                        annot
-                                    ));
+                                    return mkerr("MergeHandlerTypeMismatch");
                                 }
 
                                 let v = NzVar::fresh();
@@ -470,11 +465,7 @@ fn type_one_layer(
                     None => inferred_type = Some(handler_return_type),
                     Some(t) => {
                         if t != &handler_return_type {
-                            // return mkerr("MergeHandlerTypeMismatch");
-                            return mkerr(format!(
-                                "MergeHandlerTypeMismatch: {:#?} != {:#?}",
-                                t, handler_return_type,
-                            ));
+                            return mkerr("MergeHandlerTypeMismatch");
                         }
                     }
                 }
