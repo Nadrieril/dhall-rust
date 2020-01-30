@@ -1,8 +1,9 @@
 use crate::semantics::phase::Normalized;
-use crate::semantics::{type_with, NzEnv, Value, ValueKind};
+use crate::semantics::{typecheck, NzEnv, Value, ValueKind};
+use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
-    self, Builtin, Const, Expr, ExprKind, InterpolatedText,
+    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
     InterpolatedTextContents, Label, NaiveDouble, Span, UnspannedExpr, V,
 };
 use std::collections::HashMap;
@@ -36,7 +37,7 @@ macro_rules! make_type {
         ))
     };
     ({ $($label:ident : $ty:ident),* }) => {{
-        let mut kts = syntax::map::DupTreeMap::new();
+        let mut kts = DupTreeMap::new();
         $(
             kts.insert(
                 Label::from(stringify!($label)),
@@ -159,7 +160,7 @@ pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
 // Ad-hoc macro to help construct closures
 macro_rules! make_closure {
     (var($var:ident)) => {{
-        rc(ExprKind::Var(syntax::V(
+        rc(ExprKind::Var(V(
             Label::from(stringify!($var)).into(),
             0
         )))
@@ -190,7 +191,7 @@ macro_rules! make_closure {
     };
     (1 + $($v:tt)*) => {
         rc(ExprKind::BinOp(
-            syntax::BinOp::NaturalPlus,
+            BinOp::NaturalPlus,
             make_closure!($($v)*),
             rc(ExprKind::NaturalLit(1))
         ))
@@ -199,7 +200,7 @@ macro_rules! make_closure {
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
         rc(ExprKind::BinOp(
-            syntax::BinOp::ListAppend,
+            BinOp::ListAppend,
             rc(ExprKind::NEListLit(vec![head])),
             tail,
         ))
@@ -214,7 +215,7 @@ pub(crate) fn apply_builtin(
     types: Vec<Value>,
     env: NzEnv,
 ) -> ValueKind<Value> {
-    use syntax::Builtin::*;
+    use Builtin::*;
     use ValueKind::*;
 
     // Small helper enum
