@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::semantics::NzEnv;
 use crate::semantics::{
-    Binder, BuiltinClosure, Closure, TyExpr, TyExprKind, Value, ValueKind,
+    Binder, BuiltinClosure, Closure, TextLit, TyExpr, TyExprKind, Value,
+    ValueKind,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents,
@@ -121,7 +122,6 @@ fn apply_binop<'a>(
     };
     use ValueKind::{
         BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
-        TextLit,
     };
     let x_borrow = x.kind();
     let y_borrow = y.kind();
@@ -164,25 +164,21 @@ fn apply_binop<'a>(
             NEListLit(xs.iter().chain(ys.iter()).cloned().collect()),
         ),
 
-        (TextAppend, TextLit(x), _) if x.is_empty() => Ret::ValueRef(y),
-        (TextAppend, _, TextLit(y)) if y.is_empty() => Ret::ValueRef(x),
-        (TextAppend, TextLit(x), TextLit(y)) => Ret::ValueKind(TextLit(
-            squash_textlit(x.iter().chain(y.iter()).cloned()),
-        )),
-        (TextAppend, TextLit(x), _) => {
-            use std::iter::once;
-            let y = InterpolatedTextContents::Expr(y.clone());
-            Ret::ValueKind(TextLit(squash_textlit(
-                x.iter().cloned().chain(once(y)),
-            )))
+        (TextAppend, ValueKind::TextLit(x), _) if x.is_empty() => {
+            Ret::ValueRef(y)
         }
-        (TextAppend, _, TextLit(y)) => {
-            use std::iter::once;
-            let x = InterpolatedTextContents::Expr(x.clone());
-            Ret::ValueKind(TextLit(squash_textlit(
-                once(x).chain(y.iter().cloned()),
-            )))
+        (TextAppend, _, ValueKind::TextLit(y)) if y.is_empty() => {
+            Ret::ValueRef(x)
         }
+        (TextAppend, ValueKind::TextLit(x), ValueKind::TextLit(y)) => {
+            Ret::ValueKind(ValueKind::TextLit(x.concat(y)))
+        }
+        (TextAppend, ValueKind::TextLit(x), _) => Ret::ValueKind(
+            ValueKind::TextLit(x.concat(&TextLit::interpolate(y.clone()))),
+        ),
+        (TextAppend, _, ValueKind::TextLit(y)) => Ret::ValueKind(
+            ValueKind::TextLit(TextLit::interpolate(x.clone()).concat(y)),
+        ),
 
         (RightBiasedRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
             Ret::ValueRef(x)
@@ -258,8 +254,8 @@ pub(crate) fn normalize_one_layer(
 ) -> ValueKind {
     use ValueKind::{
         BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
-        NEOptionalLit, NaturalLit, RecordLit, RecordType, TextLit,
-        UnionConstructor, UnionLit, UnionType,
+        NEOptionalLit, NaturalLit, RecordLit, RecordType, UnionConstructor,
+        UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -309,13 +305,12 @@ pub(crate) fn normalize_one_layer(
             Ret::ValueKind(UnionType(kvs.into_iter().collect()))
         }
         ExprKind::TextLit(elts) => {
-            use InterpolatedTextContents::Expr;
-            let elts: Vec<_> = squash_textlit(elts.into_iter());
+            let tlit = TextLit::new(elts.into_iter());
             // Simplify bare interpolation
-            if let [Expr(th)] = elts.as_slice() {
-                Ret::Value(th.clone())
+            if let Some(v) = tlit.as_single_expr() {
+                Ret::Value(v.clone())
             } else {
-                Ret::ValueKind(TextLit(elts))
+                Ret::ValueKind(ValueKind::TextLit(tlit))
             }
         }
         ExprKind::BoolIf(ref b, ref e1, ref e2) => {
@@ -455,9 +450,6 @@ pub(crate) fn normalize_whnf(v: ValueKind, ty: &Value) -> ValueKind {
         ValueKind::AppliedBuiltin(closure) => closure.ensure_whnf(ty),
         ValueKind::PartialExpr(e) => normalize_one_layer(e, ty, &NzEnv::new()),
         ValueKind::Thunk(th) => th.eval().kind().clone(),
-        ValueKind::TextLit(elts) => {
-            ValueKind::TextLit(squash_textlit(elts.into_iter()))
-        }
         // All other cases are already in WHNF
         v => v,
     }

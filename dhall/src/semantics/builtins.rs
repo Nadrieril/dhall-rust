@@ -1,5 +1,5 @@
 use crate::semantics::{
-    typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
+    self, typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
@@ -301,14 +301,12 @@ fn apply_builtin(
             NaturalLit(n) => Ret::ValueKind(IntegerLit(*n as isize)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalShow, [n]) => {
-            match &*n.kind() {
-                NaturalLit(n) => Ret::ValueKind(TextLit(vec![
-                    InterpolatedTextContents::Text(n.to_string()),
-                ])),
-                _ => Ret::DoneAsIs,
-            }
-        }
+        (NaturalShow, [n]) => match &*n.kind() {
+            NaturalLit(n) => Ret::ValueKind(TextLit(
+                semantics::TextLit::from_text(n.to_string()),
+            )),
+            _ => Ret::DoneAsIs,
+        },
         (NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
             (NaturalLit(a), NaturalLit(b)) => {
                 Ret::ValueKind(NaturalLit(if b > a { b - a } else { 0 }))
@@ -325,7 +323,7 @@ fn apply_builtin(
                 } else {
                     format!("+{}", n)
                 };
-                Ret::ValueKind(TextLit(vec![InterpolatedTextContents::Text(s)]))
+                Ret::ValueKind(TextLit(semantics::TextLit::from_text(s)))
             }
             _ => Ret::DoneAsIs,
         },
@@ -345,42 +343,23 @@ fn apply_builtin(
             }
             _ => Ret::DoneAsIs,
         },
-        (DoubleShow, [n]) => {
-            match &*n.kind() {
-                DoubleLit(n) => Ret::ValueKind(TextLit(vec![
-                    InterpolatedTextContents::Text(n.to_string()),
-                ])),
-                _ => Ret::DoneAsIs,
-            }
-        }
+        (DoubleShow, [n]) => match &*n.kind() {
+            DoubleLit(n) => Ret::ValueKind(TextLit(
+                semantics::TextLit::from_text(n.to_string()),
+            )),
+            _ => Ret::DoneAsIs,
+        },
         (TextShow, [v]) => match &*v.kind() {
-            TextLit(elts) => {
-                match elts.as_slice() {
-                    // Empty string literal.
-                    [] => {
-                        // Printing InterpolatedText takes care of all the escaping
-                        let txt: InterpolatedText<Normalized> =
-                            std::iter::empty().collect();
-                        let s = txt.to_string();
-                        Ret::ValueKind(TextLit(vec![
-                            InterpolatedTextContents::Text(s),
-                        ]))
-                    }
-                    // If there are no interpolations (invariants ensure that when there are no
-                    // interpolations, there is a single Text item) in the literal.
-                    [InterpolatedTextContents::Text(s)] => {
-                        // Printing InterpolatedText takes care of all the escaping
-                        let txt: InterpolatedText<Normalized> =
-                            std::iter::once(InterpolatedTextContents::Text(
-                                s.clone(),
-                            ))
+            TextLit(tlit) => {
+                if let Some(s) = tlit.as_text() {
+                    // Printing InterpolatedText takes care of all the escaping
+                    let txt: InterpolatedText<Normalized> =
+                        std::iter::once(InterpolatedTextContents::Text(s))
                             .collect();
-                        let s = txt.to_string();
-                        Ret::ValueKind(TextLit(vec![
-                            InterpolatedTextContents::Text(s),
-                        ]))
-                    }
-                    _ => Ret::DoneAsIs,
+                    let s = txt.to_string();
+                    Ret::ValueKind(TextLit(semantics::TextLit::from_text(s)))
+                } else {
+                    Ret::DoneAsIs
                 }
             }
             _ => Ret::DoneAsIs,

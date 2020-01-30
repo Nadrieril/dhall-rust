@@ -4,7 +4,9 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::Binder;
-use crate::semantics::{apply_any, normalize_tyexpr_whnf, normalize_whnf};
+use crate::semantics::{
+    apply_any, normalize_tyexpr_whnf, normalize_whnf, squash_textlit,
+};
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{
@@ -67,6 +69,12 @@ pub(crate) enum Closure {
     ConstantClosure { env: NzEnv, body: TyExpr },
 }
 
+/// A text literal with interpolations.
+// Invariant: this must not contain interpolations that are themselves TextLits, and contiguous
+// text values must be merged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextLit(Vec<InterpolatedTextContents<Value>>);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueKind {
     /// Closures
@@ -101,9 +109,7 @@ pub(crate) enum ValueKind {
     UnionConstructor(Label, HashMap<Label, Option<Value>>, Value),
     // Also keep the type of the uniontype and the constructor around
     UnionLit(Label, Value, HashMap<Label, Option<Value>>, Value, Value),
-    // Invariant: in whnf, this must not contain interpolations that are themselves TextLits, and
-    // contiguous text values must be merged.
-    TextLit(Vec<InterpolatedTextContents<Value>>),
+    TextLit(TextLit),
     Equivalence(Value, Value),
     // Invariant: in whnf, this must not contain a value captured by one of the variants above.
     PartialExpr(ExprKind<Value, Normalized>),
@@ -492,11 +498,7 @@ impl ValueKind {
                     x.normalize_mut();
                 }
             }
-            ValueKind::TextLit(elts) => {
-                for x in elts.iter_mut() {
-                    x.map_mut(Value::normalize_mut);
-                }
-            }
+            ValueKind::TextLit(tlit) => tlit.normalize_mut(),
             ValueKind::Equivalence(x, y) => {
                 x.normalize_mut();
                 y.normalize_mut();
@@ -590,6 +592,60 @@ impl Closure {
                 // Ok: the variable is indeed ignored
                 Ok(self.apply_var(v))
             }
+        }
+    }
+}
+
+impl TextLit {
+    pub fn new(
+        elts: impl Iterator<Item = InterpolatedTextContents<Value>>,
+    ) -> Self {
+        TextLit(squash_textlit(elts))
+    }
+    pub fn interpolate(v: Value) -> TextLit {
+        TextLit(vec![InterpolatedTextContents::Expr(v)])
+    }
+    pub fn from_text(s: String) -> TextLit {
+        TextLit(vec![InterpolatedTextContents::Text(s)])
+    }
+
+    pub fn concat(&self, other: &TextLit) -> TextLit {
+        TextLit::new(self.iter().chain(other.iter()).cloned())
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    /// If the literal consists of only one interpolation and not text, return the interpolated
+    /// value.
+    pub fn as_single_expr(&self) -> Option<&Value> {
+        use InterpolatedTextContents::Expr;
+        if let [Expr(v)] = self.0.as_slice() {
+            Some(v)
+        } else {
+            None
+        }
+    }
+    /// If there are no interpolations, return the corresponding text value.
+    pub fn as_text(&self) -> Option<String> {
+        use InterpolatedTextContents::Text;
+        if self.is_empty() {
+            Some(String::new())
+        } else if let [Text(s)] = self.0.as_slice() {
+            Some(s.clone())
+        } else {
+            None
+        }
+    }
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = &InterpolatedTextContents<Value>> {
+        self.0.iter()
+    }
+    /// Normalize the contained values. This does not break the invariant because we have already
+    /// ensured that no contained values normalize to a TextLit.
+    pub fn normalize_mut(&mut self) {
+        for x in self.0.iter_mut() {
+            x.map_mut(Value::normalize_mut);
         }
     }
 }
