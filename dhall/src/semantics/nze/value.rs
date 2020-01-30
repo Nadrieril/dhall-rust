@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::nze::visitor;
 use crate::semantics::Binder;
 use crate::semantics::{apply_any, normalize_tyexpr_whnf, normalize_whnf};
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
@@ -276,62 +275,96 @@ impl Value {
     }
 
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
+        let map_uniontype = |kts: &HashMap<Label, Option<Value>>| {
+            ExprKind::UnionType(
+                kts.iter()
+                    .map(|(k, v)| {
+                        (k.clone(), v.as_ref().map(|v| v.to_tyexpr(venv)))
+                    })
+                    .collect(),
+            )
+        };
+
         let tye = match &*self.kind() {
             ValueKind::Var(v) => TyExprKind::Var(venv.lookup(v)),
-            ValueKind::LamClosure {
-                binder,
-                annot,
-                closure,
-            } => TyExprKind::Expr(ExprKind::Lam(
-                binder.to_label(),
-                annot.to_tyexpr(venv),
-                closure.to_tyexpr(venv),
-            )),
-            ValueKind::PiClosure {
-                binder,
-                annot,
-                closure,
-            } => TyExprKind::Expr(ExprKind::Pi(
-                binder.to_label(),
-                annot.to_tyexpr(venv),
-                closure.to_tyexpr(venv),
-            )),
             ValueKind::AppliedBuiltin(closure) => closure.to_tyexprkind(venv),
-            ValueKind::UnionConstructor(l, kts, t) => {
-                TyExprKind::Expr(ExprKind::Field(
-                    TyExpr::new(
-                        TyExprKind::Expr(ExprKind::UnionType(
-                            kts.into_iter()
-                                .map(|(k, v)| {
-                                    (
-                                        k.clone(),
-                                        v.as_ref().map(|v| v.to_tyexpr(venv)),
-                                    )
-                                })
-                                .collect(),
+            ValueKind::Thunk(th) => return th.to_tyexpr(venv),
+            self_kind => TyExprKind::Expr(match self_kind {
+                ValueKind::Var(..)
+                | ValueKind::AppliedBuiltin(..)
+                | ValueKind::Thunk(..) => unreachable!(),
+                ValueKind::LamClosure {
+                    binder,
+                    annot,
+                    closure,
+                } => ExprKind::Lam(
+                    binder.to_label(),
+                    annot.to_tyexpr(venv),
+                    closure.to_tyexpr(venv),
+                ),
+                ValueKind::PiClosure {
+                    binder,
+                    annot,
+                    closure,
+                } => ExprKind::Pi(
+                    binder.to_label(),
+                    annot.to_tyexpr(venv),
+                    closure.to_tyexpr(venv),
+                ),
+                ValueKind::Const(c) => ExprKind::Const(*c),
+                ValueKind::BoolLit(b) => ExprKind::BoolLit(*b),
+                ValueKind::NaturalLit(n) => ExprKind::NaturalLit(*n),
+                ValueKind::IntegerLit(n) => ExprKind::IntegerLit(*n),
+                ValueKind::DoubleLit(n) => ExprKind::DoubleLit(*n),
+                ValueKind::EmptyOptionalLit(n) => ExprKind::App(
+                    Value::from_builtin(Builtin::OptionalNone).to_tyexpr(venv),
+                    n.to_tyexpr(venv),
+                ),
+                ValueKind::NEOptionalLit(n) => {
+                    ExprKind::SomeLit(n.to_tyexpr(venv))
+                }
+                ValueKind::EmptyListLit(n) => {
+                    ExprKind::EmptyListLit(TyExpr::new(
+                        TyExprKind::Expr(ExprKind::App(
+                            Value::from_builtin(Builtin::List).to_tyexpr(venv),
+                            n.to_tyexpr(venv),
                         )),
+                        Some(Value::from_const(Const::Type)),
+                        Span::Artificial,
+                    ))
+                }
+                ValueKind::NEListLit(elts) => ExprKind::NEListLit(
+                    elts.iter().map(|v| v.to_tyexpr(venv)).collect(),
+                ),
+                ValueKind::TextLit(elts) => ExprKind::TextLit(
+                    elts.iter()
+                        .map(|t| t.map_ref(|v| v.to_tyexpr(venv)))
+                        .collect(),
+                ),
+                ValueKind::RecordLit(kvs) => ExprKind::RecordLit(
+                    kvs.iter()
+                        .map(|(k, v)| (k.clone(), v.to_tyexpr(venv)))
+                        .collect(),
+                ),
+                ValueKind::RecordType(kts) => ExprKind::RecordType(
+                    kts.iter()
+                        .map(|(k, v)| (k.clone(), v.to_tyexpr(venv)))
+                        .collect(),
+                ),
+                ValueKind::UnionType(kts) => map_uniontype(kts),
+                ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
+                    TyExpr::new(
+                        TyExprKind::Expr(map_uniontype(kts)),
                         Some(t.clone()),
                         Span::Artificial,
                     ),
                     l.clone(),
-                ))
-            }
-            ValueKind::UnionLit(l, v, kts, uniont, ctort) => {
-                TyExprKind::Expr(ExprKind::App(
+                ),
+                ValueKind::UnionLit(l, v, kts, uniont, ctort) => ExprKind::App(
                     TyExpr::new(
                         TyExprKind::Expr(ExprKind::Field(
                             TyExpr::new(
-                                TyExprKind::Expr(ExprKind::UnionType(
-                                    kts.into_iter()
-                                        .map(|(k, v)| {
-                                            (
-                                                k.clone(),
-                                                v.as_ref()
-                                                    .map(|v| v.to_tyexpr(venv)),
-                                            )
-                                        })
-                                        .collect(),
-                                )),
+                                TyExprKind::Expr(map_uniontype(kts)),
                                 Some(uniont.clone()),
                                 Span::Artificial,
                             ),
@@ -341,61 +374,14 @@ impl Value {
                         Span::Artificial,
                     ),
                     v.to_tyexpr(venv),
-                ))
-            }
-            ValueKind::Thunk(th) => return th.to_tyexpr(venv),
-            self_kind => {
-                let self_kind = self_kind.map_ref(|v| v.to_tyexpr(venv));
-                let expr = match self_kind {
-                    ValueKind::Var(..)
-                    | ValueKind::LamClosure { .. }
-                    | ValueKind::PiClosure { .. }
-                    | ValueKind::AppliedBuiltin(..)
-                    | ValueKind::UnionConstructor(..)
-                    | ValueKind::UnionLit(..)
-                    | ValueKind::Thunk(..) => unreachable!(),
-                    ValueKind::Const(c) => ExprKind::Const(c),
-                    ValueKind::BoolLit(b) => ExprKind::BoolLit(b),
-                    ValueKind::NaturalLit(n) => ExprKind::NaturalLit(n),
-                    ValueKind::IntegerLit(n) => ExprKind::IntegerLit(n),
-                    ValueKind::DoubleLit(n) => ExprKind::DoubleLit(n),
-                    ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                        Value::from_builtin(Builtin::OptionalNone)
-                            .to_tyexpr(venv),
-                        n,
-                    ),
-                    ValueKind::NEOptionalLit(n) => ExprKind::SomeLit(n),
-                    ValueKind::EmptyListLit(n) => {
-                        ExprKind::EmptyListLit(TyExpr::new(
-                            TyExprKind::Expr(ExprKind::App(
-                                Value::from_builtin(Builtin::List)
-                                    .to_tyexpr(venv),
-                                n,
-                            )),
-                            Some(Value::from_const(Const::Type)),
-                            Span::Artificial,
-                        ))
-                    }
-                    ValueKind::NEListLit(elts) => ExprKind::NEListLit(elts),
-                    ValueKind::RecordLit(kvs) => {
-                        ExprKind::RecordLit(kvs.into_iter().collect())
-                    }
-                    ValueKind::RecordType(kts) => {
-                        ExprKind::RecordType(kts.into_iter().collect())
-                    }
-                    ValueKind::UnionType(kts) => {
-                        ExprKind::UnionType(kts.into_iter().collect())
-                    }
-                    ValueKind::TextLit(elts) => {
-                        ExprKind::TextLit(elts.into_iter().collect())
-                    }
-                    ValueKind::Equivalence(x, y) => {
-                        ExprKind::BinOp(BinOp::Equivalence, x, y)
-                    }
-                    ValueKind::PartialExpr(e) => e,
-                };
-                TyExprKind::Expr(expr)
-            }
+                ),
+                ValueKind::Equivalence(x, y) => ExprKind::BinOp(
+                    BinOp::Equivalence,
+                    x.to_tyexpr(venv),
+                    y.to_tyexpr(venv),
+                ),
+                ValueKind::PartialExpr(e) => e.map_ref(|v| v.to_tyexpr(venv)),
+            }),
         };
 
         let self_ty = self.as_internal().ty.clone();
@@ -532,46 +518,6 @@ impl ValueKind<Value> {
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> ValueKind<Value> {
         ValueKind::AppliedBuiltin(BuiltinClosure::new(b, env))
-    }
-}
-
-impl<V> ValueKind<V> {
-    fn traverse_ref_with_special_handling_of_binders<'a, V2, E>(
-        &'a self,
-        visit_val: impl FnMut(&'a V) -> Result<V2, E>,
-        visit_under_binder: impl for<'b> FnMut(
-            &'a Binder,
-            &'b V,
-            &'a V,
-        ) -> Result<V2, E>,
-    ) -> Result<ValueKind<V2>, E> {
-        use visitor::ValueKindVisitor;
-        visitor::TraverseRefWithBindersVisitor {
-            visit_val,
-            visit_under_binder,
-        }
-        .visit(self)
-    }
-
-    fn map_ref_with_special_handling_of_binders<'a, V2>(
-        &'a self,
-        mut map_val: impl FnMut(&'a V) -> V2,
-        mut map_under_binder: impl for<'b> FnMut(&'a Binder, &'b V, &'a V) -> V2,
-    ) -> ValueKind<V2> {
-        use crate::syntax::trivial_result;
-        trivial_result(self.traverse_ref_with_special_handling_of_binders(
-            |x| Ok(map_val(x)),
-            |l, t, x| Ok(map_under_binder(l, t, x)),
-        ))
-    }
-
-    fn map_ref<'a, V2>(
-        &'a self,
-        map_val: impl Fn(&'a V) -> V2,
-    ) -> ValueKind<V2> {
-        self.map_ref_with_special_handling_of_binders(&map_val, |_, _, x| {
-            map_val(x)
-        })
     }
 }
 
