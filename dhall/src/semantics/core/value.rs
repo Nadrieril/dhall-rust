@@ -172,17 +172,12 @@ impl Value {
     fn as_internal_mut(&self) -> RefMut<ValueInternal> {
         self.0.borrow_mut()
     }
-    /// WARNING: The returned ValueKind may be entirely unnormalized, in particular it may just be an
-    /// unevaled PartialExpr. You probably want to use `as_whnf`.
-    pub(crate) fn as_kind(&self) -> Ref<ValueKind<Value>> {
-        Ref::map(self.as_internal(), ValueInternal::as_kind)
-    }
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
     /// panics.
     pub(crate) fn kind(&self) -> Ref<ValueKind<Value>> {
         self.normalize_whnf();
-        self.as_kind()
+        Ref::map(self.as_internal(), ValueInternal::as_kind)
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -266,7 +261,7 @@ impl Value {
     }
 
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
-        let tye = match &*self.as_kind() {
+        let tye = match &*self.kind() {
             ValueKind::Var(v) => TyExprKind::Var(venv.lookup(v)),
             ValueKind::LamClosure {
                 binder,
