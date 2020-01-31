@@ -1,9 +1,8 @@
-use once_cell::unsync::OnceCell;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
+use crate::semantics::nze::lazy;
 use crate::semantics::Binder;
 use crate::semantics::{
     apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
@@ -26,10 +25,7 @@ pub(crate) struct Value(Rc<ValueInternal>);
 
 #[derive(Debug)]
 struct ValueInternal {
-    /// Exactly one of `thunk` of `kind` must be set at a given time.
-    /// Once `thunk` is unset and `kind` is set, we never go back.
-    thunk: RefCell<Option<Thunk>>,
-    kind: OnceCell<ValueKind>,
+    kind: lazy::Lazy<Thunk, ValueKind>,
     /// This is None if and only if `form` is `Sort` (which doesn't have a type)
     ty: Option<Value>,
     span: Span,
@@ -367,19 +363,15 @@ impl Value {
 
 impl ValueInternal {
     fn from_whnf(k: ValueKind, ty: Option<Value>, span: Span) -> Self {
-        let kind = OnceCell::new();
-        kind.set(k).unwrap();
         ValueInternal {
-            thunk: RefCell::new(None),
-            kind,
+            kind: lazy::Lazy::new_completed(k),
             ty,
             span,
         }
     }
     fn from_thunk(th: Thunk, ty: Option<Value>, span: Span) -> Self {
         ValueInternal {
-            thunk: RefCell::new(Some(th)),
-            kind: OnceCell::new(),
+            kind: lazy::Lazy::new(th),
             ty,
             span,
         }
@@ -389,21 +381,13 @@ impl ValueInternal {
     }
 
     fn kind(&self) -> &ValueKind {
-        if self.kind.get().is_none() {
-            let thunk = self.thunk.borrow_mut().take().unwrap();
-            self.kind.set(thunk.eval()).unwrap();
-        }
-        self.kind.get().unwrap()
+        &self.kind
     }
     fn normalize(&self) {
         self.kind().normalize();
     }
-    // Avoids a RefCell lock
+    // TODO: deprecated
     fn normalize_mut(&mut self) {
-        if self.kind.get().is_none() {
-            let thunk = RefCell::get_mut(&mut self.thunk).take().unwrap();
-            self.kind.set(thunk.eval()).unwrap();
-        }
         self.normalize();
     }
 
@@ -622,6 +606,12 @@ impl TextLit {
     }
 }
 
+impl lazy::Eval<ValueKind> for Thunk {
+    fn eval(self) -> ValueKind {
+        self.eval()
+    }
+}
+
 /// Compare two values for equality modulo alpha/beta-equivalence.
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -650,19 +640,12 @@ impl std::cmp::Eq for Closure {}
 impl std::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let vint: &ValueInternal = &self.0;
-        let mut x = if let Some(kind) = vint.kind.get() {
-            if let ValueKind::Const(c) = kind {
-                return write!(fmt, "{:?}", c);
-            } else {
-                let mut x = fmt.debug_struct(&format!("Value@WHNF"));
-                x.field("kind", kind);
-                x
-            }
-        } else {
-            let mut x = fmt.debug_struct(&format!("Value@Thunk"));
-            x.field("thunk", vint.thunk.borrow().as_ref().unwrap());
-            x
-        };
+        let kind = vint.kind();
+        if let ValueKind::Const(c) = kind {
+            return write!(fmt, "{:?}", c);
+        }
+        let mut x = fmt.debug_struct(&format!("Value@WHNF"));
+        x.field("kind", kind);
         if let Some(ty) = vint.ty.as_ref() {
             x.field("type", &ty);
         } else {

@@ -1,4 +1,5 @@
 pub mod env;
+pub mod lazy;
 pub mod normalize;
 pub mod value;
 pub mod var;
