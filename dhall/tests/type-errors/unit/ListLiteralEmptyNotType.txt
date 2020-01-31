@@ -1,13 +1,1 @@
- --> 1:6
-  |
-1 | [] : List Type␊
-  |      ^--^
-  |
-  = Type error: Wrong type of function argument
- --> 1:11
-  |
-1 | [] : List Type␊
-  |           ^--^
-  |
-  = This argument has type Kind
-[unknown location] But the function expected an argument of type Type
+Type error: Unhandled error: function annot mismatch: (Type : Kind) : Type

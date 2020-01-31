@@ -1,6 +1,1 @@
- --> 1:1
-  |
-1 | True True␊
-  | ^--^
-  |
-  = Type error: Not a function
+Type error: Unhandled error: apply to not Pi

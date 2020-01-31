@@ -3,10 +3,10 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::error::Error;
-use crate::semantics::phase::resolve::ImportRoot;
-use crate::semantics::phase::Parsed;
+use crate::semantics::resolve::ImportRoot;
 use crate::syntax::binary;
 use crate::syntax::parse_expr;
+use crate::Parsed;
 
 pub(crate) fn parse_file(f: &Path) -> Result<Parsed, Error> {
     let mut buffer = String::new();

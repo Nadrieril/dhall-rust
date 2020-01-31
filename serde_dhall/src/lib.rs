@@ -181,14 +181,14 @@ pub use value::Value;
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::semantics::phase::{NormalizedExpr, Parsed, Typed};
+    use dhall::{Normalized, NormalizedExpr, Parsed};
     use dhall::syntax::Builtin;
 
     use super::de::{Error, Result};
 
     /// A Dhall value
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Value(Typed);
+    pub struct Value(Normalized);
 
     impl Value {
         pub fn from_str(s: &str, ty: Option<&Value>) -> Result<Self> {
@@ -201,38 +201,38 @@ pub mod value {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(t.as_typed())?,
+                Some(t) => resolved.typecheck_with(t.as_normalized())?,
             };
-            Ok(Value(typed))
+            Ok(Value(typed.normalize()))
         }
         pub(crate) fn to_expr(&self) -> NormalizedExpr {
-            self.0.normalize_to_expr()
+            self.0.to_expr()
         }
-        pub(crate) fn as_typed(&self) -> &Typed {
+        pub(crate) fn as_normalized(&self) -> &Normalized {
             &self.0
         }
 
         pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Value(Typed::make_builtin_type(b))
+            Value(Normalized::make_builtin_type(b))
         }
         pub(crate) fn make_optional_type(t: Value) -> Self {
-            Value(Typed::make_optional_type(t.0))
+            Value(Normalized::make_optional_type(t.0))
         }
         pub(crate) fn make_list_type(t: Value) -> Self {
-            Value(Typed::make_list_type(t.0))
+            Value(Normalized::make_list_type(t.0))
         }
         // Made public for the StaticType derive macro
         #[doc(hidden)]
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Value)>,
         ) -> Self {
-            Value(Typed::make_record_type(kts.map(|(k, t)| (k, t.0))))
+            Value(Normalized::make_record_type(kts.map(|(k, t)| (k, t.0))))
         }
         #[doc(hidden)]
         pub fn make_union_type(
             kts: impl Iterator<Item = (String, Option<Value>)>,
         ) -> Self {
-            Value(Typed::make_union_type(
+            Value(Normalized::make_union_type(
                 kts.map(|(k, t)| (k, t.map(|t| t.0))),
             ))
         }

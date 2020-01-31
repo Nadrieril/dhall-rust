@@ -3,13 +3,13 @@ use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 
 use crate::error::DecodeError;
-use crate::semantics::phase::DecodedExpr;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
     Integer, InterpolatedText, Label, Natural, Scheme, Span, UnspannedExpr,
     URL, V,
 };
+use crate::DecodedExpr;
 
 pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {

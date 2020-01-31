@@ -1,1 +1,1 @@
-Type error: Unhandled error: InvalidListType(Type)
+Type error: Unhandled error: InvalidListType

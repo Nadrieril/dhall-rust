@@ -4,7 +4,7 @@ use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
 
-use dhall::semantics::phase::NormalizedExpr;
+use dhall::NormalizedExpr;
 use dhall::syntax::ExprKind;
 
 use crate::de::{Deserialize, Error, Result};

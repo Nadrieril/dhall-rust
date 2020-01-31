@@ -1,5 +1,6 @@
-use crate::syntax::*;
 use std::iter::FromIterator;
+
+use crate::syntax::*;
 
 /// A visitor trait that can be used to traverse `ExprKind`s. We need this pattern so that Rust lets
 /// us have as much mutability as we can.
@@ -295,51 +296,26 @@ where
     Ok(())
 }
 
-pub struct TraverseRefWithBindersVisitor<F1, F2> {
-    pub visit_subexpr: F1,
-    pub visit_under_binder: F2,
-}
+pub struct TraverseRefMaybeBinderVisitor<F>(pub F);
 
-impl<'a, SE, E, SE2, Err, F1, F2> ExprKindVisitor<'a, SE, SE2, E, E>
-    for TraverseRefWithBindersVisitor<F1, F2>
+impl<'a, SE, E, SE2, Err, F> ExprKindVisitor<'a, SE, SE2, E, E>
+    for TraverseRefMaybeBinderVisitor<F>
 where
     SE: 'a,
     E: 'a + Clone,
-    F1: FnMut(&'a SE) -> Result<SE2, Err>,
-    F2: FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
+    F: FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
 {
     type Error = Err;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE) -> Result<SE2, Self::Error> {
-        (self.visit_subexpr)(subexpr)
+        (self.0)(None, subexpr)
     }
     fn visit_subexpr_under_binder(
-        self,
+        mut self,
         label: &'a Label,
         subexpr: &'a SE,
     ) -> Result<SE2, Self::Error> {
-        (self.visit_under_binder)(label, subexpr)
-    }
-    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
-        Ok(embed.clone())
-    }
-}
-
-pub struct TraverseRefVisitor<F1> {
-    pub visit_subexpr: F1,
-}
-
-impl<'a, SE, E, SE2, Err, F1> ExprKindVisitor<'a, SE, SE2, E, E>
-    for TraverseRefVisitor<F1>
-where
-    SE: 'a,
-    E: 'a + Clone,
-    F1: FnMut(&'a SE) -> Result<SE2, Err>,
-{
-    type Error = Err;
-
-    fn visit_subexpr(&mut self, subexpr: &'a SE) -> Result<SE2, Self::Error> {
-        (self.visit_subexpr)(subexpr)
+        (self.0)(Some(label), subexpr)
     }
     fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
         Ok(embed.clone())

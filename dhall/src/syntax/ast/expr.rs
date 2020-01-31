@@ -24,7 +24,7 @@ pub enum Const {
 /// The `Int` field is a DeBruijn index.
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct V<Label>(pub Label, pub usize);
+pub struct V(pub Label, pub usize);
 
 // Definition order must match precedence order for
 // pretty-printing to work correctly
@@ -112,7 +112,7 @@ pub enum ExprKind<SubExpr, Embed> {
     Const(Const),
     ///  `x`
     ///  `x@n`
-    Var(V<Label>),
+    Var(V),
     ///  `λ(x : A) -> b`
     Lam(Label, SubExpr, SubExpr),
     ///  `A -> B`
@@ -174,29 +174,38 @@ pub enum ExprKind<SubExpr, Embed> {
 }
 
 impl<SE, E> ExprKind<SE, E> {
-    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
+    pub fn traverse_ref_maybe_binder<'a, SE2, Err>(
         &'a self,
-        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-        visit_under_binder: impl FnOnce(&'a Label, &'a SE) -> Result<SE2, Err>,
+        visit: impl FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
-        visitor::TraverseRefWithBindersVisitor {
-            visit_subexpr,
-            visit_under_binder,
-        }
-        .visit(self)
+        visitor::TraverseRefMaybeBinderVisitor(visit).visit(self)
     }
 
-    fn traverse_ref<'a, SE2, Err>(
+    pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
-        visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+        mut visit_under_binder: impl FnMut(&'a Label, &'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2, E>, Err>
     where
         E: Clone,
     {
-        visitor::TraverseRefVisitor { visit_subexpr }.visit(self)
+        self.traverse_ref_maybe_binder(|l, x| match l {
+            None => visit_subexpr(x),
+            Some(l) => visit_under_binder(l, x),
+        })
+    }
+
+    pub(crate) fn traverse_ref<'a, SE2, Err>(
+        &'a self,
+        mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
+    ) -> Result<ExprKind<SE2, E>, Err>
+    where
+        E: Clone,
+    {
+        self.traverse_ref_maybe_binder(|_, e| visit_subexpr(e))
     }
 
     fn traverse_mut<'a, Err>(
@@ -204,6 +213,16 @@ impl<SE, E> ExprKind<SE, E> {
         visit_subexpr: impl FnMut(&'a mut SE) -> Result<(), Err>,
     ) -> Result<(), Err> {
         visitor::TraverseMutVisitor { visit_subexpr }.visit(self)
+    }
+
+    pub fn map_ref_maybe_binder<'a, SE2>(
+        &'a self,
+        mut map: impl FnMut(Option<&'a Label>, &'a SE) -> SE2,
+    ) -> ExprKind<SE2, E>
+    where
+        E: Clone,
+    {
+        trivial_result(self.traverse_ref_maybe_binder(|l, x| Ok(map(l, x))))
     }
 
     pub fn map_ref_with_special_handling_of_binders<'a, SE2>(
@@ -214,10 +233,10 @@ impl<SE, E> ExprKind<SE, E> {
     where
         E: Clone,
     {
-        trivial_result(self.traverse_ref_with_special_handling_of_binders(
-            |x| Ok(map_subexpr(x)),
-            |l, x| Ok(map_under_binder(l, x)),
-        ))
+        self.map_ref_maybe_binder(|l, x| match l {
+            None => map_subexpr(x),
+            Some(l) => map_under_binder(l, x),
+        })
     }
 
     pub fn map_ref<'a, SE2>(
@@ -227,7 +246,7 @@ impl<SE, E> ExprKind<SE, E> {
     where
         E: Clone,
     {
-        trivial_result(self.traverse_ref(|x| Ok(map_subexpr(x))))
+        self.map_ref_maybe_binder(|_, e| map_subexpr(e))
     }
 
     pub fn map_mut<'a>(&'a mut self, mut map_subexpr: impl FnMut(&'a mut SE)) {
@@ -295,37 +314,11 @@ impl<E> Expr<E> {
     }
 }
 
-impl<Label: PartialEq + Clone> V<Label> {
-    pub fn shift(&self, delta: isize, var: &V<Label>) -> Option<Self> {
-        let V(x, n) = var;
-        let V(y, m) = self;
-        Some(if x == y && n <= m {
-            V(y.clone(), add_ui(*m, delta)?)
-        } else {
-            V(y.clone(), *m)
-        })
-    }
-
-    pub fn over_binder(&self, x: &Label) -> Option<Self> {
-        self.shift(-1, &V(x.clone(), 0))
-    }
-}
-
 pub fn trivial_result<T>(x: Result<T, !>) -> T {
     match x {
         Ok(x) => x,
         Err(e) => e,
     }
-}
-
-/// Add an isize to an usize
-/// Returns `None` on over/underflow
-fn add_ui(u: usize, i: isize) -> Option<usize> {
-    Some(if i < 0 {
-        u.checked_sub(i.checked_neg()? as usize)?
-    } else {
-        u.checked_add(i as usize)?
-    })
 }
 
 impl PartialEq for NaiveDouble {
@@ -357,9 +350,8 @@ impl From<NaiveDouble> for f64 {
     }
 }
 
-/// This is only for the specific `Label` type, not generic
-impl From<Label> for V<Label> {
-    fn from(x: Label) -> V<Label> {
+impl From<Label> for V {
+    fn from(x: Label) -> V {
         V(x, 0)
     }
 }

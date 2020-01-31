@@ -36,6 +36,7 @@ variables across import boundaries
     TextLitNested3 "${"${""}"}${x}"
     regression/
         NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
+            let T = Natural let ap = λ(f : T → List T) -> λ(x : T) -> f x in ap (λ(x : T) -> ap (λ(y : T) -> [x, y]) 1) 0
 
 typecheck:
 something that involves destructuring a recordtype after merge
@@ -46,6 +47,9 @@ success/
         somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
         somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
         somehow test types added to the Foo/build closures
+            λ(x : ∀(a : Type) → a) → x
+            let X = 0 in λ(T : Type) → λ(x : T) → 1
+            (λ(T : Type) → let foo = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
 failure/
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >

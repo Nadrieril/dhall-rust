@@ -48,7 +48,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::error::{Error, Result};
-use crate::semantics::phase::Parsed;
+use crate::Parsed;
 
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -165,20 +165,17 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             assert_eq_display!(ty, expected);
         }
         TypeInferenceFailure(file_path) => {
-            let mut res =
-                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
             if let Ok(e) = &res {
                 // If e did typecheck, check that get_type fails
-                res = e.get_type();
+                e.get_type().unwrap_err();
             }
-            res.unwrap_err();
         }
         // Checks the output of the type error against a text file. If the text file doesn't exist,
         // we instead write to it the output we got. This makes it easy to update those files: just
         // `rm -r dhall/tests/type-errors` and run the tests again.
         TypeError(file_path) => {
-            let mut res =
-                parse_file_str(&file_path)?.skip_resolve()?.typecheck();
+            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
             let file_path = PathBuf::from(file_path);
             let error_file_path = file_path
                 .strip_prefix("../dhall-lang/tests/type-inference/failure/")
@@ -186,11 +183,13 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             let error_file_path =
                 PathBuf::from("tests/type-errors/").join(error_file_path);
             let error_file_path = error_file_path.with_extension("txt");
-            if let Ok(e) = &res {
-                // If e did typecheck, check that get_type fails
-                res = e.get_type();
-            }
-            let err: Error = res.unwrap_err().into();
+            let err: Error = match res {
+                Ok(e) => {
+                    // If e did typecheck, check that get_type fails
+                    e.get_type().unwrap_err().into()
+                }
+                Err(e) => e.into(),
+            };
 
             if error_file_path.is_file() {
                 let expected_msg = std::fs::read_to_string(error_file_path)?;

@@ -1,1 +1,1 @@
-Type error: Unhandled error: BinOpTypeMismatch(NaturalTimes, Value@Unevaled { value: PartialExpr(BoolLit(true)), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } })
+Type error: Unhandled error: BinOpTypeMismatch

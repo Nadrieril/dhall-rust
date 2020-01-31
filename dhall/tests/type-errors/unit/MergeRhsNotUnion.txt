@@ -1,1 +1,1 @@
-Type error: Unhandled error: Merge2ArgMustBeUnionOrOptional(Value@Unevaled { value: PartialExpr(BoolLit(true)), type: Value@WHNF { value: AppliedBuiltin(Bool, []), type: Type } })
+Type error: Unhandled error: Merge2ArgMustBeUnionOrOptional
