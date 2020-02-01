@@ -6,6 +6,7 @@ use crate::semantics::nze::lazy;
 use crate::semantics::Binder;
 use crate::semantics::{
     apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
+    TyEnv,
 };
 use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
 use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
@@ -191,6 +192,9 @@ impl Value {
         }
 
         self.to_tyexpr_noenv().to_expr(opts)
+    }
+    pub(crate) fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
+        self.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
     }
     pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
         self.kind().clone()

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
-use crate::error::{TypeError, TypeMessage};
+use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
     type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
@@ -57,6 +57,7 @@ fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
 fn type_one_layer(
     env: &TyEnv,
     kind: &ExprKind<TyExpr, Normalized>,
+    span: Span,
 ) -> Result<Type, TypeError> {
     Ok(match kind {
         ExprKind::Import(..) => unreachable!(
@@ -252,27 +253,35 @@ fn type_one_layer(
             }
             t
         }
-        ExprKind::App(f, arg) => {
-            match f.get_type()?.kind() {
-                ValueKind::PiClosure { annot, closure, .. } => {
-                    if arg.get_type()? != *annot {
-                        // return mkerr(format!("function annot mismatch"));
-                        return mkerr(format!(
-                            "function annot mismatch: ({} : {}) : {}",
-                            arg.to_expr_tyenv(env),
-                            arg.get_type()?
-                                .to_tyexpr(env.as_varenv())
-                                .to_expr_tyenv(env),
-                            annot.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
-                        ));
-                    }
-
-                    let arg_nf = arg.eval(env.as_nzenv());
-                    closure.apply(arg_nf)
+        ExprKind::App(f, arg) => match f.get_type()?.kind() {
+            ValueKind::PiClosure { annot, closure, .. } => {
+                if arg.get_type()? != *annot {
+                    let mut builder = ErrorBuilder::span_err(
+                        &span,
+                        format!("function annot mismatch",),
+                    );
+                    builder.annotate_info(
+                        &f.span(),
+                        format!(
+                            "this expects an argument of type: {}",
+                            annot.to_expr_tyenv(env),
+                        ),
+                    );
+                    builder.annotate_info(
+                        &arg.span(),
+                        format!(
+                            "but this has type: {}",
+                            arg.get_type()?.to_expr_tyenv(env),
+                        ),
+                    );
+                    return mkerr(builder.format());
                 }
-                _ => return mkerr(format!("apply to not Pi")),
+
+                let arg_nf = arg.eval(env.as_nzenv());
+                closure.apply(arg_nf)
             }
-        }
+            _ => return mkerr(format!("apply to not Pi")),
+        },
         ExprKind::BoolIf(x, y, z) => {
             if *x.get_type()?.kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return mkerr("InvalidPredicate");
@@ -323,7 +332,7 @@ fn type_one_layer(
                 x.get_type()?.to_tyexpr(env.as_varenv()),
                 y.get_type()?.to_tyexpr(env.as_varenv()),
             );
-            let ty = type_one_layer(env, &ekind)?;
+            let ty = type_one_layer(env, &ekind, Span::Artificial)?;
             TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
                 .eval(env.as_nzenv())
         }
@@ -347,6 +356,7 @@ fn type_one_layer(
                             tx.to_tyexpr(env.as_varenv()),
                             ty.to_tyexpr(env.as_varenv()),
                         ),
+                        Span::Artificial,
                     )?;
                 }
             }
@@ -588,7 +598,7 @@ pub(crate) fn type_with(
         }
         ekind => {
             let ekind = ekind.traverse_ref(|e| type_with(env, e))?;
-            let ty = type_one_layer(env, &ekind)?;
+            let ty = type_one_layer(env, &ekind, expr.span())?;
             (TyExprKind::Expr(ekind), Some(ty))
         }
     };

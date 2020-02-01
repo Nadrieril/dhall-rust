@@ -24,6 +24,20 @@ pub enum Span {
     Artificial,
 }
 
+impl ParsedSpan {
+    pub(crate) fn to_input(&self) -> String {
+        self.input.to_string()
+    }
+    /// Convert to a char range for consumption by annotate_snippets.
+    /// This compensates for  https://github.com/rust-lang/annotate-snippets-rs/issues/24
+    pub(crate) fn as_char_range(&self) -> (usize, usize) {
+        (
+            char_idx_from_byte_idx(&self.input, self.start),
+            char_idx_from_byte_idx(&self.input, self.end),
+        )
+    }
+}
+
 impl Span {
     pub(crate) fn make(input: Rc<str>, sp: pest::Span) -> Self {
         Span::Parsed(ParsedSpan {
@@ -78,4 +92,20 @@ impl Span {
         let err = Error::new_from_span(err, span);
         format!("{}", err)
     }
+}
+
+/// Convert a byte idx into a string into a char idx for consumption by annotate_snippets.
+fn char_idx_from_byte_idx(input: &str, idx: usize) -> usize {
+    let char_idx = input
+        .char_indices()
+        .enumerate()
+        .find(|(_, (i, _))| *i == idx)
+        .unwrap()
+        .0;
+    // Unix-style newlines are counted as two chars (see
+    // https://github.com/rust-lang/annotate-snippets-rs/issues/24).
+    let nbr_newlines = input[..idx].chars().filter(|c| *c == '\n').count();
+    let nbr_carriage_returns =
+        input[..idx].chars().filter(|c| *c == '\r').count();
+    char_idx + nbr_newlines - nbr_carriage_returns
 }

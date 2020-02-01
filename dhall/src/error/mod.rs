@@ -5,6 +5,9 @@ use crate::semantics::Value;
 use crate::syntax::{Import, ParseError};
 use crate::NormalizedExpr;
 
+mod builder;
+pub(crate) use builder::*;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
