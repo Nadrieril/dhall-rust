@@ -2,7 +2,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{read_to_string, File};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 
 use abnf_to_pest::render_rules_to_pest;
@@ -24,7 +24,7 @@ impl FileType {
 
 fn dhall_files_in_dir<'a>(
     dir: &'a Path,
-    take_a_suffix: bool,
+    take_ab_suffix: bool,
     filetype: FileType,
 ) -> impl Iterator<Item = (String, String)> + 'a {
     WalkDir::new(dir)
@@ -38,14 +38,14 @@ fn dhall_files_in_dir<'a>(
             }
             let path = path.to_string_lossy();
             let path = &path[..path.len() - 1 - ext.len()];
-            let path = if take_a_suffix && &path[path.len() - 1..] != "A" {
+            let path = if take_ab_suffix && &path[path.len() - 1..] != "A" {
                 return None;
-            } else if take_a_suffix {
+            } else if take_ab_suffix {
                 path[..path.len() - 1].to_owned()
             } else {
                 path.to_owned()
             };
-            // Transform path into a valie Rust identifier
+            // Transform path into a valid Rust identifier
             let name = path.replace("/", "_").replace("-", "_");
             Some((name, path))
         })
@@ -54,8 +54,8 @@ fn dhall_files_in_dir<'a>(
 struct TestFeature {
     /// Name of the module, used in the output of `cargo test`
     module_name: &'static str,
-    /// Directory containing the tests files
-    directory: PathBuf,
+    /// Directory containing the tests files, relative to the base tests directory
+    directory: &'static str,
     /// Relevant variant of `dhall::tests::Test`
     variant: &'static str,
     /// Given a file name, whether to exclude it
@@ -68,34 +68,43 @@ struct TestFeature {
 
 fn make_test_module(
     w: &mut impl Write, // Where to output the generated code
+    base_paths: &[&Path],
     mut feature: TestFeature,
 ) -> std::io::Result<()> {
-    let tests_dir = feature.directory;
     writeln!(w, "mod {} {{", feature.module_name)?;
-    let take_a_suffix = feature.output_type.is_some();
-    for (name, path) in
-        dhall_files_in_dir(&tests_dir, take_a_suffix, feature.input_type)
-    {
-        if (feature.path_filter)(&path) {
-            continue;
+    let take_ab_suffix = feature.output_type.is_some();
+    for base_path in base_paths {
+        let tests_dir = base_path.join(feature.directory);
+        for (name, path) in
+            dhall_files_in_dir(&tests_dir, take_ab_suffix, feature.input_type)
+        {
+            if (feature.path_filter)(&path) {
+                continue;
+            }
+            let path = tests_dir.join(path);
+            let path = path.to_string_lossy();
+            let test = match feature.output_type {
+                None => {
+                    let input_file =
+                        format!("\"{}.{}\"", path, feature.input_type.to_ext());
+                    format!("{}({})", feature.variant, input_file)
+                }
+                Some(output_type) => {
+                    let input_file = format!(
+                        "\"{}A.{}\"",
+                        path,
+                        feature.input_type.to_ext()
+                    );
+                    let output_file =
+                        format!("\"{}B.{}\"", path, output_type.to_ext());
+                    format!(
+                        "{}({}, {})",
+                        feature.variant, input_file, output_file
+                    )
+                }
+            };
+            writeln!(w, "make_spec_test!({}, {});", test, name)?;
         }
-        let path = tests_dir.join(path);
-        let path = path.to_string_lossy();
-        let test = match feature.output_type {
-            None => {
-                let input_file =
-                    format!("\"{}.{}\"", path, feature.input_type.to_ext());
-                format!("{}({})", feature.variant, input_file)
-            }
-            Some(output_type) => {
-                let input_file =
-                    format!("\"{}A.{}\"", path, feature.input_type.to_ext());
-                let output_file =
-                    format!("\"{}B.{}\"", path, output_type.to_ext());
-                format!("{}({}, {})", feature.variant, input_file, output_file)
-            }
-        };
-        writeln!(w, "make_spec_test!({}, {});", test, name)?;
     }
     writeln!(w, "}}")?;
     Ok(())
@@ -111,12 +120,13 @@ fn generate_tests() -> std::io::Result<()> {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
-    let spec_tests_dir = Path::new("../dhall-lang/tests/");
+    let spec_tests_dirs =
+        vec![Path::new("../dhall-lang/tests/"), Path::new("tests/")];
 
     let tests = vec![
         TestFeature {
             module_name: "parser_success",
-            directory: spec_tests_dir.join("parser/success/"),
+            directory: "parser/success/",
             variant: "ParserSuccess",
             path_filter: Box::new(|path: &str| {
                 false
@@ -134,7 +144,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "parser_failure",
-            directory: spec_tests_dir.join("parser/failure/"),
+            directory: "parser/failure/",
             variant: "ParserFailure",
             path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Text,
@@ -142,7 +152,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "printer",
-            directory: spec_tests_dir.join("parser/success/"),
+            directory: "parser/success/",
             variant: "Printer",
             path_filter: Box::new(|path: &str| {
                 false
@@ -158,7 +168,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "binary_encoding",
-            directory: spec_tests_dir.join("parser/success/"),
+            directory: "parser/success/",
             variant: "BinaryEncoding",
             path_filter: Box::new(|path: &str| {
                 false
@@ -180,7 +190,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "binary_decoding_success",
-            directory: spec_tests_dir.join("binary-decode/success/"),
+            directory: "binary-decode/success/",
             variant: "BinaryDecodingSuccess",
             path_filter: Box::new(|path: &str| {
                 false
@@ -194,7 +204,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "binary_decoding_failure",
-            directory: spec_tests_dir.join("binary-decode/failure/"),
+            directory: "binary-decode/failure/",
             variant: "BinaryDecodingFailure",
             path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
@@ -202,7 +212,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "import_success",
-            directory: spec_tests_dir.join("import/success/"),
+            directory: "import/success/",
             variant: "ImportSuccess",
             path_filter: Box::new(|path: &str| {
                 false
@@ -221,7 +231,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "import_failure",
-            directory: spec_tests_dir.join("import/failure/"),
+            directory: "import/failure/",
             variant: "ImportFailure",
             path_filter: Box::new(|path: &str| {
                 false
@@ -237,7 +247,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "beta_normalize",
-            directory: spec_tests_dir.join("normalization/success/"),
+            directory: "normalization/success/",
             variant: "Normalization",
             path_filter: Box::new(|path: &str| {
                 // We don't support bignums
@@ -282,7 +292,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "alpha_normalize",
-            directory: spec_tests_dir.join("alpha-normalization/success/"),
+            directory: "alpha-normalization/success/",
             variant: "AlphaNormalization",
             path_filter: Box::new(|path: &str| {
                 // This test doesn't typecheck
@@ -293,7 +303,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "type_inference_success",
-            directory: spec_tests_dir.join("type-inference/success/"),
+            directory: "type-inference/success/",
             variant: "TypeInferenceSuccess",
             path_filter: Box::new(|path: &str| {
                 false
@@ -317,7 +327,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "type_inference_failure",
-            directory: spec_tests_dir.join("type-inference/failure/"),
+            directory: "type-inference/failure/",
             variant: "TypeInferenceFailure",
             path_filter: Box::new(|path: &str| {
                 false
@@ -347,7 +357,7 @@ fn generate_tests() -> std::io::Result<()> {
         },
         TestFeature {
             module_name: "type_error",
-            directory: spec_tests_dir.join("type-inference/failure/"),
+            directory: "type-inference/failure/",
             variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
@@ -379,7 +389,7 @@ fn generate_tests() -> std::io::Result<()> {
 
     let mut file = File::create(parser_tests_path)?;
     for test in tests {
-        make_test_module(&mut file, test)?;
+        make_test_module(&mut file, &spec_tests_dirs, test)?;
     }
 
     Ok(())

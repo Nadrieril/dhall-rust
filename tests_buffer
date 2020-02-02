@@ -14,7 +14,7 @@ success/
     EmptyRecordLiteral {=}
     ToMap toMap x
     ToMapAnnot toMap x : T
-    VariableQuotedSpace ` x `
+    VariableQuotedWithSpace ` x `
 failure/
     AssertNoAnnotation assert
 
@@ -47,19 +47,17 @@ success/
         somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
         somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
         somehow test types added to the Foo/build closures
-            λ(x : ∀(a : Type) → a) → x
-            let X = 0 in λ(T : Type) → λ(x : T) → 1
-            (λ(T : Type) → let foo = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
+            λ(todo : ∀(a : Type) → a) → todo
+            let T = 0 in λ(T : Type) → λ(x : T) → 1
+            (λ(T : Type) → let x = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
 failure/
     \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
-    \(x: let x = 1 in Sort) -> 0
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
     merge { x = True, y = 1 } < x | y >.x
     merge {x=...,y=...} <x>.x
     merge {x=...,y=...} <x:T>.x
-    MergeBoolIsNotUnion merge x True
-    MergeOptionalIsNotUnion merge x (Some 1)
-    SortInLet let x = Sort in 1
+    MergeBool merge x True
+    LetInSort \(x: let x = 0 in Sort) -> 1
 
 equivalence:

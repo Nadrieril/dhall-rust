@@ -680,6 +680,7 @@ pub(crate) fn type_with(
                         val.clone()
                     };
                     let val = type_with(env, &val)?;
+                    val.get_type()?; // Ensure val is not Sort
                     let val_nf = val.eval(&env.as_nzenv());
                     let body_env = env.insert_value(&binder, val_nf);
                     let body = type_with(&body_env, body)?;

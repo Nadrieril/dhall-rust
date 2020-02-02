@@ -179,6 +179,9 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
             let file_path = PathBuf::from(file_path);
             let error_file_path = file_path
                 .strip_prefix("../dhall-lang/tests/type-inference/failure/")
+                .or_else(|_| {
+                    file_path.strip_prefix("tests/type-inference/failure/")
+                })
                 .unwrap();
             let error_file_path =
                 PathBuf::from("tests/type-errors/").join(error_file_path);
