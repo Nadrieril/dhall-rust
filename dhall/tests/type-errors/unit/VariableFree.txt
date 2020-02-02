@@ -1,1 +1,6 @@
-Type error: Unhandled error: unbound variable
+Type error: Unhandled error: error: unbound variable `x`
+ --> <current file>:1:0
+  |
+1 | x
+  | ^ not found in this scope
+  |

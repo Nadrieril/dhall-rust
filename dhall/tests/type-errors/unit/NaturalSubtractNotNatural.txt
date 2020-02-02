@@ -1,8 +1,8 @@
-Type error: Unhandled error: error: function annot mismatch
+Type error: Unhandled error: error: Wrong type of function argument
  --> <current file>:1:0
   |
 1 | Natural/subtract True True
-  | ^^^^^^^^^^^^^^^^^^^^^ function annot mismatch
+  | ^^^^^^^^^^^^^^^^^^^^^ Wrong type of function argument
   | ---------------- help: this expects an argument of type: Natural
   |                  ---- help: but this has type: Bool
   |

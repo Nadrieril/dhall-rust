@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: function annot mismatch
+Type error: Unhandled error: error: Wrong type of function argument
   --> <current file>:6:23
    |
  1 |     let bottom : Type = ∀(any : Type) → any
@@ -8,7 +8,7 @@ Type error: Unhandled error: error: function annot mismatch
 ...
 10 |         : pow (pow U) → U
 11 |         =   λ(t : pow (pow U))
-   |                        ^^^^^ function annot mismatch
+   |                        ^^^^^ Wrong type of function argument
    |                        --- help: this expects an argument of type: Kind
    |                            - help: but this has type: Sort
    |

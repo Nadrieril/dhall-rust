@@ -1,1 +1,6 @@
-Type error: Unhandled error: unbound variable
+Type error: Unhandled error: error: unbound variable `constructors`
+ --> <current file>:1:0
+  |
+1 | constructors < Left : Natural | Right : Bool >
+  | ^^^^^^^^^^^^ not found in this scope
+  |

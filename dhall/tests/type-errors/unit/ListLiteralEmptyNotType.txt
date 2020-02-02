@@ -1,8 +1,8 @@
-Type error: Unhandled error: error: function annot mismatch
+Type error: Unhandled error: error: Wrong type of function argument
  --> <current file>:1:5
   |
 1 | [] : List Type
-  |      ^^^^^^^^^ function annot mismatch
+  |      ^^^^^^^^^ Wrong type of function argument
   |      ---- help: this expects an argument of type: Type
   |           ---- help: but this has type: Kind
   |

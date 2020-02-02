@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, NzEnv, NzVar, TyExprKind, Type, Value};
+use crate::semantics::{AlphaVar, NzEnv, NzVar, Type, Value};
 use crate::syntax::{Label, V};
 
 /// Environment for indexing variables.
@@ -116,9 +116,9 @@ impl TyEnv {
             items: self.items.insert_value(e),
         }
     }
-    pub fn lookup(&self, var: &V) -> Option<(TyExprKind, Type)> {
+    pub fn lookup(&self, var: &V) -> Option<(AlphaVar, Type)> {
         let var = self.names.unlabel_var(var)?;
         let ty = self.items.lookup_ty(&var);
-        Some((TyExprKind::Var(var), ty))
+        Some((var, ty))
     }
 }

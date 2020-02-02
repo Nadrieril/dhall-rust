@@ -4,97 +4,162 @@ use annotate_snippets::{
     snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation},
 };
 
-use crate::syntax::Span;
+use crate::syntax::{ParsedSpan, Span};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ErrorBuilder {
-    message: String,
-    annotation_type: AnnotationType,
-    annotations: Vec<BuilderAnnotation>,
+    title: FreeAnnotation,
+    annotations: Vec<SpannedAnnotation>,
+    footer: Vec<FreeAnnotation>,
+    /// Inducate that the current builder has already been consumed and consuming it again should
+    /// panic.
+    consumed: bool,
 }
 
 #[derive(Debug, Clone)]
-struct BuilderAnnotation {
-    span: Span,
+struct SpannedAnnotation {
+    span: ParsedSpan,
     message: String,
     annotation_type: AnnotationType,
+}
+
+#[derive(Debug, Clone)]
+struct FreeAnnotation {
+    message: String,
+    annotation_type: AnnotationType,
+}
+
+impl SpannedAnnotation {
+    fn into_annotation(self) -> SourceAnnotation {
+        SourceAnnotation {
+            label: self.message,
+            annotation_type: self.annotation_type,
+            range: self.span.as_char_range(),
+        }
+    }
+}
+
+impl FreeAnnotation {
+    fn into_annotation(self) -> Annotation {
+        Annotation {
+            label: Some(self.message),
+            id: None,
+            annotation_type: self.annotation_type,
+        }
+    }
 }
 
 /// A builder that uses the annotate_snippets library to display nice error messages about source
 /// code locations.
 impl ErrorBuilder {
-    pub fn new(message: String) -> Self {
+    pub fn new(message: impl ToString) -> Self {
         ErrorBuilder {
-            message,
-            annotation_type: AnnotationType::Error,
+            title: FreeAnnotation {
+                message: message.to_string(),
+                annotation_type: AnnotationType::Error,
+            },
             annotations: Vec::new(),
+            footer: Vec::new(),
+            consumed: false,
         }
     }
-    pub fn span_err(span: &Span, message: String) -> Self {
+    pub fn new_span_err(span: &Span, message: impl ToString) -> Self {
+        let message = message.to_string();
         let mut builder = Self::new(message.clone());
-        builder.annotate_err(span, message);
+        builder.span_err(span, message);
         builder
     }
 
-    pub fn annotate_err(&mut self, span: &Span, message: String) {
-        self.annotations.push(BuilderAnnotation {
+    pub fn span_err(
+        &mut self,
+        span: &Span,
+        message: impl ToString,
+    ) -> &mut Self {
+        // Ignore spans not coming from a source file
+        let span = match span {
+            Span::Parsed(span) => span,
+            _ => return self,
+        };
+        self.annotations.push(SpannedAnnotation {
             span: span.clone(),
-            message,
+            message: message.to_string(),
             annotation_type: AnnotationType::Error,
-        })
+        });
+        self
     }
-    pub fn annotate_info(&mut self, span: &Span, message: String) {
-        self.annotations.push(BuilderAnnotation {
+    pub fn span_help(
+        &mut self,
+        span: &Span,
+        message: impl ToString,
+    ) -> &mut Self {
+        // Ignore spans not coming from a source file
+        let span = match span {
+            Span::Parsed(span) => span,
+            _ => return self,
+        };
+        self.annotations.push(SpannedAnnotation {
             span: span.clone(),
-            message,
+            message: message.to_string(),
             annotation_type: AnnotationType::Help,
-        })
+        });
+        self
+    }
+    pub fn help(&mut self, message: impl ToString) -> &mut Self {
+        self.footer.push(FreeAnnotation {
+            message: message.to_string(),
+            annotation_type: AnnotationType::Help,
+        });
+        self
     }
 
     // TODO: handle multiple files
-    pub fn format(self) -> String {
-        let mut input = None;
-        let annotations = self
-            .annotations
-            .into_iter()
-            .filter_map(|annot| {
-                let span = match annot.span {
-                    Span::Parsed(span) => span,
-                    _ => return None,
-                };
-                if input.is_none() {
-                    input = Some(span.to_input());
-                }
-                Some(SourceAnnotation {
-                    label: annot.message,
-                    annotation_type: annot.annotation_type,
-                    range: span.as_char_range(),
-                })
-            })
-            .collect();
+    pub fn format(&mut self) -> String {
+        if self.consumed {
+            panic!("tried to format the same ErrorBuilder twice")
+        }
+        let this = std::mem::replace(self, ErrorBuilder::default());
+        self.consumed = true;
+        drop(self); // Get rid of the self reference so we don't use it by mistake.
 
-        let input = match input {
-            Some(input) => input,
-            None => return format!("[unknown location] {}", self.message),
-        };
-
-        let snippet = Snippet {
-            title: Some(Annotation {
-                label: Some(self.message),
-                id: None,
-                annotation_type: self.annotation_type,
-            }),
-            footer: vec![],
-            slices: vec![Slice {
+        let slices = if this.annotations.is_empty() {
+            Vec::new()
+        } else {
+            let input = this.annotations[0].span.to_input();
+            let annotations = this
+                .annotations
+                .into_iter()
+                .map(|annot| annot.into_annotation())
+                .collect();
+            vec![Slice {
                 source: input,
                 line_start: 1, // TODO
                 origin: Some("<current file>".to_string()),
                 fold: true,
                 annotations,
-            }],
+            }]
+        };
+        let footer = this
+            .footer
+            .into_iter()
+            .map(|annot| annot.into_annotation())
+            .collect();
+
+        let snippet = Snippet {
+            title: Some(this.title.into_annotation()),
+            slices,
+            footer,
         };
         let dl = DisplayList::from(snippet);
         let dlf = DisplayListFormatter::new(true, false);
         format!("{}", dlf.format(&dl))
+    }
+}
+
+impl Default for FreeAnnotation {
+    fn default() -> Self {
+        FreeAnnotation {
+            message: String::new(),
+            annotation_type: AnnotationType::Error,
+        }
     }
 }
