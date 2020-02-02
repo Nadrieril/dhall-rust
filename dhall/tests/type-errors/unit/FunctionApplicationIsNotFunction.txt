@@ -1,1 +1,7 @@
-Type error: Unhandled error: apply to not Pi
+Type error: Unhandled error: error: Trying to apply an argument to a value that is not a function
+ --> <current file>:1:0
+  |
+1 | True True
+  | ^^^^ this has type: `Bool`
+  |
+  = help: only functions can be applied to

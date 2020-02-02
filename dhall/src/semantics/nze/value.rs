@@ -174,6 +174,9 @@ impl Value {
             _ => None,
         }
     }
+    pub(crate) fn span(&self) -> Span {
+        self.0.span.clone()
+    }
 
     /// This is what you want if you want to pattern-match on the value.
     /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut

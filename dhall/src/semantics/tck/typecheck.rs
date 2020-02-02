@@ -293,14 +293,14 @@ fn type_one_layer(
                             &span,
                             format!("Wrong type of function argument"),
                         )
-                        .span_help(
+                        .span_err(
                             &f.span(),
                             format!(
                                 "this expects an argument of type: {}",
                                 annot.to_expr_tyenv(env),
                             ),
                         )
-                        .span_help(
+                        .span_err(
                             &arg.span(),
                             format!(
                                 "but this has type: {}",
@@ -314,7 +314,23 @@ fn type_one_layer(
                 let arg_nf = arg.eval(env.as_nzenv());
                 closure.apply(arg_nf)
             }
-            _ => return mkerr(format!("apply to not Pi")),
+            _ => {
+                return mkerr(
+                    ErrorBuilder::new(format!(
+                        "Trying to apply an argument \
+                         to a value that is not a function"
+                    ))
+                    .span_err(
+                        &f.span(),
+                        format!(
+                            "this has type: `{}`",
+                            f.get_type()?.to_expr_tyenv(env)
+                        ),
+                    )
+                    .help("only functions can be applied to")
+                    .format(),
+                )
+            }
         },
         ExprKind::BoolIf(x, y, z) => {
             if *x.get_type()?.kind() != ValueKind::from_builtin(Builtin::Bool) {
@@ -483,14 +499,72 @@ fn type_one_layer(
                     Some(Some(variant_type)) => match handler_type.kind() {
                         ValueKind::PiClosure { closure, annot, .. } => {
                             if variant_type != annot {
-                                return mkerr("MergeHandlerTypeMismatch");
+                                return mkerr(
+                                    ErrorBuilder::new(format!(
+                                        "Wrong handler input type"
+                                    ))
+                                    .span_err(
+                                        &span,
+                                        format!(
+                                            "in this merge expression",
+                                        ),
+                                    )
+                                    .span_err(
+                                        &record.span(),
+                                        format!(
+                                            "the handler `{}` expects a value of type: `{}`",
+                                            x,
+                                            annot.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .span_err(
+                                        &union.span(),
+                                        format!(
+                                            "but the corresponding variant has type: `{}`",
+                                            variant_type.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .help("only functions can be applied to")
+                                    .format(),
+                                );
                             }
 
                             closure.remove_binder().or_else(|()| {
                                 mkerr("MergeReturnTypeIsDependent")
                             })?
                         }
-                        _ => return mkerr("NotAFunction"),
+                        _ =>
+                                return mkerr(
+                                    ErrorBuilder::new(format!(
+                                        "Handler is not a function"
+                                    ))
+                                    .span_err(
+                                        &span,
+                                        format!(
+                                            "in this merge expression",
+                                        ),
+                                    )
+                                    .span_err(
+                                        &record.span(),
+                                        format!(
+                                            "the handler `{}` had type: `{}`",
+                                            x,
+                                            handler_type.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .span_help(
+                                        &union.span(),
+                                        format!(
+                                            "the corresponding variant has type: `{}`",
+                                            variant_type.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .help(format!(
+                                            "a handler for this variant must be a function that takes an input of type: `{}`",
+                                            variant_type.to_expr_tyenv(env)
+                                        ))
+                                    .format(),
+                                )
                     },
                     // Union alternative without type
                     Some(None) => handler_type.clone(),

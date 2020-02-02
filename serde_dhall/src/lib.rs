@@ -181,8 +181,8 @@ pub use value::Value;
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::{Normalized, NormalizedExpr, Parsed};
     use dhall::syntax::Builtin;
+    use dhall::{Normalized, NormalizedExpr, Parsed};
 
     use super::de::{Error, Result};
 

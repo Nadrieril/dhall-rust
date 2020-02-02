@@ -9,6 +9,6 @@ Type error: Unhandled error: error: Wrong type of function argument
 10 |         : pow (pow U) → U
 11 |         =   λ(t : pow (pow U))
    |                        ^^^^^ Wrong type of function argument
-   |                        --- help: this expects an argument of type: Kind
-   |                            - help: but this has type: Sort
+   |                        ^^^ this expects an argument of type: Kind
+   |                            ^ but this has type: Sort
    |

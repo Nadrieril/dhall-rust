@@ -1,1 +1,9 @@
-Type error: Unhandled error: MergeHandlerTypeMismatch
+Type error: Unhandled error: error: Wrong handler input type
+ --> <current file>:1:0
+  |
+1 | merge { x = λ(_ : Bool) → _ } (< x : Natural >.x 1)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this merge expression
+  |         ^^^^^^^^^^^^^^^^^^^ the handler `x` expects a value of type: `Bool`
+  |                                  ^^^^^^^^^^^^^^^^^ but the corresponding variant has type: `Natural`
+  |
+  = help: only functions can be applied to

@@ -3,6 +3,6 @@ Type error: Unhandled error: error: Wrong type of function argument
   |
 1 | Natural/subtract True True
   | ^^^^^^^^^^^^^^^^^^^^^ Wrong type of function argument
-  | ---------------- help: this expects an argument of type: Natural
-  |                  ---- help: but this has type: Bool
+  | ^^^^^^^^^^^^^^^^ this expects an argument of type: Natural
+  |                  ^^^^ but this has type: Bool
   |

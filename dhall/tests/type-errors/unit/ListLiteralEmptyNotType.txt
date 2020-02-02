@@ -3,6 +3,6 @@ Type error: Unhandled error: error: Wrong type of function argument
   |
 1 | [] : List Type
   |      ^^^^^^^^^ Wrong type of function argument
-  |      ---- help: this expects an argument of type: Type
-  |           ---- help: but this has type: Kind
+  |      ^^^^ this expects an argument of type: Type
+  |           ^^^^ but this has type: Kind
   |

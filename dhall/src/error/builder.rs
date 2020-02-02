@@ -70,10 +70,11 @@ impl ErrorBuilder {
         builder
     }
 
-    pub fn span_err(
+    pub fn span_annot(
         &mut self,
         span: &Span,
         message: impl ToString,
+        annotation_type: AnnotationType,
     ) -> &mut Self {
         // Ignore spans not coming from a source file
         let span = match span {
@@ -83,33 +84,38 @@ impl ErrorBuilder {
         self.annotations.push(SpannedAnnotation {
             span: span.clone(),
             message: message.to_string(),
-            annotation_type: AnnotationType::Error,
+            annotation_type,
         });
         self
+    }
+    pub fn footer_annot(
+        &mut self,
+        message: impl ToString,
+        annotation_type: AnnotationType,
+    ) -> &mut Self {
+        self.footer.push(FreeAnnotation {
+            message: message.to_string(),
+            annotation_type,
+        });
+        self
+    }
+
+    pub fn span_err(
+        &mut self,
+        span: &Span,
+        message: impl ToString,
+    ) -> &mut Self {
+        self.span_annot(span, message, AnnotationType::Error)
     }
     pub fn span_help(
         &mut self,
         span: &Span,
         message: impl ToString,
     ) -> &mut Self {
-        // Ignore spans not coming from a source file
-        let span = match span {
-            Span::Parsed(span) => span,
-            _ => return self,
-        };
-        self.annotations.push(SpannedAnnotation {
-            span: span.clone(),
-            message: message.to_string(),
-            annotation_type: AnnotationType::Help,
-        });
-        self
+        self.span_annot(span, message, AnnotationType::Help)
     }
     pub fn help(&mut self, message: impl ToString) -> &mut Self {
-        self.footer.push(FreeAnnotation {
-            message: message.to_string(),
-            annotation_type: AnnotationType::Help,
-        });
-        self
+        self.footer_annot(message, AnnotationType::Help)
     }
 
     // TODO: handle multiple files
