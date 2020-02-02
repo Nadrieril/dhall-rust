@@ -48,8 +48,8 @@ impl TyExpr {
     pub fn kind(&self) -> &TyExprKind {
         &*self.kind
     }
-    pub fn span(&self) -> &Span {
-        &self.span
+    pub fn span(&self) -> Span {
+        self.span.clone()
     }
     pub fn get_type(&self) -> Result<Type, TypeError> {
         match &self.ty {

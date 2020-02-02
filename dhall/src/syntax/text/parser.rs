@@ -82,11 +82,7 @@ fn input_to_span(input: ParseInput) -> Span {
 fn spanned(input: ParseInput, x: UnspannedExpr) -> Expr {
     Expr::new(x, input_to_span(input))
 }
-fn spanned_union(
-    span1: Span,
-    span2: Span,
-    x: UnspannedExpr,
-) -> Expr {
+fn spanned_union(span1: Span, span2: Span, x: UnspannedExpr) -> Expr {
     Expr::new(x, span1.union(&span2))
 }
 

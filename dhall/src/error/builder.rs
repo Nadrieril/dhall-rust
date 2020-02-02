@@ -63,7 +63,7 @@ impl ErrorBuilder {
             consumed: false,
         }
     }
-    pub fn new_span_err(span: &Span, message: impl ToString) -> Self {
+    pub fn new_span_err(span: Span, message: impl ToString) -> Self {
         let message = message.to_string();
         let mut builder = Self::new(message.clone());
         builder.span_err(span, message);
@@ -72,7 +72,7 @@ impl ErrorBuilder {
 
     pub fn span_annot(
         &mut self,
-        span: &Span,
+        span: Span,
         message: impl ToString,
         annotation_type: AnnotationType,
     ) -> &mut Self {
@@ -82,7 +82,7 @@ impl ErrorBuilder {
             _ => return self,
         };
         self.annotations.push(SpannedAnnotation {
-            span: span.clone(),
+            span,
             message: message.to_string(),
             annotation_type,
         });
@@ -102,14 +102,14 @@ impl ErrorBuilder {
 
     pub fn span_err(
         &mut self,
-        span: &Span,
+        span: Span,
         message: impl ToString,
     ) -> &mut Self {
         self.span_annot(span, message, AnnotationType::Error)
     }
     pub fn span_help(
         &mut self,
-        span: &Span,
+        span: Span,
         message: impl ToString,
     ) -> &mut Self {
         self.span_annot(span, message, AnnotationType::Help)

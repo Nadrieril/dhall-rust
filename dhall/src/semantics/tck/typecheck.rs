@@ -76,7 +76,7 @@ fn type_one_layer(
                             annot.get_type()?.to_expr_tyenv(env),
                         ))
                         .span_err(
-                            &annot.span(),
+                            annot.span(),
                             format!(
                                 "this has type: `{}`",
                                 annot.get_type()?.to_expr_tyenv(env)
@@ -503,11 +503,11 @@ fn type_one_layer(
                                         "Wrong handler input type"
                                     ))
                                     .span_err(
-                                        &span,
+                                        span,
                                         format!("in this merge expression",),
                                     )
                                     .span_err(
-                                        &record.span(),
+                                        record.span(),
                                         format!(
                                             "the handler `{}` expects a value \
                                              of type: `{}`",
@@ -516,7 +516,7 @@ fn type_one_layer(
                                         ),
                                     )
                                     .span_err(
-                                        &union.span(),
+                                        union.span(),
                                         format!(
                                             "but the corresponding variant \
                                              has type: `{}`",
@@ -538,11 +538,11 @@ fn type_one_layer(
                                     "Handler is not a function"
                                 ))
                                 .span_err(
-                                    &span,
+                                    span,
                                     format!("in this merge expression",),
                                 )
                                 .span_err(
-                                    &record.span(),
+                                    record.span(),
                                     format!(
                                         "the handler `{}` had type: `{}`",
                                         x,
@@ -550,7 +550,7 @@ fn type_one_layer(
                                     ),
                                 )
                                 .span_help(
-                                    &union.span(),
+                                    union.span(),
                                     format!(
                                         "the corresponding variant has type: \
                                          `{}`",
@@ -647,7 +647,7 @@ pub(crate) fn type_with(
             None => {
                 return mkerr(
                     ErrorBuilder::new(format!("unbound variable `{}`", var))
-                        .span_err(&expr.span(), "not found in this scope")
+                        .span_err(expr.span(), "not found in this scope")
                         .format(),
                 )
             }
