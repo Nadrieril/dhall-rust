@@ -1,3 +1,4 @@
 edition = "2018"
 max_width = 80
 # error_on_line_overflow = true
+format_strings = true

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
-use crate::error::{TypeError, TypeMessage};
+use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
     type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
@@ -35,19 +35,6 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-fn type_of_function(src: Type, tgt: Type) -> Result<Type, TypeError> {
-    let ks = match src.as_const() {
-        Some(k) => k,
-        _ => return Err(TypeError::new(TypeMessage::InvalidInputType(src))),
-    };
-    let kt = match tgt.as_const() {
-        Some(k) => k,
-        _ => return Err(TypeError::new(TypeMessage::InvalidOutputType(tgt))),
-    };
-
-    Ok(Value::from_const(function_check(ks, kt)))
-}
-
 fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
@@ -57,17 +44,60 @@ fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
 fn type_one_layer(
     env: &TyEnv,
     kind: &ExprKind<TyExpr, Normalized>,
+    span: Span,
 ) -> Result<Type, TypeError> {
     Ok(match kind {
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
         ExprKind::Var(..)
-        | ExprKind::Lam(..)
-        | ExprKind::Pi(..)
-        | ExprKind::Let(..)
         | ExprKind::Const(Const::Sort)
         | ExprKind::Embed(..) => unreachable!(), // Handled in type_with
+
+        ExprKind::Lam(binder, annot, body) => {
+            let body_ty = body.get_type()?;
+            let body_ty = body_ty.to_tyexpr(env.as_varenv().insert());
+            let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
+            let pi_ty = type_one_layer(env, &pi_ekind, Span::Artificial)?;
+            let ty = TyExpr::new(
+                TyExprKind::Expr(pi_ekind),
+                Some(pi_ty),
+                Span::Artificial,
+            );
+            ty.eval(env.as_nzenv())
+        }
+        ExprKind::Pi(_, annot, body) => {
+            let ks = match annot.get_type()?.as_const() {
+                Some(k) => k,
+                _ => {
+                    return mkerr(
+                        ErrorBuilder::new(format!(
+                            "Invalid input type: `{}`",
+                            annot.get_type()?.to_expr_tyenv(env),
+                        ))
+                        .span_err(
+                            annot.span(),
+                            format!(
+                                "this has type: `{}`",
+                                annot.get_type()?.to_expr_tyenv(env)
+                            ),
+                        )
+                        .help(format!(
+                            "The input type of a function must have type \
+                             `Type`, `Kind` or `Sort`",
+                        ))
+                        .format(),
+                    );
+                }
+            };
+            let kt = match body.get_type()?.as_const() {
+                Some(k) => k,
+                _ => return mkerr("Invalid output type"),
+            };
+
+            Value::from_const(function_check(ks, kt))
+        }
+        ExprKind::Let(_, _, _, body) => body.get_type()?,
 
         ExprKind::Const(Const::Type) => Value::from_const(Const::Kind),
         ExprKind::Const(Const::Kind) => Value::from_const(Const::Sort),
@@ -201,10 +231,12 @@ fn type_one_layer(
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(ty)) => {
-                                let pi_ty = type_of_function(
-                                    ty.get_type()?,
-                                    scrut.get_type()?,
-                                )?;
+                                // Can't fail because uniontypes must have type Const(_).
+                                let kt = scrut.get_type()?.as_const().unwrap();
+                                // The type of the field must be Const smaller than `kt`, thus the
+                                // function type has type `kt`.
+                                let pi_ty = Value::from_const(kt);
+
                                 Value::from_kind_and_type(
                                     ValueKind::PiClosure {
                                         binder: Binder::new(x.clone()),
@@ -256,21 +288,47 @@ fn type_one_layer(
             match f.get_type()?.kind() {
                 ValueKind::PiClosure { annot, closure, .. } => {
                     if arg.get_type()? != *annot {
-                        // return mkerr(format!("function annot mismatch"));
-                        return mkerr(format!(
-                            "function annot mismatch: ({} : {}) : {}",
-                            arg.to_expr_tyenv(env),
-                            arg.get_type()?
-                                .to_tyexpr(env.as_varenv())
-                                .to_expr_tyenv(env),
-                            annot.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
-                        ));
+                        return mkerr(
+                            ErrorBuilder::new(format!(
+                                "wrong type of function argument"
+                            ))
+                            .span_err(
+                                f.span(),
+                                format!(
+                                    "this expects an argument of type: {}",
+                                    annot.to_expr_tyenv(env),
+                                ),
+                            )
+                            .span_err(
+                                arg.span(),
+                                format!(
+                                    "but this has type: {}",
+                                    arg.get_type()?.to_expr_tyenv(env),
+                                ),
+                            )
+                            .note(format!(
+                                "expected type `{}`\n   found type `{}`",
+                                annot.to_expr_tyenv(env),
+                                arg.get_type()?.to_expr_tyenv(env),
+                            ))
+                            .format(),
+                        );
                     }
 
                     let arg_nf = arg.eval(env.as_nzenv());
                     closure.apply(arg_nf)
                 }
-                _ => return mkerr(format!("apply to not Pi")),
+                _ => return mkerr(
+                    ErrorBuilder::new(format!(
+                        "expected function, found `{}`",
+                        f.get_type()?.to_expr_tyenv(env)
+                    ))
+                    .span_err(
+                        f.span(),
+                        format!("function application requires a function",),
+                    )
+                    .format(),
+                ),
             }
         }
         ExprKind::BoolIf(x, y, z) => {
@@ -323,7 +381,7 @@ fn type_one_layer(
                 x.get_type()?.to_tyexpr(env.as_varenv()),
                 y.get_type()?.to_tyexpr(env.as_varenv()),
             );
-            let ty = type_one_layer(env, &ekind)?;
+            let ty = type_one_layer(env, &ekind, Span::Artificial)?;
             TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
                 .eval(env.as_nzenv())
         }
@@ -347,6 +405,7 @@ fn type_one_layer(
                             tx.to_tyexpr(env.as_varenv()),
                             ty.to_tyexpr(env.as_varenv()),
                         ),
+                        Span::Artificial,
                     )?;
                 }
             }
@@ -439,14 +498,73 @@ fn type_one_layer(
                     Some(Some(variant_type)) => match handler_type.kind() {
                         ValueKind::PiClosure { closure, annot, .. } => {
                             if variant_type != annot {
-                                return mkerr("MergeHandlerTypeMismatch");
+                                return mkerr(
+                                    ErrorBuilder::new(format!(
+                                        "Wrong handler input type"
+                                    ))
+                                    .span_err(
+                                        span,
+                                        format!("in this merge expression",),
+                                    )
+                                    .span_err(
+                                        record.span(),
+                                        format!(
+                                            "the handler for `{}` expects a \
+                                             value of type: `{}`",
+                                            x,
+                                            annot.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .span_err(
+                                        union.span(),
+                                        format!(
+                                            "but the corresponding variant \
+                                             has type: `{}`",
+                                            variant_type.to_expr_tyenv(env)
+                                        ),
+                                    )
+                                    .format(),
+                                );
                             }
 
                             closure.remove_binder().or_else(|()| {
                                 mkerr("MergeReturnTypeIsDependent")
                             })?
                         }
-                        _ => return mkerr("NotAFunction"),
+                        _ => {
+                            return mkerr(
+                                ErrorBuilder::new(format!(
+                                    "merge handler is not a function"
+                                ))
+                                .span_err(
+                                    span,
+                                    format!("in this merge expression"),
+                                )
+                                .span_err(
+                                    record.span(),
+                                    format!(
+                                        "the handler for `{}` has type: `{}`",
+                                        x,
+                                        handler_type.to_expr_tyenv(env)
+                                    ),
+                                )
+                                .span_help(
+                                    union.span(),
+                                    format!(
+                                        "the corresponding variant has type: \
+                                         `{}`",
+                                        variant_type.to_expr_tyenv(env)
+                                    ),
+                                )
+                                .help(format!(
+                                    "a handler for this variant must be a \
+                                     function that takes an input of type: \
+                                     `{}`",
+                                    variant_type.to_expr_tyenv(env)
+                                ))
+                                .format(),
+                            )
+                        }
                     },
                     // Union alternative without type
                     Some(None) => handler_type.clone(),
@@ -524,62 +642,15 @@ pub(crate) fn type_with(
 ) -> Result<TyExpr, TypeError> {
     let (tyekind, ty) = match expr.as_ref() {
         ExprKind::Var(var) => match env.lookup(&var) {
-            Some((k, ty)) => (k, Some(ty)),
-            None => return mkerr("unbound variable"),
+            Some((v, ty)) => (TyExprKind::Var(v), Some(ty)),
+            None => {
+                return mkerr(
+                    ErrorBuilder::new(format!("unbound variable `{}`", var))
+                        .span_err(expr.span(), "not found in this scope")
+                        .format(),
+                )
+            }
         },
-        ExprKind::Lam(binder, annot, body) => {
-            let annot = type_with(env, annot)?;
-            let annot_nf = annot.eval(env.as_nzenv());
-            let body_env = env.insert_type(&binder, annot_nf.clone());
-            let body = type_with(&body_env, body)?;
-            let body_ty = body.get_type()?;
-            let ty = TyExpr::new(
-                TyExprKind::Expr(ExprKind::Pi(
-                    binder.clone(),
-                    annot.clone(),
-                    body_ty.to_tyexpr(body_env.as_varenv()),
-                )),
-                Some(type_of_function(annot.get_type()?, body_ty.get_type()?)?),
-                Span::Artificial,
-            );
-            let ty = ty.eval(env.as_nzenv());
-            (
-                TyExprKind::Expr(ExprKind::Lam(binder.clone(), annot, body)),
-                Some(ty),
-            )
-        }
-        ExprKind::Pi(binder, annot, body) => {
-            let annot = type_with(env, annot)?;
-            let annot_nf = annot.eval(env.as_nzenv());
-            let body =
-                type_with(&env.insert_type(binder, annot_nf.clone()), body)?;
-            let ty = type_of_function(annot.get_type()?, body.get_type()?)?;
-            (
-                TyExprKind::Expr(ExprKind::Pi(binder.clone(), annot, body)),
-                Some(ty),
-            )
-        }
-        ExprKind::Let(binder, annot, val, body) => {
-            let val = if let Some(t) = annot {
-                t.rewrap(ExprKind::Annot(val.clone(), t.clone()))
-            } else {
-                val.clone()
-            };
-
-            let val = type_with(env, &val)?;
-            let val_nf = val.eval(&env.as_nzenv());
-            let body = type_with(&env.insert_value(&binder, val_nf), body)?;
-            let body_ty = body.get_type().ok();
-            (
-                TyExprKind::Expr(ExprKind::Let(
-                    binder.clone(),
-                    None,
-                    val,
-                    body,
-                )),
-                body_ty,
-            )
-        }
         ExprKind::Const(Const::Sort) => {
             (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
         }
@@ -587,8 +658,37 @@ pub(crate) fn type_with(
             return Ok(p.clone().into_value().to_tyexpr_noenv())
         }
         ekind => {
-            let ekind = ekind.traverse_ref(|e| type_with(env, e))?;
-            let ty = type_one_layer(env, &ekind)?;
+            let ekind = match ekind {
+                ExprKind::Lam(binder, annot, body) => {
+                    let annot = type_with(env, annot)?;
+                    let annot_nf = annot.eval(env.as_nzenv());
+                    let body_env = env.insert_type(binder, annot_nf);
+                    let body = type_with(&body_env, body)?;
+                    ExprKind::Lam(binder.clone(), annot, body)
+                }
+                ExprKind::Pi(binder, annot, body) => {
+                    let annot = type_with(env, annot)?;
+                    let annot_nf = annot.eval(env.as_nzenv());
+                    let body_env = env.insert_type(binder, annot_nf);
+                    let body = type_with(&body_env, body)?;
+                    ExprKind::Pi(binder.clone(), annot, body)
+                }
+                ExprKind::Let(binder, annot, val, body) => {
+                    let val = if let Some(t) = annot {
+                        t.rewrap(ExprKind::Annot(val.clone(), t.clone()))
+                    } else {
+                        val.clone()
+                    };
+                    let val = type_with(env, &val)?;
+                    let val_nf = val.eval(&env.as_nzenv());
+                    let body_env = env.insert_value(&binder, val_nf);
+                    let body = type_with(&body_env, body)?;
+                    ExprKind::Let(binder.clone(), None, val, body)
+                }
+                _ => ekind.traverse_ref(|e| type_with(env, e))?,
+            };
+
+            let ty = type_one_layer(env, &ekind, expr.span())?;
             (TyExprKind::Expr(ekind), Some(ty))
         }
     };

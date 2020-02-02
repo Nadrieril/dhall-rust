@@ -1,1 +1,9 @@
-Type error: Unhandled error: function annot mismatch: (Type : Kind) : Type
+Type error: Unhandled error: error: wrong type of function argument
+ --> <current file>:1:5
+  |
+1 | [] : List Type
+  |      ^^^^ this expects an argument of type: Type
+  |           ^^^^ but this has type: Kind
+  |
+  = note: expected type `Type`
+             found type `Kind`

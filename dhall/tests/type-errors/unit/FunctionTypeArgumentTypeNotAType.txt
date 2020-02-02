@@ -1,1 +1,7 @@
-[unknown location] Type error: Invalid function input
+Type error: Unhandled error: error: Invalid input type: `Natural`
+ --> <current file>:1:0
+  |
+1 | 2 → _
+  | ^ this has type: `Natural`
+  |
+  = help: The input type of a function must have type `Type`, `Kind` or `Sort`

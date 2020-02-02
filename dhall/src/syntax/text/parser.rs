@@ -11,7 +11,7 @@ use crate::syntax::ExprKind::*;
 use crate::syntax::{
     Double, FilePath, FilePrefix, Hash, ImportLocation, ImportMode, Integer,
     InterpolatedText, InterpolatedTextContents, Label, NaiveDouble, Natural,
-    Scheme, Span, UnspannedExpr, URL, V,
+    Scheme, Span, URL, V,
 };
 use crate::Normalized;
 
@@ -21,6 +21,7 @@ use crate::Normalized;
 // are here and hopefully you can figure out how they work.
 
 type Expr = syntax::Expr<Normalized>;
+type UnspannedExpr = syntax::UnspannedExpr<Normalized>;
 type ParsedText = InterpolatedText<Expr>;
 type ParsedTextContents = InterpolatedTextContents<Expr>;
 type ParseInput<'input> = pest_consume::Node<'input, Rule, Rc<str>>;
@@ -78,14 +79,10 @@ impl crate::syntax::Builtin {
 fn input_to_span(input: ParseInput) -> Span {
     Span::make(input.user_data().clone(), input.as_pair().as_span())
 }
-fn spanned(input: ParseInput, x: UnspannedExpr<Normalized>) -> Expr {
+fn spanned(input: ParseInput, x: UnspannedExpr) -> Expr {
     Expr::new(x, input_to_span(input))
 }
-fn spanned_union(
-    span1: Span,
-    span2: Span,
-    x: UnspannedExpr<Normalized>,
-) -> Expr {
+fn spanned_union(span1: Span, span2: Span, x: UnspannedExpr) -> Expr {
     Expr::new(x, span1.union(&span2))
 }
 
@@ -845,25 +842,27 @@ impl DhallParser {
             [integer_literal(n)] => spanned(input, IntegerLit(n)),
             [double_quote_literal(s)] => spanned(input, TextLit(s)),
             [single_quote_literal(s)] => spanned(input, TextLit(s)),
+            [record_type_or_literal(e)] => spanned(input, e),
+            [union_type(e)] => spanned(input, e),
             [expression(e)] => e,
         ))
     }
 
-    #[alias(expression)]
-    fn empty_record_literal(input: ParseInput) -> ParseResult<Expr> {
-        Ok(spanned(input, RecordLit(Default::default())))
+    #[alias(record_type_or_literal)]
+    fn empty_record_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
+        Ok(RecordLit(Default::default()))
     }
 
-    #[alias(expression)]
-    fn empty_record_type(input: ParseInput) -> ParseResult<Expr> {
-        Ok(spanned(input, RecordType(Default::default())))
+    #[alias(record_type_or_literal)]
+    fn empty_record_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
+        Ok(RecordType(Default::default()))
     }
 
-    #[alias(expression)]
+    #[alias(record_type_or_literal)]
     fn non_empty_record_type_or_literal(
         input: ParseInput,
-    ) -> ParseResult<Expr> {
-        let e = match_nodes!(input.children();
+    ) -> ParseResult<UnspannedExpr> {
+        Ok(match_nodes!(input.children();
             [label(first_label), non_empty_record_type(rest)] => {
                 let (first_expr, mut map) = rest;
                 map.insert(first_label, first_expr);
@@ -874,8 +873,7 @@ impl DhallParser {
                 map.insert(first_label, first_expr);
                 RecordLit(map)
             },
-        );
-        Ok(spanned(input, e))
+        ))
     }
 
     fn non_empty_record_type(
@@ -910,13 +908,12 @@ impl DhallParser {
         ))
     }
 
-    #[alias(expression)]
-    fn union_type(input: ParseInput) -> ParseResult<Expr> {
+    fn union_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
         let map = match_nodes!(input.children();
             [empty_union_type(_)] => Default::default(),
             [union_type_entry(entries)..] => entries.collect(),
         );
-        Ok(spanned(input, UnionType(map)))
+        Ok(UnionType(map))
     }
 
     fn empty_union_type(_input: ParseInput) -> ParseResult<()> {

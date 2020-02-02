@@ -275,6 +275,12 @@ impl<E> Expr<E> {
             span: self.span.clone(),
         }
     }
+    pub fn with_span(self, span: Span) -> Self {
+        Expr {
+            kind: self.kind,
+            span,
+        }
+    }
 
     pub fn traverse_resolve_mut<Err, F1>(
         &mut self,

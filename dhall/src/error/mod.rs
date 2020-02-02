@@ -1,9 +1,11 @@
 use std::io::Error as IOError;
 
 use crate::semantics::resolve::ImportStack;
-use crate::semantics::Value;
 use crate::syntax::{Import, ParseError};
 use crate::NormalizedExpr;
+
+mod builder;
+pub(crate) use builder::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -46,8 +48,6 @@ pub struct TypeError {
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
     // UnboundVariable(Span),
-    InvalidInputType(Value),
-    InvalidOutputType(Value),
     // NotAFunction(Value),
     // TypeMismatch(Value, Value, Value),
     // AnnotMismatch(Value, Value),
@@ -97,12 +97,6 @@ impl std::fmt::Display for TypeError {
         use TypeMessage::*;
         let msg = match &self.message {
             // UnboundVariable(var) => var.error("Type error: Unbound variable"),
-            InvalidInputType(v) => {
-                v.span().error("Type error: Invalid function input")
-            }
-            InvalidOutputType(v) => {
-                v.span().error("Type error: Invalid function output")
-            }
             // NotAFunction(v) => v.span().error("Type error: Not a function"),
             // TypeMismatch(x, y, z) => {
             //     x.span()
