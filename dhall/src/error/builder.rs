@@ -63,12 +63,6 @@ impl ErrorBuilder {
             consumed: false,
         }
     }
-    pub fn new_span_err(span: Span, message: impl ToString) -> Self {
-        let message = message.to_string();
-        let mut builder = Self::new(message.clone());
-        builder.span_err(span, message);
-        builder
-    }
 
     pub fn span_annot(
         &mut self,
@@ -116,6 +110,9 @@ impl ErrorBuilder {
     }
     pub fn help(&mut self, message: impl ToString) -> &mut Self {
         self.footer_annot(message, AnnotationType::Help)
+    }
+    pub fn note(&mut self, message: impl ToString) -> &mut Self {
+        self.footer_annot(message, AnnotationType::Note)
     }
 
     // TODO: handle multiple files

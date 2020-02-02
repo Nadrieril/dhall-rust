@@ -3,7 +3,6 @@ Type error: Unhandled error: error: Wrong handler input type
   |
 1 | merge { x = λ(_ : Bool) → _ } (< x : Natural >.x 1)
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this merge expression
-  |       ^^^^^^^^^^^^^^^^^^^^^^^ the handler `x` expects a value of type: `Bool`
+  |       ^^^^^^^^^^^^^^^^^^^^^^^ the handler for `x` expects a value of type: `Bool`
   |                                ^^^^^^^^^^^^^^^^^^^ but the corresponding variant has type: `Natural`
   |
-  = help: only functions can be applied to

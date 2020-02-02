@@ -1,9 +1,9 @@
-Type error: Unhandled error: error: Handler is not a function
+Type error: Unhandled error: error: merge handler is not a function
  --> <current file>:1:0
   |
 1 | merge { x = True } (< x : Bool >.x True)
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this merge expression
-  |       ^^^^^^^^^^^^ the handler `x` had type: `Bool`
+  |       ^^^^^^^^^^^^ the handler for `x` has type: `Bool`
   |                     ------------------- help: the corresponding variant has type: `Bool`
   |
   = help: a handler for this variant must be a function that takes an input of type: `Bool`

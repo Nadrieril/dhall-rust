@@ -1,7 +1,6 @@
-Type error: Unhandled error: error: Trying to apply an argument to a value that is not a function
+Type error: Unhandled error: error: expected function, found `Bool`
  --> <current file>:1:0
   |
 1 | True True
-  | ^^^^ this has type: `Bool`
+  | ^^^^ function application requires a function
   |
-  = help: only functions can be applied to

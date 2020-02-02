@@ -284,53 +284,53 @@ fn type_one_layer(
             }
             t
         }
-        ExprKind::App(f, arg) => match f.get_type()?.kind() {
-            ValueKind::PiClosure { annot, closure, .. } => {
-                if arg.get_type()? != *annot {
-                    return mkerr(
-                        ErrorBuilder::new_span_err(
-                            &span,
-                            format!("Wrong type of function argument"),
-                        )
-                        .span_err(
-                            &f.span(),
-                            format!(
-                                "this expects an argument of type: {}",
+        ExprKind::App(f, arg) => {
+            match f.get_type()?.kind() {
+                ValueKind::PiClosure { annot, closure, .. } => {
+                    if arg.get_type()? != *annot {
+                        return mkerr(
+                            ErrorBuilder::new(format!(
+                                "wrong type of function argument"
+                            ))
+                            .span_err(
+                                f.span(),
+                                format!(
+                                    "this expects an argument of type: {}",
+                                    annot.to_expr_tyenv(env),
+                                ),
+                            )
+                            .span_err(
+                                arg.span(),
+                                format!(
+                                    "but this has type: {}",
+                                    arg.get_type()?.to_expr_tyenv(env),
+                                ),
+                            )
+                            .note(format!(
+                                "expected type `{}`\n   found type `{}`",
                                 annot.to_expr_tyenv(env),
-                            ),
-                        )
-                        .span_err(
-                            &arg.span(),
-                            format!(
-                                "but this has type: {}",
                                 arg.get_type()?.to_expr_tyenv(env),
-                            ),
-                        )
-                        .format(),
-                    );
-                }
+                            ))
+                            .format(),
+                        );
+                    }
 
-                let arg_nf = arg.eval(env.as_nzenv());
-                closure.apply(arg_nf)
-            }
-            _ => {
-                return mkerr(
+                    let arg_nf = arg.eval(env.as_nzenv());
+                    closure.apply(arg_nf)
+                }
+                _ => return mkerr(
                     ErrorBuilder::new(format!(
-                        "Trying to apply an argument to a value that is not a \
-                         function"
+                        "expected function, found `{}`",
+                        f.get_type()?.to_expr_tyenv(env)
                     ))
                     .span_err(
-                        &f.span(),
-                        format!(
-                            "this has type: `{}`",
-                            f.get_type()?.to_expr_tyenv(env)
-                        ),
+                        f.span(),
+                        format!("function application requires a function",),
                     )
-                    .help("only functions can be applied to")
                     .format(),
-                )
+                ),
             }
-        },
+        }
         ExprKind::BoolIf(x, y, z) => {
             if *x.get_type()?.kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return mkerr("InvalidPredicate");
@@ -509,8 +509,8 @@ fn type_one_layer(
                                     .span_err(
                                         record.span(),
                                         format!(
-                                            "the handler `{}` expects a value \
-                                             of type: `{}`",
+                                            "the handler for `{}` expects a \
+                                             value of type: `{}`",
                                             x,
                                             annot.to_expr_tyenv(env)
                                         ),
@@ -523,7 +523,6 @@ fn type_one_layer(
                                             variant_type.to_expr_tyenv(env)
                                         ),
                                     )
-                                    .help("only functions can be applied to")
                                     .format(),
                                 );
                             }
@@ -535,16 +534,16 @@ fn type_one_layer(
                         _ => {
                             return mkerr(
                                 ErrorBuilder::new(format!(
-                                    "Handler is not a function"
+                                    "merge handler is not a function"
                                 ))
                                 .span_err(
                                     span,
-                                    format!("in this merge expression",),
+                                    format!("in this merge expression"),
                                 )
                                 .span_err(
                                     record.span(),
                                     format!(
-                                        "the handler `{}` had type: `{}`",
+                                        "the handler for `{}` has type: `{}`",
                                         x,
                                         handler_type.to_expr_tyenv(env)
                                     ),
