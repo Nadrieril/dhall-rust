@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: wrong type of function argument
+Type error: error: wrong type of function argument
   --> <current file>:6:23
    |
  1 |     let bottom : Type = ∀(any : Type) → any

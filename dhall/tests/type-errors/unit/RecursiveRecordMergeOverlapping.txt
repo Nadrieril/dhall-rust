@@ -1,1 +1,1 @@
-Type error: Unhandled error: RecordTypeMergeRequiresRecordType
+Type error: error: RecordTypeMergeRequiresRecordType

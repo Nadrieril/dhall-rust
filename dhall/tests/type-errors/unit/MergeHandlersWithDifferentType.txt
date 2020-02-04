@@ -1,1 +1,6 @@
-Type error: Unhandled error: MergeHandlerTypeMismatch
+Type error: error: MergeHandlerTypeMismatch
+ --> <current file>:1:0
+  |
+1 | merge { x = λ(_ : Bool) → _, y = λ(_ : Natural) → _ } (< x : Bool | y : Natural >.x True)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ MergeHandlerTypeMismatch
+  |

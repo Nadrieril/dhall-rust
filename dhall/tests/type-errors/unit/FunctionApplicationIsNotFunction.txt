@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: expected function, found `Bool`
+Type error: error: expected function, found `Bool`
  --> <current file>:1:0
   |
 1 | True True

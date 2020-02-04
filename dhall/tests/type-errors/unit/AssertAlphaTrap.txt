@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: unbound variable ``_``
+Type error: error: unbound variable ``_``
  --> <current file>:1:46
   |
 1 | assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)

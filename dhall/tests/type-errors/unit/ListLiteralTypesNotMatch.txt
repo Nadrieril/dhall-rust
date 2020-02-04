@@ -1,1 +1,6 @@
-Type error: Unhandled error: InvalidListElement
+Type error: error: InvalidListElement
+ --> <current file>:1:0
+  |
+1 | [ True, 1 ]
+  | ^^^^^^^^^^^ InvalidListElement
+  |

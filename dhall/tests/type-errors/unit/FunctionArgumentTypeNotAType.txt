@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: Invalid input type: `Natural`
+Type error: error: Invalid input type: `Natural`
  --> <current file>:1:6
   |
 1 | λ(_ : 1) → _

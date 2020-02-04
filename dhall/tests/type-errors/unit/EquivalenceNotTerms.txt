@@ -1,1 +1,6 @@
-Type error: Unhandled error: EquivalenceArgumentsMustBeTerms
+Type error: error: EquivalenceArgumentsMustBeTerms
+ --> <current file>:1:0
+  |
+1 | Bool === Bool
+  | ^^^^^^^^^^^^^ EquivalenceArgumentsMustBeTerms
+  |

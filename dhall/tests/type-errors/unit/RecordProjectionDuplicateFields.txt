@@ -1,1 +1,6 @@
-Type error: Unhandled error: ProjectionDuplicateField
+Type error: error: ProjectionDuplicateField
+ --> <current file>:1:0
+  |
+1 | { x = 1 }.{ x, x }
+  | ^^^^^^^^^^^^^^^^^^ ProjectionDuplicateField
+  |

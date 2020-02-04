@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: merge handler is not a function
+Type error: error: merge handler is not a function
  --> <current file>:1:0
   |
 1 | merge { x = True } (< x : Bool >.x True)

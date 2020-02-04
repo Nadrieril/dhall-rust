@@ -1,1 +1,6 @@
-Type error: Unhandled error: IfBranchMustBeTerm
+Type error: error: IfBranchMustBeTerm
+ --> <current file>:1:0
+  |
+1 | if True then Type else Type
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ IfBranchMustBeTerm
+  |

@@ -1,1 +1,6 @@
-Type error: Unhandled error: InvalidFieldType
+Type error: error: InvalidFieldType
+ --> <current file>:1:0
+  |
+1 | < x : Kind | y : Type >
+  | ^^^^^^^^^^^^^^^^^^^^^^^ InvalidFieldType
+  |

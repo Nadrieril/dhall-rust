@@ -1,1 +1,6 @@
-Type error: Unhandled error: MergeAnnotMismatch
+Type error: error: MergeAnnotMismatch
+ --> <current file>:1:0
+  |
+1 | merge { x = 0 } < x >.x : Bool
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ MergeAnnotMismatch
+  |

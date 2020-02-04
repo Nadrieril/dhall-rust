@@ -1,1 +1,6 @@
-Type error: Unhandled error: UnionTypeDuplicateField
+Type error: error: UnionTypeDuplicateField
+ --> <current file>:1:0
+  |
+1 | <x | x: Natural>
+  | ^^^^^^^^^^^^^^^^ UnionTypeDuplicateField
+  |

@@ -1,1 +1,6 @@
-Type error: Unhandled error: RecordTypeDuplicateField
+Type error: error: RecordTypeDuplicateField
+ --> <current file>:1:0
+  |
+1 | { x: Natural, x: Natural }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^ RecordTypeDuplicateField
+  |

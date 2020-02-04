@@ -1,1 +1,6 @@
-Type error: Unhandled error: annot mismatch: (True : Bool) : Natural
+Type error: error: annot mismatch: (True : Bool) : Natural
+ --> <current file>:1:8
+  |
+1 | let x : Natural = True in True
+  |         ^^^^^^^ annot mismatch: (True : Bool) : Natural
+  |

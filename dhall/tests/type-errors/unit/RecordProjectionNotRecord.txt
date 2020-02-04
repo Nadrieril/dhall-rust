@@ -1,1 +1,6 @@
-Type error: Unhandled error: ProjectionMustBeRecord
+Type error: error: ProjectionMustBeRecord
+ --> <current file>:1:0
+  |
+1 | True.{ x }
+  | ^^^^^^^^^^ ProjectionMustBeRecord
+  |
