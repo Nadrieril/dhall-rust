@@ -1,1 +1,6 @@
-Type error: Unhandled error: BinOpTypeMismatch
+Type error: error: BinOpTypeMismatch
+ --> <current file>:1:0
+  |
+1 | "" ++ 1
+  | ^^^^^^^ BinOpTypeMismatch
+  |

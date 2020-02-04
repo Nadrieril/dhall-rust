@@ -1,1 +1,6 @@
-Type error: Unhandled error: AssertMustTakeEquivalence
+Type error: error: AssertMustTakeEquivalence
+ --> <current file>:1:0
+  |
+1 | assert : Bool
+  | ^^^^^^^^^^^^^ AssertMustTakeEquivalence
+  |

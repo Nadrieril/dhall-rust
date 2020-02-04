@@ -1,1 +1,6 @@
-Type error: Unhandled error: InvalidListType
+Type error: error: InvalidListType
+ --> <current file>:1:0
+  |
+1 | [ Bool ]
+  | ^^^^^^^^ InvalidListType
+  |

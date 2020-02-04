@@ -1,1 +1,6 @@
-Type error: Unhandled error: MergeVariantMissingHandler
+Type error: error: MergeVariantMissingHandler
+ --> <current file>:1:0
+  |
+1 | merge { x = 0 } <x | y>.x
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^ MergeVariantMissingHandler
+  |

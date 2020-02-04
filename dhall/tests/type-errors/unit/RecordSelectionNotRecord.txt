@@ -1,1 +1,6 @@
-Type error: Unhandled error: NotARecord
+Type error: error: NotARecord
+ --> <current file>:1:0
+  |
+1 | True.x
+  | ^^^^^^ NotARecord
+  |

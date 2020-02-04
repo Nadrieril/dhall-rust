@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: unbound variable `x`
+Type error: error: unbound variable `x`
  --> <current file>:1:0
   |
 1 | x

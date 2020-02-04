@@ -100,8 +100,10 @@ fn char_idx_from_byte_idx(input: &str, idx: usize) -> usize {
         .char_indices()
         .enumerate()
         .find(|(_, (i, _))| *i == idx)
-        .unwrap()
-        .0;
+        .map(|(i, (_, _))| i)
+        // We should be able to unwrap() here, but somehow it panics on an example from
+        // serde_dhall/lib.rs...
+        .unwrap_or(0);
     // Unix-style newlines are counted as two chars (see
     // https://github.com/rust-lang/annotate-snippets-rs/issues/24).
     let nbr_newlines = input[..idx].chars().filter(|c| *c == '\n').count();

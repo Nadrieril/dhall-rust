@@ -1,1 +1,6 @@
-Type error: Unhandled error: Merge1ArgMustBeRecord
+Type error: error: Merge1ArgMustBeRecord
+ --> <current file>:1:0
+  |
+1 | merge True < x >.x
+  | ^^^^^^^^^^^^^^^^^^ Merge1ArgMustBeRecord
+  |

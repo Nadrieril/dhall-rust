@@ -1,4 +1,4 @@
-Type error: Unhandled error: error: unbound variable `constructors`
+Type error: error: unbound variable `constructors`
  --> <current file>:1:0
   |
 1 | constructors < Left : Natural | Right : Bool >

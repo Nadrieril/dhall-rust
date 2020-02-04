@@ -1,1 +1,6 @@
-Type error: Unhandled error: ProjectionMissingEntry
+Type error: error: ProjectionMissingEntry
+ --> <current file>:1:0
+  |
+1 | {=}.{ x }
+  | ^^^^^^^^^ ProjectionMissingEntry
+  |

@@ -1,1 +1,6 @@
-Type error: Unhandled error: InvalidOptionalType
+Type error: error: InvalidOptionalType
+ --> <current file>:1:0
+  |
+1 | Some Bool
+  | ^^^^^^^^^ InvalidOptionalType
+  |

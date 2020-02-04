@@ -47,42 +47,7 @@ pub struct TypeError {
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    // UnboundVariable(Span),
-    // NotAFunction(Value),
-    // TypeMismatch(Value, Value, Value),
-    // AnnotMismatch(Value, Value),
-    // InvalidListElement(usize, Value, Value),
-    // InvalidListType(Value),
-    // InvalidOptionalType(Value),
-    // InvalidPredicate(Value),
-    // IfBranchMismatch(Value, Value),
-    // IfBranchMustBeTerm(bool, Value),
-    // InvalidFieldType(Label, Value),
-    // NotARecord(Label, Value),
-    // MustCombineRecord(Value),
-    // MissingRecordField(Label, Value),
-    // MissingUnionField(Label, Value),
-    // BinOpTypeMismatch(BinOp, Value),
-    // InvalidTextInterpolation(Value),
-    // Merge1ArgMustBeRecord(Value),
-    // Merge2ArgMustBeUnionOrOptional(Value),
-    // MergeEmptyNeedsAnnotation,
-    // MergeHandlerMissingVariant(Label),
-    // MergeVariantMissingHandler(Label),
-    // MergeAnnotMismatch,
-    // MergeHandlerTypeMismatch,
-    // MergeHandlerReturnTypeMustNotBeDependent,
-    // ProjectionMustBeRecord,
-    // ProjectionMissingEntry,
-    // ProjectionDuplicateField,
     Sort,
-    // RecordTypeDuplicateField,
-    // RecordTypeMergeRequiresRecordType(Value),
-    // UnionTypeDuplicateField,
-    // EquivalenceArgumentMustBeTerm(bool, Value),
-    // EquivalenceTypeMismatch(Value, Value),
-    // AssertMismatch(Value, Value),
-    // AssertMustTakeEquivalence,
     Custom(String),
 }
 
@@ -96,24 +61,8 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            // UnboundVariable(var) => var.error("Type error: Unbound variable"),
-            // NotAFunction(v) => v.span().error("Type error: Not a function"),
-            // TypeMismatch(x, y, z) => {
-            //     x.span()
-            //         .error("Type error: Wrong type of function argument")
-            //         + "\n"
-            //         + &z.span().error(format!(
-            //             "This argument has type {:?}",
-            //             z.get_type().unwrap()
-            //         ))
-            //         + "\n"
-            //         + &y.span().error(format!(
-            //             "But the function expected an argument of type {:?}",
-            //             y
-            //         ))
-            // }
-            Custom(s) => format!("Type error: Unhandled error: {}", s),
-            _ => format!("Type error: Unhandled error: {:?}", self.message),
+            Sort => format!("Type error: Unhandled error: {:?}", self.message),
+            Custom(s) => format!("Type error: {}", s),
         };
         write!(f, "{}", msg)
     }
