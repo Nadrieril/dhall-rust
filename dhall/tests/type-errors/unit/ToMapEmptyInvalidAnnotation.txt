@@ -1,0 +1,7 @@
+Type error: error: The type of `toMap x` must be of the form `List { mapKey : Text, mapValue : T }`
+ --> <current file>:2:0
+  |
+1 | -- The mapKey must be Text
+2 | toMap {=} : List { mapKey : Bool, mapValue : Text }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The type of `toMap x` must be of the form `List { mapKey : Text, mapValue : T }`
+  |

@@ -313,11 +313,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RecordProjectionByType"
                     || path == "unit/RecordProjectionByTypeEmpty"
                     || path == "unit/RecordProjectionByTypeJudgmentalEquality"
-                    // TODO: toMap
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapAnnotated"
-                    || path == "unit/ToMapInferTypeFromRecord"
-                    || path == "simple/toMapEmptyNormalizeAnnotation"
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
@@ -334,16 +329,6 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: projection by expression
                     || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
                     || path == "unit/RecordProjectionByTypeNotPresent"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/HeterogenousToMap"
-                    || path == "unit/MistypedToMap1"
-                    || path == "unit/MistypedToMap2"
-                    || path == "unit/MistypedToMap3"
-                    || path == "unit/MistypedToMap4"
-                    || path == "unit/NonRecordToMap"
-                    || path == "unit/ToMapEmptyInvalidAnnotation"
-                    || path == "unit/ToMapWrongKind"
                     // TODO: record completion
                     || path == "unit/CompletionMissingRequiredField"
                     || path == "unit/CompletionWithWrongDefaultType"
@@ -364,16 +349,6 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: projection by expression
                     || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
                     || path == "unit/RecordProjectionByTypeNotPresent"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/HeterogenousToMap"
-                    || path == "unit/MistypedToMap1"
-                    || path == "unit/MistypedToMap2"
-                    || path == "unit/MistypedToMap3"
-                    || path == "unit/MistypedToMap4"
-                    || path == "unit/NonRecordToMap"
-                    || path == "unit/ToMapEmptyInvalidAnnotation"
-                    || path == "unit/ToMapWrongKind"
                     // TODO: record completion
                     || path == "unit/CompletionMissingRequiredField"
                     || path == "unit/CompletionWithWrongDefaultType"

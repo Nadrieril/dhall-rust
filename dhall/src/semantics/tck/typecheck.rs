@@ -619,7 +619,85 @@ fn type_one_layer(
                 (None, None) => return span_err("MergeEmptyNeedsAnnotation"),
             }
         }
-        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::ToMap(record, annot) => {
+            let record_t = record.get_type()?;
+            let kts = match record_t.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => {
+                    return span_err("The argument to `toMap` must be a record")
+                }
+            };
+
+            if kts.is_empty() {
+                let annot = if let Some(annot) = annot {
+                    annot
+                } else {
+                    return span_err(
+                        "`toMap` applied to an empty record requires a type \
+                         annotation",
+                    );
+                };
+                let annot_val = annot.eval(env.as_nzenv());
+
+                let err_msg = "The type of `toMap x` must be of the form \
+                               `List { mapKey : Text, mapValue : T }`";
+                let arg = match annot_val.kind() {
+                    ValueKind::AppliedBuiltin(BuiltinClosure {
+                        b: Builtin::List,
+                        args,
+                        ..
+                    }) if args.len() == 1 => &args[0],
+                    _ => return span_err(err_msg),
+                };
+                let kts = match arg.kind() {
+                    ValueKind::RecordType(kts) => kts,
+                    _ => return span_err(err_msg),
+                };
+                if kts.len() != 2 {
+                    return span_err(err_msg);
+                }
+                match kts.get(&"mapKey".into()) {
+                    Some(t) if *t == Value::from_builtin(Builtin::Text) => {}
+                    _ => return span_err(err_msg),
+                }
+                match kts.get(&"mapValue".into()) {
+                    Some(_) => {}
+                    None => return span_err(err_msg),
+                }
+                annot_val
+            } else {
+                let entry_type = kts.iter().next().unwrap().1.clone();
+                if entry_type.get_type()?.as_const() != Some(Const::Type) {
+                    return span_err(
+                        "`toMap` only accepts records of type `Type`",
+                    );
+                }
+                for (_, t) in kts.iter() {
+                    if *t != entry_type {
+                        return span_err(
+                            "Every field of the record must have the same type",
+                        );
+                    }
+                }
+
+                let mut kts = HashMap::new();
+                kts.insert("mapKey".into(), Value::from_builtin(Builtin::Text));
+                kts.insert("mapValue".into(), entry_type);
+                let output_type = Value::from_builtin(Builtin::List).app(
+                    Value::from_kind_and_type(
+                        ValueKind::RecordType(kts),
+                        Value::from_const(Const::Type),
+                    ),
+                );
+                if let Some(annot) = annot {
+                    let annot_val = annot.eval(env.as_nzenv());
+                    if output_type != annot_val {
+                        return span_err("Annotation mismatch");
+                    }
+                }
+                output_type
+            }
+        }
         ExprKind::Projection(record, labels) => {
             let record_type = record.get_type()?;
             let kts = match record_type.kind() {
