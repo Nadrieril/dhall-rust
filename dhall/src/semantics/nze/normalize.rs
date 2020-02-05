@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::semantics::NzEnv;
@@ -242,9 +243,9 @@ pub(crate) fn normalize_one_layer(
     env: &NzEnv,
 ) -> ValueKind {
     use ValueKind::{
-        BoolLit, DoubleLit, EmptyOptionalLit, IntegerLit, NEListLit,
-        NEOptionalLit, NaturalLit, RecordLit, RecordType, UnionConstructor,
-        UnionLit, UnionType,
+        BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit,
+        NEListLit, NEOptionalLit, NaturalLit, RecordLit, RecordType,
+        UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -271,7 +272,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
-            let arg = match &*t.kind() {
+            let arg = match t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     args,
@@ -373,7 +374,45 @@ pub(crate) fn normalize_one_layer(
                 _ => Ret::Expr(expr),
             }
         }
-        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::ToMap(ref v, ref annot) => match v.kind() {
+            RecordLit(kvs) if kvs.is_empty() => {
+                match annot.as_ref().map(|v| v.kind()) {
+                    Some(ValueKind::AppliedBuiltin(BuiltinClosure {
+                        b: Builtin::List,
+                        args,
+                        ..
+                    })) if args.len() == 1 => {
+                        Ret::ValueKind(EmptyListLit(args[0].clone()))
+                    }
+                    _ => Ret::Expr(expr),
+                }
+            }
+            RecordLit(kvs) => Ret::ValueKind(NEListLit(
+                kvs.iter()
+                    .sorted_by_key(|(k, _)| k.clone())
+                    .map(|(k, v)| {
+                        let mut rec = HashMap::new();
+                        let mut rec_ty = HashMap::new();
+                        rec.insert("mapKey".into(), Value::from_text(k));
+                        rec.insert("mapValue".into(), v.clone());
+                        rec_ty.insert(
+                            "mapKey".into(),
+                            Value::from_builtin(Builtin::Text),
+                        );
+                        rec_ty.insert("mapValue".into(), v.get_type_not_sort());
+
+                        Value::from_kind_and_type(
+                            ValueKind::RecordLit(rec),
+                            Value::from_kind_and_type(
+                                ValueKind::RecordType(rec_ty),
+                                Value::from_const(Const::Type),
+                            ),
+                        )
+                    })
+                    .collect(),
+            )),
+            _ => Ret::Expr(expr),
+        },
     };
 
     match ret {

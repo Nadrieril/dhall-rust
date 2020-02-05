@@ -260,10 +260,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RecordProjectionByTypeNormalizeProjection"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapWithType"
                     // TODO: Further record simplifications
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"

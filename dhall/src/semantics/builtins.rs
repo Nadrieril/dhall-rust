@@ -1,5 +1,5 @@
 use crate::semantics::{
-    self, typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
+    typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
@@ -301,9 +301,7 @@ fn apply_builtin(
             _ => Ret::DoneAsIs,
         },
         (NaturalShow, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::ValueKind(TextLit(
-                semantics::TextLit::from_text(n.to_string()),
-            )),
+            NaturalLit(n) => Ret::Value(Value::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
@@ -322,7 +320,7 @@ fn apply_builtin(
                 } else {
                     format!("+{}", n)
                 };
-                Ret::ValueKind(TextLit(semantics::TextLit::from_text(s)))
+                Ret::Value(Value::from_text(s))
             }
             _ => Ret::DoneAsIs,
         },
@@ -343,9 +341,7 @@ fn apply_builtin(
             _ => Ret::DoneAsIs,
         },
         (DoubleShow, [n]) => match &*n.kind() {
-            DoubleLit(n) => Ret::ValueKind(TextLit(
-                semantics::TextLit::from_text(n.to_string()),
-            )),
+            DoubleLit(n) => Ret::Value(Value::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (TextShow, [v]) => match &*v.kind() {
@@ -355,8 +351,7 @@ fn apply_builtin(
                     let txt: InterpolatedText<Normalized> =
                         std::iter::once(InterpolatedTextContents::Text(s))
                             .collect();
-                    let s = txt.to_string();
-                    Ret::ValueKind(TextLit(semantics::TextLit::from_text(s)))
+                    Ret::Value(Value::from_text(txt))
                 } else {
                     Ret::DoneAsIs
                 }

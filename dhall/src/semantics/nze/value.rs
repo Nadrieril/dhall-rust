@@ -167,6 +167,12 @@ impl Value {
             typecheck(&type_of_builtin(b)).unwrap().eval_closed_expr(),
         )
     }
+    pub(crate) fn from_text(txt: impl ToString) -> Self {
+        Value::from_kind_and_type(
+            ValueKind::TextLit(TextLit::from_text(txt.to_string())),
+            Value::from_builtin(Builtin::Text),
+        )
+    }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
         match &*self.kind() {
