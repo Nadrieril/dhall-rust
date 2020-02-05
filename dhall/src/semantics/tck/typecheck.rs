@@ -726,8 +726,31 @@ fn type_one_layer(
                 record_type.get_type()?,
             )
         }
-        ExprKind::ProjectionByExpr(_, _) => {
-            unimplemented!("selection by expression")
+        ExprKind::ProjectionByExpr(record, selection) => {
+            let record_type = record.get_type()?;
+            let rec_kts = match record_type.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => return span_err("ProjectionMustBeRecord"),
+            };
+
+            let selection_val = selection.eval(env.as_nzenv());
+            let sel_kts = match selection_val.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => return span_err("ProjectionByExprTakesRecordType"),
+            };
+
+            for (l, sel_ty) in sel_kts {
+                match rec_kts.get(l) {
+                    Some(rec_ty) => {
+                        if rec_ty != sel_ty {
+                            return span_err("ProjectionWrongType");
+                        }
+                    }
+                    None => return span_err("ProjectionMissingEntry"),
+                }
+            }
+
+            selection_val
         }
         ExprKind::Completion(_, _) => unimplemented!("record completion"),
     })

@@ -309,10 +309,6 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // Too slow
                     || path == "prelude"
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
-                    || path == "unit/RecordProjectionByTypeJudgmentalEquality"
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
@@ -326,9 +322,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeInferenceFailure",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
-                    || path == "unit/RecordProjectionByTypeNotPresent"
                     // TODO: record completion
                     || path == "unit/CompletionMissingRequiredField"
                     || path == "unit/CompletionWithWrongDefaultType"
@@ -346,9 +339,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
-                    || path == "unit/RecordProjectionByTypeNotPresent"
                     // TODO: record completion
                     || path == "unit/CompletionMissingRequiredField"
                     || path == "unit/CompletionWithWrongDefaultType"
