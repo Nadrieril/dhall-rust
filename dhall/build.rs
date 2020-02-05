@@ -309,9 +309,6 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // Too slow
                     || path == "prelude"
-                    // TODO: record completion
-                    || path == "simple/completion"
-                    || path == "unit/Completion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -322,11 +319,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeInferenceFailure",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: record completion
-                    || path == "unit/CompletionMissingRequiredField"
-                    || path == "unit/CompletionWithWrongDefaultType"
-                    || path == "unit/CompletionWithWrongFieldName"
-                    || path == "unit/CompletionWithWrongOverridenType"
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
             }),
@@ -339,11 +331,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: record completion
-                    || path == "unit/CompletionMissingRequiredField"
-                    || path == "unit/CompletionWithWrongDefaultType"
-                    || path == "unit/CompletionWithWrongFieldName"
-                    || path == "unit/CompletionWithWrongOverridenType"
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
             }),
