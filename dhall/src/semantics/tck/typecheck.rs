@@ -72,7 +72,9 @@ fn type_one_layer(
 
         ExprKind::Lam(binder, annot, body) => {
             let body_ty = body.get_type()?;
-            let body_ty = body_ty.to_tyexpr(env.as_varenv().insert());
+            let body_ty = body_ty.to_tyexpr_tyenv(
+                &env.insert_type(&binder.clone(), annot.eval(env.as_nzenv())),
+            );
             let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
             type_one_layer(env, pi_ekind, Span::Artificial)?
                 .eval(env.as_nzenv())
@@ -154,7 +156,7 @@ fn type_one_layer(
                 }
             }
             let t = x.get_type()?;
-            if t.get_type()?.as_const() != Some(Const::Type) {
+            if t.get_type(env)?.as_const() != Some(Const::Type) {
                 return span_err("InvalidListType");
             }
 
@@ -162,7 +164,7 @@ fn type_one_layer(
         }
         ExprKind::SomeLit(x) => {
             let t = x.get_type()?;
-            if t.get_type()?.as_const() != Some(Const::Type) {
+            if t.get_type(env)?.as_const() != Some(Const::Type) {
                 return span_err("InvalidOptionalType");
             }
 
@@ -183,8 +185,7 @@ fn type_one_layer(
 
             let ty = type_of_recordtype(
                 span.clone(),
-                kts.iter()
-                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
+                kts.iter().map(|(_, t)| Cow::Owned(t.to_tyexpr_tyenv(env))),
             )?;
             Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
         }
@@ -278,13 +279,13 @@ fn type_one_layer(
                 return span_err(&format!(
                     "annot mismatch: ({} : {}) : {}",
                     x.to_expr_tyenv(env),
-                    x_ty.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
-                    t.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
+                    x_ty.to_tyexpr_tyenv(env).to_expr_tyenv(env),
+                    t.to_tyexpr_tyenv(env).to_expr_tyenv(env)
                 ));
                 // return span_err(format!(
                 //     "annot mismatch: {} != {}",
-                //     x_ty.to_tyexpr(env.as_varenv()).to_expr_tyenv(env),
-                //     t.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
+                //     x_ty.to_tyexpr_tyenv(env).to_expr_tyenv(env),
+                //     t.to_tyexpr_tyenv(env).to_expr_tyenv(env)
                 // ));
                 // return span_err(format!("annot mismatch: {:#?} : {:#?}", x, t,));
             }
@@ -352,10 +353,9 @@ fn type_one_layer(
             if *x.get_type()?.kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
-            if y.get_type()?.get_type()?.as_const() != Some(Const::Type) {
-                return span_err("IfBranchMustBeTerm");
-            }
-            if z.get_type()?.get_type()?.as_const() != Some(Const::Type) {
+            let y_ty = y.get_type()?;
+            let y_ty = y_ty.to_tyexpr_tyenv(env);
+            if y_ty.get_type()?.as_const() != Some(Const::Type) {
                 return span_err("IfBranchMustBeTerm");
             }
             if y.get_type()? != z.get_type()? {
@@ -388,16 +388,15 @@ fn type_one_layer(
             // Construct the final record type
             let ty = type_of_recordtype(
                 span.clone(),
-                kts.iter()
-                    .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
+                kts.iter().map(|(_, t)| Cow::Owned(t.to_tyexpr_tyenv(env))),
             )?;
             Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             let ekind = ExprKind::BinOp(
                 BinOp::RecursiveRecordTypeMerge,
-                x.get_type()?.to_tyexpr(env.as_varenv()),
-                y.get_type()?.to_tyexpr(env.as_varenv()),
+                x.get_type()?.to_tyexpr_tyenv(env),
+                y.get_type()?.to_tyexpr_tyenv(env),
             );
             type_one_layer(env, ekind, Span::Artificial)?.eval(env.as_nzenv())
         }
@@ -418,8 +417,8 @@ fn type_one_layer(
                         env,
                         ExprKind::BinOp(
                             BinOp::RecursiveRecordTypeMerge,
-                            tx.to_tyexpr(env.as_varenv()),
-                            ty.to_tyexpr(env.as_varenv()),
+                            tx.to_tyexpr_tyenv(env),
+                            ty.to_tyexpr_tyenv(env),
                         ),
                         Span::Artificial,
                     )?;
@@ -451,7 +450,9 @@ fn type_one_layer(
             if l.get_type()? != r.get_type()? {
                 return span_err("EquivalenceTypeMismatch");
             }
-            if l.get_type()?.get_type()?.as_const() != Some(Const::Type) {
+            if l.get_type()?.to_tyexpr_tyenv(env).get_type()?.as_const()
+                != Some(Const::Type)
+            {
                 return span_err("EquivalenceArgumentsMustBeTerms");
             }
 
@@ -668,7 +669,7 @@ fn type_one_layer(
                 annot_val
             } else {
                 let entry_type = kts.iter().next().unwrap().1.clone();
-                if entry_type.get_type()?.as_const() != Some(Const::Type) {
+                if entry_type.get_type(env)?.as_const() != Some(Const::Type) {
                     return span_err(
                         "`toMap` only accepts records of type `Type`",
                     );
@@ -724,7 +725,7 @@ fn type_one_layer(
 
             Value::from_kind_and_type(
                 ValueKind::RecordType(new_kts),
-                record_type.get_type()?,
+                record_type.get_type(env)?,
             )
         }
         ExprKind::ProjectionByExpr(record, selection) => {
@@ -804,7 +805,12 @@ pub(crate) fn type_with(
             (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
         }
         ExprKind::Embed(p) => {
-            return Ok(p.clone().into_value().to_tyexpr_noenv())
+            let val = p.clone().into_value();
+            (
+                val.to_tyexpr_noenv().kind().clone(),
+                Some(val.get_type(&TyEnv::new())?),
+            )
+            // return Ok(p.clone().into_value().to_tyexpr_noenv())
         }
         ekind => {
             let ekind = match ekind {
@@ -829,9 +835,9 @@ pub(crate) fn type_with(
                         val.clone()
                     };
                     let val = type_with(env, &val)?;
-                    val.get_type()?; // Ensure val is not Sort
+                    let val_ty = val.get_type()?;
                     let val_nf = val.eval(&env.as_nzenv());
-                    let body_env = env.insert_value(&binder, val_nf);
+                    let body_env = env.insert_value(&binder, val_nf, val_ty);
                     let body = type_with(&body_env, body)?;
                     ExprKind::Let(binder.clone(), None, val, body)
                 }

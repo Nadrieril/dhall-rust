@@ -3,13 +3,11 @@ use std::rc::Rc;
 
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::nze::lazy;
-use crate::semantics::Binder;
 use crate::semantics::{
     apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
-    TyEnv,
+    type_of_builtin, type_with, typecheck, Binder, BuiltinClosure, NzEnv,
+    NzVar, TyEnv, TyExpr, TyExprKind, VarEnv,
 };
-use crate::semantics::{type_of_builtin, typecheck, TyExpr, TyExprKind};
-use crate::semantics::{BuiltinClosure, NzEnv, NzVar, VarEnv};
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
@@ -119,11 +117,14 @@ impl Value {
         )
         .into_value()
     }
+    pub(crate) fn const_kind() -> Value {
+        Value::from_const(Const::Kind)
+    }
     /// Construct a Value from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
         ValueInternal::from_thunk(
             Thunk::new(env, tye.clone()),
-            tye.get_type().ok(),
+            Some(Value::const_kind()),
             tye.span().clone(),
         )
         .into_value()
@@ -137,24 +138,31 @@ impl Value {
         let env = NzEnv::new();
         ValueInternal::from_thunk(
             Thunk::from_partial_expr(env, e, ty.clone()),
-            Some(ty),
+            Some(Value::const_kind()),
             Span::Artificial,
         )
         .into_value()
     }
     /// Make a Value from a ValueKind
     pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
-        ValueInternal::from_whnf(v, Some(t), Span::Artificial).into_value()
+        ValueInternal::from_whnf(v, Some(Value::const_kind()), Span::Artificial)
+            .into_value()
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = ValueKind::Const(c);
         match c {
-            Const::Type => {
-                Value::from_kind_and_type(v, Value::from_const(Const::Kind))
-            }
-            Const::Kind => {
-                Value::from_kind_and_type(v, Value::from_const(Const::Sort))
-            }
+            Const::Type => ValueInternal::from_whnf(
+                v,
+                Some(Value::from_const(Const::Kind)),
+                Span::Artificial,
+            )
+            .into_value(),
+            Const::Kind => ValueInternal::from_whnf(
+                v,
+                Some(Value::const_sort()),
+                Span::Artificial,
+            )
+            .into_value(),
             Const::Sort => Value::const_sort(),
         }
     }
@@ -226,14 +234,10 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        let body_t = match &*self.get_type_not_sort().kind() {
-            ValueKind::PiClosure { annot, closure, .. } => {
-                v.check_type(annot);
-                closure.apply(v.clone())
-            }
-            _ => unreachable!("Internal type error"),
-        };
-        Value::from_kind_and_type(apply_any(self.clone(), v, &body_t), body_t)
+        Value::from_kind_and_type(
+            apply_any(self.clone(), v, &Value::const_kind()),
+            Value::const_kind(),
+        )
     }
 
     /// In debug mode, panic if the provided type doesn't match the value's type.
@@ -246,12 +250,16 @@ impl Value {
         //     "Internal type error"
         // );
     }
-    pub(crate) fn get_type(&self) -> Result<Value, TypeError> {
+    pub(crate) fn get_type(&self, tyenv: &TyEnv) -> Result<Value, TypeError> {
+        let expr = self.to_tyexpr(tyenv.as_varenv()).to_expr_tyenv(tyenv);
+        type_with(tyenv, &expr).unwrap().get_type()
+    }
+    pub(crate) fn get_type_noenv(&self) -> Result<Value, TypeError> {
         Ok(self.0.get_type()?.clone())
     }
     /// When we know the value isn't `Sort`, this gets the type directly
     pub(crate) fn get_type_not_sort(&self) -> Value {
-        self.get_type()
+        self.get_type_noenv()
             .expect("Internal type error: value is `Sort` but shouldn't be")
     }
 
@@ -365,6 +373,10 @@ impl Value {
         };
 
         TyExpr::new(tye, self.0.ty.clone(), self.0.span.clone())
+    }
+    pub fn to_tyexpr_tyenv(&self, tyenv: &TyEnv) -> TyExpr {
+        let expr = self.to_tyexpr(tyenv.as_varenv()).to_expr_tyenv(tyenv);
+        type_with(tyenv, &expr).unwrap()
     }
     pub fn to_tyexpr_noenv(&self) -> TyExpr {
         self.to_tyexpr(VarEnv::new())
@@ -522,7 +534,7 @@ impl Closure {
     pub fn apply(&self, val: Value) -> Value {
         match self {
             Closure::Closure { env, body, .. } => {
-                body.eval(&env.insert_value(val))
+                body.eval(&env.insert_value_noty(val))
             }
             Closure::ConstantClosure { body, .. } => body.clone(),
         }

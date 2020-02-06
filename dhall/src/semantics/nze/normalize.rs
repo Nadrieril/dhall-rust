@@ -17,14 +17,14 @@ pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
             closure.apply(a).to_whnf_check_type(ty)
         }
         ValueKind::AppliedBuiltin(closure) => {
-            closure.apply(a, f.get_type().unwrap(), ty)
+            closure.apply(a, f.get_type_not_sort(), ty)
         }
         ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
             l.clone(),
             a,
             kts.clone(),
             uniont.clone(),
-            f.get_type().unwrap(),
+            f.get_type_not_sort(),
         ),
         _ => ValueKind::PartialExpr(ExprKind::App(f, a)),
     }
@@ -349,7 +349,7 @@ pub(crate) fn normalize_one_layer(
             UnionType(kts) => Ret::ValueKind(UnionConstructor(
                 l.clone(),
                 kts.clone(),
-                v.get_type().unwrap(),
+                v.get_type_not_sort(),
             )),
             PartialExpr(ExprKind::BinOp(
                 BinOp::RightBiasedRecordMerge,
@@ -536,7 +536,7 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
         }
         TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
             let val = val.eval(env);
-            body.eval(&env.insert_value(val)).kind().clone()
+            body.eval(&env.insert_value_noty(val)).kind().clone()
         }
         TyExprKind::Expr(e) => {
             let ty = match tye.get_type() {

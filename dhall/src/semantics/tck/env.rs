@@ -104,16 +104,16 @@ impl TyEnv {
         &self.names
     }
 
-    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
+    pub fn insert_type(&self, x: &Label, ty: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
-            items: self.items.insert_type(t),
+            items: self.items.insert_type(ty),
         }
     }
-    pub fn insert_value(&self, x: &Label, e: Value) -> Self {
+    pub fn insert_value(&self, x: &Label, e: Value, ty: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
-            items: self.items.insert_value(e),
+            items: self.items.insert_value(e, ty),
         }
     }
     pub fn lookup(&self, var: &V) -> Option<(AlphaVar, Type)> {

@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, Value, ValueKind};
+use crate::semantics::{AlphaVar, Type, Value, ValueKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NzVar {
@@ -11,9 +11,9 @@ pub(crate) enum NzVar {
 #[derive(Debug, Clone)]
 enum NzEnvItem {
     // Variable is bound with given type
-    Kept(Value),
+    Kept(Type),
     // Variable has been replaced by corresponding value
-    Replaced(Value),
+    Replaced(Value, Type),
 }
 
 #[derive(Debug, Clone)]
@@ -49,28 +49,31 @@ impl NzEnv {
         NzEnv { items: Vec::new() }
     }
 
-    pub fn insert_type(&self, t: Value) -> Self {
+    pub fn insert_type(&self, ty: Type) -> Self {
         let mut env = self.clone();
-        env.items.push(NzEnvItem::Kept(t));
+        env.items.push(NzEnvItem::Kept(ty));
         env
     }
-    pub fn insert_value(&self, e: Value) -> Self {
+    pub fn insert_value(&self, e: Value, ty: Type) -> Self {
         let mut env = self.clone();
-        env.items.push(NzEnvItem::Replaced(e));
+        env.items.push(NzEnvItem::Replaced(e, ty));
         env
+    }
+    pub fn insert_value_noty(&self, e: Value) -> Self {
+        let ty = e.get_type_not_sort();
+        self.insert_value(e, ty)
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> ValueKind {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             NzEnvItem::Kept(_) => ValueKind::Var(NzVar::new(idx)),
-            NzEnvItem::Replaced(x) => x.kind().clone(),
+            NzEnvItem::Replaced(x, _) => x.kind().clone(),
         }
     }
     pub fn lookup_ty(&self, var: &AlphaVar) -> Value {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            NzEnvItem::Kept(ty) => ty.clone(),
-            NzEnvItem::Replaced(x) => x.get_type().unwrap(),
+            NzEnvItem::Kept(ty) | NzEnvItem::Replaced(_, ty) => ty.clone(),
         }
     }
 }
