@@ -185,6 +185,7 @@ fn apply_binop<'a>(
             }
             Ret::ValueKind(RecordLit(kvs))
         }
+        (RightBiasedRecordMerge, _, _) if x == y => Ret::ValueRef(y),
 
         (RecursiveRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
             Ret::ValueRef(x)
@@ -244,8 +245,8 @@ pub(crate) fn normalize_one_layer(
 ) -> ValueKind {
     use ValueKind::{
         BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit,
-        NEListLit, NEOptionalLit, NaturalLit, RecordLit, RecordType,
-        UnionConstructor, UnionLit, UnionType,
+        NEListLit, NEOptionalLit, NaturalLit, PartialExpr, RecordLit,
+        RecordType, UnionConstructor, UnionLit, UnionType,
     };
 
     let ret = match expr {
@@ -331,6 +332,13 @@ pub(crate) fn normalize_one_layer(
                     .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
                     .collect(),
             )),
+            PartialExpr(ExprKind::Projection(v2, _)) => {
+                return normalize_one_layer(
+                    ExprKind::Projection(v2.clone(), ls.clone()),
+                    ty,
+                    env,
+                )
+            }
             _ => Ret::Expr(expr),
         },
         ExprKind::Field(ref v, ref l) => match v.kind() {
@@ -343,6 +351,88 @@ pub(crate) fn normalize_one_layer(
                 kts.clone(),
                 v.get_type().unwrap(),
             )),
+            PartialExpr(ExprKind::BinOp(
+                BinOp::RightBiasedRecordMerge,
+                x,
+                y,
+            )) => match (x.kind(), y.kind()) {
+                (_, RecordLit(kvs)) => match kvs.get(l) {
+                    Some(r) => Ret::Value(r.clone()),
+                    None => {
+                        return normalize_one_layer(
+                            ExprKind::Field(x.clone(), l.clone()),
+                            ty,
+                            env,
+                        )
+                    }
+                },
+                (RecordLit(kvs), _) => match kvs.get(l) {
+                    Some(r) => Ret::Expr(ExprKind::Field(
+                        Value::from_kind_and_type(
+                            PartialExpr(ExprKind::BinOp(
+                                BinOp::RightBiasedRecordMerge,
+                                Value::from_kind_and_type(
+                                    RecordLit({
+                                        let mut kvs = HashMap::new();
+                                        kvs.insert(l.clone(), r.clone());
+                                        kvs
+                                    }),
+                                    Value::from_kind_and_type(
+                                        RecordType({
+                                            let mut kvs = HashMap::new();
+                                            kvs.insert(
+                                                l.clone(),
+                                                r.get_type_not_sort(),
+                                            );
+                                            kvs
+                                        }),
+                                        r.get_type_not_sort()
+                                            .get_type_not_sort(),
+                                    ),
+                                ),
+                                y.clone(),
+                            )),
+                            v.get_type_not_sort(),
+                        ),
+                        l.clone(),
+                    )),
+                    None => {
+                        return normalize_one_layer(
+                            ExprKind::Field(y.clone(), l.clone()),
+                            ty,
+                            env,
+                        )
+                    }
+                },
+                _ => Ret::Expr(expr),
+            },
+            PartialExpr(ExprKind::BinOp(
+                BinOp::RecursiveRecordTypeMerge,
+                x,
+                y,
+            )) => match (x.kind(), y.kind()) {
+                (RecordLit(kvs), _) => match kvs.get(l) {
+                    Some(_) => Ret::Expr(expr),
+                    None => {
+                        return normalize_one_layer(
+                            ExprKind::Field(y.clone(), l.clone()),
+                            ty,
+                            env,
+                        )
+                    }
+                },
+                (_, RecordLit(kvs)) => match kvs.get(l) {
+                    Some(_) => Ret::Expr(expr),
+                    None => {
+                        return normalize_one_layer(
+                            ExprKind::Field(x.clone(), l.clone()),
+                            ty,
+                            env,
+                        )
+                    }
+                },
+                _ => Ret::Expr(expr),
+            },
             _ => Ret::Expr(expr),
         },
         ExprKind::ProjectionByExpr(_, _) => {
