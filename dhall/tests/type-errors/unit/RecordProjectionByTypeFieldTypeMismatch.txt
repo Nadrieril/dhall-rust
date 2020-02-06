@@ -1,0 +1,6 @@
+Type error: error: ProjectionWrongType
+ --> <current file>:1:0
+  |
+1 | { y = {=} }.( {y : Natural} )
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ProjectionWrongType
+  |

@@ -1,0 +1,7 @@
+Type error: error: annot mismatch: (Example.default ⫽ { name = True } : { id : Optional Natural, name : Bool }) : { id : Optional Natural, name : Text }
+ --> <current file>:1:4
+  |
+...
+6 | in  Example::{ name = True }
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^ annot mismatch: (Example.default ⫽ { name = True } : { id : Optional Natural, name : Bool }) : { id : Optional Natural, name : Text }
+  |
