@@ -35,11 +35,11 @@ impl BuiltinClosure<Value> {
         }
     }
 
-    pub fn apply(&self, a: Value, f_ty: Value, ret_ty: &Value) -> ValueKind {
+    pub fn apply(&self, a: Value, f_ty: Value) -> ValueKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a.clone())).collect();
         let types = self.types.iter().cloned().chain(once(f_ty)).collect();
-        apply_builtin(self.b, args, ret_ty, types, self.env.clone())
+        apply_builtin(self.b, args, types, self.env.clone())
     }
     /// This doesn't break the invariant because we already checked that the appropriate arguments
     /// did not normalize to something that allows evaluation to proceed.
@@ -267,7 +267,6 @@ macro_rules! make_closure {
 fn apply_builtin(
     b: Builtin,
     args: Vec<Value>,
-    ty: &Value,
     types: Vec<Value>,
     env: NzEnv,
 ) -> ValueKind {
@@ -399,10 +398,7 @@ fn apply_builtin(
                     let mut kts = HashMap::new();
                     kts.insert("index".into(), Value::from_builtin(Natural));
                     kts.insert("value".into(), t.clone());
-                    let t = Value::from_kind_and_type(
-                        RecordType(kts),
-                        Value::from_const(Type),
-                    );
+                    let t = Value::from_kind(RecordType(kts));
 
                     // Construct the new list, with added indices
                     let list = match &*l_whnf {
@@ -414,18 +410,10 @@ fn apply_builtin(
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Value::from_kind_and_type(
-                                            NaturalLit(i),
-                                            Value::from_builtin(
-                                                Builtin::Natural,
-                                            ),
-                                        ),
+                                        Value::from_kind(NaturalLit(i)),
                                     );
                                     kvs.insert("value".into(), e.clone());
-                                    Value::from_kind_and_type(
-                                        RecordLit(kvs),
-                                        t.clone(),
-                                    )
+                                    Value::from_kind(RecordLit(kvs))
                                 })
                                 .collect(),
                         ),
@@ -449,7 +437,7 @@ fn apply_builtin(
                         ))
                         .app(t.clone()),
                     )
-                    .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
+                    .app(EmptyListLit(t.clone()).into_value()),
             )
         }
         (ListFold, [_, l, _, cons, nil]) => match &*l.kind() {
@@ -475,10 +463,7 @@ fn apply_builtin(
                         ))
                         .app(t.clone()),
                     )
-                    .app(
-                        EmptyOptionalLit(t.clone())
-                            .into_value_with_type(optional_t),
-                    ),
+                    .app(EmptyOptionalLit(t.clone()).into_value()),
             )
         }
         (OptionalFold, [_, v, _, just, nothing]) => match &*v.kind() {
@@ -492,20 +477,14 @@ fn apply_builtin(
                     λ(x : Natural) ->
                     1 + var(x)
                 )))
-                .app(
-                    NaturalLit(0)
-                        .into_value_with_type(Value::from_builtin(Natural)),
-                ),
+                .app(NaturalLit(0).into_value()),
         ),
 
         (NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
             NaturalLit(0) => Ret::Value(zero.clone()),
             NaturalLit(n) => {
                 let fold = Value::from_builtin(NaturalFold)
-                    .app(
-                        NaturalLit(n - 1)
-                            .into_value_with_type(Value::from_builtin(Natural)),
-                    )
+                    .app(NaturalLit(n - 1).into_value())
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());
@@ -517,7 +496,7 @@ fn apply_builtin(
     };
     match ret {
         Ret::ValueKind(v) => v,
-        Ret::Value(v) => v.to_whnf_check_type(ty),
+        Ret::Value(v) => v.kind().clone(),
         Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure {
             b,
             args,

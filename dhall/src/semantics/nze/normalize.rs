@@ -6,18 +6,16 @@ use crate::semantics::{
     Binder, BuiltinClosure, Closure, TextLit, TyExpr, TyExprKind, Value,
     ValueKind,
 };
-use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents,
-};
+use crate::syntax::{BinOp, Builtin, ExprKind, InterpolatedTextContents};
 use crate::Normalized;
 
-pub(crate) fn apply_any(f: Value, a: Value, ty: &Value) -> ValueKind {
+pub(crate) fn apply_any(f: Value, a: Value) -> ValueKind {
     match f.kind() {
         ValueKind::LamClosure { closure, .. } => {
-            closure.apply(a).to_whnf_check_type(ty)
+            closure.apply(a).kind().clone()
         }
         ValueKind::AppliedBuiltin(closure) => {
-            closure.apply(a, f.get_type_not_sort(), ty)
+            closure.apply(a, f.get_type_not_sort())
         }
         ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
             l.clone(),
@@ -102,12 +100,7 @@ enum Ret<'a> {
     Expr(ExprKind<Value, Normalized>),
 }
 
-fn apply_binop<'a>(
-    o: BinOp,
-    x: &'a Value,
-    y: &'a Value,
-    ty: &Value,
-) -> Option<Ret<'a>> {
+fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
     use BinOp::{
         BoolAnd, BoolEQ, BoolNE, BoolOr, Equivalence, ListAppend, NaturalPlus,
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
@@ -194,19 +187,12 @@ fn apply_binop<'a>(
             Ret::ValueRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let kts = match ty.kind() {
-                RecordType(kts) => kts,
-                _ => unreachable!("Internal type error"),
-            };
-            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |k, v1, v2| {
-                Ok(Value::from_partial_expr(
-                    ExprKind::BinOp(
-                        RecursiveRecordMerge,
-                        v1.clone(),
-                        v2.clone(),
-                    ),
-                    kts.get(k).expect("Internal type error").clone(),
-                ))
+            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |_, v1, v2| {
+                Ok(Value::from_partial_expr(ExprKind::BinOp(
+                    RecursiveRecordMerge,
+                    v1.clone(),
+                    v2.clone(),
+                )))
             })?;
             Ret::ValueKind(RecordLit(kvs))
         }
@@ -217,14 +203,11 @@ fn apply_binop<'a>(
                 kts_y,
                 // If the Label exists for both records, then we hit the recursive case.
                 |_, l: &Value, r: &Value| {
-                    Ok(Value::from_partial_expr(
-                        ExprKind::BinOp(
-                            RecursiveRecordTypeMerge,
-                            l.clone(),
-                            r.clone(),
-                        ),
-                        ty.clone(),
-                    ))
+                    Ok(Value::from_partial_expr(ExprKind::BinOp(
+                        RecursiveRecordTypeMerge,
+                        l.clone(),
+                        r.clone(),
+                    )))
                 },
             )?;
             Ret::ValueKind(RecordType(kts))
@@ -240,7 +223,6 @@ fn apply_binop<'a>(
 
 pub(crate) fn normalize_one_layer(
     expr: ExprKind<Value, Normalized>,
-    ty: &Value,
     env: &NzEnv,
 ) -> ValueKind {
     use ValueKind::{
@@ -318,7 +300,7 @@ pub(crate) fn normalize_one_layer(
                 }
             }
         }
-        ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y, ty) {
+        ExprKind::BinOp(o, ref x, ref y) => match apply_binop(o, x, y) {
             Some(ret) => ret,
             None => Ret::Expr(expr),
         },
@@ -335,7 +317,6 @@ pub(crate) fn normalize_one_layer(
             PartialExpr(ExprKind::Projection(v2, _)) => {
                 return normalize_one_layer(
                     ExprKind::Projection(v2.clone(), ls.clone()),
-                    ty,
                     env,
                 )
             }
@@ -361,45 +342,26 @@ pub(crate) fn normalize_one_layer(
                     None => {
                         return normalize_one_layer(
                             ExprKind::Field(x.clone(), l.clone()),
-                            ty,
                             env,
                         )
                     }
                 },
                 (RecordLit(kvs), _) => match kvs.get(l) {
                     Some(r) => Ret::Expr(ExprKind::Field(
-                        Value::from_kind_and_type(
-                            PartialExpr(ExprKind::BinOp(
-                                BinOp::RightBiasedRecordMerge,
-                                Value::from_kind_and_type(
-                                    RecordLit({
-                                        let mut kvs = HashMap::new();
-                                        kvs.insert(l.clone(), r.clone());
-                                        kvs
-                                    }),
-                                    Value::from_kind_and_type(
-                                        RecordType({
-                                            let mut kvs = HashMap::new();
-                                            kvs.insert(
-                                                l.clone(),
-                                                r.get_type_not_sort(),
-                                            );
-                                            kvs
-                                        }),
-                                        r.get_type_not_sort()
-                                            .get_type_not_sort(),
-                                    ),
-                                ),
-                                y.clone(),
-                            )),
-                            v.get_type_not_sort(),
-                        ),
+                        Value::from_kind(PartialExpr(ExprKind::BinOp(
+                            BinOp::RightBiasedRecordMerge,
+                            Value::from_kind(RecordLit({
+                                let mut kvs = HashMap::new();
+                                kvs.insert(l.clone(), r.clone());
+                                kvs
+                            })),
+                            y.clone(),
+                        ))),
                         l.clone(),
                     )),
                     None => {
                         return normalize_one_layer(
                             ExprKind::Field(y.clone(), l.clone()),
-                            ty,
                             env,
                         )
                     }
@@ -416,7 +378,6 @@ pub(crate) fn normalize_one_layer(
                     None => {
                         return normalize_one_layer(
                             ExprKind::Field(y.clone(), l.clone()),
-                            ty,
                             env,
                         )
                     }
@@ -426,7 +387,6 @@ pub(crate) fn normalize_one_layer(
                     None => {
                         return normalize_one_layer(
                             ExprKind::Field(x.clone(), l.clone()),
-                            ty,
                             env,
                         )
                     }
@@ -482,22 +442,9 @@ pub(crate) fn normalize_one_layer(
                     .sorted_by_key(|(k, _)| k.clone())
                     .map(|(k, v)| {
                         let mut rec = HashMap::new();
-                        let mut rec_ty = HashMap::new();
                         rec.insert("mapKey".into(), Value::from_text(k));
                         rec.insert("mapValue".into(), v.clone());
-                        rec_ty.insert(
-                            "mapKey".into(),
-                            Value::from_builtin(Builtin::Text),
-                        );
-                        rec_ty.insert("mapValue".into(), v.get_type_not_sort());
-
-                        Value::from_kind_and_type(
-                            ValueKind::RecordLit(rec),
-                            Value::from_kind_and_type(
-                                ValueKind::RecordType(rec_ty),
-                                Value::from_const(Const::Type),
-                            ),
-                        )
+                        Value::from_kind(ValueKind::RecordLit(rec))
                     })
                     .collect(),
             )),
@@ -507,8 +454,8 @@ pub(crate) fn normalize_one_layer(
 
     match ret {
         Ret::ValueKind(v) => v,
-        Ret::Value(v) => v.to_whnf_check_type(ty),
-        Ret::ValueRef(v) => v.to_whnf_check_type(ty),
+        Ret::Value(v) => v.kind().clone(),
+        Ret::ValueRef(v) => v.kind().clone(),
         Ret::Expr(expr) => ValueKind::PartialExpr(expr),
     }
 }
@@ -521,17 +468,16 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
             let annot = annot.eval(env);
             ValueKind::LamClosure {
                 binder: Binder::new(binder.clone()),
-                annot: annot.clone(),
-                closure: Closure::new(annot, env, body.clone()),
+                annot: annot,
+                closure: Closure::new(env, body.clone()),
             }
         }
         TyExprKind::Expr(ExprKind::Pi(binder, annot, body)) => {
             let annot = annot.eval(env);
-            let closure = Closure::new(annot.clone(), env, body.clone());
             ValueKind::PiClosure {
                 binder: Binder::new(binder.clone()),
                 annot,
-                closure,
+                closure: Closure::new(env, body.clone()),
             }
         }
         TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
@@ -539,12 +485,8 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
             body.eval(&env.insert_value_noty(val)).kind().clone()
         }
         TyExprKind::Expr(e) => {
-            let ty = match tye.get_type() {
-                Ok(ty) => ty,
-                Err(_) => return ValueKind::Const(Const::Sort),
-            };
             let e = e.map_ref(|tye| tye.eval(env));
-            normalize_one_layer(e, &ty, env)
+            normalize_one_layer(e, env)
         }
     }
 }

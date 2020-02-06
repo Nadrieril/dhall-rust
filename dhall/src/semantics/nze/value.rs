@@ -5,8 +5,8 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::nze::lazy;
 use crate::semantics::{
     apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
-    type_of_builtin, type_with, typecheck, Binder, BuiltinClosure, NzEnv,
-    NzVar, TyEnv, TyExpr, TyExprKind, VarEnv,
+    type_with, Binder, BuiltinClosure, NzEnv, NzVar, TyEnv, TyExpr, TyExprKind,
+    VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
@@ -39,7 +39,6 @@ pub(crate) enum Thunk {
     PartialExpr {
         env: NzEnv,
         expr: ExprKind<Value, Normalized>,
-        ty: Value,
     },
 }
 
@@ -47,11 +46,7 @@ pub(crate) enum Thunk {
 #[derive(Debug, Clone)]
 pub(crate) enum Closure {
     /// Normal closure
-    Closure {
-        arg_ty: Value,
-        env: NzEnv,
-        body: TyExpr,
-    },
+    Closure { env: NzEnv, body: TyExpr },
     /// Closure that ignores the argument passed
     ConstantClosure { body: Value },
 }
@@ -130,21 +125,18 @@ impl Value {
         .into_value()
     }
     /// Construct a Value from a partially normalized expression that's not in WHNF.
-    pub(crate) fn from_partial_expr(
-        e: ExprKind<Value, Normalized>,
-        ty: Value,
-    ) -> Value {
+    pub(crate) fn from_partial_expr(e: ExprKind<Value, Normalized>) -> Value {
         // TODO: env
         let env = NzEnv::new();
         ValueInternal::from_thunk(
-            Thunk::from_partial_expr(env, e, ty.clone()),
+            Thunk::from_partial_expr(env, e),
             Some(Value::const_kind()),
             Span::Artificial,
         )
         .into_value()
     }
     /// Make a Value from a ValueKind
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Value) -> Value {
+    pub(crate) fn from_kind(v: ValueKind) -> Value {
         ValueInternal::from_whnf(v, Some(Value::const_kind()), Span::Artificial)
             .into_value()
     }
@@ -170,16 +162,12 @@ impl Value {
         Self::from_builtin_env(b, &NzEnv::new())
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
-        Value::from_kind_and_type(
-            ValueKind::from_builtin_env(b, env.clone()),
-            typecheck(&type_of_builtin(b)).unwrap().eval_closed_expr(),
-        )
+        Value::from_kind(ValueKind::from_builtin_env(b, env.clone()))
     }
     pub(crate) fn from_text(txt: impl ToString) -> Self {
-        Value::from_kind_and_type(
-            ValueKind::TextLit(TextLit::from_text(txt.to_string())),
-            Value::from_builtin(Builtin::Text),
-        )
+        Value::from_kind(ValueKind::TextLit(TextLit::from_text(
+            txt.to_string(),
+        )))
     }
 
     pub(crate) fn as_const(&self) -> Option<Const> {
@@ -210,14 +198,6 @@ impl Value {
     pub(crate) fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
         self.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
     }
-    pub(crate) fn to_whnf_ignore_type(&self) -> ValueKind {
-        self.kind().clone()
-    }
-    /// Before discarding type information, check that it matches the expected return type.
-    pub(crate) fn to_whnf_check_type(&self, ty: &Value) -> ValueKind {
-        self.check_type(ty);
-        self.to_whnf_ignore_type()
-    }
 
     /// Normalizes contents to normal form; faster than `normalize` if
     /// no one else shares this.
@@ -234,33 +214,19 @@ impl Value {
     }
 
     pub(crate) fn app(&self, v: Value) -> Value {
-        Value::from_kind_and_type(
-            apply_any(self.clone(), v, &Value::const_kind()),
-            Value::const_kind(),
-        )
+        Value::from_kind(apply_any(self.clone(), v))
     }
 
-    /// In debug mode, panic if the provided type doesn't match the value's type.
-    /// Otherwise does nothing.
-    pub(crate) fn check_type(&self, _ty: &Value) {
-        // TODO: reenable
-        // debug_assert_eq!(
-        //     Some(ty),
-        //     self.get_type().ok().as_ref(),
-        //     "Internal type error"
-        // );
-    }
     pub(crate) fn get_type(&self, tyenv: &TyEnv) -> Result<Value, TypeError> {
         let expr = self.to_tyexpr(tyenv.as_varenv()).to_expr_tyenv(tyenv);
         type_with(tyenv, &expr).unwrap().get_type()
     }
-    pub(crate) fn get_type_noenv(&self) -> Result<Value, TypeError> {
-        Ok(self.0.get_type()?.clone())
-    }
     /// When we know the value isn't `Sort`, this gets the type directly
     pub(crate) fn get_type_not_sort(&self) -> Value {
-        self.get_type_noenv()
+        self.0
+            .get_type()
             .expect("Internal type error: value is `Sort` but shouldn't be")
+            .clone()
     }
 
     pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
@@ -422,8 +388,8 @@ impl ValueInternal {
 }
 
 impl ValueKind {
-    pub(crate) fn into_value_with_type(self, t: Value) -> Value {
-        Value::from_kind_and_type(self, t)
+    pub(crate) fn into_value(self) -> Value {
+        Value::from_kind(self)
     }
 
     pub(crate) fn normalize(&self) {
@@ -504,24 +470,20 @@ impl Thunk {
     pub fn from_partial_expr(
         env: NzEnv,
         expr: ExprKind<Value, Normalized>,
-        ty: Value,
     ) -> Self {
-        Thunk::PartialExpr { env, expr, ty }
+        Thunk::PartialExpr { env, expr }
     }
     pub fn eval(self) -> ValueKind {
         match self {
             Thunk::Thunk { env, body } => normalize_tyexpr_whnf(&body, &env),
-            Thunk::PartialExpr { env, expr, ty } => {
-                normalize_one_layer(expr, &ty, &env)
-            }
+            Thunk::PartialExpr { env, expr } => normalize_one_layer(expr, &env),
         }
     }
 }
 
 impl Closure {
-    pub fn new(arg_ty: Value, env: &NzEnv, body: TyExpr) -> Self {
+    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
         Closure::Closure {
-            arg_ty,
             env: env.clone(),
             body,
         }
@@ -541,12 +503,8 @@ impl Closure {
     }
     fn apply_var(&self, var: NzVar) -> Value {
         match self {
-            Closure::Closure { arg_ty, .. } => {
-                let val = Value::from_kind_and_type(
-                    ValueKind::Var(var),
-                    arg_ty.clone(),
-                );
-                self.apply(val)
+            Closure::Closure { .. } => {
+                self.apply(Value::from_kind(ValueKind::Var(var)))
             }
             Closure::ConstantClosure { body, .. } => body.clone(),
         }

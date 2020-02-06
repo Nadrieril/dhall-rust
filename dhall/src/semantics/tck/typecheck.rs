@@ -183,11 +183,11 @@ fn type_one_layer(
                 };
             }
 
-            let ty = type_of_recordtype(
+            type_of_recordtype(
                 span.clone(),
                 kts.iter().map(|(_, t)| Cow::Owned(t.to_tyexpr_tyenv(env))),
             )?;
-            Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
+            Value::from_kind(ValueKind::RecordType(kts))
         }
         ExprKind::RecordType(kts) => {
             use std::collections::hash_map::Entry;
@@ -247,22 +247,11 @@ fn type_one_layer(
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(ty)) => {
-                                // Can't fail because uniontypes must have type Const(_).
-                                let kt = scrut.get_type()?.as_const().unwrap();
-                                // The type of the field must be Const smaller than `kt`, thus the
-                                // function type has type `kt`.
-                                let pi_ty = Value::from_const(kt);
-
-                                Value::from_kind_and_type(
-                                    ValueKind::PiClosure {
-                                        binder: Binder::new(x.clone()),
-                                        annot: ty.clone(),
-                                        closure: Closure::new_constant(
-                                            scrut_nf,
-                                        ),
-                                    },
-                                    pi_ty,
-                                )
+                                Value::from_kind(ValueKind::PiClosure {
+                                    binder: Binder::new(x.clone()),
+                                    annot: ty.clone(),
+                                    closure: Closure::new_constant(scrut_nf),
+                                })
                             }
                             Some(None) => scrut_nf,
                             None => return span_err("MissingUnionField"),
@@ -386,11 +375,11 @@ fn type_one_layer(
             })?;
 
             // Construct the final record type
-            let ty = type_of_recordtype(
+            type_of_recordtype(
                 span.clone(),
                 kts.iter().map(|(_, t)| Cow::Owned(t.to_tyexpr_tyenv(env))),
             )?;
-            Value::from_kind_and_type(ValueKind::RecordType(kts), ty)
+            Value::from_kind(ValueKind::RecordType(kts))
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             let ekind = ExprKind::BinOp(
@@ -685,12 +674,8 @@ fn type_one_layer(
                 let mut kts = HashMap::new();
                 kts.insert("mapKey".into(), Value::from_builtin(Builtin::Text));
                 kts.insert("mapValue".into(), entry_type);
-                let output_type = Value::from_builtin(Builtin::List).app(
-                    Value::from_kind_and_type(
-                        ValueKind::RecordType(kts),
-                        Value::from_const(Const::Type),
-                    ),
-                );
+                let output_type = Value::from_builtin(Builtin::List)
+                    .app(Value::from_kind(ValueKind::RecordType(kts)));
                 if let Some(annot) = annot {
                     let annot_val = annot.eval(env.as_nzenv());
                     if output_type != annot_val {
@@ -723,10 +708,7 @@ fn type_one_layer(
                 };
             }
 
-            Value::from_kind_and_type(
-                ValueKind::RecordType(new_kts),
-                record_type.get_type(env)?,
-            )
+            Value::from_kind(ValueKind::RecordType(new_kts))
         }
         ExprKind::ProjectionByExpr(record, selection) => {
             let record_type = record.get_type()?;

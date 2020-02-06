@@ -24,7 +24,7 @@ use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
 use crate::semantics::{typecheck, typecheck_with, TyExpr, Value, ValueKind};
 use crate::syntax::binary;
-use crate::syntax::{Builtin, Const, Expr};
+use crate::syntax::{Builtin, Expr};
 
 pub type ParsedExpr = Expr<Normalized>;
 pub type DecodedExpr = Expr<Normalized>;
@@ -148,17 +148,11 @@ impl Normalized {
         self.0
     }
 
-    pub(crate) fn from_const(c: Const) -> Self {
-        Normalized(Value::from_const(c))
-    }
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Normalized) -> Self {
-        Normalized(Value::from_kind_and_type(v, t.into_value()))
+    pub(crate) fn from_kind(v: ValueKind) -> Self {
+        Normalized(Value::from_kind(v))
     }
     pub(crate) fn from_value(th: Value) -> Self {
         Normalized(th)
-    }
-    pub(crate) fn const_type() -> Self {
-        Normalized::from_const(Const::Type)
     }
 
     pub fn make_builtin_type(b: Builtin) -> Self {
@@ -177,23 +171,17 @@ impl Normalized {
     pub fn make_record_type(
         kts: impl Iterator<Item = (String, Normalized)>,
     ) -> Self {
-        Normalized::from_kind_and_type(
-            ValueKind::RecordType(
-                kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
-            ),
-            Normalized::const_type(),
-        )
+        Normalized::from_kind(ValueKind::RecordType(
+            kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
+        ))
     }
     pub fn make_union_type(
         kts: impl Iterator<Item = (String, Option<Normalized>)>,
     ) -> Self {
-        Normalized::from_kind_and_type(
-            ValueKind::UnionType(
-                kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
-                    .collect(),
-            ),
-            Normalized::const_type(),
-        )
+        Normalized::from_kind(ValueKind::UnionType(
+            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
+                .collect(),
+        ))
     }
 }
 
