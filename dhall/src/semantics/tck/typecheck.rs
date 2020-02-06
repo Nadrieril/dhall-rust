@@ -51,9 +51,9 @@ fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
 /// layer.
 fn type_one_layer(
     env: &TyEnv,
-    kind: &ExprKind<TyExpr, Normalized>,
+    ekind: ExprKind<TyExpr, Normalized>,
     span: Span,
-) -> Result<Type, TypeError> {
+) -> Result<TyExpr, TypeError> {
     let span_err = |msg: &str| {
         mkerr(
             ErrorBuilder::new(msg.to_string())
@@ -62,7 +62,7 @@ fn type_one_layer(
         )
     };
 
-    Ok(match kind {
+    let ty = match &ekind {
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
@@ -74,13 +74,8 @@ fn type_one_layer(
             let body_ty = body.get_type()?;
             let body_ty = body_ty.to_tyexpr(env.as_varenv().insert());
             let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
-            let pi_ty = type_one_layer(env, &pi_ekind, Span::Artificial)?;
-            let ty = TyExpr::new(
-                TyExprKind::Expr(pi_ekind),
-                Some(pi_ty),
-                Span::Artificial,
-            );
-            ty.eval(env.as_nzenv())
+            type_one_layer(env, pi_ekind, Span::Artificial)?
+                .eval(env.as_nzenv())
         }
         ExprKind::Pi(_, annot, body) => {
             let ks = match annot.get_type()?.as_const() {
@@ -187,7 +182,7 @@ fn type_one_layer(
             }
 
             let ty = type_of_recordtype(
-                span,
+                span.clone(),
                 kts.iter()
                     .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
             )?;
@@ -206,7 +201,10 @@ fn type_one_layer(
                 };
             }
 
-            type_of_recordtype(span, kts.iter().map(|(_, t)| Cow::Borrowed(t)))?
+            type_of_recordtype(
+                span.clone(),
+                kts.iter().map(|(_, t)| Cow::Borrowed(t)),
+            )?
         }
         ExprKind::UnionType(kts) => {
             use std::collections::hash_map::Entry;
@@ -389,7 +387,7 @@ fn type_one_layer(
 
             // Construct the final record type
             let ty = type_of_recordtype(
-                span,
+                span.clone(),
                 kts.iter()
                     .map(|(_, t)| Cow::Owned(t.to_tyexpr(env.as_varenv()))),
             )?;
@@ -401,9 +399,7 @@ fn type_one_layer(
                 x.get_type()?.to_tyexpr(env.as_varenv()),
                 y.get_type()?.to_tyexpr(env.as_varenv()),
             );
-            let ty = type_one_layer(env, &ekind, Span::Artificial)?;
-            TyExpr::new(TyExprKind::Expr(ekind), Some(ty), Span::Artificial)
-                .eval(env.as_nzenv())
+            type_one_layer(env, ekind, Span::Artificial)?.eval(env.as_nzenv())
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
             let x_val = x.eval(env.as_nzenv());
@@ -420,7 +416,7 @@ fn type_one_layer(
                 if let Some(ty) = kts_y.get(k) {
                     type_one_layer(
                         env,
-                        &ExprKind::BinOp(
+                        ExprKind::BinOp(
                             BinOp::RecursiveRecordTypeMerge,
                             tx.to_tyexpr(env.as_varenv()),
                             ty.to_tyexpr(env.as_varenv()),
@@ -547,9 +543,14 @@ fn type_one_layer(
                                 );
                             }
 
-                            closure.remove_binder().or_else(|()| {
-                                span_err("MergeReturnTypeIsDependent")
-                            })?
+                            match closure.remove_binder() {
+                                Ok(v) => v,
+                                Err(()) => {
+                                    return span_err(
+                                        "MergeReturnTypeIsDependent",
+                                    )
+                                }
+                            }
                         }
                         _ => {
                             return mkerr(
@@ -619,7 +620,85 @@ fn type_one_layer(
                 (None, None) => return span_err("MergeEmptyNeedsAnnotation"),
             }
         }
-        ExprKind::ToMap(_, _) => unimplemented!("toMap"),
+        ExprKind::ToMap(record, annot) => {
+            let record_t = record.get_type()?;
+            let kts = match record_t.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => {
+                    return span_err("The argument to `toMap` must be a record")
+                }
+            };
+
+            if kts.is_empty() {
+                let annot = if let Some(annot) = annot {
+                    annot
+                } else {
+                    return span_err(
+                        "`toMap` applied to an empty record requires a type \
+                         annotation",
+                    );
+                };
+                let annot_val = annot.eval(env.as_nzenv());
+
+                let err_msg = "The type of `toMap x` must be of the form \
+                               `List { mapKey : Text, mapValue : T }`";
+                let arg = match annot_val.kind() {
+                    ValueKind::AppliedBuiltin(BuiltinClosure {
+                        b: Builtin::List,
+                        args,
+                        ..
+                    }) if args.len() == 1 => &args[0],
+                    _ => return span_err(err_msg),
+                };
+                let kts = match arg.kind() {
+                    ValueKind::RecordType(kts) => kts,
+                    _ => return span_err(err_msg),
+                };
+                if kts.len() != 2 {
+                    return span_err(err_msg);
+                }
+                match kts.get(&"mapKey".into()) {
+                    Some(t) if *t == Value::from_builtin(Builtin::Text) => {}
+                    _ => return span_err(err_msg),
+                }
+                match kts.get(&"mapValue".into()) {
+                    Some(_) => {}
+                    None => return span_err(err_msg),
+                }
+                annot_val
+            } else {
+                let entry_type = kts.iter().next().unwrap().1.clone();
+                if entry_type.get_type()?.as_const() != Some(Const::Type) {
+                    return span_err(
+                        "`toMap` only accepts records of type `Type`",
+                    );
+                }
+                for (_, t) in kts.iter() {
+                    if *t != entry_type {
+                        return span_err(
+                            "Every field of the record must have the same type",
+                        );
+                    }
+                }
+
+                let mut kts = HashMap::new();
+                kts.insert("mapKey".into(), Value::from_builtin(Builtin::Text));
+                kts.insert("mapValue".into(), entry_type);
+                let output_type = Value::from_builtin(Builtin::List).app(
+                    Value::from_kind_and_type(
+                        ValueKind::RecordType(kts),
+                        Value::from_const(Const::Type),
+                    ),
+                );
+                if let Some(annot) = annot {
+                    let annot_val = annot.eval(env.as_nzenv());
+                    if output_type != annot_val {
+                        return span_err("Annotation mismatch");
+                    }
+                }
+                output_type
+            }
+        }
         ExprKind::Projection(record, labels) => {
             let record_type = record.get_type()?;
             let kts = match record_type.kind() {
@@ -648,11 +727,61 @@ fn type_one_layer(
                 record_type.get_type()?,
             )
         }
-        ExprKind::ProjectionByExpr(_, _) => {
-            unimplemented!("selection by expression")
+        ExprKind::ProjectionByExpr(record, selection) => {
+            let record_type = record.get_type()?;
+            let rec_kts = match record_type.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => return span_err("ProjectionMustBeRecord"),
+            };
+
+            let selection_val = selection.eval(env.as_nzenv());
+            let sel_kts = match selection_val.kind() {
+                ValueKind::RecordType(kts) => kts,
+                _ => return span_err("ProjectionByExprTakesRecordType"),
+            };
+
+            for (l, sel_ty) in sel_kts {
+                match rec_kts.get(l) {
+                    Some(rec_ty) => {
+                        if rec_ty != sel_ty {
+                            return span_err("ProjectionWrongType");
+                        }
+                    }
+                    None => return span_err("ProjectionMissingEntry"),
+                }
+            }
+
+            selection_val
         }
-        ExprKind::Completion(_, _) => unimplemented!("record completion"),
-    })
+        ExprKind::Completion(ty, compl) => {
+            let ty_field_default = type_one_layer(
+                env,
+                ExprKind::Field(ty.clone(), "default".into()),
+                span.clone(),
+            )?;
+            let ty_field_type = type_one_layer(
+                env,
+                ExprKind::Field(ty.clone(), "Type".into()),
+                span.clone(),
+            )?;
+            let merge = type_one_layer(
+                env,
+                ExprKind::BinOp(
+                    BinOp::RightBiasedRecordMerge,
+                    ty_field_default,
+                    compl.clone(),
+                ),
+                span.clone(),
+            )?;
+            return type_one_layer(
+                env,
+                ExprKind::Annot(merge, ty_field_type),
+                span.clone(),
+            );
+        }
+    };
+
+    Ok(TyExpr::new(TyExprKind::Expr(ekind), Some(ty), span))
 }
 
 /// `type_with` typechecks an expressio in the provided environment.
@@ -708,9 +837,7 @@ pub(crate) fn type_with(
                 }
                 _ => ekind.traverse_ref(|e| type_with(env, e))?,
             };
-
-            let ty = type_one_layer(env, &ekind, expr.span())?;
-            (TyExprKind::Expr(ekind), Some(ty))
+            return type_one_layer(env, ekind, expr.span());
         }
     };
 

@@ -1,0 +1,6 @@
+Type error: error: Every field of the record must have the same type
+ --> <current file>:1:0
+  |
+1 | toMap { foo= 1, bar= "Bar" }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Every field of the record must have the same type
+  |

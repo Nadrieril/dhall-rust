@@ -258,31 +258,22 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RecordProjectionByTypeEmpty"
                     || path == "unit/RecordProjectionByTypeNonEmpty"
                     || path == "unit/RecordProjectionByTypeNormalizeProjection"
+                    || path == "unit/RecordProjectionByTypeWithinFieldSelection"
+                    || path == "unit/RecursiveRecordMergeWithinFieldSelection1"
+                    || path == "unit/NestedRecordProjectionByType"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapWithType"
-                    // TODO: Further record simplifications
+                    // TODO: doesn't typecheck
+                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
+                    // // TODO: Further record simplifications
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
                     || path == "simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
                     || path == "simplifications/issue661"
-                    || path == "unit/RecordProjectionByTypeWithinFieldSelection"
                     || path == "unit/RecordProjectionWithinFieldSelection"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection1"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection2"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection3"
-                    || path == "unit/RightBiasedMergeWithinFieldSelection0"
-                    || path == "unit/RightBiasedMergeWithinFieldSelection1"
-                    || path == "unit/RightBiasedMergeWithinFieldSelection2"
-                    || path == "unit/RightBiasedMergeWithinFieldSelection3"
-                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
-                    || path == "unit/RightBiasedMergeEquivalentArguments"
-                    || path == "unit/NestedRecordProjection"
-                    || path == "unit/NestedRecordProjectionByType"
                     // TODO: record completion
                     || path == "simple/completion"
                     || path == "unit/Completion"
@@ -309,18 +300,6 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // Too slow
                     || path == "prelude"
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByType"
-                    || path == "unit/RecordProjectionByTypeEmpty"
-                    || path == "unit/RecordProjectionByTypeJudgmentalEquality"
-                    // TODO: toMap
-                    || path == "unit/ToMap"
-                    || path == "unit/ToMapAnnotated"
-                    || path == "unit/ToMapInferTypeFromRecord"
-                    || path == "simple/toMapEmptyNormalizeAnnotation"
-                    // TODO: record completion
-                    || path == "simple/completion"
-                    || path == "unit/Completion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -331,24 +310,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeInferenceFailure",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
-                    || path == "unit/RecordProjectionByTypeNotPresent"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/HeterogenousToMap"
-                    || path == "unit/MistypedToMap1"
-                    || path == "unit/MistypedToMap2"
-                    || path == "unit/MistypedToMap3"
-                    || path == "unit/MistypedToMap4"
-                    || path == "unit/NonRecordToMap"
-                    || path == "unit/ToMapEmptyInvalidAnnotation"
-                    || path == "unit/ToMapWrongKind"
-                    // TODO: record completion
-                    || path == "unit/CompletionMissingRequiredField"
-                    || path == "unit/CompletionWithWrongDefaultType"
-                    || path == "unit/CompletionWithWrongFieldName"
-                    || path == "unit/CompletionWithWrongOverridenType"
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
             }),
@@ -361,24 +322,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeFieldTypeMismatch"
-                    || path == "unit/RecordProjectionByTypeNotPresent"
-                    // TODO: toMap
-                    || path == "unit/EmptyToMap"
-                    || path == "unit/HeterogenousToMap"
-                    || path == "unit/MistypedToMap1"
-                    || path == "unit/MistypedToMap2"
-                    || path == "unit/MistypedToMap3"
-                    || path == "unit/MistypedToMap4"
-                    || path == "unit/NonRecordToMap"
-                    || path == "unit/ToMapEmptyInvalidAnnotation"
-                    || path == "unit/ToMapWrongKind"
-                    // TODO: record completion
-                    || path == "unit/CompletionMissingRequiredField"
-                    || path == "unit/CompletionWithWrongDefaultType"
-                    || path == "unit/CompletionWithWrongFieldName"
-                    || path == "unit/CompletionWithWrongOverridenType"
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
             }),
