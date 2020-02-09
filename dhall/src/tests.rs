@@ -43,7 +43,8 @@ macro_rules! assert_eq_pretty_str {
     };
 }
 
-use std::fs::File;
+use std::env;
+use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -102,18 +103,74 @@ impl TestFile {
         Ok(self.resolve()?.typecheck()?.normalize())
     }
 
+    /// If UPDATE_TEST_FILES=1, we overwrite the output files with our own output.
+    fn force_update() -> bool {
+        env::var("UPDATE_TEST_FILES") == Ok("1".to_string())
+    }
+    /// Write the provided expression to the pointed file.
+    fn write_expr(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+        let expr = expr.into();
+        let path = self.path();
+        create_dir_all(path.parent().unwrap())?;
+        let mut file = File::create(path)?;
+        match self {
+            TestFile::Source(_) => {
+                writeln!(file, "{}", expr)?;
+            }
+            TestFile::Binary(_) => {
+                let expr_data = binary::encode(&expr)?;
+                file.write_all(&expr_data)?;
+            }
+            TestFile::UI(_) => panic!("Can't write an expression to a UI file"),
+        }
+        Ok(())
+    }
+    /// Write the provided error to the pointed file.
+    fn write_ui(&self, err: impl Into<Error>) -> Result<()> {
+        match self {
+            TestFile::UI(_) => {}
+            _ => panic!("Can't write an error to a non-UI file"),
+        }
+        let err = err.into();
+        let path = self.path();
+        create_dir_all(path.parent().unwrap())?;
+        let mut file = File::create(path)?;
+        writeln!(file, "{}", err)?;
+        Ok(())
+    }
+
     /// Check that the provided expression matches the file contents.
     pub fn compare(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
         let expr = expr.into();
+        if !self.path().is_file() {
+            return self.write_expr(expr);
+        }
+
         let expected = self.parse()?.to_expr();
-        assert_eq_display!(expr, expected);
+        if expr != expected {
+            if Self::force_update() {
+                self.write_expr(expr)?;
+            } else {
+                assert_eq_display!(expr, expected);
+            }
+        }
         Ok(())
     }
     /// Check that the provided expression matches the file contents.
     pub fn compare_debug(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
         let expr = expr.into();
+        if !self.path().is_file() {
+            return self.write_expr(expr);
+        }
+
         let expected = self.parse()?.to_expr();
-        assert_eq_pretty!(expr, expected);
+        if expr != expected {
+            if Self::force_update() {
+                self.write_expr(expr)?;
+            } else {
+                assert_eq_pretty!(expr, expected);
+            }
+        }
         Ok(())
     }
     /// Check that the provided expression matches the file contents.
@@ -121,11 +178,16 @@ impl TestFile {
         &self,
         expr: impl Into<NormalizedExpr>,
     ) -> Result<()> {
+        let expr = expr.into();
         match self {
             TestFile::Binary(_) => {}
             _ => panic!("This is not a binary file"),
         }
-        let expr_data = binary::encode(&expr.into())?;
+        if !self.path().is_file() {
+            return self.write_expr(expr);
+        }
+
+        let expr_data = binary::encode(&expr)?;
         let expected_data = {
             let mut data = Vec::new();
             File::open(&self.path())?.read_to_end(&mut data)?;
@@ -134,17 +196,38 @@ impl TestFile {
 
         // Compare bit-by-bit
         if expr_data != expected_data {
-            use serde_cbor::de::from_slice;
-            use serde_cbor::value::Value;
-            // use std::io::Write;
-            // File::create(&expected)?.write_all(&expr_data)?;
-            // Pretty-print difference
-            assert_eq_pretty!(
-                from_slice::<Value>(&expr_data).unwrap(),
-                from_slice::<Value>(&expected_data).unwrap()
-            );
-            // If difference was not visible in the cbor::Value, compare normally.
-            assert_eq!(expr_data, expected_data);
+            if Self::force_update() {
+                self.write_expr(expr)?;
+            } else {
+                use serde_cbor::de::from_slice;
+                use serde_cbor::value::Value;
+                // Pretty-print difference
+                assert_eq_pretty!(
+                    from_slice::<Value>(&expr_data).unwrap(),
+                    from_slice::<Value>(&expected_data).unwrap()
+                );
+                // If difference was not visible in the cbor::Value, compare normally.
+                assert_eq!(expr_data, expected_data);
+            }
+        }
+        Ok(())
+    }
+    /// Check that the provided error matches the file contents. Writes to the corresponding file
+    /// if it is missing.
+    pub fn compare_ui(&self, err: impl Into<Error>) -> Result<()> {
+        let err = err.into();
+        if !self.path().is_file() {
+            return self.write_ui(err);
+        }
+
+        let expected = read_to_string(self.path())?;
+        let msg = format!("{}\n", err);
+        if msg != expected {
+            if Self::force_update() {
+                self.write_ui(err)?;
+            } else {
+                assert_eq_pretty_str!(msg, expected);
+            }
         }
         Ok(())
     }
@@ -165,11 +248,11 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare_debug(expr)?;
         }
         ParserFailure(expr) => {
+            use std::io::ErrorKind;
             let err = expr.parse().unwrap_err();
             match &err {
                 Error::Parse(_) => {}
-                Error::IO(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                }
+                Error::IO(e) if e.kind() == ErrorKind::InvalidData => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
@@ -187,7 +270,7 @@ fn run_test(test: Test) -> Result<()> {
         Printer(expr, _) => {
             let expected = expr.parse()?;
             // Round-trip pretty-printer
-            let expr: Parsed = Parsed::parse_str(&expected.to_string())?;
+            let expr = Parsed::parse_str(&expected.to_string())?;
             assert_eq!(expr, expected);
         }
         ImportSuccess(expr, expected) => {
@@ -197,22 +280,9 @@ fn run_test(test: Test) -> Result<()> {
         ImportFailure(expr) => {
             expr.parse()?.resolve().unwrap_err();
         }
-        // Checks the output of the type error against a text file. If the text file doesn't exist,
-        // we instead write to it the output we got. This makes it easy to update those files: just
-        // `rm -r dhall/tests/type-errors` and run the tests again.
         ImportError(expr, expected) => {
-            let err: Error = expr.parse()?.resolve().unwrap_err().into();
-
-            let error_file_path = expected.path();
-            if error_file_path.is_file() {
-                let expected_msg = std::fs::read_to_string(error_file_path)?;
-                let msg = format!("{}\n", err);
-                assert_eq_pretty_str!(msg, expected_msg);
-            } else {
-                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
-                let mut file = File::create(error_file_path)?;
-                writeln!(file, "{}", err)?;
-            }
+            let err = expr.parse()?.resolve().unwrap_err();
+            expected.compare_ui(err)?;
         }
         TypeInferenceSuccess(expr, expected) => {
             let ty = expr.resolve()?.typecheck()?.get_type()?;
@@ -221,22 +291,9 @@ fn run_test(test: Test) -> Result<()> {
         TypeInferenceFailure(expr) => {
             expr.resolve()?.typecheck().unwrap_err();
         }
-        // Checks the output of the type error against a text file. If the text file doesn't exist,
-        // we instead write to it the output we got. This makes it easy to update those files: just
-        // `rm -r dhall/tests/type-errors` and run the tests again.
         TypeError(expr, expected) => {
-            let err: Error = expr.resolve()?.typecheck().unwrap_err().into();
-
-            let error_file_path = expected.path();
-            if error_file_path.is_file() {
-                let expected_msg = std::fs::read_to_string(error_file_path)?;
-                let msg = format!("{}\n", err);
-                assert_eq_pretty_str!(msg, expected_msg);
-            } else {
-                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
-                let mut file = File::create(error_file_path)?;
-                writeln!(file, "{}", err)?;
-            }
+            let err = expr.resolve()?.typecheck().unwrap_err();
+            expected.compare_ui(err)?;
         }
         Normalization(expr, expected) => {
             let expr = expr.normalize()?;
