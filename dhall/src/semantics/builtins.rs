@@ -19,10 +19,6 @@ pub(crate) struct BuiltinClosure<Value> {
     pub b: Builtin,
     /// Arguments applied to the closure so far.
     pub args: Vec<Value>,
-    /// Keeps the types of the partial applications around to be able to convert back to TyExpr.
-    /// If the args so far are `x_1`, ..., `x_n`, this contains the types of `b`, `b x1`, ...,
-    /// `b x_1 x_2 ... x_(n-1)`.
-    pub types: Vec<Value>,
 }
 
 impl BuiltinClosure<Value> {
@@ -31,15 +27,13 @@ impl BuiltinClosure<Value> {
             env,
             b,
             args: Vec::new(),
-            types: Vec::new(),
         }
     }
 
-    pub fn apply(&self, a: Value, f_ty: Value) -> ValueKind {
+    pub fn apply(&self, a: Value) -> ValueKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a.clone())).collect();
-        let types = self.types.iter().cloned().chain(once(f_ty)).collect();
-        apply_builtin(self.b, args, types, self.env.clone())
+        apply_builtin(self.b, args, self.env.clone())
     }
     /// This doesn't break the invariant because we already checked that the appropriate arguments
     /// did not normalize to something that allows evaluation to proceed.
@@ -49,9 +43,9 @@ impl BuiltinClosure<Value> {
         }
     }
     pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
-        HirKind::Expr(self.args.iter().zip(self.types.iter()).fold(
+        HirKind::Expr(self.args.iter().fold(
             ExprKind::Builtin(self.b),
-            |acc, (v, ty)| {
+            |acc, v| {
                 ExprKind::App(
                     Hir::new(HirKind::Expr(acc), Span::Artificial),
                     v.to_hir(venv),
@@ -260,12 +254,7 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn apply_builtin(
-    b: Builtin,
-    args: Vec<Value>,
-    types: Vec<Value>,
-    env: NzEnv,
-) -> ValueKind {
+fn apply_builtin(b: Builtin, args: Vec<Value>, env: NzEnv) -> ValueKind {
     use Builtin::*;
     use ValueKind::*;
 
@@ -493,12 +482,7 @@ fn apply_builtin(
     match ret {
         Ret::ValueKind(v) => v,
         Ret::Value(v) => v.kind().clone(),
-        Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure {
-            b,
-            args,
-            types,
-            env,
-        }),
+        Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure { b, args, env }),
     }
 }
 

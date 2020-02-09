@@ -13,16 +13,10 @@ pub(crate) fn apply_any(f: Value, a: Value) -> ValueKind {
         ValueKind::LamClosure { closure, .. } => {
             closure.apply(a).kind().clone()
         }
-        ValueKind::AppliedBuiltin(closure) => {
-            closure.apply(a, f.get_type_not_sort())
+        ValueKind::AppliedBuiltin(closure) => closure.apply(a),
+        ValueKind::UnionConstructor(l, kts) => {
+            ValueKind::UnionLit(l.clone(), a, kts.clone())
         }
-        ValueKind::UnionConstructor(l, kts, uniont) => ValueKind::UnionLit(
-            l.clone(),
-            a,
-            kts.clone(),
-            uniont.clone(),
-            f.get_type_not_sort(),
-        ),
         _ => ValueKind::PartialExpr(ExprKind::App(f, a)),
     }
 }
@@ -326,11 +320,9 @@ pub(crate) fn normalize_one_layer(
                 Some(r) => Ret::Value(r.clone()),
                 None => Ret::Expr(expr),
             },
-            UnionType(kts) => Ret::ValueKind(UnionConstructor(
-                l.clone(),
-                kts.clone(),
-                v.get_type_not_sort(),
-            )),
+            UnionType(kts) => {
+                Ret::ValueKind(UnionConstructor(l.clone(), kts.clone()))
+            }
             PartialExpr(ExprKind::BinOp(
                 BinOp::RightBiasedRecordMerge,
                 x,
@@ -402,11 +394,11 @@ pub(crate) fn normalize_one_layer(
         ExprKind::Merge(ref handlers, ref variant, _) => {
             match handlers.kind() {
                 RecordLit(kvs) => match variant.kind() {
-                    UnionConstructor(l, _, _) => match kvs.get(l) {
+                    UnionConstructor(l, _) => match kvs.get(l) {
                         Some(h) => Ret::Value(h.clone()),
                         None => Ret::Expr(expr),
                     },
-                    UnionLit(l, v, _, _, _) => match kvs.get(l) {
+                    UnionLit(l, v, _) => match kvs.get(l) {
                         Some(h) => Ret::Value(h.app(v.clone())),
                         None => Ret::Expr(expr),
                     },

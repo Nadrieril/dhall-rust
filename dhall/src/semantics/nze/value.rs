@@ -93,10 +93,8 @@ pub(crate) enum ValueKind {
     RecordType(HashMap<Label, Value>),
     RecordLit(HashMap<Label, Value>),
     UnionType(HashMap<Label, Option<Value>>),
-    // Also keep the type of the uniontype around
-    UnionConstructor(Label, HashMap<Label, Option<Value>>, Value),
-    // Also keep the type of the uniontype and the constructor around
-    UnionLit(Label, Value, HashMap<Label, Option<Value>>, Value, Value),
+    UnionConstructor(Label, HashMap<Label, Option<Value>>),
+    UnionLit(Label, Value, HashMap<Label, Option<Value>>),
     TextLit(TextLit),
     Equivalence(Value, Value),
     /// Invariant: evaluation must not be able to progress with `normalize_one_layer`?
@@ -298,14 +296,14 @@ impl Value {
                         .collect(),
                 ),
                 ValueKind::UnionType(kts) => map_uniontype(kts),
-                ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
+                ValueKind::UnionConstructor(l, kts) => ExprKind::Field(
                     Hir::new(
                         HirKind::Expr(map_uniontype(kts)),
                         Span::Artificial,
                     ),
                     l.clone(),
                 ),
-                ValueKind::UnionLit(l, v, kts, uniont, ctort) => ExprKind::App(
+                ValueKind::UnionLit(l, v, kts) => ExprKind::App(
                     Hir::new(
                         HirKind::Expr(ExprKind::Field(
                             Hir::new(
@@ -418,13 +416,12 @@ impl ValueKind {
                     x.normalize();
                 }
             }
-            ValueKind::UnionType(kts)
-            | ValueKind::UnionConstructor(_, kts, _) => {
+            ValueKind::UnionType(kts) | ValueKind::UnionConstructor(_, kts) => {
                 for x in kts.values().flat_map(|opt| opt) {
                     x.normalize();
                 }
             }
-            ValueKind::UnionLit(_, v, kts, _, _) => {
+            ValueKind::UnionLit(_, v, kts) => {
                 v.normalize();
                 for x in kts.values().flat_map(|opt| opt) {
                     x.normalize();
