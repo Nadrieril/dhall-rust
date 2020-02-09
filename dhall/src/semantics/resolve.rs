@@ -18,11 +18,42 @@ type ImportCache = HashMap<Import, Normalized>;
 
 pub(crate) type ImportStack = Vec<Import>;
 
+struct ResolveEnv {
+    cache: ImportCache,
+    stack: ImportStack,
+}
+
+impl ResolveEnv {
+    pub fn new() -> Self {
+        ResolveEnv {
+            cache: HashMap::new(),
+            stack: Vec::new(),
+        }
+    }
+    pub fn to_import_stack(&self) -> ImportStack {
+        self.stack.clone()
+    }
+    pub fn check_cyclic_import(&self, import: &Import) -> bool {
+        self.stack.contains(import)
+    }
+    pub fn get_from_cache(&self, import: &Import) -> Option<&Normalized> {
+        self.cache.get(import)
+    }
+    pub fn push_on_stack(&mut self, import: Import) {
+        self.stack.push(import)
+    }
+    pub fn pop_from_stack(&mut self) {
+        self.stack.pop();
+    }
+    pub fn insert_cache(&mut self, import: Import, expr: Normalized) {
+        self.cache.insert(import, expr);
+    }
+}
+
 fn resolve_import(
+    env: &mut ResolveEnv,
     import: &Import,
     root: &ImportRoot,
-    import_cache: &mut ImportCache,
-    import_stack: &ImportStack,
 ) -> Result<Normalized, ImportError> {
     use self::ImportRoot::*;
     use syntax::FilePrefix::*;
@@ -39,53 +70,47 @@ fn resolve_import(
                 Here => cwd.join(path_buf),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(&path_buf, import_cache, import_stack).map_err(
-                |e| ImportError::Recursive(import.clone(), Box::new(e)),
-            )?)
+            Ok(load_import(env, &path_buf).map_err(|e| {
+                ImportError::Recursive(import.clone(), Box::new(e))
+            })?)
         }
         _ => unimplemented!("{:?}", import),
     }
 }
 
-fn load_import(
-    f: &Path,
-    import_cache: &mut ImportCache,
-    import_stack: &ImportStack,
-) -> Result<Normalized, Error> {
-    Ok(
-        do_resolve_expr(Parsed::parse_file(f)?, import_cache, import_stack)?
-            .typecheck()?
-            .normalize(),
-    )
+fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Normalized, Error> {
+    Ok(do_resolve_expr(env, Parsed::parse_file(f)?)?
+        .typecheck()?
+        .normalize())
 }
 
 fn do_resolve_expr(
+    env: &mut ResolveEnv,
     parsed: Parsed,
-    import_cache: &mut ImportCache,
-    import_stack: &ImportStack,
 ) -> Result<Resolved, ImportError> {
     let Parsed(mut expr, root) = parsed;
     let mut resolve = |import: Import| -> Result<Normalized, ImportError> {
-        if import_stack.contains(&import) {
-            return Err(ImportError::ImportCycle(import_stack.clone(), import));
+        if env.check_cyclic_import(&import) {
+            return Err(ImportError::ImportCycle(
+                env.to_import_stack(),
+                import,
+            ));
         }
-        match import_cache.get(&import) {
+        match env.get_from_cache(&import) {
             Some(expr) => Ok(expr.clone()),
             None => {
-                // Copy the import stack and push the current import
-                let mut import_stack = import_stack.clone();
-                import_stack.push(import.clone());
+                // Push the current import on the stack
+                env.push_on_stack(import.clone());
 
                 // Resolve the import recursively
-                let expr = resolve_import(
-                    &import,
-                    &root,
-                    import_cache,
-                    &import_stack,
-                )?;
+                let expr = resolve_import(env, &import, &root)?;
+
+                // Remove import from the stack.
+                env.pop_from_stack();
 
                 // Add the import to the cache
-                import_cache.insert(import, expr.clone());
+                env.insert_cache(import, expr.clone());
+
                 Ok(expr)
             }
         }
@@ -95,7 +120,7 @@ fn do_resolve_expr(
 }
 
 pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
-    do_resolve_expr(e, &mut HashMap::new(), &Vec::new())
+    do_resolve_expr(&mut ResolveEnv::new(), e)
 }
 
 pub(crate) fn skip_resolve_expr(
