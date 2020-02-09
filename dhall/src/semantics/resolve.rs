@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ImportError};
 use crate::syntax;
-use crate::syntax::{FilePath, ImportLocation, URL};
+use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
 use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
 
 type Import = syntax::Import<NormalizedExpr>;
@@ -30,27 +30,40 @@ impl ResolveEnv {
             stack: Vec::new(),
         }
     }
-    pub fn to_import_stack(&self) -> ImportStack {
-        self.stack.clone()
-    }
-    pub fn check_cyclic_import(&self, import: &Import) -> bool {
-        self.stack.contains(import)
-    }
-    pub fn get_from_cache(&self, import: &Import) -> Option<&Normalized> {
-        self.cache.get(import)
-    }
-    pub fn push_on_stack(&mut self, import: Import) {
-        self.stack.push(import)
-    }
-    pub fn pop_from_stack(&mut self) {
-        self.stack.pop();
-    }
-    pub fn insert_cache(&mut self, import: Import, expr: Normalized) {
-        self.cache.insert(import, expr);
+
+    pub fn handle_import(
+        &mut self,
+        import: Import,
+        mut do_resolve: impl FnMut(
+            &mut Self,
+            &Import,
+        ) -> Result<Normalized, ImportError>,
+    ) -> Result<Normalized, ImportError> {
+        if self.stack.contains(&import) {
+            return Err(ImportError::ImportCycle(self.stack.clone(), import));
+        }
+        Ok(match self.cache.get(&import) {
+            Some(expr) => expr.clone(),
+            None => {
+                // Push the current import on the stack
+                self.stack.push(import.clone());
+
+                // Resolve the import recursively
+                let expr = do_resolve(self, &import)?;
+
+                // Remove import from the stack.
+                self.stack.pop();
+
+                // Add the import to the cache
+                self.cache.insert(import, expr.clone());
+
+                expr
+            }
+        })
     }
 }
 
-fn resolve_import(
+fn resolve_one_import(
     env: &mut ResolveEnv,
     import: &Import,
     root: &ImportRoot,
@@ -79,59 +92,64 @@ fn resolve_import(
 }
 
 fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Normalized, Error> {
-    Ok(do_resolve_expr(env, Parsed::parse_file(f)?)?
-        .typecheck()?
-        .normalize())
+    let parsed = Parsed::parse_file(f)?;
+    Ok(resolve_with_env(env, parsed)?.typecheck()?.normalize())
 }
 
-fn do_resolve_expr(
+/// Traverse the expression, handling import alternatives and passing
+/// found imports to the provided function.
+fn traverse_resolve_expr(
+    expr: &Expr<Normalized>,
+    f: &mut impl FnMut(Import) -> Result<Normalized, ImportError>,
+) -> Result<Expr<Normalized>, ImportError> {
+    Ok(match expr.kind() {
+        ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
+            match traverse_resolve_expr(l, f) {
+                Ok(l) => l,
+                Err(_) => {
+                    match traverse_resolve_expr(r, f) {
+                        Ok(r) => r,
+                        // TODO: keep track of the other error too
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+        kind => {
+            let kind = kind.traverse_ref(|e| traverse_resolve_expr(e, f))?;
+            expr.rewrap(match kind {
+                ExprKind::Import(import) => ExprKind::Embed(f(import)?),
+                kind => kind,
+            })
+        }
+    })
+}
+
+fn resolve_with_env(
     env: &mut ResolveEnv,
     parsed: Parsed,
 ) -> Result<Resolved, ImportError> {
-    let Parsed(mut expr, root) = parsed;
-    let mut resolve = |import: Import| -> Result<Normalized, ImportError> {
-        if env.check_cyclic_import(&import) {
-            return Err(ImportError::ImportCycle(
-                env.to_import_stack(),
-                import,
-            ));
-        }
-        match env.get_from_cache(&import) {
-            Some(expr) => Ok(expr.clone()),
-            None => {
-                // Push the current import on the stack
-                env.push_on_stack(import.clone());
-
-                // Resolve the import recursively
-                let expr = resolve_import(env, &import, &root)?;
-
-                // Remove import from the stack.
-                env.pop_from_stack();
-
-                // Add the import to the cache
-                env.insert_cache(import, expr.clone());
-
-                Ok(expr)
-            }
-        }
-    };
-    expr.traverse_resolve_mut(&mut resolve)?;
-    Ok(Resolved(expr))
+    let Parsed(expr, root) = parsed;
+    let resolved = traverse_resolve_expr(&expr, &mut |import| {
+        env.handle_import(import, |env, import| {
+            resolve_one_import(env, import, &root)
+        })
+    })?;
+    Ok(Resolved(resolved))
 }
 
-pub(crate) fn resolve(e: Parsed) -> Result<Resolved, ImportError> {
-    do_resolve_expr(&mut ResolveEnv::new(), e)
+pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, ImportError> {
+    resolve_with_env(&mut ResolveEnv::new(), parsed)
 }
 
 pub(crate) fn skip_resolve_expr(
     parsed: Parsed,
 ) -> Result<Resolved, ImportError> {
-    let mut expr = parsed.0;
-    let mut resolve = |import: Import| -> Result<Normalized, ImportError> {
+    let Parsed(expr, _) = parsed;
+    let resolved = traverse_resolve_expr(&expr, &mut |import| {
         Err(ImportError::UnexpectedImport(import))
-    };
-    expr.traverse_resolve_mut(&mut resolve)?;
-    Ok(Resolved(expr))
+    })?;
+    Ok(Resolved(resolved))
 }
 
 pub trait Canonicalize {

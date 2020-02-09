@@ -32,29 +32,6 @@ pub trait ExprKindVisitor<'a, SE1, SE2, E1, E2>: Sized {
     }
 }
 
-/// Like `ExprKindVisitor`, but by mutable reference
-pub trait ExprKindMutVisitor<'a, SE, E>: Sized {
-    type Error;
-
-    fn visit_subexpr(&mut self, subexpr: &'a mut SE)
-        -> Result<(), Self::Error>;
-    fn visit_embed(self, _embed: &'a mut E) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn visit_subexpr_under_binder(
-        mut self,
-        _label: &'a mut Label,
-        subexpr: &'a mut SE,
-    ) -> Result<(), Self::Error> {
-        self.visit_subexpr(subexpr)
-    }
-
-    fn visit(self, input: &'a mut ExprKind<SE, E>) -> Result<(), Self::Error> {
-        visit_mut(self, input)
-    }
-}
-
 fn visit_ref<'a, V, SE1, SE2, E1, E2>(
     mut v: V,
     input: &'a ExprKind<SE1, E1>,
@@ -174,128 +151,6 @@ where
     })
 }
 
-fn visit_mut<'a, V, SE, E>(
-    mut v: V,
-    input: &'a mut ExprKind<SE, E>,
-) -> Result<(), V::Error>
-where
-    V: ExprKindMutVisitor<'a, SE, E>,
-{
-    fn vec<'a, V, SE, E>(v: &mut V, x: &'a mut Vec<SE>) -> Result<(), V::Error>
-    where
-        V: ExprKindMutVisitor<'a, SE, E>,
-    {
-        for x in x {
-            v.visit_subexpr(x)?;
-        }
-        Ok(())
-    }
-    fn opt<'a, V, SE, E>(
-        v: &mut V,
-        x: &'a mut Option<SE>,
-    ) -> Result<(), V::Error>
-    where
-        V: ExprKindMutVisitor<'a, SE, E>,
-    {
-        if let Some(x) = x {
-            v.visit_subexpr(x)?;
-        }
-        Ok(())
-    }
-    fn dupmap<'a, V, SE, E>(
-        mut v: V,
-        x: impl IntoIterator<Item = (&'a Label, &'a mut SE)>,
-    ) -> Result<(), V::Error>
-    where
-        SE: 'a,
-        V: ExprKindMutVisitor<'a, SE, E>,
-    {
-        for (_, x) in x {
-            v.visit_subexpr(x)?;
-        }
-        Ok(())
-    }
-    fn optdupmap<'a, V, SE, E>(
-        mut v: V,
-        x: impl IntoIterator<Item = (&'a Label, &'a mut Option<SE>)>,
-    ) -> Result<(), V::Error>
-    where
-        SE: 'a,
-        V: ExprKindMutVisitor<'a, SE, E>,
-    {
-        for (_, x) in x {
-            opt(&mut v, x)?;
-        }
-        Ok(())
-    }
-
-    use crate::syntax::ExprKind::*;
-    match input {
-        Var(_) | Const(_) | Builtin(_) | BoolLit(_) | NaturalLit(_)
-        | IntegerLit(_) | DoubleLit(_) => {}
-        Lam(l, t, e) => {
-            v.visit_subexpr(t)?;
-            v.visit_subexpr_under_binder(l, e)?;
-        }
-        Pi(l, t, e) => {
-            v.visit_subexpr(t)?;
-            v.visit_subexpr_under_binder(l, e)?;
-        }
-        Let(l, t, a, e) => {
-            opt(&mut v, t)?;
-            v.visit_subexpr(a)?;
-            v.visit_subexpr_under_binder(l, e)?;
-        }
-        App(f, a) => {
-            v.visit_subexpr(f)?;
-            v.visit_subexpr(a)?;
-        }
-        Annot(x, t) => {
-            v.visit_subexpr(x)?;
-            v.visit_subexpr(t)?;
-        }
-        TextLit(t) => t.traverse_mut(|e| v.visit_subexpr(e))?,
-        BinOp(_, x, y) => {
-            v.visit_subexpr(x)?;
-            v.visit_subexpr(y)?;
-        }
-        BoolIf(b, t, f) => {
-            v.visit_subexpr(b)?;
-            v.visit_subexpr(t)?;
-            v.visit_subexpr(f)?;
-        }
-        EmptyListLit(t) => v.visit_subexpr(t)?,
-        NEListLit(es) => vec(&mut v, es)?,
-        SomeLit(e) => v.visit_subexpr(e)?,
-        RecordType(kts) => dupmap(v, kts)?,
-        RecordLit(kvs) => dupmap(v, kvs)?,
-        UnionType(kts) => optdupmap(v, kts)?,
-        Merge(x, y, t) => {
-            v.visit_subexpr(x)?;
-            v.visit_subexpr(y)?;
-            opt(&mut v, t)?;
-        }
-        ToMap(x, t) => {
-            v.visit_subexpr(x)?;
-            opt(&mut v, t)?;
-        }
-        Field(e, _) => v.visit_subexpr(e)?,
-        Projection(e, _) => v.visit_subexpr(e)?,
-        ProjectionByExpr(e, x) => {
-            v.visit_subexpr(e)?;
-            v.visit_subexpr(x)?;
-        }
-        Completion(x, y) => {
-            v.visit_subexpr(x)?;
-            v.visit_subexpr(y)?;
-        }
-        Assert(e) => v.visit_subexpr(e)?,
-        Import(i) => i.traverse_mut(|e| v.visit_subexpr(e))?,
-        Embed(a) => v.visit_embed(a)?,
-    }
-    Ok(())
-}
-
 pub struct TraverseRefMaybeBinderVisitor<F>(pub F);
 
 impl<'a, SE, E, SE2, Err, F> ExprKindVisitor<'a, SE, SE2, E, E>
@@ -319,26 +174,5 @@ where
     }
     fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
         Ok(embed.clone())
-    }
-}
-
-pub struct TraverseMutVisitor<F1> {
-    pub visit_subexpr: F1,
-}
-
-impl<'a, SE, E, Err, F1> ExprKindMutVisitor<'a, SE, E>
-    for TraverseMutVisitor<F1>
-where
-    SE: 'a,
-    E: 'a,
-    F1: FnMut(&'a mut SE) -> Result<(), Err>,
-{
-    type Error = Err;
-
-    fn visit_subexpr(
-        &mut self,
-        subexpr: &'a mut SE,
-    ) -> Result<(), Self::Error> {
-        (self.visit_subexpr)(subexpr)
     }
 }

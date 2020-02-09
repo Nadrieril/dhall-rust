@@ -1,5 +1,5 @@
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
+use crate::syntax::visitor::{self, ExprKindVisitor};
 use crate::syntax::*;
 
 pub type Integer = isize;
@@ -208,13 +208,6 @@ impl<SE, E> ExprKind<SE, E> {
         self.traverse_ref_maybe_binder(|_, e| visit_subexpr(e))
     }
 
-    fn traverse_mut<'a, Err>(
-        &'a mut self,
-        visit_subexpr: impl FnMut(&'a mut SE) -> Result<(), Err>,
-    ) -> Result<(), Err> {
-        visitor::TraverseMutVisitor { visit_subexpr }.visit(self)
-    }
-
     pub fn map_ref_maybe_binder<'a, SE2>(
         &'a self,
         mut map: impl FnMut(Option<&'a Label>, &'a SE) -> SE2,
@@ -248,14 +241,13 @@ impl<SE, E> ExprKind<SE, E> {
     {
         self.map_ref_maybe_binder(|_, e| map_subexpr(e))
     }
-
-    pub fn map_mut<'a>(&'a mut self, mut map_subexpr: impl FnMut(&'a mut SE)) {
-        trivial_result(self.traverse_mut(|x| Ok(map_subexpr(x))))
-    }
 }
 
 impl<E> Expr<E> {
     pub fn as_ref(&self) -> &UnspannedExpr<E> {
+        &self.kind
+    }
+    pub fn kind(&self) -> &UnspannedExpr<E> {
         &self.kind
     }
     pub fn span(&self) -> Span {
@@ -280,43 +272,6 @@ impl<E> Expr<E> {
             kind: self.kind,
             span,
         }
-    }
-
-    pub fn traverse_resolve_mut<Err, F1>(
-        &mut self,
-        f: &mut F1,
-    ) -> Result<(), Err>
-    where
-        E: Clone,
-        F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
-    {
-        match self.kind.as_mut() {
-            ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
-                let garbage_expr = ExprKind::BoolLit(false);
-                let new_self = if l.traverse_resolve_mut(f).is_ok() {
-                    l
-                } else {
-                    r.traverse_resolve_mut(f)?;
-                    r
-                };
-                *self.kind =
-                    std::mem::replace(new_self.kind.as_mut(), garbage_expr);
-            }
-            _ => {
-                self.kind.traverse_mut(|e| e.traverse_resolve_mut(f))?;
-                if let ExprKind::Import(import) = self.kind.as_mut() {
-                    let garbage_import = Import {
-                        mode: ImportMode::Code,
-                        location: ImportLocation::Missing,
-                        hash: None,
-                    };
-                    // Move out of &mut import
-                    let import = std::mem::replace(import, garbage_import);
-                    *self.kind = ExprKind::Embed(f(import)?);
-                }
-            }
-        }
-        Ok(())
     }
 }
 
