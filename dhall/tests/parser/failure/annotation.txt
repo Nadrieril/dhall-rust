@@ -1,0 +1,6 @@
+ --> 1:5
+  |
+1 | let a:Natural = 1 in a␊
+  |     ^---
+  |
+  = expected missing, if_, merge, NaN, Some_, toMap, assert, or forall

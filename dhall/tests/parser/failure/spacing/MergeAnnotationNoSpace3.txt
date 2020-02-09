@@ -1,0 +1,6 @@
+ --> 1:11
+  |
+1 | merge x y :T␊
+  |           ^---
+  |
+  = expected EOI, import_alt, bool_or, natural_plus, text_append, list_append, bool_and, natural_times, bool_eq, bool_ne, combine, combine_types, equivalent, prefer, arrow, import_hashed, or primitive_expression

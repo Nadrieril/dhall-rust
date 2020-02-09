@@ -1,0 +1,6 @@
+ --> 1:9
+  |
+1 | { x: T, }␊
+  |         ^---
+  |
+  = expected any_label_or_some

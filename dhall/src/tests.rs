@@ -55,11 +55,11 @@ use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
 #[allow(dead_code)]
 enum Test {
     ParserSuccess(TestFile, TestFile),
-    ParserFailure(TestFile),
+    ParserFailure(TestFile, TestFile),
     Printer(TestFile, TestFile),
     BinaryEncoding(TestFile, TestFile),
     BinaryDecodingSuccess(TestFile, TestFile),
-    BinaryDecodingFailure(TestFile),
+    BinaryDecodingFailure(TestFile, TestFile),
     ImportSuccess(TestFile, TestFile),
     ImportFailure(TestFile, TestFile),
     TypeInferenceSuccess(TestFile, TestFile),
@@ -245,7 +245,7 @@ fn run_test(test: Test) -> Result<()> {
             // This exercices both parsing and binary decoding
             expected.compare_debug(expr)?;
         }
-        ParserFailure(expr) => {
+        ParserFailure(expr, expected) => {
             use std::io::ErrorKind;
             let err = expr.parse().unwrap_err();
             match &err {
@@ -253,6 +253,7 @@ fn run_test(test: Test) -> Result<()> {
                 Error::IO(e) if e.kind() == ErrorKind::InvalidData => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
+            expected.compare_ui(err)?;
         }
         BinaryEncoding(expr, expected) => {
             let expr = expr.parse()?;
@@ -262,8 +263,9 @@ fn run_test(test: Test) -> Result<()> {
             let expr = expr.parse()?;
             expected.compare_debug(expr)?;
         }
-        BinaryDecodingFailure(expr) => {
-            expr.parse().unwrap_err();
+        BinaryDecodingFailure(expr, expected) => {
+            let err = expr.parse().unwrap_err();
+            expected.compare_ui(err)?;
         }
         Printer(expr, _) => {
             let expected = expr.parse()?;

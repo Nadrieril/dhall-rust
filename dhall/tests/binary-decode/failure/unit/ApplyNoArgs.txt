@@ -1,0 +1,1 @@
+WrongFormatError("Function application must have at least one argument")

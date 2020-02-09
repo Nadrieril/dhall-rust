@@ -172,7 +172,7 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "ParserFailure",
             path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Text,
-            output_type: None,
+            output_type: Some(FileType::UI),
         },
         TestFeature {
             module_name: "printer",
@@ -232,7 +232,7 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "BinaryDecodingFailure",
             path_filter: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
-            output_type: None,
+            output_type: Some(FileType::UI),
         },
         TestFeature {
             module_name: "import_success",

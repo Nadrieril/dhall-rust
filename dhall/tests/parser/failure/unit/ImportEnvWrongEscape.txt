@@ -1,0 +1,6 @@
+ --> 1:6
+  |
+1 | env:"\$"␊
+  |      ^---
+  |
+  = expected posix_environment_variable_character
