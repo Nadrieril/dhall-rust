@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, TyEnv, TyExpr,
-    TyExprKind, Type, Value, ValueKind,
+    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, TyEnv,
+    TyExpr, TyExprKind, Type, Value, ValueKind,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Span,
 };
 use crate::Normalized;
 
@@ -115,8 +115,8 @@ fn type_one_layer(
         ExprKind::Const(Const::Type) => Value::from_const(Const::Kind),
         ExprKind::Const(Const::Kind) => Value::from_const(Const::Sort),
         ExprKind::Builtin(b) => {
-            let t_expr = type_of_builtin(*b);
-            let t_tyexpr = type_with(env, &t_expr)?;
+            let t_hir = type_of_builtin(*b);
+            let t_tyexpr = typecheck(&t_hir)?;
             t_tyexpr.eval(env.as_nzenv())
         }
         ExprKind::BoolLit(_) => Value::from_builtin(Builtin::Bool),
@@ -761,25 +761,16 @@ fn type_one_layer(
 }
 
 /// `type_with` typechecks an expressio in the provided environment.
-pub(crate) fn type_with(
-    env: &TyEnv,
-    expr: &Expr<Normalized>,
-) -> Result<TyExpr, TypeError> {
-    let (tyekind, ty) = match expr.as_ref() {
-        ExprKind::Var(var) => match env.lookup(&var) {
-            Some((v, ty)) => (TyExprKind::Var(v), Some(ty)),
-            None => {
-                return mkerr(
-                    ErrorBuilder::new(format!("unbound variable `{}`", var))
-                        .span_err(expr.span(), "not found in this scope")
-                        .format(),
-                )
-            }
-        },
-        ExprKind::Const(Const::Sort) => {
+pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
+    let (tyekind, ty) = match hir.kind() {
+        HirKind::Var(var) => (TyExprKind::Var(*var), Some(env.lookup(&var))),
+        HirKind::Expr(ExprKind::Var(_)) => {
+            unreachable!("Hir should contain no unresolved variables")
+        }
+        HirKind::Expr(ExprKind::Const(Const::Sort)) => {
             (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
         }
-        ExprKind::Embed(p) => {
+        HirKind::Expr(ExprKind::Embed(p)) => {
             let val = p.clone().into_value();
             (
                 val.to_tyexpr_noenv().kind().clone(),
@@ -787,7 +778,7 @@ pub(crate) fn type_with(
             )
             // return Ok(p.clone().into_value().to_tyexpr_noenv())
         }
-        ekind => {
+        HirKind::Expr(ekind) => {
             let ekind = match ekind {
                 ExprKind::Lam(binder, annot, body) => {
                     let annot = type_with(env, annot)?;
@@ -805,7 +796,13 @@ pub(crate) fn type_with(
                 }
                 ExprKind::Let(binder, annot, val, body) => {
                     let val = if let Some(t) = annot {
-                        t.rewrap(ExprKind::Annot(val.clone(), t.clone()))
+                        Hir::new(
+                            HirKind::Expr(ExprKind::Annot(
+                                val.clone(),
+                                t.clone(),
+                            )),
+                            t.span(),
+                        )
                     } else {
                         val.clone()
                     };
@@ -818,16 +815,16 @@ pub(crate) fn type_with(
                 }
                 _ => ekind.traverse_ref(|e| type_with(env, e))?,
             };
-            return type_one_layer(env, ekind, expr.span());
+            return type_one_layer(env, ekind, hir.span());
         }
     };
 
-    Ok(TyExpr::new(tyekind, ty, expr.span()))
+    Ok(TyExpr::new(tyekind, ty, hir.span()))
 }
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck(e: &Expr<Normalized>) -> Result<TyExpr, TypeError> {
+pub(crate) fn typecheck(e: &Hir) -> Result<TyExpr, TypeError> {
     let res = type_with(&TyEnv::new(), e)?;
     // Ensure that the inferred type exists (i.e. this is not Sort)
     res.get_type()?;
@@ -835,9 +832,8 @@ pub(crate) fn typecheck(e: &Expr<Normalized>) -> Result<TyExpr, TypeError> {
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub(crate) fn typecheck_with(
-    expr: &Expr<Normalized>,
-    ty: Expr<Normalized>,
-) -> Result<TyExpr, TypeError> {
-    typecheck(&expr.rewrap(ExprKind::Annot(expr.clone(), ty)))
+pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<TyExpr, TypeError> {
+    let hir =
+        Hir::new(HirKind::Expr(ExprKind::Annot(hir.clone(), ty)), hir.span());
+    typecheck(&hir)
 }

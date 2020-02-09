@@ -6,7 +6,7 @@ use crate::error::{Error, ImportError};
 use crate::semantics::{mkerr, Hir, HirKind, NameEnv};
 use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
-use crate::{Normalized, Parsed, Resolved};
+use crate::{Normalized, Parsed, ParsedExpr, Resolved};
 
 type Import = syntax::Import<Hir>;
 
@@ -162,13 +162,10 @@ pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
     resolve_with_env(&mut ResolveEnv::new(), parsed)
 }
 
-pub(crate) fn skip_resolve_expr(parsed: Parsed) -> Result<Resolved, Error> {
-    let Parsed(expr, _) = parsed;
-    let resolved =
-        traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
-            Err(ImportError::UnexpectedImport(import).into())
-        })?;
-    Ok(Resolved(resolved))
+pub(crate) fn skip_resolve(expr: &ParsedExpr) -> Result<Hir, Error> {
+    traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import| {
+        Err(ImportError::UnexpectedImport(import).into())
+    })
 }
 
 pub trait Canonicalize {

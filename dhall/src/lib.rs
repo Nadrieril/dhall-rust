@@ -79,7 +79,7 @@ impl Parsed {
         resolve::resolve(self)
     }
     pub fn skip_resolve(self) -> Result<Resolved, Error> {
-        resolve::skip_resolve_expr(self)
+        Ok(Resolved(resolve::skip_resolve(&self.0)?))
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
@@ -94,10 +94,10 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck(&self.to_expr())?))
+        Ok(Typed(typecheck(&self.0)?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck_with(&self.to_expr(), ty.to_expr())?))
+        Ok(Typed(typecheck_with(&self.0, ty.to_hir())?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
@@ -135,6 +135,10 @@ impl Normalized {
             alpha: false,
             normalize: false,
         })
+    }
+    /// Converts a value back to the corresponding Hir expression.
+    pub(crate) fn to_hir(&self) -> Hir {
+        self.0.to_hir_noenv()
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {

@@ -1,5 +1,5 @@
 use crate::semantics::{
-    typecheck, Hir, HirKind, NzEnv, Value, ValueKind, VarEnv,
+    skip_resolve, typecheck, Hir, HirKind, NzEnv, Value, ValueKind, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
@@ -115,9 +115,9 @@ macro_rules! make_type {
     };
 }
 
-pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
+pub(crate) fn type_of_builtin(b: Builtin) -> Hir {
     use Builtin::*;
-    match b {
+    let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
         List | Optional => make_type!(
             Type -> Type
@@ -200,7 +200,8 @@ pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
         OptionalNone => make_type!(
             forall (A: Type) -> Optional A
         ),
-    }
+    };
+    skip_resolve(&expr).unwrap()
 }
 
 // Ad-hoc macro to help construct closures
@@ -264,7 +265,8 @@ fn apply_builtin(b: Builtin, args: Vec<Value>, env: NzEnv) -> ValueKind {
         Value(Value),
         DoneAsIs,
     }
-    let make_closure = |e| typecheck(&e).unwrap().eval(&env);
+    let make_closure =
+        |e| typecheck(&skip_resolve(&e).unwrap()).unwrap().eval(&env);
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),

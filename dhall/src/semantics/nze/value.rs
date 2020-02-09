@@ -327,9 +327,12 @@ impl Value {
 
         Hir::new(hir, self.0.span.clone())
     }
+    pub fn to_hir_noenv(&self) -> Hir {
+        self.to_hir(VarEnv::new())
+    }
     pub fn to_tyexpr_tyenv(&self, tyenv: &TyEnv) -> TyExpr {
-        let expr = self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv);
-        type_with(tyenv, &expr).unwrap()
+        let hir = self.to_hir(tyenv.as_varenv());
+        type_with(tyenv, &hir).unwrap()
     }
     pub fn to_tyexpr_noenv(&self) -> TyExpr {
         self.to_tyexpr_tyenv(&TyEnv::new())

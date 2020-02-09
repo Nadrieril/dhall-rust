@@ -21,9 +21,9 @@ pub(crate) struct TyEnv {
 }
 
 impl VarEnv {
-    // pub fn new() -> Self {
-    //     VarEnv { size: 0 }
-    // }
+    pub fn new() -> Self {
+        VarEnv { size: 0 }
+    }
     pub fn size(&self) -> usize {
         self.size
     }
@@ -116,9 +116,7 @@ impl TyEnv {
             items: self.items.insert_value(e, ty),
         }
     }
-    pub fn lookup(&self, var: &V) -> Option<(AlphaVar, Type)> {
-        let var = self.names.unlabel_var(var)?;
-        let ty = self.items.lookup_ty(&var);
-        Some((var, ty))
+    pub fn lookup(&self, var: &AlphaVar) -> Type {
+        self.items.lookup_ty(&var)
     }
 }
