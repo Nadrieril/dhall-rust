@@ -120,3 +120,9 @@ impl TyEnv {
         self.items.lookup_ty(&var)
     }
 }
+
+impl<'a> From<&'a TyEnv> for &'a NzEnv {
+    fn from(x: &'a TyEnv) -> Self {
+        x.as_nzenv()
+    }
+}

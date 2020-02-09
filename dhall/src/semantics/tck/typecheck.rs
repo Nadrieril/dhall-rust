@@ -73,11 +73,10 @@ fn type_one_layer(
         ExprKind::Lam(binder, annot, body) => {
             let body_ty = body.get_type()?;
             let body_ty = body_ty.to_tyexpr_tyenv(
-                &env.insert_type(&binder.clone(), annot.eval(env.as_nzenv())),
+                &env.insert_type(&binder.clone(), annot.eval(env)),
             );
             let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
-            type_one_layer(env, pi_ekind, Span::Artificial)?
-                .eval(env.as_nzenv())
+            type_one_layer(env, pi_ekind, Span::Artificial)?.eval(env)
         }
         ExprKind::Pi(_, annot, body) => {
             let ks = match annot.get_type()?.as_const() {
@@ -117,7 +116,7 @@ fn type_one_layer(
         ExprKind::Builtin(b) => {
             let t_hir = type_of_builtin(*b);
             let t_tyexpr = typecheck(&t_hir)?;
-            t_tyexpr.eval(env.as_nzenv())
+            t_tyexpr.eval(env)
         }
         ExprKind::BoolLit(_) => Value::from_builtin(Builtin::Bool),
         ExprKind::NaturalLit(_) => Value::from_builtin(Builtin::Natural),
@@ -136,7 +135,7 @@ fn type_one_layer(
             text_type
         }
         ExprKind::EmptyListLit(t) => {
-            let t = t.eval(env.as_nzenv());
+            let t = t.eval(env);
             match &*t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
@@ -242,7 +241,7 @@ fn type_one_layer(
                 },
                 // TODO: branch here only when scrut.get_type() is a Const
                 _ => {
-                    let scrut_nf = scrut.eval(env.as_nzenv());
+                    let scrut_nf = scrut.eval(env);
                     match scrut_nf.kind() {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
@@ -262,7 +261,7 @@ fn type_one_layer(
             }
         }
         ExprKind::Annot(x, t) => {
-            let t = t.eval(env.as_nzenv());
+            let t = t.eval(env);
             let x_ty = x.get_type()?;
             if x_ty != t {
                 return span_err(&format!(
@@ -274,7 +273,7 @@ fn type_one_layer(
             x_ty
         }
         ExprKind::Assert(t) => {
-            let t = t.eval(env.as_nzenv());
+            let t = t.eval(env);
             match &*t.kind() {
                 ValueKind::Equivalence(x, y) if x == y => {}
                 ValueKind::Equivalence(..) => {
@@ -315,7 +314,7 @@ fn type_one_layer(
                         );
                     }
 
-                    let arg_nf = arg.eval(env.as_nzenv());
+                    let arg_nf = arg.eval(env);
                     closure.apply(arg_nf)
                 }
                 _ => return mkerr(
@@ -380,11 +379,11 @@ fn type_one_layer(
                 x.get_type()?.to_tyexpr_tyenv(env),
                 y.get_type()?.to_tyexpr_tyenv(env),
             );
-            type_one_layer(env, ekind, Span::Artificial)?.eval(env.as_nzenv())
+            type_one_layer(env, ekind, Span::Artificial)?.eval(env)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
-            let x_val = x.eval(env.as_nzenv());
-            let y_val = y.eval(env.as_nzenv());
+            let x_val = x.eval(env);
+            let y_val = y.eval(env);
             let kts_x = match x_val.kind() {
                 ValueKind::RecordType(kts) => kts,
                 _ => return span_err("RecordTypeMergeRequiresRecordType"),
@@ -589,8 +588,7 @@ fn type_one_layer(
                 }
             }
 
-            let type_annot =
-                type_annot.as_ref().map(|t| t.eval(env.as_nzenv()));
+            let type_annot = type_annot.as_ref().map(|t| t.eval(env));
             match (inferred_type, type_annot) {
                 (Some(t1), Some(t2)) => {
                     if t1 != t2 {
@@ -621,7 +619,7 @@ fn type_one_layer(
                          annotation",
                     );
                 };
-                let annot_val = annot.eval(env.as_nzenv());
+                let annot_val = annot.eval(env);
 
                 let err_msg = "The type of `toMap x` must be of the form \
                                `List { mapKey : Text, mapValue : T }`";
@@ -670,7 +668,7 @@ fn type_one_layer(
                 let output_type = Value::from_builtin(Builtin::List)
                     .app(Value::from_kind(ValueKind::RecordType(kts)));
                 if let Some(annot) = annot {
-                    let annot_val = annot.eval(env.as_nzenv());
+                    let annot_val = annot.eval(env);
                     if output_type != annot_val {
                         return span_err("Annotation mismatch");
                     }
@@ -710,7 +708,7 @@ fn type_one_layer(
                 _ => return span_err("ProjectionMustBeRecord"),
             };
 
-            let selection_val = selection.eval(env.as_nzenv());
+            let selection_val = selection.eval(env);
             let sel_kts = match selection_val.kind() {
                 ValueKind::RecordType(kts) => kts,
                 _ => return span_err("ProjectionByExprTakesRecordType"),
@@ -782,14 +780,14 @@ pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
             let ekind = match ekind {
                 ExprKind::Lam(binder, annot, body) => {
                     let annot = type_with(env, annot)?;
-                    let annot_nf = annot.eval(env.as_nzenv());
+                    let annot_nf = annot.eval(env);
                     let body_env = env.insert_type(binder, annot_nf);
                     let body = type_with(&body_env, body)?;
                     ExprKind::Lam(binder.clone(), annot, body)
                 }
                 ExprKind::Pi(binder, annot, body) => {
                     let annot = type_with(env, annot)?;
-                    let annot_nf = annot.eval(env.as_nzenv());
+                    let annot_nf = annot.eval(env);
                     let body_env = env.insert_type(binder, annot_nf);
                     let body = type_with(&body_env, body)?;
                     ExprKind::Pi(binder.clone(), annot, body)
@@ -808,7 +806,7 @@ pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
                     };
                     let val = type_with(env, &val)?;
                     let val_ty = val.get_type()?;
-                    let val_nf = val.eval(&env.as_nzenv());
+                    let val_nf = val.eval(env);
                     let body_env = env.insert_value(&binder, val_nf, val_ty);
                     let body = type_with(&body_env, body)?;
                     ExprKind::Let(binder.clone(), None, val, body)
