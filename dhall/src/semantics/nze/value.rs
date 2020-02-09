@@ -4,9 +4,9 @@ use std::rc::Rc;
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
-    type_with, Binder, BuiltinClosure, Hir, NzEnv, NzVar, TyEnv, TyExpr,
-    TyExprKind, VarEnv,
+    apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit,
+    type_with, Binder, BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv,
+    TyExpr, VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
@@ -34,7 +34,7 @@ struct ValueInternal {
 #[derive(Debug, Clone)]
 pub(crate) enum Thunk {
     /// A completely unnormalized expression.
-    Thunk { env: NzEnv, body: TyExpr },
+    Thunk { env: NzEnv, body: Hir },
     /// A partially normalized expression that may need to go through `normalize_one_layer`.
     PartialExpr {
         env: NzEnv,
@@ -46,7 +46,7 @@ pub(crate) enum Thunk {
 #[derive(Debug, Clone)]
 pub(crate) enum Closure {
     /// Normal closure
-    Closure { env: NzEnv, body: TyExpr },
+    Closure { env: NzEnv, body: Hir },
     /// Closure that ignores the argument passed
     ConstantClosure { body: Value },
 }
@@ -116,11 +116,12 @@ impl Value {
         Value::from_const(Const::Kind)
     }
     /// Construct a Value from a completely unnormalized expression.
-    pub(crate) fn new_thunk(env: &NzEnv, tye: TyExpr) -> Value {
+    pub(crate) fn new_thunk(env: &NzEnv, hir: Hir) -> Value {
+        let span = hir.span();
         ValueInternal::from_thunk(
-            Thunk::new(env, tye.clone()),
+            Thunk::new(env, hir),
             Some(Value::const_kind()),
-            tye.span().clone(),
+            span,
         )
         .into_value()
     }
@@ -176,13 +177,8 @@ impl Value {
             _ => None,
         }
     }
-    // pub(crate) fn span(&self) -> Span {
-    //     self.0.span.clone()
-    // }
 
     /// This is what you want if you want to pattern-match on the value.
-    /// WARNING: drop this ref before normalizing the same value or you will run into BorrowMut
-    /// panics.
     pub(crate) fn kind(&self) -> &ValueKind {
         self.0.kind()
     }
@@ -196,7 +192,7 @@ impl Value {
         self.to_tyexpr_noenv().to_expr(opts)
     }
     pub(crate) fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
-        self.to_tyexpr(env.as_varenv()).to_expr_tyenv(env)
+        self.to_hir(env.as_varenv()).to_expr_tyenv(env)
     }
 
     /// Normalizes contents to normal form; faster than `normalize` if
@@ -218,8 +214,7 @@ impl Value {
     }
 
     pub(crate) fn get_type(&self, tyenv: &TyEnv) -> Result<Value, TypeError> {
-        let expr = self.to_tyexpr(tyenv.as_varenv()).to_expr_tyenv(tyenv);
-        type_with(tyenv, &expr).unwrap().get_type()
+        self.to_tyexpr_tyenv(tyenv).get_type()
     }
     /// When we know the value isn't `Sort`, this gets the type directly
     pub(crate) fn get_type_not_sort(&self) -> Value {
@@ -229,21 +224,21 @@ impl Value {
             .clone()
     }
 
-    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
+    pub fn to_hir(&self, venv: VarEnv) -> Hir {
         let map_uniontype = |kts: &HashMap<Label, Option<Value>>| {
             ExprKind::UnionType(
                 kts.iter()
                     .map(|(k, v)| {
-                        (k.clone(), v.as_ref().map(|v| v.to_tyexpr(venv)))
+                        (k.clone(), v.as_ref().map(|v| v.to_hir(venv)))
                     })
                     .collect(),
             )
         };
 
-        let tye = match &*self.kind() {
-            ValueKind::Var(v) => TyExprKind::Var(venv.lookup(v)),
-            ValueKind::AppliedBuiltin(closure) => closure.to_tyexprkind(venv),
-            self_kind => TyExprKind::Expr(match self_kind {
+        let hir = match &*self.kind() {
+            ValueKind::Var(v) => HirKind::Var(venv.lookup(v)),
+            ValueKind::AppliedBuiltin(closure) => closure.to_hirkind(venv),
+            self_kind => HirKind::Expr(match self_kind {
                 ValueKind::Var(..) | ValueKind::AppliedBuiltin(..) => {
                     unreachable!()
                 }
@@ -253,8 +248,8 @@ impl Value {
                     closure,
                 } => ExprKind::Lam(
                     binder.to_label(),
-                    annot.to_tyexpr(venv),
-                    closure.to_tyexpr(venv),
+                    annot.to_hir(venv),
+                    closure.to_hir(venv),
                 ),
                 ValueKind::PiClosure {
                     binder,
@@ -262,8 +257,8 @@ impl Value {
                     closure,
                 } => ExprKind::Pi(
                     binder.to_label(),
-                    annot.to_tyexpr(venv),
-                    closure.to_tyexpr(venv),
+                    annot.to_hir(venv),
+                    closure.to_hir(venv),
                 ),
                 ValueKind::Const(c) => ExprKind::Const(*c),
                 ValueKind::BoolLit(b) => ExprKind::BoolLit(*b),
@@ -271,81 +266,75 @@ impl Value {
                 ValueKind::IntegerLit(n) => ExprKind::IntegerLit(*n),
                 ValueKind::DoubleLit(n) => ExprKind::DoubleLit(*n),
                 ValueKind::EmptyOptionalLit(n) => ExprKind::App(
-                    Value::from_builtin(Builtin::OptionalNone).to_tyexpr(venv),
-                    n.to_tyexpr(venv),
+                    Value::from_builtin(Builtin::OptionalNone).to_hir(venv),
+                    n.to_hir(venv),
                 ),
                 ValueKind::NEOptionalLit(n) => {
-                    ExprKind::SomeLit(n.to_tyexpr(venv))
+                    ExprKind::SomeLit(n.to_hir(venv))
                 }
-                ValueKind::EmptyListLit(n) => {
-                    ExprKind::EmptyListLit(TyExpr::new(
-                        TyExprKind::Expr(ExprKind::App(
-                            Value::from_builtin(Builtin::List).to_tyexpr(venv),
-                            n.to_tyexpr(venv),
-                        )),
-                        Some(Value::from_const(Const::Type)),
-                        Span::Artificial,
-                    ))
-                }
+                ValueKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
+                    HirKind::Expr(ExprKind::App(
+                        Value::from_builtin(Builtin::List).to_hir(venv),
+                        n.to_hir(venv),
+                    )),
+                    Span::Artificial,
+                )),
                 ValueKind::NEListLit(elts) => ExprKind::NEListLit(
-                    elts.iter().map(|v| v.to_tyexpr(venv)).collect(),
+                    elts.iter().map(|v| v.to_hir(venv)).collect(),
                 ),
                 ValueKind::TextLit(elts) => ExprKind::TextLit(
                     elts.iter()
-                        .map(|t| t.map_ref(|v| v.to_tyexpr(venv)))
+                        .map(|t| t.map_ref(|v| v.to_hir(venv)))
                         .collect(),
                 ),
                 ValueKind::RecordLit(kvs) => ExprKind::RecordLit(
                     kvs.iter()
-                        .map(|(k, v)| (k.clone(), v.to_tyexpr(venv)))
+                        .map(|(k, v)| (k.clone(), v.to_hir(venv)))
                         .collect(),
                 ),
                 ValueKind::RecordType(kts) => ExprKind::RecordType(
                     kts.iter()
-                        .map(|(k, v)| (k.clone(), v.to_tyexpr(venv)))
+                        .map(|(k, v)| (k.clone(), v.to_hir(venv)))
                         .collect(),
                 ),
                 ValueKind::UnionType(kts) => map_uniontype(kts),
                 ValueKind::UnionConstructor(l, kts, t) => ExprKind::Field(
-                    TyExpr::new(
-                        TyExprKind::Expr(map_uniontype(kts)),
-                        Some(t.clone()),
+                    Hir::new(
+                        HirKind::Expr(map_uniontype(kts)),
                         Span::Artificial,
                     ),
                     l.clone(),
                 ),
                 ValueKind::UnionLit(l, v, kts, uniont, ctort) => ExprKind::App(
-                    TyExpr::new(
-                        TyExprKind::Expr(ExprKind::Field(
-                            TyExpr::new(
-                                TyExprKind::Expr(map_uniontype(kts)),
-                                Some(uniont.clone()),
+                    Hir::new(
+                        HirKind::Expr(ExprKind::Field(
+                            Hir::new(
+                                HirKind::Expr(map_uniontype(kts)),
                                 Span::Artificial,
                             ),
                             l.clone(),
                         )),
-                        Some(ctort.clone()),
                         Span::Artificial,
                     ),
-                    v.to_tyexpr(venv),
+                    v.to_hir(venv),
                 ),
                 ValueKind::Equivalence(x, y) => ExprKind::BinOp(
                     BinOp::Equivalence,
-                    x.to_tyexpr(venv),
-                    y.to_tyexpr(venv),
+                    x.to_hir(venv),
+                    y.to_hir(venv),
                 ),
-                ValueKind::PartialExpr(e) => e.map_ref(|v| v.to_tyexpr(venv)),
+                ValueKind::PartialExpr(e) => e.map_ref(|v| v.to_hir(venv)),
             }),
         };
 
-        TyExpr::new(tye, self.0.ty.clone(), self.0.span.clone())
+        Hir::new(hir, self.0.span.clone())
     }
     pub fn to_tyexpr_tyenv(&self, tyenv: &TyEnv) -> TyExpr {
-        let expr = self.to_tyexpr(tyenv.as_varenv()).to_expr_tyenv(tyenv);
+        let expr = self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv);
         type_with(tyenv, &expr).unwrap()
     }
     pub fn to_tyexpr_noenv(&self) -> TyExpr {
-        self.to_tyexpr(VarEnv::new())
+        self.to_tyexpr_tyenv(&TyEnv::new())
     }
 }
 
@@ -461,7 +450,7 @@ impl ValueKind {
 }
 
 impl Thunk {
-    fn new(env: &NzEnv, body: TyExpr) -> Self {
+    fn new(env: &NzEnv, body: Hir) -> Self {
         Thunk::Thunk {
             env: env.clone(),
             body,
@@ -475,14 +464,14 @@ impl Thunk {
     }
     fn eval(self) -> ValueKind {
         match self {
-            Thunk::Thunk { env, body } => normalize_tyexpr_whnf(&body, &env),
+            Thunk::Thunk { env, body } => normalize_hir_whnf(&env, &body),
             Thunk::PartialExpr { env, expr } => normalize_one_layer(expr, &env),
         }
     }
 }
 
 impl Closure {
-    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
+    pub fn new(env: &NzEnv, body: Hir) -> Self {
         Closure::Closure {
             env: env.clone(),
             body,
@@ -512,10 +501,11 @@ impl Closure {
 
     // TODO: somehow normalize the body. Might require to pass an env.
     pub fn normalize(&self) {}
-    /// Convert this closure to a TyExpr
-    pub fn to_tyexpr(&self, venv: VarEnv) -> TyExpr {
+
+    /// Convert this closure to a Hir expression
+    pub fn to_hir(&self, venv: VarEnv) -> Hir {
         self.apply_var(NzVar::new(venv.size()))
-            .to_tyexpr(venv.insert())
+            .to_hir(venv.insert())
     }
     /// If the closure variable is free in the closure, return Err. Otherwise, return the value
     /// with that free variable remove.

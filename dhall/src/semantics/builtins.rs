@@ -1,5 +1,5 @@
 use crate::semantics::{
-    typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
+    typecheck, Hir, HirKind, NzEnv, Value, ValueKind, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
@@ -48,17 +48,13 @@ impl BuiltinClosure<Value> {
             x.normalize();
         }
     }
-    pub fn to_tyexprkind(&self, venv: VarEnv) -> TyExprKind {
-        TyExprKind::Expr(self.args.iter().zip(self.types.iter()).fold(
+    pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
+        HirKind::Expr(self.args.iter().zip(self.types.iter()).fold(
             ExprKind::Builtin(self.b),
             |acc, (v, ty)| {
                 ExprKind::App(
-                    TyExpr::new(
-                        TyExprKind::Expr(acc),
-                        Some(ty.clone()),
-                        Span::Artificial,
-                    ),
-                    v.to_tyexpr(venv),
+                    Hir::new(HirKind::Expr(acc), Span::Artificial),
+                    v.to_hir(venv),
                 )
             },
         ))

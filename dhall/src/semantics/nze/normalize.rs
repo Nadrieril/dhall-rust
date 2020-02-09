@@ -3,8 +3,7 @@ use std::collections::HashMap;
 
 use crate::semantics::NzEnv;
 use crate::semantics::{
-    Binder, BuiltinClosure, Closure, Hir, HirKind, TextLit, TyExpr, TyExprKind,
-    Value, ValueKind,
+    Binder, BuiltinClosure, Closure, Hir, HirKind, TextLit, Value, ValueKind,
 };
 use crate::syntax::{BinOp, Builtin, ExprKind, InterpolatedTextContents};
 use crate::Normalized;
@@ -460,11 +459,11 @@ pub(crate) fn normalize_one_layer(
     }
 }
 
-/// Normalize a TyExpr into WHNF
-pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
-    match tye.kind() {
-        TyExprKind::Var(var) => env.lookup_val(var),
-        TyExprKind::Expr(ExprKind::Lam(binder, annot, body)) => {
+/// Normalize Hir into WHNF
+pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> ValueKind {
+    match hir.kind() {
+        HirKind::Var(var) => env.lookup_val(var),
+        HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             ValueKind::LamClosure {
                 binder: Binder::new(binder.clone()),
@@ -472,7 +471,7 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
                 closure: Closure::new(env, body.clone()),
             }
         }
-        TyExprKind::Expr(ExprKind::Pi(binder, annot, body)) => {
+        HirKind::Expr(ExprKind::Pi(binder, annot, body)) => {
             let annot = annot.eval(env);
             ValueKind::PiClosure {
                 binder: Binder::new(binder.clone()),
@@ -480,12 +479,12 @@ pub(crate) fn normalize_tyexpr_whnf(tye: &TyExpr, env: &NzEnv) -> ValueKind {
                 closure: Closure::new(env, body.clone()),
             }
         }
-        TyExprKind::Expr(ExprKind::Let(_, None, val, body)) => {
+        HirKind::Expr(ExprKind::Let(_, None, val, body)) => {
             let val = val.eval(env);
             body.eval(&env.insert_value_noty(val)).kind().clone()
         }
-        TyExprKind::Expr(e) => {
-            let e = e.map_ref(|tye| tye.eval(env));
+        HirKind::Expr(e) => {
+            let e = e.map_ref(|hir| hir.eval(env));
             normalize_one_layer(e, env)
         }
     }

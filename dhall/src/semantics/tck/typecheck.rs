@@ -266,17 +266,10 @@ fn type_one_layer(
             let x_ty = x.get_type()?;
             if x_ty != t {
                 return span_err(&format!(
-                    "annot mismatch: ({} : {}) : {}",
-                    x.to_expr_tyenv(env),
-                    x_ty.to_tyexpr_tyenv(env).to_expr_tyenv(env),
-                    t.to_tyexpr_tyenv(env).to_expr_tyenv(env)
+                    "annot mismatch: {} != {}",
+                    x_ty.to_expr_tyenv(env),
+                    t.to_expr_tyenv(env)
                 ));
-                // return span_err(format!(
-                //     "annot mismatch: {} != {}",
-                //     x_ty.to_tyexpr_tyenv(env).to_expr_tyenv(env),
-                //     t.to_tyexpr_tyenv(env).to_expr_tyenv(env)
-                // ));
-                // return span_err(format!("annot mismatch: {:#?} : {:#?}", x, t,));
             }
             x_ty
         }

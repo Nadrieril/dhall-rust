@@ -1,8 +1,6 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::{
-    rc, AlphaVar, Hir, HirKind, NameEnv, NzEnv, TyEnv, Value,
-};
-use crate::syntax::{ExprKind, Span, V};
+use crate::semantics::{AlphaVar, Hir, HirKind, NzEnv, Value};
+use crate::syntax::{ExprKind, Span};
 use crate::Normalized;
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -56,13 +54,10 @@ impl TyExpr {
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         self.to_hir().to_expr(opts)
     }
-    pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
-        self.to_hir().to_expr_tyenv(env)
-    }
 
     /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: &NzEnv) -> Value {
-        Value::new_thunk(env, self.clone())
+        Value::new_thunk(env, self.to_hir())
     }
     /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.

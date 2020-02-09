@@ -21,9 +21,9 @@ pub(crate) struct TyEnv {
 }
 
 impl VarEnv {
-    pub fn new() -> Self {
-        VarEnv { size: 0 }
-    }
+    // pub fn new() -> Self {
+    //     VarEnv { size: 0 }
+    // }
     pub fn size(&self) -> usize {
         self.size
     }

@@ -62,8 +62,7 @@ impl Hir {
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: &NzEnv) -> Value {
-        // Value::new_thunk(env, self.clone())
-        todo!()
+        Value::new_thunk(env, self.clone())
     }
     /// Eval a closed Hir (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
