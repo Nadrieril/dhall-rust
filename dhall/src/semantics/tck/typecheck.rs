@@ -847,7 +847,10 @@ pub(crate) fn type_with(
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
 pub(crate) fn typecheck(e: &Expr<Normalized>) -> Result<TyExpr, TypeError> {
-    type_with(&TyEnv::new(), e)
+    let res = type_with(&TyEnv::new(), e)?;
+    // Ensure that the inferred type exists (i.e. this is not Sort)
+    res.get_type()?;
+    Ok(res)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.

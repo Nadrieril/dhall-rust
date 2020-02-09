@@ -1,0 +1,6 @@
+ --> 6:3
+  |
+6 | "\uFFFE"␊
+  |   ^---^
+  |
+  = Escape sequences can't contain non-characters

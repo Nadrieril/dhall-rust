@@ -124,7 +124,38 @@ $ cargo build
 $ cargo test
 ```
 
+You can also run tests individually by their name:
+
+```bash
+$ cargo test tests::spec::name_of_test
+```
+
 Now we can have fun and happy contributing!
+
+## Test suite
+
+The test suite uses tests from the dhall-lang submodule as well as from the
+local `dhall/tests` directory.
+The various tests are run according to the instructions present in
+[`dhall-lang/tests/README.md`](https://github.com/dhall-lang/dhall-lang/blob/master/tests/README.md).
+
+If an output test file (a `fooB.dhall` file) is missing, we will generate it automatically.
+This is useful when writing new tests. Don't forget to commit it to git !
+
+If a test fails but you prefer the new output, you can run the test with
+`UPDATE_TEST_FILES=1` to overwrite the result file with the new output.
+This happens often with ui tests (see below), since we may want to change the
+phrasing of errors for example.
+
+```bash
+$ UPDATE_TEST_FILES=1 cargo test tests::spec::name_of_test
+```
+
+In addition to the usual dhall tests, we additionally run "ui tests", that
+ensure that the output of the various errors stays good.
+The output of the ui tests is stored in the local `dhall/tests` directory, even
+for the tests coming from dhall-lang. They are stored in a `.txt` file with the
+same name as the corresponding test.
 
 ## Changelog
 
