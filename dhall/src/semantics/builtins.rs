@@ -370,17 +370,9 @@ fn apply_builtin(b: Builtin, args: Vec<Value>, env: NzEnv) -> ValueKind {
             }
             _ => Ret::DoneAsIs,
         },
-        (ListIndexed, [_, l]) => {
-            let l_whnf = l.kind();
-            match &*l_whnf {
+        (ListIndexed, [t, l]) => {
+            match l.kind() {
                 EmptyListLit(_) | NEListLit(_) => {
-                    // Extract the type of the list elements
-                    let t = match &*l_whnf {
-                        EmptyListLit(t) => t.clone(),
-                        NEListLit(xs) => xs[0].get_type_not_sort(),
-                        _ => unreachable!(),
-                    };
-
                     // Construct the returned record type: { index: Natural, value: t }
                     let mut kts = HashMap::new();
                     kts.insert("index".into(), Value::from_builtin(Natural));
@@ -388,7 +380,7 @@ fn apply_builtin(b: Builtin, args: Vec<Value>, env: NzEnv) -> ValueKind {
                     let t = Value::from_kind(RecordType(kts));
 
                     // Construct the new list, with added indices
-                    let list = match &*l_whnf {
+                    let list = match l.kind() {
                         EmptyListLit(_) => EmptyListLit(t),
                         NEListLit(xs) => NEListLit(
                             xs.iter()

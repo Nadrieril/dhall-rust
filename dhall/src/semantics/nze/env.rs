@@ -60,7 +60,8 @@ impl NzEnv {
         env
     }
     pub fn insert_value_noty(&self, e: Value) -> Self {
-        let ty = e.get_type_not_sort();
+        // TODO
+        let ty = Value::const_sort();
         self.insert_value(e, ty)
     }
     pub fn lookup_val(&self, var: &AlphaVar) -> ValueKind {

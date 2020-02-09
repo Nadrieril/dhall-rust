@@ -79,8 +79,8 @@ impl Hir {
     }
     /// Eval a closed Hir fully and recursively (TODO: ish, need to fix under lambdas)
     pub fn rec_eval_closed_expr(&self) -> Value {
-        let mut val = self.eval_closed_expr();
-        val.normalize_mut();
+        let val = self.eval_closed_expr();
+        val.normalize();
         val
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::error::{TypeError, TypeMessage};
+use crate::error::TypeError;
 use crate::semantics::nze::lazy;
 use crate::semantics::{
     apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit,
@@ -25,8 +25,6 @@ pub(crate) struct Value(Rc<ValueInternal>);
 #[derive(Debug)]
 struct ValueInternal {
     kind: lazy::Lazy<Thunk, ValueKind>,
-    /// This is None if and only if `form` is `Sort` (which doesn't have a type)
-    ty: Option<Value>,
     span: Span,
 }
 
@@ -103,25 +101,12 @@ pub(crate) enum ValueKind {
 
 impl Value {
     pub(crate) fn const_sort() -> Value {
-        ValueInternal::from_whnf(
-            ValueKind::Const(Const::Sort),
-            None,
-            Span::Artificial,
-        )
-        .into_value()
-    }
-    pub(crate) fn const_kind() -> Value {
-        Value::from_const(Const::Kind)
+        Value::from_const(Const::Sort)
     }
     /// Construct a Value from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: &NzEnv, hir: Hir) -> Value {
         let span = hir.span();
-        ValueInternal::from_thunk(
-            Thunk::new(env, hir),
-            Some(Value::const_kind()),
-            span,
-        )
-        .into_value()
+        ValueInternal::from_thunk(Thunk::new(env, hir), span).into_value()
     }
     /// Construct a Value from a partially normalized expression that's not in WHNF.
     pub(crate) fn from_partial_expr(e: ExprKind<Value, Normalized>) -> Value {
@@ -129,33 +114,17 @@ impl Value {
         let env = NzEnv::new();
         ValueInternal::from_thunk(
             Thunk::from_partial_expr(env, e),
-            Some(Value::const_kind()),
             Span::Artificial,
         )
         .into_value()
     }
     /// Make a Value from a ValueKind
     pub(crate) fn from_kind(v: ValueKind) -> Value {
-        ValueInternal::from_whnf(v, Some(Value::const_kind()), Span::Artificial)
-            .into_value()
+        ValueInternal::from_whnf(v, Span::Artificial).into_value()
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = ValueKind::Const(c);
-        match c {
-            Const::Type => ValueInternal::from_whnf(
-                v,
-                Some(Value::from_const(Const::Kind)),
-                Span::Artificial,
-            )
-            .into_value(),
-            Const::Kind => ValueInternal::from_whnf(
-                v,
-                Some(Value::const_sort()),
-                Span::Artificial,
-            )
-            .into_value(),
-            Const::Sort => Value::const_sort(),
-        }
+        ValueInternal::from_whnf(v, Span::Artificial).into_value()
     }
     pub(crate) fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
@@ -193,16 +162,6 @@ impl Value {
         self.to_hir(env.as_varenv()).to_expr_tyenv(env)
     }
 
-    /// Normalizes contents to normal form; faster than `normalize` if
-    /// no one else shares this.
-    pub(crate) fn normalize_mut(&mut self) {
-        match Rc::get_mut(&mut self.0) {
-            // Mutate directly if sole owner
-            Some(vint) => vint.normalize_mut(),
-            // Otherwise mutate through the refcell
-            None => self.normalize(),
-        }
-    }
     pub(crate) fn normalize(&self) {
         self.0.normalize()
     }
@@ -213,13 +172,6 @@ impl Value {
 
     pub(crate) fn get_type(&self, tyenv: &TyEnv) -> Result<Value, TypeError> {
         self.to_tyexpr_tyenv(tyenv).get_type()
-    }
-    /// When we know the value isn't `Sort`, this gets the type directly
-    pub(crate) fn get_type_not_sort(&self) -> Value {
-        self.0
-            .get_type()
-            .expect("Internal type error: value is `Sort` but shouldn't be")
-            .clone()
     }
 
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
@@ -340,17 +292,15 @@ impl Value {
 }
 
 impl ValueInternal {
-    fn from_whnf(k: ValueKind, ty: Option<Value>, span: Span) -> Self {
+    fn from_whnf(k: ValueKind, span: Span) -> Self {
         ValueInternal {
             kind: lazy::Lazy::new_completed(k),
-            ty,
             span,
         }
     }
-    fn from_thunk(th: Thunk, ty: Option<Value>, span: Span) -> Self {
+    fn from_thunk(th: Thunk, span: Span) -> Self {
         ValueInternal {
             kind: lazy::Lazy::new(th),
-            ty,
             span,
         }
     }
@@ -363,17 +313,6 @@ impl ValueInternal {
     }
     fn normalize(&self) {
         self.kind().normalize();
-    }
-    // TODO: deprecated
-    fn normalize_mut(&mut self) {
-        self.normalize();
-    }
-
-    fn get_type(&self) -> Result<&Value, TypeError> {
-        match &self.ty {
-            Some(t) => Ok(t),
-            None => Err(TypeError::new(TypeMessage::Sort)),
-        }
     }
 }
 
@@ -616,11 +555,6 @@ impl std::fmt::Debug for Value {
         }
         let mut x = fmt.debug_struct(&format!("Value@WHNF"));
         x.field("kind", kind);
-        if let Some(ty) = vint.ty.as_ref() {
-            x.field("type", &ty);
-        } else {
-            x.field("type", &None::<()>);
-        }
         x.finish()
     }
 }

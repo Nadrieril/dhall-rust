@@ -66,8 +66,8 @@ impl TyExpr {
     }
     /// Eval a closed TyExpr fully and recursively;
     pub fn rec_eval_closed_expr(&self) -> Value {
-        let mut val = self.eval_closed_expr();
-        val.normalize_mut();
+        let val = self.eval_closed_expr();
+        val.normalize();
         val
     }
 }
