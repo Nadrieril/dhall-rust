@@ -267,22 +267,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "customHeadersUsingBoundVariable"
             }),
             input_type: FileType::Text,
-            output_type: None,
-        },
-        TestFeature {
-            module_name: "import_error",
-            directory: "import/failure/",
-            variant: "ImportError",
-            path_filter: Box::new(|path: &str| {
-                false
-                    || path == "alternativeEnv"
-                    || path == "alternativeEnvMissing"
-                    || path == "hashMismatch"
-                    || path == "missing"
-                    || path == "referentiallyInsane"
-                    || path == "customHeadersUsingBoundVariable"
-            }),
-            input_type: FileType::Text,
             output_type: Some(FileType::UI),
         },
         TestFeature {
@@ -349,18 +333,6 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "type_inference_failure",
             directory: "type-inference/failure/",
             variant: "TypeInferenceFailure",
-            path_filter: Box::new(|path: &str| {
-                false
-                    // TODO: enable free variable checking
-                    || path == "unit/MergeHandlerFreeVar"
-            }),
-            input_type: FileType::Text,
-            output_type: None,
-        },
-        TestFeature {
-            module_name: "type_error",
-            directory: "type-inference/failure/",
-            variant: "TypeError",
             path_filter: Box::new(|path: &str| {
                 false
                     // TODO: enable free variable checking

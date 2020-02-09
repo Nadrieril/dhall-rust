@@ -61,11 +61,9 @@ enum Test {
     BinaryDecodingSuccess(TestFile, TestFile),
     BinaryDecodingFailure(TestFile),
     ImportSuccess(TestFile, TestFile),
-    ImportFailure(TestFile),
-    ImportError(TestFile, TestFile),
+    ImportFailure(TestFile, TestFile),
     TypeInferenceSuccess(TestFile, TestFile),
-    TypeInferenceFailure(TestFile),
-    TypeError(TestFile, TestFile),
+    TypeInferenceFailure(TestFile, TestFile),
     Normalization(TestFile, TestFile),
     AlphaNormalization(TestFile, TestFile),
 }
@@ -277,10 +275,7 @@ fn run_test(test: Test) -> Result<()> {
             let expr = expr.normalize()?;
             expected.compare(expr)?;
         }
-        ImportFailure(expr) => {
-            expr.parse()?.resolve().unwrap_err();
-        }
-        ImportError(expr, expected) => {
+        ImportFailure(expr, expected) => {
             let err = expr.parse()?.resolve().unwrap_err();
             expected.compare_ui(err)?;
         }
@@ -288,10 +283,7 @@ fn run_test(test: Test) -> Result<()> {
             let ty = expr.resolve()?.typecheck()?.get_type()?;
             expected.compare(ty)?;
         }
-        TypeInferenceFailure(expr) => {
-            expr.resolve()?.typecheck().unwrap_err();
-        }
-        TypeError(expr, expected) => {
+        TypeInferenceFailure(expr, expected) => {
             let err = expr.resolve()?.typecheck().unwrap_err();
             expected.compare_ui(err)?;
         }
