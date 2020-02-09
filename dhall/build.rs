@@ -246,6 +246,22 @@ fn generate_tests() -> std::io::Result<()> {
             output_type: None,
         },
         TestFeature {
+            module_name: "import_error",
+            directory: "import/failure/",
+            variant: "ImportError",
+            path_filter: Box::new(|path: &str| {
+                false
+                    || path == "alternativeEnv"
+                    || path == "alternativeEnvMissing"
+                    || path == "hashMismatch"
+                    || path == "missing"
+                    || path == "referentiallyInsane"
+                    || path == "customHeadersUsingBoundVariable"
+            }),
+            input_type: FileType::Text,
+            output_type: None,
+        },
+        TestFeature {
             module_name: "beta_normalize",
             directory: "normalization/success/",
             variant: "Normalization",

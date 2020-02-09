@@ -61,6 +61,7 @@ pub enum Test<'a> {
     BinaryDecodingFailure(&'a str),
     ImportSuccess(&'a str, &'a str),
     ImportFailure(&'a str),
+    ImportError(&'a str),
     TypeInferenceSuccess(&'a str, &'a str),
     TypeInferenceFailure(&'a str),
     TypeError(&'a str),
@@ -156,6 +157,31 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
         }
         ImportFailure(file_path) => {
             parse_file_str(&file_path)?.resolve().unwrap_err();
+        }
+        // Checks the output of the type error against a text file. If the text file doesn't exist,
+        // we instead write to it the output we got. This makes it easy to update those files: just
+        // `rm -r dhall/tests/type-errors` and run the tests again.
+        ImportError(file_path) => {
+            let err: Error =
+                parse_file_str(&file_path)?.resolve().unwrap_err().into();
+            let file_path = PathBuf::from(file_path);
+            let error_file_path = file_path
+                .strip_prefix("../dhall-lang/tests/import/failure/")
+                .or_else(|_| file_path.strip_prefix("tests/import/failure/"))
+                .unwrap();
+            let error_file_path =
+                PathBuf::from("tests/errors/import/").join(error_file_path);
+            let error_file_path = error_file_path.with_extension("txt");
+
+            if error_file_path.is_file() {
+                let expected_msg = std::fs::read_to_string(error_file_path)?;
+                let msg = format!("{}\n", err);
+                assert_eq_pretty_str!(msg, expected_msg);
+            } else {
+                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
+                let mut file = File::create(error_file_path)?;
+                writeln!(file, "{}", err)?;
+            }
         }
         TypeInferenceSuccess(expr_file_path, expected_file_path) => {
             let expr =
