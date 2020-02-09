@@ -1,4 +1,3 @@
-#![feature(slice_patterns)]
 #![doc(html_root_url = "https://docs.rs/improved_slice_patterns/2.0.0")]
 
 //! A tiny crate that provides two macros to help matching
