@@ -234,6 +234,17 @@ impl std::hash::Hash for Normalized {
     }
 }
 
+impl From<Parsed> for NormalizedExpr {
+    fn from(other: Parsed) -> Self {
+        other.to_expr()
+    }
+}
+impl From<Normalized> for NormalizedExpr {
+    fn from(other: Normalized) -> Self {
+        other.to_expr()
+    }
+}
+
 impl Eq for Typed {}
 impl PartialEq for Typed {
     fn eq(&self, other: &Self) -> bool {

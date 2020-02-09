@@ -2,15 +2,19 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{read_to_string, File};
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use abnf_to_pest::render_rules_to_pest;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileType {
+    /// Dhall source file
     Text,
+    /// Dhall binary file
     Binary,
+    /// Text file with expected text output
+    UI,
 }
 
 impl FileType {
@@ -18,7 +22,22 @@ impl FileType {
         match self {
             FileType::Text => "dhall",
             FileType::Binary => "dhallb",
+            FileType::UI => "txt",
         }
+    }
+    fn constructor(self) -> &'static str {
+        match self {
+            FileType::Text => "TestFile::Source",
+            FileType::Binary => "TestFile::Binary",
+            FileType::UI => "TestFile::UI",
+        }
+    }
+    fn construct(self, path: &str) -> String {
+        // e.g. with
+        //  path = "tests/foor/barA"
+        // returns something like:
+        //  TestFile::Source("tests/foor/barA.dhall")
+        format!(r#"{}("{}.{}")"#, self.constructor(), path, self.to_ext())
     }
 }
 
@@ -72,7 +91,8 @@ fn make_test_module(
     mut feature: TestFeature,
 ) -> std::io::Result<()> {
     writeln!(w, "mod {} {{", feature.module_name)?;
-    let take_ab_suffix = feature.output_type.is_some();
+    let take_ab_suffix = feature.output_type.is_some()
+        && feature.output_type != Some(FileType::UI);
     for base_path in base_paths {
         let tests_dir = base_path.join(feature.directory);
         for (name, path) in
@@ -85,22 +105,26 @@ fn make_test_module(
             let path = path.to_string_lossy();
             let test = match feature.output_type {
                 None => {
-                    let input_file =
-                        format!("\"{}.{}\"", path, feature.input_type.to_ext());
-                    format!("{}({})", feature.variant, input_file)
+                    let input = feature.input_type.construct(&path);
+                    format!("{}({})", feature.variant, input)
+                }
+                Some(output_type @ FileType::UI) => {
+                    let input = feature.input_type.construct(&path);
+                    let output_file = PathBuf::from(path.as_ref())
+                        .strip_prefix(base_path)
+                        .unwrap()
+                        .strip_prefix(feature.directory)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned();
+                    let output = output_type.construct(&output_file);
+                    format!("{}({}, {})", feature.variant, input, output)
                 }
                 Some(output_type) => {
-                    let input_file = format!(
-                        "\"{}A.{}\"",
-                        path,
-                        feature.input_type.to_ext()
-                    );
-                    let output_file =
-                        format!("\"{}B.{}\"", path, output_type.to_ext());
-                    format!(
-                        "{}({}, {})",
-                        feature.variant, input_file, output_file
-                    )
+                    let input =
+                        feature.input_type.construct(&format!("{}A", path));
+                    let output = output_type.construct(&format!("{}B", path));
+                    format!("{}({}, {})", feature.variant, input, output)
                 }
             };
             writeln!(w, "make_spec_test!({}, {});", test, name)?;
@@ -259,7 +283,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "customHeadersUsingBoundVariable"
             }),
             input_type: FileType::Text,
-            output_type: None,
+            output_type: Some(FileType::UI),
         },
         TestFeature {
             module_name: "beta_normalize",
@@ -281,6 +305,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "prelude/JSON/number/1"
                     // TODO: doesn't typecheck
                     || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
+                    || path == "unit/Sort"
                     // // TODO: Further record simplifications
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
@@ -342,7 +367,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MergeHandlerFreeVar"
             }),
             input_type: FileType::Text,
-            output_type: None,
+            output_type: Some(FileType::UI),
         },
     ];
 

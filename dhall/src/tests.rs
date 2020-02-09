@@ -48,51 +48,124 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::error::{Error, Result};
-use crate::Parsed;
+use crate::syntax::binary;
+use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
 
 #[allow(dead_code)]
-#[derive(Clone)]
-pub enum Test<'a> {
-    ParserSuccess(&'a str, &'a str),
-    ParserFailure(&'a str),
-    Printer(&'a str, &'a str),
-    BinaryEncoding(&'a str, &'a str),
-    BinaryDecodingSuccess(&'a str, &'a str),
-    BinaryDecodingFailure(&'a str),
-    ImportSuccess(&'a str, &'a str),
-    ImportFailure(&'a str),
-    ImportError(&'a str),
-    TypeInferenceSuccess(&'a str, &'a str),
-    TypeInferenceFailure(&'a str),
-    TypeError(&'a str),
-    Normalization(&'a str, &'a str),
-    AlphaNormalization(&'a str, &'a str),
-}
-
-fn parse_file_str(file_path: &str) -> Result<Parsed> {
-    Parsed::parse_file(&PathBuf::from(file_path))
+enum Test {
+    ParserSuccess(TestFile, TestFile),
+    ParserFailure(TestFile),
+    Printer(TestFile, TestFile),
+    BinaryEncoding(TestFile, TestFile),
+    BinaryDecodingSuccess(TestFile, TestFile),
+    BinaryDecodingFailure(TestFile),
+    ImportSuccess(TestFile, TestFile),
+    ImportFailure(TestFile),
+    ImportError(TestFile, TestFile),
+    TypeInferenceSuccess(TestFile, TestFile),
+    TypeInferenceFailure(TestFile),
+    TypeError(TestFile, TestFile),
+    Normalization(TestFile, TestFile),
+    AlphaNormalization(TestFile, TestFile),
 }
 
 #[allow(dead_code)]
-pub fn run_test_stringy_error(
-    test: Test<'_>,
-) -> std::result::Result<(), String> {
-    run_test(test).map_err(|e| e.to_string()).map(|_| ())
+enum TestFile {
+    Source(&'static str),
+    Binary(&'static str),
+    UI(&'static str),
 }
 
-pub fn run_test(test: Test<'_>) -> Result<()> {
+impl TestFile {
+    pub fn path(&self) -> PathBuf {
+        match self {
+            TestFile::Source(path)
+            | TestFile::Binary(path)
+            | TestFile::UI(path) => PathBuf::from(path),
+        }
+    }
+
+    /// Parse the target file
+    pub fn parse(&self) -> Result<Parsed> {
+        match self {
+            TestFile::Source(_) => Parsed::parse_file(&self.path()),
+            TestFile::Binary(_) => Parsed::parse_binary_file(&self.path()),
+            TestFile::UI(_) => panic!("Can't parse a UI test file"),
+        }
+    }
+    /// Parse and resolve the target file
+    pub fn resolve(&self) -> Result<Resolved> {
+        Ok(self.parse()?.resolve()?)
+    }
+    /// Parse, resolve, tck and normalize the target file
+    pub fn normalize(&self) -> Result<Normalized> {
+        Ok(self.resolve()?.typecheck()?.normalize())
+    }
+
+    /// Check that the provided expression matches the file contents.
+    pub fn compare(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+        let expr = expr.into();
+        let expected = self.parse()?.to_expr();
+        assert_eq_display!(expr, expected);
+        Ok(())
+    }
+    /// Check that the provided expression matches the file contents.
+    pub fn compare_debug(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+        let expr = expr.into();
+        let expected = self.parse()?.to_expr();
+        assert_eq_pretty!(expr, expected);
+        Ok(())
+    }
+    /// Check that the provided expression matches the file contents.
+    pub fn compare_binary(
+        &self,
+        expr: impl Into<NormalizedExpr>,
+    ) -> Result<()> {
+        match self {
+            TestFile::Binary(_) => {}
+            _ => panic!("This is not a binary file"),
+        }
+        let expr_data = binary::encode(&expr.into())?;
+        let expected_data = {
+            let mut data = Vec::new();
+            File::open(&self.path())?.read_to_end(&mut data)?;
+            data
+        };
+
+        // Compare bit-by-bit
+        if expr_data != expected_data {
+            use serde_cbor::de::from_slice;
+            use serde_cbor::value::Value;
+            // use std::io::Write;
+            // File::create(&expected)?.write_all(&expr_data)?;
+            // Pretty-print difference
+            assert_eq_pretty!(
+                from_slice::<Value>(&expr_data).unwrap(),
+                from_slice::<Value>(&expected_data).unwrap()
+            );
+            // If difference was not visible in the cbor::Value, compare normally.
+            assert_eq!(expr_data, expected_data);
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+fn run_test_stringy_error(test: Test) -> std::result::Result<(), String> {
+    run_test(test).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn run_test(test: Test) -> Result<()> {
     use self::Test::*;
     match test {
-        ParserSuccess(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?;
+        ParserSuccess(expr, expected) => {
+            let expr = expr.parse()?;
             // This exercices both parsing and binary decoding
-            // Compare parse/decoded
-            let expected =
-                Parsed::parse_binary_file(&PathBuf::from(expected_file_path))?;
-            assert_eq_pretty!(expr, expected);
+            expected.compare_debug(expr)?;
         }
-        ParserFailure(file_path) => {
-            let err = parse_file_str(&file_path).unwrap_err();
+        ParserFailure(expr) => {
+            let err = expr.parse().unwrap_err();
             match &err {
                 Error::Parse(_) => {}
                 Error::IO(e) if e.kind() == std::io::ErrorKind::InvalidData => {
@@ -100,78 +173,65 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
                 e => panic!("Expected parse error, got: {:?}", e),
             }
         }
-        BinaryEncoding(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?;
-            let mut expected_data = Vec::new();
-            {
-                File::open(&PathBuf::from(&expected_file_path))?
-                    .read_to_end(&mut expected_data)?;
-            }
-            let expr_data = expr.encode()?;
-
-            // Compare bit-by-bit
-            if expr_data != expected_data {
-                // use std::io::Write;
-                // File::create(&expected_file_path)?.write_all(&expr_data)?;
-                // Pretty-print difference
-                assert_eq_pretty!(
-                    serde_cbor::de::from_slice::<serde_cbor::value::Value>(
-                        &expr_data
-                    )
-                    .unwrap(),
-                    serde_cbor::de::from_slice::<serde_cbor::value::Value>(
-                        &expected_data
-                    )
-                    .unwrap()
-                );
-                // If difference was not visible in the cbor::Value
-                assert_eq!(expr_data, expected_data);
-            }
+        BinaryEncoding(expr, expected) => {
+            let expr = expr.parse()?;
+            expected.compare_binary(expr)?;
         }
-        BinaryDecodingSuccess(expr_file_path, expected_file_path) => {
-            let expr =
-                Parsed::parse_binary_file(&PathBuf::from(expr_file_path))?;
-            let expected = parse_file_str(&expected_file_path)?;
-            assert_eq_pretty!(expr, expected);
+        BinaryDecodingSuccess(expr, expected) => {
+            let expr = expr.parse()?;
+            expected.compare_debug(expr)?;
         }
-        BinaryDecodingFailure(file_path) => {
-            Parsed::parse_binary_file(&PathBuf::from(file_path)).unwrap_err();
+        BinaryDecodingFailure(expr) => {
+            expr.parse().unwrap_err();
         }
-        Printer(expr_file_path, _) => {
-            let expected = parse_file_str(&expr_file_path)?;
+        Printer(expr, _) => {
+            let expected = expr.parse()?;
             // Round-trip pretty-printer
             let expr: Parsed = Parsed::parse_str(&expected.to_string())?;
             assert_eq!(expr, expected);
         }
-        ImportSuccess(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize();
-            let expected = parse_file_str(&expected_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize();
-
-            assert_eq_display!(expr, expected);
+        ImportSuccess(expr, expected) => {
+            let expr = expr.normalize()?;
+            expected.compare(expr)?;
         }
-        ImportFailure(file_path) => {
-            parse_file_str(&file_path)?.resolve().unwrap_err();
+        ImportFailure(expr) => {
+            expr.parse()?.resolve().unwrap_err();
         }
         // Checks the output of the type error against a text file. If the text file doesn't exist,
         // we instead write to it the output we got. This makes it easy to update those files: just
         // `rm -r dhall/tests/type-errors` and run the tests again.
-        ImportError(file_path) => {
-            let err: Error =
-                parse_file_str(&file_path)?.resolve().unwrap_err().into();
-            let file_path = PathBuf::from(file_path);
-            let error_file_path = file_path
-                .strip_prefix("../dhall-lang/tests/import/failure/")
-                .or_else(|_| file_path.strip_prefix("tests/import/failure/"))
-                .unwrap();
+        ImportError(expr, expected) => {
+            let base_path = expected.path();
             let error_file_path =
-                PathBuf::from("tests/errors/import/").join(error_file_path);
-            let error_file_path = error_file_path.with_extension("txt");
+                PathBuf::from("tests/errors/import/").join(base_path);
+
+            let err: Error = expr.parse()?.resolve().unwrap_err().into();
+            if error_file_path.is_file() {
+                let expected_msg = std::fs::read_to_string(error_file_path)?;
+                let msg = format!("{}\n", err);
+                assert_eq_pretty_str!(msg, expected_msg);
+            } else {
+                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
+                let mut file = File::create(error_file_path)?;
+                writeln!(file, "{}", err)?;
+            }
+        }
+        TypeInferenceSuccess(expr, expected) => {
+            let ty = expr.resolve()?.typecheck()?.get_type()?;
+            expected.compare(ty)?;
+        }
+        TypeInferenceFailure(expr) => {
+            expr.resolve()?.typecheck().unwrap_err();
+        }
+        // Checks the output of the type error against a text file. If the text file doesn't exist,
+        // we instead write to it the output we got. This makes it easy to update those files: just
+        // `rm -r dhall/tests/type-errors` and run the tests again.
+        TypeError(expr, expected) => {
+            let base_path = expected.path();
+            let error_file_path =
+                PathBuf::from("tests/type-errors/").join(base_path);
+
+            let err: Error = expr.resolve()?.typecheck().unwrap_err().into();
 
             if error_file_path.is_file() {
                 let expected_msg = std::fs::read_to_string(error_file_path)?;
@@ -183,72 +243,13 @@ pub fn run_test(test: Test<'_>) -> Result<()> {
                 writeln!(file, "{}", err)?;
             }
         }
-        TypeInferenceSuccess(expr_file_path, expected_file_path) => {
-            let expr =
-                parse_file_str(&expr_file_path)?.resolve()?.typecheck()?;
-            let ty = expr.get_type()?.to_expr();
-            let expected = parse_file_str(&expected_file_path)?.to_expr();
-            assert_eq_display!(ty, expected);
+        Normalization(expr, expected) => {
+            let expr = expr.normalize()?;
+            expected.compare(expr)?;
         }
-        TypeInferenceFailure(file_path) => {
-            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
-            if let Ok(e) = &res {
-                // If e did typecheck, check that get_type fails
-                e.get_type().unwrap_err();
-            }
-        }
-        // Checks the output of the type error against a text file. If the text file doesn't exist,
-        // we instead write to it the output we got. This makes it easy to update those files: just
-        // `rm -r dhall/tests/type-errors` and run the tests again.
-        TypeError(file_path) => {
-            let res = parse_file_str(&file_path)?.skip_resolve()?.typecheck();
-            let file_path = PathBuf::from(file_path);
-            let error_file_path = file_path
-                .strip_prefix("../dhall-lang/tests/type-inference/failure/")
-                .or_else(|_| {
-                    file_path.strip_prefix("tests/type-inference/failure/")
-                })
-                .unwrap();
-            let error_file_path =
-                PathBuf::from("tests/type-errors/").join(error_file_path);
-            let error_file_path = error_file_path.with_extension("txt");
-            let err: Error = match res {
-                Ok(e) => {
-                    // If e did typecheck, check that get_type fails
-                    e.get_type().unwrap_err().into()
-                }
-                Err(e) => e.into(),
-            };
-
-            if error_file_path.is_file() {
-                let expected_msg = std::fs::read_to_string(error_file_path)?;
-                let msg = format!("{}\n", err);
-                assert_eq_pretty_str!(msg, expected_msg);
-            } else {
-                std::fs::create_dir_all(error_file_path.parent().unwrap())?;
-                let mut file = File::create(error_file_path)?;
-                writeln!(file, "{}", err)?;
-            }
-        }
-        Normalization(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize()
-                .to_expr();
-            let expected = parse_file_str(&expected_file_path)?.to_expr();
-
-            assert_eq_display!(expr, expected);
-        }
-        AlphaNormalization(expr_file_path, expected_file_path) => {
-            let expr = parse_file_str(&expr_file_path)?
-                .resolve()?
-                .typecheck()?
-                .normalize()
-                .to_expr_alpha();
-            let expected = parse_file_str(&expected_file_path)?.to_expr();
-
-            assert_eq_display!(expr, expected);
+        AlphaNormalization(expr, expected) => {
+            let expr = expr.normalize()?.to_expr_alpha();
+            expected.compare(expr)?;
         }
     }
     Ok(())
