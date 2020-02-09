@@ -1,16 +1,12 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::{rc, NameEnv, NzEnv, TyEnv, Value};
+use crate::semantics::{
+    rc, AlphaVar, Hir, HirKind, NameEnv, NzEnv, TyEnv, Value,
+};
 use crate::syntax::{ExprKind, Span, V};
 use crate::Normalized;
 use crate::{NormalizedExpr, ToExprOptions};
 
 pub(crate) type Type = Value;
-
-/// Stores an alpha-normalized variable.
-#[derive(Debug, Clone, Copy)]
-pub struct AlphaVar {
-    idx: usize,
-}
 
 #[derive(Debug, Clone)]
 pub(crate) enum TyExprKind {
@@ -25,15 +21,6 @@ pub(crate) struct TyExpr {
     kind: Box<TyExprKind>,
     ty: Option<Type>,
     span: Span,
-}
-
-impl AlphaVar {
-    pub(crate) fn new(idx: usize) -> Self {
-        AlphaVar { idx }
-    }
-    pub(crate) fn idx(&self) -> usize {
-        self.idx
-    }
 }
 
 impl TyExpr {
@@ -58,17 +45,19 @@ impl TyExpr {
         }
     }
 
+    pub fn to_hir(&self) -> Hir {
+        let kind = match self.kind() {
+            TyExprKind::Var(v) => HirKind::Var(v.clone()),
+            TyExprKind::Expr(e) => HirKind::Expr(e.map_ref(|tye| tye.to_hir())),
+        };
+        Hir::new(kind, self.span())
+    }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        tyexpr_to_expr(self, opts, &mut NameEnv::new())
+        self.to_hir().to_expr(opts)
     }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
-        let opts = ToExprOptions {
-            normalize: true,
-            alpha: false,
-        };
-        let mut env = env.as_nameenv().clone();
-        tyexpr_to_expr(self, opts, &mut env)
+        self.to_hir().to_expr_tyenv(env)
     }
 
     /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
@@ -86,41 +75,6 @@ impl TyExpr {
         val.normalize_mut();
         val
     }
-}
-
-fn tyexpr_to_expr<'a>(
-    tyexpr: &'a TyExpr,
-    opts: ToExprOptions,
-    env: &mut NameEnv,
-) -> NormalizedExpr {
-    rc(match tyexpr.kind() {
-        TyExprKind::Var(v) if opts.alpha => {
-            ExprKind::Var(V("_".into(), v.idx()))
-        }
-        TyExprKind::Var(v) => ExprKind::Var(env.label_var(v)),
-        TyExprKind::Expr(e) => {
-            let e = e.map_ref_maybe_binder(|l, tye| {
-                if let Some(l) = l {
-                    env.insert_mut(l);
-                }
-                let e = tyexpr_to_expr(tye, opts, env);
-                if let Some(_) = l {
-                    env.remove_mut();
-                }
-                e
-            });
-
-            match e {
-                ExprKind::Lam(_, t, e) if opts.alpha => {
-                    ExprKind::Lam("_".into(), t, e)
-                }
-                ExprKind::Pi(_, t, e) if opts.alpha => {
-                    ExprKind::Pi("_".into(), t, e)
-                }
-                e => e,
-            }
-        }
-    })
 }
 
 impl std::fmt::Debug for TyExpr {

@@ -5,8 +5,8 @@ use crate::error::{TypeError, TypeMessage};
 use crate::semantics::nze::lazy;
 use crate::semantics::{
     apply_any, normalize_one_layer, normalize_tyexpr_whnf, squash_textlit,
-    type_with, Binder, BuiltinClosure, NzEnv, NzVar, TyEnv, TyExpr, TyExprKind,
-    VarEnv,
+    type_with, Binder, BuiltinClosure, Hir, NzEnv, NzVar, TyEnv, TyExpr,
+    TyExprKind, VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
@@ -461,19 +461,19 @@ impl ValueKind {
 }
 
 impl Thunk {
-    pub fn new(env: &NzEnv, body: TyExpr) -> Self {
+    fn new(env: &NzEnv, body: TyExpr) -> Self {
         Thunk::Thunk {
             env: env.clone(),
             body,
         }
     }
-    pub fn from_partial_expr(
+    fn from_partial_expr(
         env: NzEnv,
         expr: ExprKind<Value, Normalized>,
     ) -> Self {
         Thunk::PartialExpr { env, expr }
     }
-    pub fn eval(self) -> ValueKind {
+    fn eval(self) -> ValueKind {
         match self {
             Thunk::Thunk { env, body } => normalize_tyexpr_whnf(&body, &env),
             Thunk::PartialExpr { env, expr } => normalize_one_layer(expr, &env),

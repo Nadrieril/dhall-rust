@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use crate::semantics::NzEnv;
 use crate::semantics::{
-    Binder, BuiltinClosure, Closure, TextLit, TyExpr, TyExprKind, Value,
-    ValueKind,
+    Binder, BuiltinClosure, Closure, Hir, HirKind, TextLit, TyExpr, TyExprKind,
+    Value, ValueKind,
 };
 use crate::syntax::{BinOp, Builtin, ExprKind, InterpolatedTextContents};
 use crate::Normalized;
