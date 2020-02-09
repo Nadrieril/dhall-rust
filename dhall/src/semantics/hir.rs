@@ -1,15 +1,15 @@
 #![allow(dead_code)]
-use crate::semantics::{rc, NameEnv, NzEnv, TyEnv, Value};
+use crate::semantics::{NameEnv, NzEnv, TyEnv, Value};
 use crate::syntax::{ExprKind, Span, V};
-use crate::{Normalized, NormalizedExpr, ToExprOptions};
+use crate::{Expr, Normalized, NormalizedExpr, ToExprOptions};
 
 /// Stores an alpha-normalized variable.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AlphaVar {
     idx: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum HirKind {
     Var(AlphaVar),
     // Forbidden ExprKind variants: Var, Import, Embed
@@ -51,6 +51,14 @@ impl Hir {
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         hir_to_expr(self, opts, &mut NameEnv::new())
     }
+    /// Converts a HIR expr back to the corresponding AST expression.
+    pub fn to_expr_noopts(&self) -> NormalizedExpr {
+        let opts = ToExprOptions {
+            normalize: false,
+            alpha: false,
+        };
+        self.to_expr(opts)
+    }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
         let opts = ToExprOptions {
             normalize: true,
@@ -82,7 +90,7 @@ fn hir_to_expr(
     opts: ToExprOptions,
     env: &mut NameEnv,
 ) -> NormalizedExpr {
-    rc(match hir.kind() {
+    let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(v)),
         HirKind::Expr(e) => {
@@ -107,5 +115,21 @@ fn hir_to_expr(
                 e => e,
             }
         }
-    })
+    };
+    Expr::new(kind, hir.span())
+}
+
+impl std::cmp::PartialEq for Hir {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+impl std::cmp::Eq for Hir {}
+impl std::hash::Hash for Hir {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.kind.hash(state)
+    }
 }

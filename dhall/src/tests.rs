@@ -48,9 +48,9 @@ use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::syntax::binary;
-use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
+use crate::{Normalized, NormalizedExpr, Parsed, Resolved, Typed};
 
 #[allow(dead_code)]
 enum Test {
@@ -96,9 +96,13 @@ impl TestFile {
     pub fn resolve(&self) -> Result<Resolved> {
         Ok(self.parse()?.resolve()?)
     }
+    /// Parse, resolve and tck the target file
+    pub fn typecheck(&self) -> Result<Typed> {
+        Ok(self.resolve()?.typecheck()?)
+    }
     /// Parse, resolve, tck and normalize the target file
     pub fn normalize(&self) -> Result<Normalized> {
-        Ok(self.resolve()?.typecheck()?.normalize())
+        Ok(self.typecheck()?.normalize())
     }
 
     /// If UPDATE_TEST_FILES=1, we overwrite the output files with our own output.
@@ -246,11 +250,11 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare_debug(expr)?;
         }
         ParserFailure(expr, expected) => {
-            use std::io::ErrorKind;
+            use std::io;
             let err = expr.parse().unwrap_err();
-            match &err {
-                Error::Parse(_) => {}
-                Error::IO(e) if e.kind() == ErrorKind::InvalidData => {}
+            match err.kind() {
+                ErrorKind::Parse(_) => {}
+                ErrorKind::IO(e) if e.kind() == io::ErrorKind::InvalidData => {}
                 e => panic!("Expected parse error, got: {:?}", e),
             }
             expected.compare_ui(err)?;
@@ -282,11 +286,11 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare_ui(err)?;
         }
         TypeInferenceSuccess(expr, expected) => {
-            let ty = expr.resolve()?.typecheck()?.get_type()?;
+            let ty = expr.typecheck()?.get_type()?;
             expected.compare(ty)?;
         }
         TypeInferenceFailure(expr, expected) => {
-            let err = expr.resolve()?.typecheck().unwrap_err();
+            let err = expr.typecheck().unwrap_err();
             expected.compare_ui(err)?;
         }
         Normalization(expr, expected) => {

@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
+use crate::semantics::{mkerr, Hir, HirKind, NameEnv};
 use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
-use crate::{Normalized, NormalizedExpr, Parsed, Resolved};
+use crate::{Normalized, Parsed, Resolved};
 
-type Import = syntax::Import<NormalizedExpr>;
+type Import = syntax::Import<Hir>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,13 +36,12 @@ impl ResolveEnv {
     pub fn handle_import(
         &mut self,
         import: Import,
-        mut do_resolve: impl FnMut(
-            &mut Self,
-            &Import,
-        ) -> Result<Normalized, ImportError>,
-    ) -> Result<Normalized, ImportError> {
+        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<Normalized, Error>,
+    ) -> Result<Normalized, Error> {
         if self.stack.contains(&import) {
-            return Err(ImportError::ImportCycle(self.stack.clone(), import));
+            return Err(
+                ImportError::ImportCycle(self.stack.clone(), import).into()
+            );
         }
         Ok(match self.cache.get(&import) {
             Some(expr) => expr.clone(),
@@ -67,7 +68,7 @@ fn resolve_one_import(
     env: &mut ResolveEnv,
     import: &Import,
     root: &ImportRoot,
-) -> Result<Normalized, ImportError> {
+) -> Result<Normalized, Error> {
     use self::ImportRoot::*;
     use syntax::FilePrefix::*;
     use syntax::ImportLocation::*;
@@ -83,9 +84,7 @@ fn resolve_one_import(
                 Here => cwd.join(path_buf),
                 _ => unimplemented!("{:?}", import),
             };
-            Ok(load_import(env, &path_buf).map_err(|e| {
-                ImportError::Recursive(import.clone(), Box::new(e))
-            })?)
+            Ok(load_import(env, &path_buf)?)
         }
         _ => unimplemented!("{:?}", import),
     }
@@ -99,56 +98,76 @@ fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Normalized, Error> {
 /// Traverse the expression, handling import alternatives and passing
 /// found imports to the provided function.
 fn traverse_resolve_expr(
+    name_env: &mut NameEnv,
     expr: &Expr<Normalized>,
-    f: &mut impl FnMut(Import) -> Result<Normalized, ImportError>,
-) -> Result<Expr<Normalized>, ImportError> {
-    Ok(match expr.kind() {
+    f: &mut impl FnMut(Import) -> Result<Normalized, Error>,
+) -> Result<Hir, Error> {
+    let kind = match expr.kind() {
+        ExprKind::Var(var) => match name_env.unlabel_var(&var) {
+            Some(v) => HirKind::Var(v),
+            None => mkerr(
+                ErrorBuilder::new(format!("unbound variable `{}`", var))
+                    .span_err(expr.span(), "not found in this scope")
+                    .format(),
+            )?,
+        },
         ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
-            match traverse_resolve_expr(l, f) {
-                Ok(l) => l,
+            return match traverse_resolve_expr(name_env, l, f) {
+                Ok(l) => Ok(l),
                 Err(_) => {
-                    match traverse_resolve_expr(r, f) {
-                        Ok(r) => r,
+                    match traverse_resolve_expr(name_env, r, f) {
+                        Ok(r) => Ok(r),
                         // TODO: keep track of the other error too
-                        Err(e) => return Err(e),
+                        Err(e) => Err(e),
                     }
                 }
-            }
+            };
         }
         kind => {
-            let kind = kind.traverse_ref(|e| traverse_resolve_expr(e, f))?;
-            expr.rewrap(match kind {
+            let kind = kind.traverse_ref_maybe_binder(|l, e| {
+                if let Some(l) = l {
+                    name_env.insert_mut(l);
+                }
+                let hir = traverse_resolve_expr(name_env, e, f)?;
+                if let Some(_) = l {
+                    name_env.remove_mut();
+                }
+                Ok::<_, Error>(hir)
+            })?;
+            HirKind::Expr(match kind {
                 ExprKind::Import(import) => ExprKind::Embed(f(import)?),
                 kind => kind,
             })
         }
-    })
+    };
+
+    Ok(Hir::new(kind, expr.span()))
 }
 
 fn resolve_with_env(
     env: &mut ResolveEnv,
     parsed: Parsed,
-) -> Result<Resolved, ImportError> {
+) -> Result<Resolved, Error> {
     let Parsed(expr, root) = parsed;
-    let resolved = traverse_resolve_expr(&expr, &mut |import| {
-        env.handle_import(import, |env, import| {
-            resolve_one_import(env, import, &root)
-        })
-    })?;
+    let resolved =
+        traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
+            env.handle_import(import, |env, import| {
+                resolve_one_import(env, import, &root)
+            })
+        })?;
     Ok(Resolved(resolved))
 }
 
-pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, ImportError> {
+pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
     resolve_with_env(&mut ResolveEnv::new(), parsed)
 }
 
-pub(crate) fn skip_resolve_expr(
-    parsed: Parsed,
-) -> Result<Resolved, ImportError> {
+pub(crate) fn skip_resolve_expr(parsed: Parsed) -> Result<Resolved, Error> {
     let Parsed(expr, _) = parsed;
-    let resolved = traverse_resolve_expr(&expr, &mut |import| {
-        Err(ImportError::UnexpectedImport(import))
-    })?;
+    let resolved =
+        traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
+            Err(ImportError::UnexpectedImport(import).into())
+        })?;
     Ok(Resolved(resolved))
 }
 

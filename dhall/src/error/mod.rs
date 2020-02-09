@@ -1,8 +1,8 @@
 use std::io::Error as IOError;
 
 use crate::semantics::resolve::ImportStack;
+use crate::semantics::Hir;
 use crate::syntax::{Import, ParseError};
-use crate::NormalizedExpr;
 
 mod builder;
 pub(crate) use builder::*;
@@ -10,8 +10,13 @@ pub(crate) use builder::*;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+}
+
+#[derive(Debug)]
 #[non_exhaustive]
-pub enum Error {
+pub(crate) enum ErrorKind {
     IO(IOError),
     Parse(ParseError),
     Decode(DecodeError),
@@ -21,10 +26,9 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub enum ImportError {
-    Recursive(Import<NormalizedExpr>, Box<Error>),
-    UnexpectedImport(Import<NormalizedExpr>),
-    ImportCycle(ImportStack, Import<NormalizedExpr>),
+pub(crate) enum ImportError {
+    UnexpectedImport(Import<Hir>),
+    ImportCycle(ImportStack, Import<Hir>),
 }
 
 #[derive(Debug)]
@@ -51,6 +55,15 @@ pub(crate) enum TypeMessage {
     Custom(String),
 }
 
+impl Error {
+    pub(crate) fn new(kind: ErrorKind) -> Self {
+        Error { kind }
+    }
+    pub(crate) fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+}
+
 impl TypeError {
     pub(crate) fn new(message: TypeMessage) -> Self {
         TypeError { message }
@@ -72,45 +85,50 @@ impl std::error::Error for TypeError {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::IO(err) => write!(f, "{}", err),
-            Error::Parse(err) => write!(f, "{}", err),
-            Error::Decode(err) => write!(f, "{:?}", err),
-            Error::Encode(err) => write!(f, "{:?}", err),
-            Error::Resolve(err) => write!(f, "{:?}", err),
-            Error::Typecheck(err) => write!(f, "{}", err),
+        match &self.kind {
+            ErrorKind::IO(err) => write!(f, "{}", err),
+            ErrorKind::Parse(err) => write!(f, "{}", err),
+            ErrorKind::Decode(err) => write!(f, "{:?}", err),
+            ErrorKind::Encode(err) => write!(f, "{:?}", err),
+            ErrorKind::Resolve(err) => write!(f, "{:?}", err),
+            ErrorKind::Typecheck(err) => write!(f, "{}", err),
         }
     }
 }
 
 impl std::error::Error for Error {}
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Error {
+        Error::new(kind)
+    }
+}
 impl From<IOError> for Error {
     fn from(err: IOError) -> Error {
-        Error::IO(err)
+        ErrorKind::IO(err).into()
     }
 }
 impl From<ParseError> for Error {
     fn from(err: ParseError) -> Error {
-        Error::Parse(err)
+        ErrorKind::Parse(err).into()
     }
 }
 impl From<DecodeError> for Error {
     fn from(err: DecodeError) -> Error {
-        Error::Decode(err)
+        ErrorKind::Decode(err).into()
     }
 }
 impl From<EncodeError> for Error {
     fn from(err: EncodeError) -> Error {
-        Error::Encode(err)
+        ErrorKind::Encode(err).into()
     }
 }
 impl From<ImportError> for Error {
     fn from(err: ImportError) -> Error {
-        Error::Resolve(err)
+        ErrorKind::Resolve(err).into()
     }
 }
 impl From<TypeError> for Error {
     fn from(err: TypeError) -> Error {
-        Error::Typecheck(err)
+        ErrorKind::Typecheck(err).into()
     }
 }

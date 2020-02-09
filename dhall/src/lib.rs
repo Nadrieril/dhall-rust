@@ -18,11 +18,13 @@ pub mod syntax;
 use std::fmt::Display;
 use std::path::Path;
 
-use crate::error::{EncodeError, Error, ImportError, TypeError};
+use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
-use crate::semantics::{typecheck, typecheck_with, TyExpr, Value, ValueKind};
+use crate::semantics::{
+    typecheck, typecheck_with, Hir, TyExpr, Value, ValueKind,
+};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
@@ -38,7 +40,7 @@ pub struct Parsed(ParsedExpr, ImportRoot);
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub struct Resolved(ResolvedExpr);
+pub struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
@@ -73,10 +75,10 @@ impl Parsed {
         parse::parse_binary(data)
     }
 
-    pub fn resolve(self) -> Result<Resolved, ImportError> {
+    pub fn resolve(self) -> Result<Resolved, Error> {
         resolve::resolve(self)
     }
-    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
+    pub fn skip_resolve(self) -> Result<Resolved, Error> {
         resolve::skip_resolve_expr(self)
     }
 
@@ -92,14 +94,14 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck(&self.0)?))
+        Ok(Typed(typecheck(&self.to_expr())?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck_with(&self.0, ty.to_expr())?))
+        Ok(Typed(typecheck_with(&self.to_expr(), ty.to_expr())?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
-        self.0.clone()
+        self.0.to_expr_noopts()
     }
 }
 
@@ -207,7 +209,6 @@ macro_rules! derive_traits_for_wrapper_struct {
 }
 
 derive_traits_for_wrapper_struct!(Parsed);
-derive_traits_for_wrapper_struct!(Resolved);
 
 impl std::hash::Hash for Normalized {
     fn hash<H>(&self, state: &mut H)
@@ -228,6 +229,12 @@ impl From<Parsed> for NormalizedExpr {
 impl From<Normalized> for NormalizedExpr {
     fn from(other: Normalized) -> Self {
         other.to_expr()
+    }
+}
+
+impl Display for Resolved {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.to_expr().fmt(f)
     }
 }
 

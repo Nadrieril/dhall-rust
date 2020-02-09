@@ -43,7 +43,7 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
+pub fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(x.to_string())))
 }
 
