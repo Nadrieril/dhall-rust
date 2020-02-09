@@ -56,13 +56,13 @@ impl TyExpr {
     }
 
     /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
-    pub fn eval<'e>(&self, env: impl Into<&'e NzEnv>) -> Value {
+    pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
         Value::new_thunk(env.into(), self.to_hir())
     }
     /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
     pub fn eval_closed_expr(&self) -> Value {
-        self.eval(&NzEnv::new())
+        self.eval(NzEnv::new())
     }
     /// Eval a closed TyExpr fully and recursively;
     pub fn rec_eval_closed_expr(&self) -> Value {

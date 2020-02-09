@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, NzEnv, NzVar, Type, Value};
+use crate::semantics::{AlphaVar, NzEnv, NzVar, Type, ValEnv, Value};
 use crate::syntax::{Label, V};
 
 /// Environment for indexing variables.
@@ -17,7 +17,7 @@ pub(crate) struct NameEnv {
 #[derive(Debug, Clone)]
 pub(crate) struct TyEnv {
     names: NameEnv,
-    items: NzEnv,
+    items: ValEnv<Type>,
 }
 
 impl VarEnv {
@@ -91,14 +91,14 @@ impl TyEnv {
     pub fn new() -> Self {
         TyEnv {
             names: NameEnv::new(),
-            items: NzEnv::new(),
+            items: ValEnv::new(),
         }
     }
     pub fn as_varenv(&self) -> VarEnv {
         self.names.as_varenv()
     }
-    pub fn as_nzenv(&self) -> &NzEnv {
-        &self.items
+    pub fn to_nzenv(&self) -> NzEnv {
+        self.items.discard_types()
     }
     pub fn as_nameenv(&self) -> &NameEnv {
         &self.names
@@ -121,8 +121,8 @@ impl TyEnv {
     }
 }
 
-impl<'a> From<&'a TyEnv> for &'a NzEnv {
+impl<'a> From<&'a TyEnv> for NzEnv {
     fn from(x: &'a TyEnv) -> Self {
-        x.as_nzenv()
+        x.to_nzenv()
     }
 }

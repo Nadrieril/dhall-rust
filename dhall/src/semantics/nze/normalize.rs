@@ -473,7 +473,7 @@ pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> ValueKind {
         }
         HirKind::Expr(ExprKind::Let(_, None, val, body)) => {
             let val = val.eval(env);
-            body.eval(&env.insert_value_noty(val)).kind().clone()
+            body.eval(&env.insert_value(val, ())).kind().clone()
         }
         HirKind::Expr(e) => {
             let e = e.map_ref(|hir| hir.eval(env));

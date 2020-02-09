@@ -265,8 +265,11 @@ fn apply_builtin(b: Builtin, args: Vec<Value>, env: NzEnv) -> ValueKind {
         Value(Value),
         DoneAsIs,
     }
-    let make_closure =
-        |e| typecheck(&skip_resolve(&e).unwrap()).unwrap().eval(&env);
+    let make_closure = |e| {
+        typecheck(&skip_resolve(&e).unwrap())
+            .unwrap()
+            .eval(env.clone())
+    };
 
     let ret = match (b, args.as_slice()) {
         (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),

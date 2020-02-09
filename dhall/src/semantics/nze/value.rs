@@ -100,11 +100,8 @@ pub(crate) enum ValueKind {
 }
 
 impl Value {
-    pub(crate) fn const_sort() -> Value {
-        Value::from_const(Const::Sort)
-    }
     /// Construct a Value from a completely unnormalized expression.
-    pub(crate) fn new_thunk(env: &NzEnv, hir: Hir) -> Value {
+    pub(crate) fn new_thunk(env: NzEnv, hir: Hir) -> Value {
         let span = hir.span();
         ValueInternal::from_thunk(Thunk::new(env, hir), span).into_value()
     }
@@ -158,8 +155,8 @@ impl Value {
 
         self.to_tyexpr_noenv().to_expr(opts)
     }
-    pub(crate) fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
-        self.to_hir(env.as_varenv()).to_expr_tyenv(env)
+    pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
+        self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 
     pub(crate) fn normalize(&self) {
@@ -389,11 +386,8 @@ impl ValueKind {
 }
 
 impl Thunk {
-    fn new(env: &NzEnv, body: Hir) -> Self {
-        Thunk::Thunk {
-            env: env.clone(),
-            body,
-        }
+    fn new(env: NzEnv, body: Hir) -> Self {
+        Thunk::Thunk { env, body }
     }
     fn from_partial_expr(
         env: NzEnv,
@@ -424,7 +418,7 @@ impl Closure {
     pub fn apply(&self, val: Value) -> Value {
         match self {
             Closure::Closure { env, body, .. } => {
-                body.eval(&env.insert_value_noty(val))
+                body.eval(&env.insert_value(val, ()))
             }
             Closure::ConstantClosure { body, .. } => body.clone(),
         }
