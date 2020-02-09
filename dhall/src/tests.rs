@@ -201,11 +201,9 @@ fn run_test(test: Test) -> Result<()> {
         // we instead write to it the output we got. This makes it easy to update those files: just
         // `rm -r dhall/tests/type-errors` and run the tests again.
         ImportError(expr, expected) => {
-            let base_path = expected.path();
-            let error_file_path =
-                PathBuf::from("tests/errors/import/").join(base_path);
-
             let err: Error = expr.parse()?.resolve().unwrap_err().into();
+
+            let error_file_path = expected.path();
             if error_file_path.is_file() {
                 let expected_msg = std::fs::read_to_string(error_file_path)?;
                 let msg = format!("{}\n", err);
@@ -227,12 +225,9 @@ fn run_test(test: Test) -> Result<()> {
         // we instead write to it the output we got. This makes it easy to update those files: just
         // `rm -r dhall/tests/type-errors` and run the tests again.
         TypeError(expr, expected) => {
-            let base_path = expected.path();
-            let error_file_path =
-                PathBuf::from("tests/type-errors/").join(base_path);
-
             let err: Error = expr.resolve()?.typecheck().unwrap_err().into();
 
+            let error_file_path = expected.path();
             if error_file_path.is_file() {
                 let expected_msg = std::fs::read_to_string(error_file_path)?;
                 let msg = format!("{}\n", err);

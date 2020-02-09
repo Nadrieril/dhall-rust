@@ -110,14 +110,14 @@ fn make_test_module(
                 }
                 Some(output_type @ FileType::UI) => {
                     let input = feature.input_type.construct(&path);
-                    let output_file = PathBuf::from(path.as_ref())
-                        .strip_prefix(base_path)
-                        .unwrap()
-                        .strip_prefix(feature.directory)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    let output = output_type.construct(&output_file);
+                    // All ui outputs are in the local `tests/` directory.
+                    let output_file = PathBuf::from("tests/").join(
+                        PathBuf::from(path.as_ref())
+                            .strip_prefix(base_path)
+                            .unwrap(),
+                    );
+                    let output =
+                        output_type.construct(&output_file.to_str().unwrap());
                     format!("{}({}, {})", feature.variant, input, output)
                 }
                 Some(output_type) => {
