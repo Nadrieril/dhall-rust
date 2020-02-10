@@ -16,7 +16,7 @@ pub(crate) enum ImportRoot {
     LocalDir(PathBuf),
 }
 
-type ImportCache = HashMap<Import, Normalized>;
+type ImportCache = HashMap<Import, Hir>;
 
 pub(crate) type ImportStack = Vec<Import>;
 
@@ -36,8 +36,8 @@ impl ResolveEnv {
     pub fn handle_import(
         &mut self,
         import: Import,
-        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<Normalized, Error>,
-    ) -> Result<Normalized, Error> {
+        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<Hir, Error>,
+    ) -> Result<Hir, Error> {
         if self.stack.contains(&import) {
             return Err(
                 ImportError::ImportCycle(self.stack.clone(), import).into()
@@ -68,7 +68,7 @@ fn resolve_one_import(
     env: &mut ResolveEnv,
     import: &Import,
     root: &ImportRoot,
-) -> Result<Normalized, Error> {
+) -> Result<Hir, Error> {
     use self::ImportRoot::*;
     use syntax::FilePrefix::*;
     use syntax::ImportLocation::*;
@@ -90,9 +90,12 @@ fn resolve_one_import(
     }
 }
 
-fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Normalized, Error> {
+fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Hir, Error> {
     let parsed = Parsed::parse_file(f)?;
-    Ok(resolve_with_env(env, parsed)?.typecheck()?.normalize())
+    Ok(resolve_with_env(env, parsed)?
+        .typecheck()?
+        .normalize()
+        .to_hir())
 }
 
 /// Traverse the expression, handling import alternatives and passing
@@ -100,7 +103,7 @@ fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Normalized, Error> {
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
     expr: &Expr<Normalized>,
-    f: &mut impl FnMut(Import) -> Result<Normalized, Error>,
+    f: &mut impl FnMut(Import) -> Result<Hir, Error>,
 ) -> Result<Hir, Error> {
     let kind = match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
@@ -134,10 +137,10 @@ fn traverse_resolve_expr(
                 }
                 Ok::<_, Error>(hir)
             })?;
-            HirKind::Expr(match kind {
-                ExprKind::Import(import) => ExprKind::Embed(f(import)?),
-                kind => kind,
-            })
+            match kind {
+                ExprKind::Import(import) => f(import)?.kind().clone(),
+                kind => HirKind::Expr(kind),
+            }
         }
     };
 

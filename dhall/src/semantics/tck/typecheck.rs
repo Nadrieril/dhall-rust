@@ -761,20 +761,12 @@ fn type_one_layer(
 /// `type_with` typechecks an expressio in the provided environment.
 pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
     let (tyekind, ty) = match hir.kind() {
-        HirKind::Var(var) => (TyExprKind::Var(*var), Some(env.lookup(&var))),
+        HirKind::Var(var) => (TyExprKind::Var(*var), Some(env.lookup(var))),
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }
         HirKind::Expr(ExprKind::Const(Const::Sort)) => {
             (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
-        }
-        HirKind::Expr(ExprKind::Embed(p)) => {
-            let val = p.clone().into_value();
-            (
-                val.to_tyexpr_noenv().kind().clone(),
-                Some(val.get_type(&TyEnv::new())?),
-            )
-            // return Ok(p.clone().into_value().to_tyexpr_noenv())
         }
         HirKind::Expr(ekind) => {
             let ekind = match ekind {

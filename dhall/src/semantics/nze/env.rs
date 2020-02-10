@@ -86,3 +86,9 @@ impl<Type: Clone> ValEnv<Type> {
         }
     }
 }
+
+impl<'a> From<&'a NzEnv> for NzEnv {
+    fn from(x: &'a NzEnv) -> Self {
+        x.clone()
+    }
+}
