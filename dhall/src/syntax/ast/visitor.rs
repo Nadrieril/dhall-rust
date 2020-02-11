@@ -10,11 +10,10 @@ use crate::syntax::*;
 /// preventing exactly this ! So we have to be more clever. The visitor pattern allows us to have
 /// only one mutable thing the whole time: the visitor itself. The visitor can then carry around
 /// multiple closures or just one, and Rust is ok with either. See for example TraverseRefVisitor.
-pub trait ExprKindVisitor<'a, SE1, SE2, E1, E2>: Sized {
+pub trait ExprKindVisitor<'a, SE1, SE2>: Sized {
     type Error;
 
     fn visit_subexpr(&mut self, subexpr: &'a SE1) -> Result<SE2, Self::Error>;
-    fn visit_embed(self, embed: &'a E1) -> Result<E2, Self::Error>;
 
     fn visit_subexpr_under_binder(
         mut self,
@@ -26,18 +25,18 @@ pub trait ExprKindVisitor<'a, SE1, SE2, E1, E2>: Sized {
 
     fn visit(
         self,
-        input: &'a ExprKind<SE1, E1>,
-    ) -> Result<ExprKind<SE2, E2>, Self::Error> {
+        input: &'a ExprKind<SE1>,
+    ) -> Result<ExprKind<SE2>, Self::Error> {
         visit_ref(self, input)
     }
 }
 
-fn visit_ref<'a, V, SE1, SE2, E1, E2>(
+fn visit_ref<'a, V, SE1, SE2>(
     mut v: V,
-    input: &'a ExprKind<SE1, E1>,
-) -> Result<ExprKind<SE2, E2>, V::Error>
+    input: &'a ExprKind<SE1>,
+) -> Result<ExprKind<SE2>, V::Error>
 where
-    V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
+    V: ExprKindVisitor<'a, SE1, SE2>,
 {
     fn vec<'a, T, U, Err, F: FnMut(&'a T) -> Result<U, Err>>(
         x: &'a [T],
@@ -54,27 +53,27 @@ where
             None => None,
         })
     }
-    fn dupmap<'a, V, SE1, SE2, E1, E2, T>(
+    fn dupmap<'a, V, SE1, SE2, T>(
         x: impl IntoIterator<Item = (&'a Label, &'a SE1)>,
         mut v: V,
     ) -> Result<T, V::Error>
     where
         SE1: 'a,
         T: FromIterator<(Label, SE2)>,
-        V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
+        V: ExprKindVisitor<'a, SE1, SE2>,
     {
         x.into_iter()
             .map(|(k, x)| Ok((k.clone(), v.visit_subexpr(x)?)))
             .collect()
     }
-    fn optdupmap<'a, V, SE1, SE2, E1, E2, T>(
+    fn optdupmap<'a, V, SE1, SE2, T>(
         x: impl IntoIterator<Item = (&'a Label, &'a Option<SE1>)>,
         mut v: V,
     ) -> Result<T, V::Error>
     where
         SE1: 'a,
         T: FromIterator<(Label, Option<SE2>)>,
-        V: ExprKindVisitor<'a, SE1, SE2, E1, E2>,
+        V: ExprKindVisitor<'a, SE1, SE2>,
     {
         x.into_iter()
             .map(|(k, x)| {
@@ -147,17 +146,15 @@ where
         }
         Assert(e) => Assert(v.visit_subexpr(e)?),
         Import(i) => Import(i.traverse_ref(|e| v.visit_subexpr(e))?),
-        Embed(a) => Embed(v.visit_embed(a)?),
     })
 }
 
 pub struct TraverseRefMaybeBinderVisitor<F>(pub F);
 
-impl<'a, SE, E, SE2, Err, F> ExprKindVisitor<'a, SE, SE2, E, E>
+impl<'a, SE, SE2, Err, F> ExprKindVisitor<'a, SE, SE2>
     for TraverseRefMaybeBinderVisitor<F>
 where
     SE: 'a,
-    E: 'a + Clone,
     F: FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
 {
     type Error = Err;
@@ -171,8 +168,5 @@ where
         subexpr: &'a SE,
     ) -> Result<SE2, Self::Error> {
         (self.0)(Some(label), subexpr)
-    }
-    fn visit_embed(self, embed: &'a E) -> Result<E, Self::Error> {
-        Ok(embed.clone())
     }
 }

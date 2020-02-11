@@ -9,17 +9,16 @@ use crate::syntax::{
     Label, Scheme, V,
 };
 
-/// Warning: will fail if `expr` contains an `Embed` node.
-pub(crate) fn encode<E>(expr: &Expr<E>) -> Result<Vec<u8>, EncodeError> {
+pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(|e| EncodeError::CBORError(e))
 }
 
-enum Serialize<'a, E> {
-    Expr(&'a Expr<E>),
+enum Serialize<'a> {
+    Expr(&'a Expr),
     CBOR(cbor::Value),
-    RecordMap(&'a DupTreeMap<Label, Expr<E>>),
-    UnionMap(&'a DupTreeMap<Label, Option<Expr<E>>>),
+    RecordMap(&'a DupTreeMap<Label, Expr>),
+    UnionMap(&'a DupTreeMap<Label, Option<Expr>>),
 }
 
 macro_rules! count {
@@ -39,7 +38,7 @@ macro_rules! ser_seq {
     }};
 }
 
-fn serialize_subexpr<S, E>(ser: S, e: &Expr<E>) -> Result<S::Ok, S::Error>
+fn serialize_subexpr<S>(ser: S, e: &Expr) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -49,11 +48,11 @@ where
     use syntax::ExprKind::*;
 
     use self::Serialize::{RecordMap, UnionMap};
-    fn expr<E>(x: &Expr<E>) -> self::Serialize<'_, E> {
+    fn expr(x: &Expr) -> self::Serialize<'_> {
         self::Serialize::Expr(x)
     }
     let cbor =
-        |v: cbor::Value| -> self::Serialize<'_, E> { self::Serialize::CBOR(v) };
+        |v: cbor::Value| -> self::Serialize<'_> { self::Serialize::CBOR(v) };
     let tag = |x: u64| cbor(U64(x));
     let null = || cbor(cbor::Value::Null);
     let label = |l: &Label| cbor(cbor::Value::String(l.into()));
@@ -166,16 +165,10 @@ where
         }
         Completion(x, y) => ser_seq!(ser; tag(3), tag(13), expr(x), expr(y)),
         Import(import) => serialize_import(ser, import),
-        Embed(_) => unimplemented!(
-            "An expression with resolved imports cannot be binary-encoded"
-        ),
     }
 }
 
-fn serialize_import<S, E>(
-    ser: S,
-    import: &Import<Expr<E>>,
-) -> Result<S::Ok, S::Error>
+fn serialize_import<S>(ser: S, import: &Import<Expr>) -> Result<S::Ok, S::Error>
 where
     S: serde::ser::Serializer,
 {
@@ -256,7 +249,7 @@ where
     ser_seq.end()
 }
 
-impl<'a, E> serde::ser::Serialize for Serialize<'a, E> {
+impl<'a> serde::ser::Serialize for Serialize<'a> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::ser::Serializer,
@@ -282,10 +275,8 @@ impl<'a, E> serde::ser::Serialize for Serialize<'a, E> {
     }
 }
 
-fn collect_nested_applications<'a, E>(
-    e: &'a Expr<E>,
-) -> (&'a Expr<E>, Vec<&'a Expr<E>>) {
-    fn go<'a, E>(e: &'a Expr<E>, vec: &mut Vec<&'a Expr<E>>) -> &'a Expr<E> {
+fn collect_nested_applications<'a>(e: &'a Expr) -> (&'a Expr, Vec<&'a Expr>) {
+    fn go<'a>(e: &'a Expr, vec: &mut Vec<&'a Expr>) -> &'a Expr {
         match e.as_ref() {
             ExprKind::App(f, a) => {
                 vec.push(a);
@@ -299,15 +290,10 @@ fn collect_nested_applications<'a, E>(
     (e, vec)
 }
 
-type LetBinding<'a, E> = (&'a Label, &'a Option<Expr<E>>, &'a Expr<E>);
+type LetBinding<'a> = (&'a Label, &'a Option<Expr>, &'a Expr);
 
-fn collect_nested_lets<'a, E>(
-    e: &'a Expr<E>,
-) -> (&'a Expr<E>, Vec<LetBinding<'a, E>>) {
-    fn go<'a, E>(
-        e: &'a Expr<E>,
-        vec: &mut Vec<LetBinding<'a, E>>,
-    ) -> &'a Expr<E> {
+fn collect_nested_lets<'a>(e: &'a Expr) -> (&'a Expr, Vec<LetBinding<'a>>) {
+    fn go<'a>(e: &'a Expr, vec: &mut Vec<LetBinding<'a>>) -> &'a Expr {
         match e.as_ref() {
             ExprKind::Let(l, t, v, e) => {
                 vec.push((l, t, v));

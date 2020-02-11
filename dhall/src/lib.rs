@@ -28,10 +28,10 @@ use crate::semantics::{
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
-pub type ParsedExpr = Expr<Normalized>;
-pub type DecodedExpr = Expr<Normalized>;
-pub type ResolvedExpr = Expr<Normalized>;
-pub type NormalizedExpr = Expr<Normalized>;
+pub type ParsedExpr = Expr;
+pub type DecodedExpr = Expr;
+pub type ResolvedExpr = Expr;
+pub type NormalizedExpr = Expr;
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedExpr, ImportRoot);

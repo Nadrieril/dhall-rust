@@ -11,7 +11,6 @@ use crate::semantics::{
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Span,
 };
-use crate::Normalized;
 
 fn type_of_recordtype<'a>(
     span: Span,
@@ -51,7 +50,7 @@ pub fn mkerr<T, S: ToString>(x: S) -> Result<T, TypeError> {
 /// layer.
 fn type_one_layer(
     env: &TyEnv,
-    ekind: ExprKind<TyExpr, Normalized>,
+    ekind: ExprKind<TyExpr>,
     span: Span,
 ) -> Result<TyExpr, TypeError> {
     let span_err = |msg: &str| {
@@ -66,9 +65,7 @@ fn type_one_layer(
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
-        ExprKind::Var(..)
-        | ExprKind::Const(Const::Sort)
-        | ExprKind::Embed(..) => unreachable!(), // Handled in type_with
+        ExprKind::Var(..) | ExprKind::Const(Const::Sort) => unreachable!(), // Handled in type_with
 
         ExprKind::Lam(binder, annot, body) => {
             let body_ty = body.get_type()?;

@@ -6,7 +6,6 @@ use crate::semantics::{
     Binder, BuiltinClosure, Closure, Hir, HirKind, TextLit, Value, ValueKind,
 };
 use crate::syntax::{BinOp, Builtin, ExprKind, InterpolatedTextContents};
-use crate::Normalized;
 
 pub(crate) fn apply_any(f: Value, a: Value) -> ValueKind {
     match f.kind() {
@@ -90,7 +89,7 @@ enum Ret<'a> {
     ValueKind(ValueKind),
     Value(Value),
     ValueRef(&'a Value),
-    Expr(ExprKind<Value, Normalized>),
+    Expr(ExprKind<Value>),
 }
 
 fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
@@ -215,7 +214,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
 }
 
 pub(crate) fn normalize_one_layer(
-    expr: ExprKind<Value, Normalized>,
+    expr: ExprKind<Value>,
     env: &NzEnv,
 ) -> ValueKind {
     use ValueKind::{
@@ -233,7 +232,6 @@ pub(crate) fn normalize_one_layer(
         ExprKind::Lam(..)
         | ExprKind::Pi(..)
         | ExprKind::Let(..)
-        | ExprKind::Embed(_)
         | ExprKind::Var(_) => {
             unreachable!("This case should have been handled in typecheck")
         }

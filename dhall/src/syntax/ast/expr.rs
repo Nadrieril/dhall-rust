@@ -96,19 +96,19 @@ pub enum Builtin {
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct Expr<Embed> {
-    kind: Box<ExprKind<Expr<Embed>, Embed>>,
+pub struct Expr {
+    kind: Box<ExprKind<Expr>>,
     span: Span,
 }
 
-pub type UnspannedExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
+pub type UnspannedExpr = ExprKind<Expr>;
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExprKind<SubExpr, Embed> {
+pub enum ExprKind<SubExpr> {
     Const(Const),
     ///  `x`
     ///  `x@n`
@@ -169,18 +169,13 @@ pub enum ExprKind<SubExpr, Embed> {
     Completion(SubExpr, SubExpr),
     /// `./some/path`
     Import(Import<SubExpr>),
-    /// Embeds the result of resolving an import
-    Embed(Embed),
 }
 
-impl<SE, E> ExprKind<SE, E> {
+impl<SE> ExprKind<SE> {
     pub fn traverse_ref_maybe_binder<'a, SE2, Err>(
         &'a self,
         visit: impl FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
+    ) -> Result<ExprKind<SE2>, Err> {
         visitor::TraverseRefMaybeBinderVisitor(visit).visit(self)
     }
 
@@ -188,10 +183,7 @@ impl<SE, E> ExprKind<SE, E> {
         &'a self,
         mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         mut visit_under_binder: impl FnMut(&'a Label, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
+    ) -> Result<ExprKind<SE2>, Err> {
         self.traverse_ref_maybe_binder(|l, x| match l {
             None => visit_subexpr(x),
             Some(l) => visit_under_binder(l, x),
@@ -201,20 +193,14 @@ impl<SE, E> ExprKind<SE, E> {
     pub(crate) fn traverse_ref<'a, SE2, Err>(
         &'a self,
         mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
+    ) -> Result<ExprKind<SE2>, Err> {
         self.traverse_ref_maybe_binder(|_, e| visit_subexpr(e))
     }
 
     pub fn map_ref_maybe_binder<'a, SE2>(
         &'a self,
         mut map: impl FnMut(Option<&'a Label>, &'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         trivial_result(self.traverse_ref_maybe_binder(|l, x| Ok(map(l, x))))
     }
 
@@ -222,10 +208,7 @@ impl<SE, E> ExprKind<SE, E> {
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         self.map_ref_maybe_binder(|l, x| match l {
             None => map_subexpr(x),
             Some(l) => map_under_binder(l, x),
@@ -235,33 +218,30 @@ impl<SE, E> ExprKind<SE, E> {
     pub fn map_ref<'a, SE2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         self.map_ref_maybe_binder(|_, e| map_subexpr(e))
     }
 }
 
-impl<E> Expr<E> {
-    pub fn as_ref(&self) -> &UnspannedExpr<E> {
+impl Expr {
+    pub fn as_ref(&self) -> &UnspannedExpr {
         &self.kind
     }
-    pub fn kind(&self) -> &UnspannedExpr<E> {
+    pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub fn new(kind: UnspannedExpr<E>, span: Span) -> Self {
+    pub fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
             span,
         }
     }
 
-    pub fn rewrap<E2>(&self, kind: UnspannedExpr<E2>) -> Expr<E2> {
+    pub fn rewrap(&self, kind: UnspannedExpr) -> Expr {
         Expr {
             kind: Box::new(kind),
             span: self.span.clone(),
@@ -317,15 +297,15 @@ impl From<Label> for V {
     }
 }
 
-impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
+impl std::cmp::PartialEq for Expr {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
 
-impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
+impl std::cmp::Eq for Expr {}
 
-impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
+impl std::hash::Hash for Expr {
     fn hash<H>(&self, state: &mut H)
     where
         H: std::hash::Hasher,

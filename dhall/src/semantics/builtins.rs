@@ -55,7 +55,7 @@ impl BuiltinClosure<Value> {
     }
 }
 
-pub(crate) fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
+pub(crate) fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Artificial)
 }
 

@@ -1,7 +1,6 @@
 use crate::error::{TypeError, TypeMessage};
 use crate::semantics::{AlphaVar, Hir, HirKind, NzEnv, Value};
 use crate::syntax::{ExprKind, Span};
-use crate::Normalized;
 use crate::{NormalizedExpr, ToExprOptions};
 
 pub(crate) type Type = Value;
@@ -10,7 +9,7 @@ pub(crate) type Type = Value;
 pub(crate) enum TyExprKind {
     Var(AlphaVar),
     // Forbidden ExprKind variants: Var, Import, Embed
-    Expr(ExprKind<TyExpr, Normalized>),
+    Expr(ExprKind<TyExpr>),
 }
 
 // An expression with inferred types at every node and resolved variables.

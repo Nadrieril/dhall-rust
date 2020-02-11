@@ -19,17 +19,17 @@ enum PrintPhase {
 // Wraps an Expr with a phase, so that phase selection can be done separate from the actual
 // printing.
 #[derive(Clone)]
-struct PhasedExpr<'a, E>(&'a Expr<E>, PrintPhase);
+struct PhasedExpr<'a>(&'a Expr, PrintPhase);
 
-impl<'a, E: Display + Clone> PhasedExpr<'a, E> {
-    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a, E> {
+impl<'a> PhasedExpr<'a> {
+    fn phase(self, phase: PrintPhase) -> PhasedExpr<'a> {
         PhasedExpr(self.0, phase)
     }
 }
 
-impl<E: Display + Clone> UnspannedExpr<E> {
+impl UnspannedExpr {
     // Annotate subexpressions with the appropriate phase, defaulting to Base
-    fn annotate_with_phases<'a>(&'a self) -> ExprKind<PhasedExpr<'a, E>, E> {
+    fn annotate_with_phases<'a>(&'a self) -> ExprKind<PhasedExpr<'a>> {
         use crate::syntax::ExprKind::*;
         use PrintPhase::*;
         let with_base = self.map_ref(|e| PhasedExpr(e, Base));
@@ -134,7 +134,7 @@ where
 }
 
 /// Generic instance that delegates to subexpressions
-impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
+impl<SE: Display + Clone> Display for ExprKind<SE> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::syntax::ExprKind::*;
         match self {
@@ -232,19 +232,18 @@ impl<SE: Display + Clone, E: Display> Display for ExprKind<SE, E> {
                 write!(f, "{}::{}", a, b)?;
             }
             Import(a) => a.fmt(f)?,
-            Embed(a) => a.fmt(f)?,
         }
         Ok(())
     }
 }
 
-impl<E: Display + Clone> Display for Expr<E> {
+impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt_phase(f, PrintPhase::Base)
     }
 }
 
-impl<'a, E: Display + Clone> Display for PhasedExpr<'a, E> {
+impl<'a> Display for PhasedExpr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.as_ref().fmt_phase(f, self.1)
     }

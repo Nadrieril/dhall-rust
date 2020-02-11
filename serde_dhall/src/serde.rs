@@ -115,7 +115,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
             | Assert(..) | Builtin(..) | BinOp(..) | BoolIf(..)
             | RecordType(..) | UnionType(..) | Merge(..) | ToMap(..)
             | Projection(..) | ProjectionByExpr(..) | Completion(..)
-            | Import(..) | Embed(..) => not_serde_compatible(),
+            | Import(..) => not_serde_compatible(),
         }
     }
 

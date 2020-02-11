@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::semantics::{NameEnv, NzEnv, TyEnv, Value};
-use crate::syntax::{ExprKind, Span, V};
-use crate::{Expr, Normalized, NormalizedExpr, ToExprOptions};
+use crate::syntax::{Expr, ExprKind, Span, V};
+use crate::{NormalizedExpr, ToExprOptions};
 
 /// Stores an alpha-normalized variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -13,8 +13,8 @@ pub struct AlphaVar {
 pub(crate) enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
-    // Forbidden ExprKind variants: Var, Import, Embed
-    Expr(ExprKind<Hir, Normalized>),
+    // Forbidden ExprKind variants: Var, Import
+    Expr(ExprKind<Hir>),
 }
 
 // An expression with resolved variables and imports.

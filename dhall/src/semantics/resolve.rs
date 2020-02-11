@@ -6,7 +6,7 @@ use crate::error::{Error, ImportError};
 use crate::semantics::{mkerr, Hir, HirKind, NameEnv};
 use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
-use crate::{Normalized, Parsed, ParsedExpr, Resolved};
+use crate::{Parsed, ParsedExpr, Resolved};
 
 type Import = syntax::Import<Hir>;
 
@@ -102,7 +102,7 @@ fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Hir, Error> {
 /// found imports to the provided function.
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
-    expr: &Expr<Normalized>,
+    expr: &Expr,
     f: &mut impl FnMut(Import) -> Result<Hir, Error>,
 ) -> Result<Hir, Error> {
     let kind = match expr.kind() {

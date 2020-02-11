@@ -12,7 +12,7 @@ use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
     NaiveDouble, Natural, Span,
 };
-use crate::{Normalized, NormalizedExpr, ToExprOptions};
+use crate::{NormalizedExpr, ToExprOptions};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a Rc<RefCell> to share computation.
@@ -34,10 +34,7 @@ pub(crate) enum Thunk {
     /// A completely unnormalized expression.
     Thunk { env: NzEnv, body: Hir },
     /// A partially normalized expression that may need to go through `normalize_one_layer`.
-    PartialExpr {
-        env: NzEnv,
-        expr: ExprKind<Value, Normalized>,
-    },
+    PartialExpr { env: NzEnv, expr: ExprKind<Value> },
 }
 
 /// An unevaluated subexpression that takes an argument.
@@ -96,7 +93,7 @@ pub(crate) enum ValueKind {
     TextLit(TextLit),
     Equivalence(Value, Value),
     /// Invariant: evaluation must not be able to progress with `normalize_one_layer`?
-    PartialExpr(ExprKind<Value, Normalized>),
+    PartialExpr(ExprKind<Value>),
 }
 
 impl Value {
@@ -106,7 +103,7 @@ impl Value {
         ValueInternal::from_thunk(Thunk::new(env, hir), span).into_value()
     }
     /// Construct a Value from a partially normalized expression that's not in WHNF.
-    pub(crate) fn from_partial_expr(e: ExprKind<Value, Normalized>) -> Value {
+    pub(crate) fn from_partial_expr(e: ExprKind<Value>) -> Value {
         // TODO: env
         let env = NzEnv::new();
         ValueInternal::from_thunk(
@@ -389,10 +386,7 @@ impl Thunk {
     fn new(env: NzEnv, body: Hir) -> Self {
         Thunk::Thunk { env, body }
     }
-    fn from_partial_expr(
-        env: NzEnv,
-        expr: ExprKind<Value, Normalized>,
-    ) -> Self {
+    fn from_partial_expr(env: NzEnv, expr: ExprKind<Value>) -> Self {
         Thunk::PartialExpr { env, expr }
     }
     fn eval(self) -> ValueKind {

@@ -19,7 +19,7 @@ pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
 }
 
 // Should probably rename this
-fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
+fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Decoded)
 }
 
