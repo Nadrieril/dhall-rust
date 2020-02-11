@@ -9,8 +9,8 @@ use crate::semantics::{
     TyExpr, VarEnv,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, Integer, InterpolatedTextContents, Label,
-    NaiveDouble, Natural, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, LitKind,
+    Span,
 };
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -76,10 +76,7 @@ pub(crate) enum ValueKind {
 
     Var(NzVar),
     Const(Const),
-    BoolLit(bool),
-    NaturalLit(Natural),
-    IntegerLit(Integer),
-    DoubleLit(NaiveDouble),
+    Lit(LitKind),
     EmptyOptionalLit(Value),
     NEOptionalLit(Value),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
@@ -205,10 +202,7 @@ impl Value {
                     closure.to_hir(venv),
                 ),
                 ValueKind::Const(c) => ExprKind::Const(*c),
-                ValueKind::BoolLit(b) => ExprKind::BoolLit(*b),
-                ValueKind::NaturalLit(n) => ExprKind::NaturalLit(*n),
-                ValueKind::IntegerLit(n) => ExprKind::IntegerLit(*n),
-                ValueKind::DoubleLit(n) => ExprKind::DoubleLit(*n),
+                ValueKind::Lit(l) => ExprKind::Lit(l.clone()),
                 ValueKind::EmptyOptionalLit(n) => ExprKind::App(
                     Value::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
@@ -317,12 +311,7 @@ impl ValueKind {
 
     pub(crate) fn normalize(&self) {
         match self {
-            ValueKind::Var(..)
-            | ValueKind::Const(_)
-            | ValueKind::BoolLit(_)
-            | ValueKind::NaturalLit(_)
-            | ValueKind::IntegerLit(_)
-            | ValueKind::DoubleLit(_) => {}
+            ValueKind::Var(..) | ValueKind::Const(_) | ValueKind::Lit(_) => {}
 
             ValueKind::EmptyOptionalLit(tth) | ValueKind::EmptyListLit(tth) => {
                 tth.normalize();

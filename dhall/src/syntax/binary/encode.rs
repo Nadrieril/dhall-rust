@@ -46,6 +46,7 @@ where
     use std::iter::once;
     use syntax::Builtin;
     use syntax::ExprKind::*;
+    use syntax::LitKind::*;
 
     use self::Serialize::{RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {
@@ -60,10 +61,10 @@ where
     match e.as_ref() {
         Const(c) => ser.serialize_str(&c.to_string()),
         Builtin(b) => ser.serialize_str(&b.to_string()),
-        BoolLit(b) => ser.serialize_bool(*b),
-        NaturalLit(n) => ser_seq!(ser; tag(15), U64(*n as u64)),
-        IntegerLit(n) => ser_seq!(ser; tag(16), I64(*n as i64)),
-        DoubleLit(n) => {
+        Lit(Bool(b)) => ser.serialize_bool(*b),
+        Lit(Natural(n)) => ser_seq!(ser; tag(15), U64(*n as u64)),
+        Lit(Integer(n)) => ser_seq!(ser; tag(16), I64(*n as i64)),
+        Lit(Double(n)) => {
             let n: f64 = (*n).into();
             ser.serialize_f64(n)
         }

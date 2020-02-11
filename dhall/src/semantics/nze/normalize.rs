@@ -5,7 +5,9 @@ use crate::semantics::NzEnv;
 use crate::semantics::{
     Binder, BuiltinClosure, Closure, Hir, HirKind, TextLit, Value, ValueKind,
 };
-use crate::syntax::{BinOp, Builtin, ExprKind, InterpolatedTextContents};
+use crate::syntax::{
+    BinOp, Builtin, ExprKind, InterpolatedTextContents, LitKind,
+};
 
 pub(crate) fn apply_any(f: Value, a: Value) -> ValueKind {
     match f.kind() {
@@ -98,40 +100,44 @@ fn apply_binop<'a>(o: BinOp, x: &'a Value, y: &'a Value) -> Option<Ret<'a>> {
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
         RightBiasedRecordMerge, TextAppend,
     };
-    use ValueKind::{
-        BoolLit, EmptyListLit, NEListLit, NaturalLit, RecordLit, RecordType,
-    };
-    Some(match (o, x.kind(), y.kind()) {
-        (BoolAnd, BoolLit(true), _) => Ret::ValueRef(y),
-        (BoolAnd, _, BoolLit(true)) => Ret::ValueRef(x),
-        (BoolAnd, BoolLit(false), _) => Ret::ValueKind(BoolLit(false)),
-        (BoolAnd, _, BoolLit(false)) => Ret::ValueKind(BoolLit(false)),
-        (BoolAnd, _, _) if x == y => Ret::ValueRef(x),
-        (BoolOr, BoolLit(true), _) => Ret::ValueKind(BoolLit(true)),
-        (BoolOr, _, BoolLit(true)) => Ret::ValueKind(BoolLit(true)),
-        (BoolOr, BoolLit(false), _) => Ret::ValueRef(y),
-        (BoolOr, _, BoolLit(false)) => Ret::ValueRef(x),
-        (BoolOr, _, _) if x == y => Ret::ValueRef(x),
-        (BoolEQ, BoolLit(true), _) => Ret::ValueRef(y),
-        (BoolEQ, _, BoolLit(true)) => Ret::ValueRef(x),
-        (BoolEQ, BoolLit(x), BoolLit(y)) => Ret::ValueKind(BoolLit(x == y)),
-        (BoolEQ, _, _) if x == y => Ret::ValueKind(BoolLit(true)),
-        (BoolNE, BoolLit(false), _) => Ret::ValueRef(y),
-        (BoolNE, _, BoolLit(false)) => Ret::ValueRef(x),
-        (BoolNE, BoolLit(x), BoolLit(y)) => Ret::ValueKind(BoolLit(x != y)),
-        (BoolNE, _, _) if x == y => Ret::ValueKind(BoolLit(false)),
+    use LitKind::{Bool, Natural};
+    use ValueKind::{EmptyListLit, Lit, NEListLit, RecordLit, RecordType};
 
-        (NaturalPlus, NaturalLit(0), _) => Ret::ValueRef(y),
-        (NaturalPlus, _, NaturalLit(0)) => Ret::ValueRef(x),
-        (NaturalPlus, NaturalLit(x), NaturalLit(y)) => {
-            Ret::ValueKind(NaturalLit(x + y))
+    Some(match (o, x.kind(), y.kind()) {
+        (BoolAnd, Lit(Bool(true)), _) => Ret::ValueRef(y),
+        (BoolAnd, _, Lit(Bool(true))) => Ret::ValueRef(x),
+        (BoolAnd, Lit(Bool(false)), _) => Ret::ValueKind(Lit(Bool(false))),
+        (BoolAnd, _, Lit(Bool(false))) => Ret::ValueKind(Lit(Bool(false))),
+        (BoolAnd, _, _) if x == y => Ret::ValueRef(x),
+        (BoolOr, Lit(Bool(true)), _) => Ret::ValueKind(Lit(Bool(true))),
+        (BoolOr, _, Lit(Bool(true))) => Ret::ValueKind(Lit(Bool(true))),
+        (BoolOr, Lit(Bool(false)), _) => Ret::ValueRef(y),
+        (BoolOr, _, Lit(Bool(false))) => Ret::ValueRef(x),
+        (BoolOr, _, _) if x == y => Ret::ValueRef(x),
+        (BoolEQ, Lit(Bool(true)), _) => Ret::ValueRef(y),
+        (BoolEQ, _, Lit(Bool(true))) => Ret::ValueRef(x),
+        (BoolEQ, Lit(Bool(x)), Lit(Bool(y))) => {
+            Ret::ValueKind(Lit(Bool(x == y)))
         }
-        (NaturalTimes, NaturalLit(0), _) => Ret::ValueKind(NaturalLit(0)),
-        (NaturalTimes, _, NaturalLit(0)) => Ret::ValueKind(NaturalLit(0)),
-        (NaturalTimes, NaturalLit(1), _) => Ret::ValueRef(y),
-        (NaturalTimes, _, NaturalLit(1)) => Ret::ValueRef(x),
-        (NaturalTimes, NaturalLit(x), NaturalLit(y)) => {
-            Ret::ValueKind(NaturalLit(x * y))
+        (BoolEQ, _, _) if x == y => Ret::ValueKind(Lit(Bool(true))),
+        (BoolNE, Lit(Bool(false)), _) => Ret::ValueRef(y),
+        (BoolNE, _, Lit(Bool(false))) => Ret::ValueRef(x),
+        (BoolNE, Lit(Bool(x)), Lit(Bool(y))) => {
+            Ret::ValueKind(Lit(Bool(x != y)))
+        }
+        (BoolNE, _, _) if x == y => Ret::ValueKind(Lit(Bool(false))),
+
+        (NaturalPlus, Lit(Natural(0)), _) => Ret::ValueRef(y),
+        (NaturalPlus, _, Lit(Natural(0))) => Ret::ValueRef(x),
+        (NaturalPlus, Lit(Natural(x)), Lit(Natural(y))) => {
+            Ret::ValueKind(Lit(Natural(x + y)))
+        }
+        (NaturalTimes, Lit(Natural(0)), _) => Ret::ValueKind(Lit(Natural(0))),
+        (NaturalTimes, _, Lit(Natural(0))) => Ret::ValueKind(Lit(Natural(0))),
+        (NaturalTimes, Lit(Natural(1)), _) => Ret::ValueRef(y),
+        (NaturalTimes, _, Lit(Natural(1))) => Ret::ValueRef(x),
+        (NaturalTimes, Lit(Natural(x)), Lit(Natural(y))) => {
+            Ret::ValueKind(Lit(Natural(x * y)))
         }
 
         (ListAppend, EmptyListLit(_), _) => Ret::ValueRef(y),
@@ -217,10 +223,11 @@ pub(crate) fn normalize_one_layer(
     expr: ExprKind<Value>,
     env: &NzEnv,
 ) -> ValueKind {
+    use LitKind::Bool;
     use ValueKind::{
-        BoolLit, DoubleLit, EmptyListLit, EmptyOptionalLit, IntegerLit,
-        NEListLit, NEOptionalLit, NaturalLit, PartialExpr, RecordLit,
-        RecordType, UnionConstructor, UnionLit, UnionType,
+        EmptyListLit, EmptyOptionalLit, Lit, NEListLit, NEOptionalLit,
+        PartialExpr, RecordLit, RecordType, UnionConstructor, UnionLit,
+        UnionType,
     };
 
     let ret = match expr {
@@ -240,10 +247,7 @@ pub(crate) fn normalize_one_layer(
         ExprKind::Builtin(b) => Ret::Value(Value::from_builtin_env(b, env)),
         ExprKind::Assert(_) => Ret::Expr(expr),
         ExprKind::App(v, a) => Ret::Value(v.app(a)),
-        ExprKind::BoolLit(b) => Ret::ValueKind(BoolLit(b)),
-        ExprKind::NaturalLit(n) => Ret::ValueKind(NaturalLit(n)),
-        ExprKind::IntegerLit(n) => Ret::ValueKind(IntegerLit(n)),
-        ExprKind::DoubleLit(n) => Ret::ValueKind(DoubleLit(n)),
+        ExprKind::Lit(l) => Ret::ValueKind(Lit(l.clone())),
         ExprKind::SomeLit(e) => Ret::ValueKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match t.kind() {
@@ -279,12 +283,12 @@ pub(crate) fn normalize_one_layer(
         }
         ExprKind::BoolIf(ref b, ref e1, ref e2) => {
             match b.kind() {
-                BoolLit(true) => Ret::ValueRef(e1),
-                BoolLit(false) => Ret::ValueRef(e2),
+                Lit(Bool(true)) => Ret::ValueRef(e1),
+                Lit(Bool(false)) => Ret::ValueRef(e2),
                 _ => {
                     match (e1.kind(), e2.kind()) {
                         // Simplify `if b then True else False`
-                        (BoolLit(true), BoolLit(false)) => Ret::ValueRef(b),
+                        (Lit(Bool(true)), Lit(Bool(false))) => Ret::ValueRef(b),
                         _ if e1 == e2 => Ret::ValueRef(e1),
                         _ => Ret::Expr(expr),
                     }

@@ -9,7 +9,7 @@ use crate::semantics::{
     TyExpr, TyExprKind, Type, Value, ValueKind,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
 };
 
 fn type_of_recordtype<'a>(
@@ -115,10 +115,16 @@ fn type_one_layer(
             let t_tyexpr = typecheck(&t_hir)?;
             t_tyexpr.eval(env)
         }
-        ExprKind::BoolLit(_) => Value::from_builtin(Builtin::Bool),
-        ExprKind::NaturalLit(_) => Value::from_builtin(Builtin::Natural),
-        ExprKind::IntegerLit(_) => Value::from_builtin(Builtin::Integer),
-        ExprKind::DoubleLit(_) => Value::from_builtin(Builtin::Double),
+        ExprKind::Lit(LitKind::Bool(_)) => Value::from_builtin(Builtin::Bool),
+        ExprKind::Lit(LitKind::Natural(_)) => {
+            Value::from_builtin(Builtin::Natural)
+        }
+        ExprKind::Lit(LitKind::Integer(_)) => {
+            Value::from_builtin(Builtin::Integer)
+        }
+        ExprKind::Lit(LitKind::Double(_)) => {
+            Value::from_builtin(Builtin::Double)
+        }
         ExprKind::TextLit(interpolated) => {
             let text_type = Value::from_builtin(Builtin::Text);
             for contents in interpolated.iter() {

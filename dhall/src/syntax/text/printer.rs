@@ -196,15 +196,7 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             Var(a) => a.fmt(f)?,
             Const(k) => k.fmt(f)?,
             Builtin(v) => v.fmt(f)?,
-            BoolLit(true) => f.write_str("True")?,
-            BoolLit(false) => f.write_str("False")?,
-            NaturalLit(a) => a.fmt(f)?,
-            IntegerLit(a) if *a >= 0 => {
-                f.write_str("+")?;
-                a.fmt(f)?;
-            }
-            IntegerLit(a) => a.fmt(f)?,
-            DoubleLit(a) => a.fmt(f)?,
+            Lit(a) => a.fmt(f)?,
             TextLit(a) => a.fmt(f)?,
             RecordType(a) if a.is_empty() => f.write_str("{}")?,
             RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
@@ -239,7 +231,25 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.as_ref().fmt_phase(f, PrintPhase::Base)
+        self.kind().fmt_phase(f, PrintPhase::Base)
+    }
+}
+
+impl Display for LitKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use LitKind::*;
+        match self {
+            Bool(true) => f.write_str("True")?,
+            Bool(false) => f.write_str("False")?,
+            Natural(a) => a.fmt(f)?,
+            Integer(a) if *a >= 0 => {
+                f.write_str("+")?;
+                a.fmt(f)?;
+            }
+            Integer(a) => a.fmt(f)?,
+            Double(a) => a.fmt(f)?,
+        }
+        Ok(())
     }
 }
 

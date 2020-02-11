@@ -103,6 +103,19 @@ pub struct Expr {
 
 pub type UnspannedExpr = ExprKind<Expr>;
 
+/// Simple literals
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LitKind {
+    ///  `True`
+    Bool(bool),
+    ///  `1`
+    Natural(Natural),
+    ///  `+2`
+    Integer(Integer),
+    ///  `3.24`
+    Double(Double),
+}
+
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
@@ -110,6 +123,7 @@ pub type UnspannedExpr = ExprKind<Expr>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind<SubExpr> {
     Const(Const),
+    Lit(LitKind),
     ///  `x`
     ///  `x@n`
     Var(V),
@@ -131,16 +145,8 @@ pub enum ExprKind<SubExpr> {
     Builtin(Builtin),
     // Binary operations
     BinOp(BinOp, SubExpr, SubExpr),
-    ///  `True`
-    BoolLit(bool),
     ///  `if x then y else z`
     BoolIf(SubExpr, SubExpr, SubExpr),
-    ///  `1`
-    NaturalLit(Natural),
-    ///  `+2`
-    IntegerLit(Integer),
-    ///  `3.24`
-    DoubleLit(Double),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
     ///  `[] : t`
