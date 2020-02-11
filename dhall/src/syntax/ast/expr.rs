@@ -1,5 +1,5 @@
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::visitor::{self, ExprKindVisitor};
+use crate::syntax::visitor;
 use crate::syntax::*;
 
 pub type Integer = isize;
@@ -176,7 +176,7 @@ impl<SE> ExprKind<SE> {
         &'a self,
         visit: impl FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2>, Err> {
-        visitor::TraverseRefMaybeBinderVisitor(visit).visit(self)
+        visitor::visit_ref(self, visit)
     }
 
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
