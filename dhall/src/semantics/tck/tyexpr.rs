@@ -1,39 +1,30 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::{AlphaVar, Hir, HirKind, NzEnv, Value};
-use crate::syntax::{ExprKind, Span};
+use crate::semantics::{Hir, HirKind, NzEnv, Value,TyEnv};
+use crate::syntax::Span;
 use crate::{NormalizedExpr, ToExprOptions};
 
 pub(crate) type Type = Value;
 
-#[derive(Debug, Clone)]
-pub(crate) enum TyExprKind {
-    Var(AlphaVar),
-    // Forbidden ExprKind variants: Var, Import, Embed
-    Expr(ExprKind<TyExpr>),
-}
-
-// An expression with inferred types at every node and resolved variables.
+// A hir expression plus its inferred type.
 #[derive(Clone)]
 pub(crate) struct TyExpr {
-    kind: Box<TyExprKind>,
+    hir: Hir,
     ty: Option<Type>,
-    span: Span,
 }
 
 impl TyExpr {
-    pub fn new(kind: TyExprKind, ty: Option<Type>, span: Span) -> Self {
+    pub fn new(kind: HirKind, ty: Option<Type>, span: Span) -> Self {
         TyExpr {
-            kind: Box::new(kind),
+            hir: Hir::new(kind, span),
             ty,
-            span,
         }
     }
 
-    pub fn kind(&self) -> &TyExprKind {
-        &*self.kind
+    pub fn kind(&self) -> &HirKind {
+        self.hir.kind()
     }
     pub fn span(&self) -> Span {
-        self.span.clone()
+        self.as_hir().span()
     }
     pub fn get_type(&self) -> Result<Type, TypeError> {
         match &self.ty {
@@ -41,22 +32,24 @@ impl TyExpr {
             None => Err(TypeError::new(TypeMessage::Sort)),
         }
     }
+    pub fn get_type_tyexpr(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
+        Ok(self.get_type()?.to_tyexpr_tyenv(env))
+    }
 
     pub fn to_hir(&self) -> Hir {
-        let kind = match self.kind() {
-            TyExprKind::Var(v) => HirKind::Var(v.clone()),
-            TyExprKind::Expr(e) => HirKind::Expr(e.map_ref(|tye| tye.to_hir())),
-        };
-        Hir::new(kind, self.span())
+        self.as_hir().clone()
+    }
+    pub fn as_hir(&self) -> &Hir {
+        &self.hir
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        self.to_hir().to_expr(opts)
+        self.as_hir().to_expr(opts)
     }
 
     /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
-        Value::new_thunk(env.into(), self.to_hir())
+        self.as_hir().eval(&env.into())
     }
     /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.

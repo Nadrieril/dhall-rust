@@ -6,7 +6,7 @@ use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
     type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, TyEnv,
-    TyExpr, TyExprKind, Type, Value, ValueKind,
+    TyExpr, Type, Value, ValueKind,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
@@ -758,18 +758,22 @@ fn type_one_layer(
         }
     };
 
-    Ok(TyExpr::new(TyExprKind::Expr(ekind), Some(ty), span))
+    Ok(TyExpr::new(
+        HirKind::Expr(ekind.map_ref(|tye| tye.to_hir())),
+        Some(ty),
+        span,
+    ))
 }
 
 /// `type_with` typechecks an expressio in the provided environment.
 pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
     let (tyekind, ty) = match hir.kind() {
-        HirKind::Var(var) => (TyExprKind::Var(*var), Some(env.lookup(var))),
+        HirKind::Var(var) => (HirKind::Var(*var), Some(env.lookup(var))),
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }
         HirKind::Expr(ExprKind::Const(Const::Sort)) => {
-            (TyExprKind::Expr(ExprKind::Const(Const::Sort)), None)
+            (HirKind::Expr(ExprKind::Const(Const::Sort)), None)
         }
         HirKind::Expr(ekind) => {
             let ekind = match ekind {
