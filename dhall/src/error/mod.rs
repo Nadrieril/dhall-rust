@@ -51,7 +51,6 @@ pub struct TypeError {
 /// The specific type error
 #[derive(Debug)]
 pub(crate) enum TypeMessage {
-    Sort,
     Custom(String),
 }
 
@@ -74,7 +73,6 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            Sort => format!("Type error: Unhandled error: {:?}", self.message),
             Custom(s) => format!("Type error: {}", s),
         };
         write!(f, "{}", msg)

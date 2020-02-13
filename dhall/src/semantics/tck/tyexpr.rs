@@ -1,4 +1,3 @@
-use crate::error::{TypeError, TypeMessage};
 use crate::semantics::{Hir, HirKind, NzEnv, TyEnv, Value};
 use crate::syntax::{Const, Span};
 use crate::{NormalizedExpr, ToExprOptions};
@@ -6,39 +5,36 @@ use crate::{NormalizedExpr, ToExprOptions};
 pub(crate) type Type = Value;
 
 // A hir expression plus its inferred type.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct TyExpr {
     hir: Hir,
-    ty: Option<Type>,
+    ty: Type,
 }
 
 impl TyExpr {
-    pub fn new(kind: HirKind, ty: Option<Type>, span: Span) -> Self {
+    pub fn new(kind: HirKind, ty: Type, span: Span) -> Self {
         TyExpr {
             hir: Hir::new(kind, span),
             ty,
         }
     }
 
-    pub fn kind(&self) -> &HirKind {
-        self.hir.kind()
-    }
     pub fn span(&self) -> Span {
         self.as_hir().span()
     }
-    pub fn get_type(&self) -> Result<Type, TypeError> {
-        match &self.ty {
-            Some(t) => Ok(t.clone()),
-            None => Err(TypeError::new(TypeMessage::Sort)),
-        }
+    pub fn ty(&self) -> &Type {
+        &self.ty
     }
-    pub fn get_type_tyexpr(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
-        Ok(self.get_type()?.to_hir(env.as_varenv()).typecheck(env)?)
+    pub fn get_type_tyexpr(&self, env: &TyEnv) -> TyExpr {
+        self.ty()
+            .to_hir(env.as_varenv())
+            .typecheck(env)
+            .expect("Internal type error")
     }
     /// Get the kind (the type of the type) of this value
     // TODO: avoid recomputing so much
-    pub fn get_kind(&self, env: &TyEnv) -> Result<Option<Const>, TypeError> {
-        Ok(self.get_type_tyexpr(env)?.get_type()?.as_const())
+    pub fn get_kind(&self, env: &TyEnv) -> Option<Const> {
+        self.get_type_tyexpr(env).ty().as_const()
     }
 
     pub fn to_hir(&self) -> Hir {
@@ -66,18 +62,5 @@ impl TyExpr {
         let val = self.eval_closed_expr();
         val.normalize();
         val
-    }
-}
-
-impl std::fmt::Debug for TyExpr {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut x = fmt.debug_struct("TyExpr");
-        x.field("kind", self.kind());
-        if let Some(ty) = self.ty.as_ref() {
-            x.field("type", &ty);
-        } else {
-            x.field("type", &None::<()>);
-        }
-        x.finish()
     }
 }
