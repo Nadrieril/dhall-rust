@@ -2,5 +2,5 @@ Type error: error: annot mismatch: { x : Natural } != { x : Text }
  --> <current file>:1:0
   |
 1 | { x = 1 } : { x : Text }
-  | ^^^^^^^^^^^^^^^^^^^^^^^^ annot mismatch: { x : Natural } != { x : Text }
+  | ^^^^^^^^^ annot mismatch: { x : Natural } != { x : Text }
   |

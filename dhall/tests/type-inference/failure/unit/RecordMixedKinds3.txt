@@ -1,1 +1,1 @@
-Type error: Unhandled error: Sort
+Type error: error: Sort does not have a type

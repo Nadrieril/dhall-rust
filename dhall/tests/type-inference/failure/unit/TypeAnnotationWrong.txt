@@ -2,5 +2,5 @@ Type error: error: annot mismatch: Natural != Bool
  --> <current file>:1:0
   |
 1 | 1 : Bool
-  | ^^^^^^^^ annot mismatch: Natural != Bool
+  | ^ annot mismatch: Natural != Bool
   |

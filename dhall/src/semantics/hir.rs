@@ -72,7 +72,7 @@ impl Hir {
 
     /// Typecheck the Hir.
     pub fn typecheck(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
-        type_with(env, self)
+        type_with(env, self, None)
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.

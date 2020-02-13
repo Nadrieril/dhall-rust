@@ -24,13 +24,10 @@ pub fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(msg.to_string())))
 }
 
-pub fn mk_span_err<T, S: ToString>(
-    span: &Span,
-    msg: S,
-) -> Result<T, TypeError> {
+pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
     mkerr(
         ErrorBuilder::new(msg.to_string())
-            .span_err(span.clone(), msg.to_string())
+            .span_err(span, msg.to_string())
             .format(),
     )
 }
@@ -40,22 +37,25 @@ pub fn mk_span_err<T, S: ToString>(
 fn type_one_layer(
     env: &TyEnv,
     ekind: ExprKind<TyExpr>,
+    annot: Option<Type>,
     span: Span,
 ) -> Result<TyExpr, TypeError> {
-    let span_err = |msg: &str| mk_span_err(&span, msg);
+    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
     let ty = match &ekind {
         ExprKind::Import(..) => unreachable!(
             "There should remain no imports in a resolved expression"
         ),
-        ExprKind::Var(..) | ExprKind::Const(Const::Sort) => unreachable!(), // Handled in type_with
+        ExprKind::Var(..)
+        | ExprKind::Const(Const::Sort)
+        | ExprKind::Annot(..) => unreachable!(), // Handled in type_with
 
         ExprKind::Lam(binder, annot, body) => {
             let body_ty = body.get_type_tyexpr(
                 &env.insert_type(&binder.clone(), annot.eval(env)),
             )?;
             let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
-            type_one_layer(env, pi_ekind, Span::Artificial)?.eval(env)
+            type_one_layer(env, pi_ekind, None, Span::Artificial)?.eval(env)
         }
         ExprKind::Pi(_, annot, body) => {
             let ks = match annot.get_type()?.as_const() {
@@ -253,18 +253,6 @@ fn type_one_layer(
                 } // _ => span_err("NotARecord"),
             }
         }
-        ExprKind::Annot(x, t) => {
-            let t = t.eval(env);
-            let x_ty = x.get_type()?;
-            if x_ty != t {
-                return span_err(&format!(
-                    "annot mismatch: {} != {}",
-                    x_ty.to_expr_tyenv(env),
-                    t.to_expr_tyenv(env)
-                ));
-            }
-            x_ty
-        }
         ExprKind::Assert(t) => {
             let t = t.eval(env);
             match &*t.kind() {
@@ -365,7 +353,7 @@ fn type_one_layer(
                 x.get_type_tyexpr(env)?,
                 y.get_type_tyexpr(env)?,
             );
-            type_one_layer(env, ekind, span.clone())?.eval(env)
+            type_one_layer(env, ekind, None, span.clone())?.eval(env)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
             fn check_rectymerge(
@@ -376,20 +364,25 @@ fn type_one_layer(
             ) -> Result<(), TypeError> {
                 let kts_x = match x.kind() {
                     ValueKind::RecordType(kts) => kts,
-                    _ => return mk_span_err(span, "RecordTypeMergeRequiresRecordType"),
+                    _ => {
+                        return mk_span_err(
+                            span.clone(),
+                            "RecordTypeMergeRequiresRecordType",
+                        )
+                    }
                 };
                 let kts_y = match y.kind() {
                     ValueKind::RecordType(kts) => kts,
-                    _ => return mk_span_err(span, "RecordTypeMergeRequiresRecordType"),
+                    _ => {
+                        return mk_span_err(
+                            span.clone(),
+                            "RecordTypeMergeRequiresRecordType",
+                        )
+                    }
                 };
                 for (k, tx) in kts_x {
                     if let Some(ty) = kts_y.get(k) {
-                        check_rectymerge(
-                            span,
-                            env,
-                            tx.clone(),
-                            ty.clone(),
-                        )?;
+                        check_rectymerge(span, env, tx.clone(), ty.clone())?;
                     }
                 }
                 Ok(())
@@ -717,29 +710,37 @@ fn type_one_layer(
             let ty_field_default = type_one_layer(
                 env,
                 ExprKind::Field(ty.clone(), "default".into()),
+                None,
                 span.clone(),
             )?;
             let ty_field_type = type_one_layer(
                 env,
                 ExprKind::Field(ty.clone(), "Type".into()),
+                None,
                 span.clone(),
             )?;
-            let merge = type_one_layer(
+            return type_one_layer(
                 env,
                 ExprKind::BinOp(
                     BinOp::RightBiasedRecordMerge,
                     ty_field_default,
                     compl.clone(),
                 ),
-                span.clone(),
-            )?;
-            return type_one_layer(
-                env,
-                ExprKind::Annot(merge, ty_field_type),
+                Some(ty_field_type.eval(env)),
                 span.clone(),
             );
         }
     };
+
+    if let Some(annot) = annot {
+        if ty != annot {
+            return span_err(&format!(
+                "annot mismatch: {} != {}",
+                ty.to_expr_tyenv(env),
+                annot.to_expr_tyenv(env)
+            ));
+        }
+    }
 
     Ok(TyExpr::new(
         HirKind::Expr(ekind.map_ref(|tye| tye.to_hir())),
@@ -748,72 +749,78 @@ fn type_one_layer(
     ))
 }
 
-/// `type_with` typechecks an expressio in the provided environment.
-pub(crate) fn type_with(env: &TyEnv, hir: &Hir) -> Result<TyExpr, TypeError> {
-    let (tyekind, ty) = match hir.kind() {
-        HirKind::Var(var) => (HirKind::Var(*var), Some(env.lookup(var))),
+/// `type_with` typechecks an expression in the provided environment. Optionally pass an annotation
+/// to compare with.
+pub(crate) fn type_with(
+    env: &TyEnv,
+    hir: &Hir,
+    annot: Option<Type>,
+) -> Result<TyExpr, TypeError> {
+    match hir.kind() {
+        HirKind::Var(var) => Ok(TyExpr::new(
+            HirKind::Var(*var),
+            Some(env.lookup(var)),
+            hir.span(),
+        )),
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }
         HirKind::Expr(ExprKind::Const(Const::Sort)) => {
-            (HirKind::Expr(ExprKind::Const(Const::Sort)), None)
+            mk_span_err(hir.span(), "Sort does not have a type")
+        }
+        HirKind::Expr(ExprKind::Annot(x, t)) => {
+            let t = match t.kind() {
+                HirKind::Expr(ExprKind::Const(Const::Sort)) => {
+                    Value::from_const(Const::Sort)
+                }
+                _ => type_with(env, t, None)?.eval(env),
+            };
+            type_with(env, x, Some(t))
         }
         HirKind::Expr(ekind) => {
             let ekind = match ekind {
                 ExprKind::Lam(binder, annot, body) => {
-                    let annot = type_with(env, annot)?;
+                    let annot = type_with(env, annot, None)?;
                     let annot_nf = annot.eval(env);
                     let body_env = env.insert_type(binder, annot_nf);
-                    let body = type_with(&body_env, body)?;
+                    let body = type_with(&body_env, body, None)?;
                     ExprKind::Lam(binder.clone(), annot, body)
                 }
                 ExprKind::Pi(binder, annot, body) => {
-                    let annot = type_with(env, annot)?;
+                    let annot = type_with(env, annot, None)?;
                     let annot_nf = annot.eval(env);
                     let body_env = env.insert_type(binder, annot_nf);
-                    let body = type_with(&body_env, body)?;
+                    let body = type_with(&body_env, body, None)?;
                     ExprKind::Pi(binder.clone(), annot, body)
                 }
                 ExprKind::Let(binder, annot, val, body) => {
-                    let val = if let Some(t) = annot {
-                        Hir::new(
-                            HirKind::Expr(ExprKind::Annot(
-                                val.clone(),
-                                t.clone(),
-                            )),
-                            t.span(),
-                        )
+                    let val_annot = if let Some(t) = annot {
+                        Some(type_with(env, t, None)?.eval(env))
                     } else {
-                        val.clone()
+                        None
                     };
-                    let val = type_with(env, &val)?;
+                    let val = type_with(env, &val, val_annot)?;
                     let val_ty = val.get_type()?;
                     let val_nf = val.eval(env);
                     let body_env = env.insert_value(&binder, val_nf, val_ty);
-                    let body = type_with(&body_env, body)?;
+                    let body = type_with(&body_env, body, None)?;
                     ExprKind::Let(binder.clone(), None, val, body)
                 }
-                _ => ekind.traverse_ref(|e| type_with(env, e))?,
+                _ => ekind.traverse_ref(|e| type_with(env, e, None))?,
             };
-            return type_one_layer(env, ekind, hir.span());
+            type_one_layer(env, ekind, annot, hir.span())
         }
-    };
-
-    Ok(TyExpr::new(tyekind, ty, hir.span()))
+    }
 }
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck(e: &Hir) -> Result<TyExpr, TypeError> {
-    let res = type_with(&TyEnv::new(), e)?;
-    // Ensure that the inferred type exists (i.e. this is not Sort)
-    res.get_type()?;
-    Ok(res)
+pub(crate) fn typecheck(hir: &Hir) -> Result<TyExpr, TypeError> {
+    type_with(&TyEnv::new(), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
 pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<TyExpr, TypeError> {
-    let hir =
-        Hir::new(HirKind::Expr(ExprKind::Annot(hir.clone(), ty)), hir.span());
-    typecheck(&hir)
+    let ty = typecheck(&ty)?.eval(&TyEnv::new());
+    type_with(&TyEnv::new(), hir, Some(ty))
 }
