@@ -1,1 +1,6 @@
 Type error: error: RecordTypeMergeRequiresRecordType
+ --> <current file>:1:0
+  |
+1 | { x = True } ∧ { x = False }
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ RecordTypeMergeRequiresRecordType
+  |

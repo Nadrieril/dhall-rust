@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::error::TypeError;
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit,
-    type_with, Binder, BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv,
-    TyExpr, VarEnv,
+    apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit, Binder,
+    BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, LitKind,
@@ -146,8 +144,7 @@ impl Value {
         if opts.normalize {
             self.normalize();
         }
-
-        self.to_tyexpr_noenv().to_expr(opts)
+        self.to_hir_noenv().to_expr(opts)
     }
     pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
@@ -159,10 +156,6 @@ impl Value {
 
     pub(crate) fn app(&self, v: Value) -> Value {
         Value::from_kind(apply_any(self.clone(), v))
-    }
-
-    pub(crate) fn get_type(&self, tyenv: &TyEnv) -> Result<Value, TypeError> {
-        self.to_tyexpr_tyenv(tyenv).get_type()
     }
 
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
@@ -269,13 +262,6 @@ impl Value {
     }
     pub fn to_hir_noenv(&self) -> Hir {
         self.to_hir(VarEnv::new())
-    }
-    pub fn to_tyexpr_tyenv(&self, tyenv: &TyEnv) -> TyExpr {
-        let hir = self.to_hir(tyenv.as_varenv());
-        type_with(tyenv, &hir).unwrap()
-    }
-    pub fn to_tyexpr_noenv(&self) -> TyExpr {
-        self.to_tyexpr_tyenv(&TyEnv::new())
     }
 }
 

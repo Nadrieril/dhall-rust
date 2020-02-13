@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::semantics::{NameEnv, NzEnv, TyEnv, Value};
+use crate::error::TypeError;
+use crate::semantics::{type_with, NameEnv, NzEnv, TyEnv, TyExpr, Value};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -67,6 +68,11 @@ impl Hir {
         };
         let mut env = env.as_nameenv().clone();
         hir_to_expr(self, opts, &mut env)
+    }
+
+    /// Typecheck the Hir.
+    pub fn typecheck(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
+        type_with(env, self)
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.

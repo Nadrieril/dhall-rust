@@ -1,6 +1,6 @@
 use crate::error::{TypeError, TypeMessage};
-use crate::semantics::{Hir, HirKind, NzEnv, Value,TyEnv};
-use crate::syntax::Span;
+use crate::semantics::{Hir, HirKind, NzEnv, TyEnv, Value};
+use crate::syntax::{Const, Span};
 use crate::{NormalizedExpr, ToExprOptions};
 
 pub(crate) type Type = Value;
@@ -33,7 +33,12 @@ impl TyExpr {
         }
     }
     pub fn get_type_tyexpr(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
-        Ok(self.get_type()?.to_tyexpr_tyenv(env))
+        Ok(self.get_type()?.to_hir(env.as_varenv()).typecheck(env)?)
+    }
+    /// Get the kind (the type of the type) of this value
+    // TODO: avoid recomputing so much
+    pub fn get_kind(&self, env: &TyEnv) -> Result<Option<Const>, TypeError> {
+        Ok(self.get_type_tyexpr(env)?.get_type()?.as_const())
     }
 
     pub fn to_hir(&self) -> Hir {
