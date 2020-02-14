@@ -1,3 +1,4 @@
+use crate::error::TypeError;
 use crate::semantics::{Hir, HirKind, NzEnv, TyEnv, Value};
 use crate::syntax::{Const, Span};
 use crate::{NormalizedExpr, ToExprOptions};
@@ -25,16 +26,13 @@ impl TyExpr {
     pub fn ty(&self) -> &Type {
         &self.ty
     }
-    pub fn get_type_tyexpr(&self, env: &TyEnv) -> TyExpr {
-        self.ty()
-            .to_hir(env.as_varenv())
-            .typecheck(env)
-            .expect("Internal type error")
+    pub fn get_type_tyexpr(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
+        Ok(self.ty().to_hir(env.as_varenv()).typecheck(env)?)
     }
     /// Get the kind (the type of the type) of this value
     // TODO: avoid recomputing so much
-    pub fn get_kind(&self, env: &TyEnv) -> Option<Const> {
-        self.get_type_tyexpr(env).ty().as_const()
+    pub fn get_kind(&self, env: &TyEnv) -> Result<Option<Const>, TypeError> {
+        Ok(self.get_type_tyexpr(env)?.ty().as_const())
     }
 
     pub fn to_hir(&self) -> Hir {

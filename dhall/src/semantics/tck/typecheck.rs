@@ -53,7 +53,7 @@ fn type_one_layer(
         ExprKind::Lam(binder, annot, body) => {
             let body_ty = body.get_type_tyexpr(
                 &env.insert_type(&binder.clone(), annot.eval(env)),
-            );
+            )?;
             let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
             type_one_layer(env, pi_ekind, None, Span::Artificial)?.eval(env)
         }
@@ -139,7 +139,7 @@ fn type_one_layer(
                     return span_err("InvalidListElement");
                 }
             }
-            if x.get_kind(env) != Some(Const::Type) {
+            if x.get_kind(env)? != Some(Const::Type) {
                 return span_err("InvalidListType");
             }
 
@@ -147,7 +147,7 @@ fn type_one_layer(
             Value::from_builtin(Builtin::List).app(t)
         }
         ExprKind::SomeLit(x) => {
-            if x.get_kind(env) != Some(Const::Type) {
+            if x.get_kind(env)? != Some(Const::Type) {
                 return span_err("InvalidOptionalType");
             }
 
@@ -167,7 +167,7 @@ fn type_one_layer(
                 };
 
                 // Check that the fields have a valid kind
-                match v.get_kind(env) {
+                match v.get_kind(env)? {
                     Some(_) => {}
                     None => return span_err("InvalidFieldType"),
                 }
@@ -315,7 +315,7 @@ fn type_one_layer(
             if *x.ty().kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
-            if y.get_kind(env) != Some(Const::Type) {
+            if y.get_kind(env)? != Some(Const::Type) {
                 return span_err("IfBranchMustBeTerm");
             }
             if y.ty() != z.ty() {
@@ -350,8 +350,8 @@ fn type_one_layer(
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             let ekind = ExprKind::BinOp(
                 BinOp::RecursiveRecordTypeMerge,
-                x.get_type_tyexpr(env),
-                y.get_type_tyexpr(env),
+                x.get_type_tyexpr(env)?,
+                y.get_type_tyexpr(env)?,
             );
             type_one_layer(env, ekind, None, span.clone())?.eval(env)
         }
@@ -413,7 +413,7 @@ fn type_one_layer(
             if l.ty() != r.ty() {
                 return span_err("EquivalenceTypeMismatch");
             }
-            if l.get_kind(env) != Some(Const::Type) {
+            if l.get_kind(env)? != Some(Const::Type) {
                 return span_err("EquivalenceArgumentsMustBeTerms");
             }
 
@@ -582,7 +582,7 @@ fn type_one_layer(
             }
         }
         ExprKind::ToMap(record, annot) => {
-            if record.get_kind(env) != Some(Const::Type) {
+            if record.get_kind(env)? != Some(Const::Type) {
                 return span_err("`toMap` only accepts records of type `Type`");
             }
             let record_t = record.ty();
