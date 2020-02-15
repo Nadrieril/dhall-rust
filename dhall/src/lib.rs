@@ -120,7 +120,7 @@ impl Typed {
     }
 
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
-        Ok(Normalized(self.0.ty().clone()))
+        Ok(Normalized(self.0.ty().clone().into_value()))
     }
 }
 

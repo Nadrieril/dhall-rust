@@ -38,7 +38,8 @@ fn check_rectymerge(
     };
     for (k, tx) in kts_x {
         if let Some(ty) = kts_y.get(k) {
-            check_rectymerge(span, env, tx.clone(), ty.clone())?;
+            // TODO: store Type in RecordType ?
+            check_rectymerge(span, env, tx.clone().into(), ty.clone().into())?;
         }
     }
     Ok(())
@@ -105,7 +106,7 @@ fn type_one_layer(
                     .format(),
                 );
             }
-            let body_env = env.insert_type(&binder, annot.eval(env));
+            let body_env = env.insert_type(&binder, annot.eval_to_type(env));
             if body.get_kind(&body_env)?.is_none() {
                 return span_err("Invalid output type");
             }
@@ -117,7 +118,7 @@ fn type_one_layer(
                 )),
                 span.clone(),
             )
-            .eval(env)
+            .eval_to_type(env)
         }
         ExprKind::Pi(_, annot, body) => {
             let ks = match annot.ty().as_const() {
@@ -148,29 +149,29 @@ fn type_one_layer(
                 _ => return span_err("Invalid output type"),
             };
 
-            Value::from_const(function_check(ks, kt))
+            Type::from_const(function_check(ks, kt))
         }
         ExprKind::Let(_, _, _, body) => body.ty().clone(),
 
-        ExprKind::Const(Const::Type) => Value::from_const(Const::Kind),
-        ExprKind::Const(Const::Kind) => Value::from_const(Const::Sort),
+        ExprKind::Const(Const::Type) => Type::from_const(Const::Kind),
+        ExprKind::Const(Const::Kind) => Type::from_const(Const::Sort),
         ExprKind::Builtin(b) => {
             let t_hir = type_of_builtin(*b);
             let t_tyexpr = typecheck(&t_hir)?;
-            t_tyexpr.eval(env)
+            t_tyexpr.eval_to_type(env)
         }
-        ExprKind::Lit(LitKind::Bool(_)) => Value::from_builtin(Builtin::Bool),
+        ExprKind::Lit(LitKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
         ExprKind::Lit(LitKind::Natural(_)) => {
-            Value::from_builtin(Builtin::Natural)
+            Type::from_builtin(Builtin::Natural)
         }
         ExprKind::Lit(LitKind::Integer(_)) => {
-            Value::from_builtin(Builtin::Integer)
+            Type::from_builtin(Builtin::Integer)
         }
         ExprKind::Lit(LitKind::Double(_)) => {
-            Value::from_builtin(Builtin::Double)
+            Type::from_builtin(Builtin::Double)
         }
         ExprKind::TextLit(interpolated) => {
-            let text_type = Value::from_builtin(Builtin::Text);
+            let text_type = Type::from_builtin(Builtin::Text);
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
@@ -182,7 +183,7 @@ fn type_one_layer(
             text_type
         }
         ExprKind::EmptyListLit(t) => {
-            let t = t.eval(env);
+            let t = t.eval_to_type(env);
             match t.kind() {
                 ValueKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
@@ -205,16 +206,16 @@ fn type_one_layer(
                 return span_err("InvalidListType");
             }
 
-            let t = x.ty().clone();
-            Value::from_builtin(Builtin::List).app(t)
+            let t = x.ty().to_value();
+            Value::from_builtin(Builtin::List).app(t).to_type()
         }
         ExprKind::SomeLit(x) => {
             if x.get_kind(env)? != Some(Const::Type) {
                 return span_err("InvalidOptionalType");
             }
 
-            let t = x.ty().clone();
-            Value::from_builtin(Builtin::Optional).app(t)
+            let t = x.ty().to_value();
+            Value::from_builtin(Builtin::Optional).app(t).to_type()
         }
         ExprKind::RecordLit(kvs) => {
             use std::collections::hash_map::Entry;
@@ -225,7 +226,7 @@ fn type_one_layer(
                     Entry::Occupied(_) => {
                         return span_err("RecordTypeDuplicateField")
                     }
-                    Entry::Vacant(e) => e.insert(v.ty().clone()),
+                    Entry::Vacant(e) => e.insert(v.ty().to_value()),
                 };
 
                 // Check that the fields have a valid kind
@@ -235,7 +236,7 @@ fn type_one_layer(
                 }
             }
 
-            Value::from_kind(ValueKind::RecordType(kts))
+            Value::from_kind(ValueKind::RecordType(kts)).to_type()
         }
         ExprKind::RecordType(kts) => {
             use std::collections::hash_map::Entry;
@@ -259,7 +260,7 @@ fn type_one_layer(
                 }
             }
 
-            Value::from_const(k)
+            Type::from_const(k)
         }
         ExprKind::UnionType(kts) => {
             use std::collections::hash_map::Entry;
@@ -286,17 +287,17 @@ fn type_one_layer(
             // an union type with only unary variants also has type Type
             let k = k.unwrap_or(Const::Type);
 
-            Value::from_const(k)
+            Type::from_const(k)
         }
         ExprKind::Field(scrut, x) => {
             match scrut.ty().kind() {
                 ValueKind::RecordType(kts) => match kts.get(&x) {
-                    Some(tth) => tth.clone(),
+                    Some(val) => val.clone().to_type(),
                     None => return span_err("MissingRecordField"),
                 },
                 // TODO: branch here only when scrut.ty() is a Const
                 _ => {
-                    let scrut_nf = scrut.eval(env);
+                    let scrut_nf = scrut.eval_to_type(env);
                     match scrut_nf.kind() {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
@@ -304,8 +305,11 @@ fn type_one_layer(
                                 Value::from_kind(ValueKind::PiClosure {
                                     binder: Binder::new(x.clone()),
                                     annot: ty.clone(),
-                                    closure: Closure::new_constant(scrut_nf),
+                                    closure: Closure::new_constant(
+                                        scrut_nf.into_value(),
+                                    ),
                                 })
+                                .to_type()
                             }
                             Some(None) => scrut_nf,
                             None => return span_err("MissingUnionField"),
@@ -316,7 +320,7 @@ fn type_one_layer(
             }
         }
         ExprKind::Assert(t) => {
-            let t = t.eval(env);
+            let t = t.eval_to_type(env);
             match t.kind() {
                 ValueKind::Equivalence(x, y) if x == y => {}
                 ValueKind::Equivalence(..) => {
@@ -328,8 +332,9 @@ fn type_one_layer(
         }
         ExprKind::App(f, arg) => {
             match f.ty().kind() {
+                // TODO: store Type in closure
                 ValueKind::PiClosure { annot, closure, .. } => {
-                    if arg.ty() != annot {
+                    if arg.ty().as_value() != annot {
                         return mkerr(
                             ErrorBuilder::new(format!(
                                 "wrong type of function argument"
@@ -358,7 +363,7 @@ fn type_one_layer(
                     }
 
                     let arg_nf = arg.eval(env);
-                    closure.apply(arg_nf)
+                    closure.apply(arg_nf).to_type()
                 }
                 _ => return mkerr(
                     ErrorBuilder::new(format!(
@@ -407,7 +412,7 @@ fn type_one_layer(
                 Ok(r_t.clone())
             })?;
 
-            Value::from_kind(ValueKind::RecordType(kts))
+            Value::from_kind(ValueKind::RecordType(kts)).to_type()
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             check_rectymerge(&span, env, x.ty().clone(), y.ty().clone())?;
@@ -420,15 +425,20 @@ fn type_one_layer(
                 )),
                 span.clone(),
             )
-            .eval(env)
+            .eval_to_type(env)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
-            check_rectymerge(&span, env, x.eval(env), y.eval(env))?;
+            check_rectymerge(
+                &span,
+                env,
+                x.eval_to_type(env),
+                y.eval_to_type(env),
+            )?;
 
             // A RecordType's type is always a const
             let xk = x.ty().as_const().unwrap();
             let yk = y.ty().as_const().unwrap();
-            Value::from_const(max(xk, yk))
+            Type::from_const(max(xk, yk))
         }
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             match l.ty().kind() {
@@ -453,10 +463,10 @@ fn type_one_layer(
                 return span_err("EquivalenceArgumentsMustBeTerms");
             }
 
-            Value::from_const(Const::Type)
+            Type::from_const(Const::Type)
         }
         ExprKind::BinOp(o, l, r) => {
-            let t = Value::from_builtin(match o {
+            let t = Type::from_builtin(match o {
                 BinOp::BoolAnd
                 | BinOp::BoolOr
                 | BinOp::BoolEQ
@@ -507,7 +517,7 @@ fn type_one_layer(
 
             let mut inferred_type = None;
             for (x, handler_type) in handlers {
-                let handler_return_type = match variants.get(x) {
+                let handler_return_type: Type = match variants.get(x) {
                     // Union alternative with type
                     Some(Some(variant_type)) => match handler_type.kind() {
                         ValueKind::PiClosure { closure, annot, .. } => {
@@ -542,7 +552,7 @@ fn type_one_layer(
                             }
 
                             match closure.remove_binder() {
-                                Ok(v) => v,
+                                Ok(v) => v.to_type(),
                                 Err(()) => {
                                     return span_err(
                                         "MergeReturnTypeIsDependent",
@@ -586,7 +596,7 @@ fn type_one_layer(
                         }
                     },
                     // Union alternative without type
-                    Some(None) => handler_type.clone(),
+                    Some(None) => handler_type.clone().to_type(),
                     None => return span_err("MergeHandlerMissingVariant"),
                 };
                 match &inferred_type {
@@ -604,7 +614,7 @@ fn type_one_layer(
                 }
             }
 
-            let type_annot = type_annot.as_ref().map(|t| t.eval(env));
+            let type_annot = type_annot.as_ref().map(|t| t.eval_to_type(env));
             match (inferred_type, type_annot) {
                 (Some(t1), Some(t2)) => {
                     if t1 != t2 {
@@ -638,7 +648,7 @@ fn type_one_layer(
                          annotation",
                     );
                 };
-                let annot_val = annot.eval(env);
+                let annot_val = annot.eval_to_type(env);
 
                 let err_msg = "The type of `toMap x` must be of the form \
                                `List { mapKey : Text, mapValue : T }`";
@@ -679,10 +689,11 @@ fn type_one_layer(
                 let mut kts = HashMap::new();
                 kts.insert("mapKey".into(), Value::from_builtin(Builtin::Text));
                 kts.insert("mapValue".into(), entry_type);
-                let output_type = Value::from_builtin(Builtin::List)
-                    .app(Value::from_kind(ValueKind::RecordType(kts)));
+                let output_type: Type = Value::from_builtin(Builtin::List)
+                    .app(Value::from_kind(ValueKind::RecordType(kts)))
+                    .to_type();
                 if let Some(annot) = annot {
-                    let annot_val = annot.eval(env);
+                    let annot_val = annot.eval_to_type(env);
                     if output_type != annot_val {
                         return span_err("Annotation mismatch");
                     }
@@ -713,7 +724,7 @@ fn type_one_layer(
                 };
             }
 
-            Value::from_kind(ValueKind::RecordType(new_kts))
+            Value::from_kind(ValueKind::RecordType(new_kts)).to_type()
         }
         ExprKind::ProjectionByExpr(record, selection) => {
             let record_type = record.ty();
@@ -722,7 +733,7 @@ fn type_one_layer(
                 _ => return span_err("ProjectionMustBeRecord"),
             };
 
-            let selection_val = selection.eval(env);
+            let selection_val = selection.eval_to_type(env);
             let sel_kts = match selection_val.kind() {
                 ValueKind::RecordType(kts) => kts,
                 _ => return span_err("ProjectionByExprTakesRecordType"),
@@ -781,9 +792,9 @@ pub(crate) fn type_with(
         HirKind::Expr(ExprKind::Annot(x, t)) => {
             let t = match t.kind() {
                 HirKind::Expr(ExprKind::Const(Const::Sort)) => {
-                    Value::from_const(Const::Sort)
+                    Type::from_const(Const::Sort)
                 }
-                _ => type_with(env, t, None)?.eval(env),
+                _ => type_with(env, t, None)?.eval_to_type(env),
             };
             type_with(env, x, Some(t))
         }
@@ -791,21 +802,21 @@ pub(crate) fn type_with(
             let ekind = match ekind {
                 ExprKind::Lam(binder, annot, body) => {
                     let annot = type_with(env, annot, None)?;
-                    let annot_nf = annot.eval(env);
+                    let annot_nf = annot.eval_to_type(env);
                     let body_env = env.insert_type(binder, annot_nf);
                     let body = type_with(&body_env, body, None)?;
                     ExprKind::Lam(binder.clone(), annot, body)
                 }
                 ExprKind::Pi(binder, annot, body) => {
                     let annot = type_with(env, annot, None)?;
-                    let annot_nf = annot.eval(env);
-                    let body_env = env.insert_type(binder, annot_nf);
+                    let annot_val = annot.eval_to_type(env);
+                    let body_env = env.insert_type(binder, annot_val);
                     let body = type_with(&body_env, body, None)?;
                     ExprKind::Pi(binder.clone(), annot, body)
                 }
                 ExprKind::Let(binder, annot, val, body) => {
                     let val_annot = if let Some(t) = annot {
-                        Some(type_with(env, t, None)?.eval(env))
+                        Some(type_with(env, t, None)?.eval_to_type(env))
                     } else {
                         None
                     };
@@ -831,6 +842,6 @@ pub(crate) fn typecheck(hir: &Hir) -> Result<TyExpr, TypeError> {
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
 pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<TyExpr, TypeError> {
-    let ty = typecheck(&ty)?.eval(&TyEnv::new());
+    let ty = typecheck(&ty)?.eval_to_type(&TyEnv::new());
     type_with(&TyEnv::new(), hir, Some(ty))
 }
