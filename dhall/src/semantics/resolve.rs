@@ -105,9 +105,9 @@ fn traverse_resolve_expr(
     expr: &Expr,
     f: &mut impl FnMut(Import) -> Result<Hir, Error>,
 ) -> Result<Hir, Error> {
-    let kind = match expr.kind() {
+    Ok(match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
-            Some(v) => HirKind::Var(v),
+            Some(v) => Hir::new(HirKind::Var(v), expr.span()),
             None => mkerr(
                 ErrorBuilder::new(format!("unbound variable `{}`", var))
                     .span_err(expr.span(), "not found in this scope")
@@ -115,16 +115,38 @@ fn traverse_resolve_expr(
             )?,
         },
         ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
-            return match traverse_resolve_expr(name_env, l, f) {
-                Ok(l) => Ok(l),
+            match traverse_resolve_expr(name_env, l, f) {
+                Ok(l) => l,
                 Err(_) => {
                     match traverse_resolve_expr(name_env, r, f) {
-                        Ok(r) => Ok(r),
+                        Ok(r) => r,
                         // TODO: keep track of the other error too
-                        Err(e) => Err(e),
+                        Err(e) => return Err(e),
                     }
                 }
-            };
+            }
+        }
+        // Desugar
+        ExprKind::Completion(ty, compl) => {
+            let ty_field_default = Expr::new(
+                ExprKind::Field(ty.clone(), "default".into()),
+                expr.span(),
+            );
+            let merged = Expr::new(
+                ExprKind::BinOp(
+                    BinOp::RightBiasedRecordMerge,
+                    ty_field_default,
+                    compl.clone(),
+                ),
+                expr.span(),
+            );
+            let ty_field_type = Expr::new(
+                ExprKind::Field(ty.clone(), "Type".into()),
+                expr.span(),
+            );
+            let desugared =
+                Expr::new(ExprKind::Annot(merged, ty_field_type), expr.span());
+            traverse_resolve_expr(name_env, &desugared, f)?
         }
         kind => {
             let kind = kind.traverse_ref_maybe_binder(|l, e| {
@@ -137,14 +159,13 @@ fn traverse_resolve_expr(
                 }
                 Ok::<_, Error>(hir)
             })?;
-            match kind {
+            let kind = match kind {
                 ExprKind::Import(import) => f(import)?.kind().clone(),
                 kind => HirKind::Expr(kind),
-            }
+            };
+            Hir::new(kind, expr.span())
         }
-    };
-
-    Ok(Hir::new(kind, expr.span()))
+    })
 }
 
 fn resolve_with_env(

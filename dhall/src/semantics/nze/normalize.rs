@@ -231,17 +231,16 @@ pub(crate) fn normalize_one_layer(
     };
 
     let ret = match expr {
-        ExprKind::Import(_) => unreachable!(
-            "There should remain no imports in a resolved expression"
-        ),
-        // Those cases have already been completely handled in the typechecking phase (using
-        // `RetWhole`), so they won't appear here.
-        ExprKind::Lam(..)
-        | ExprKind::Pi(..)
-        | ExprKind::Let(..)
-        | ExprKind::Var(_) => {
-            unreachable!("This case should have been handled in typecheck")
+        ExprKind::Import(..) | ExprKind::Completion(..) => {
+            unreachable!("This case should have been handled in resolution")
         }
+        ExprKind::Var(..)
+        | ExprKind::Lam(..)
+        | ExprKind::Pi(..)
+        | ExprKind::Let(..) => unreachable!(
+            "This case should have been handled in normalize_hir_whnf"
+        ),
+
         ExprKind::Annot(x, _) => Ret::Value(x),
         ExprKind::Const(c) => Ret::Value(Value::from_const(c)),
         ExprKind::Builtin(b) => Ret::Value(Value::from_builtin_env(b, env)),
@@ -391,7 +390,6 @@ pub(crate) fn normalize_one_layer(
         ExprKind::ProjectionByExpr(_, _) => {
             unimplemented!("selection by expression")
         }
-        ExprKind::Completion(_, _) => unimplemented!("record completion"),
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
             match handlers.kind() {

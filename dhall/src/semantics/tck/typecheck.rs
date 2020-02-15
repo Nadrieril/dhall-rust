@@ -75,12 +75,14 @@ fn type_one_layer(
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
     let ty = match &ekind {
-        ExprKind::Import(..) => unreachable!(
-            "There should remain no imports in a resolved expression"
-        ),
+        ExprKind::Import(..) | ExprKind::Completion(..) => {
+            unreachable!("This case should have been handled in resolution")
+        }
         ExprKind::Var(..)
         | ExprKind::Const(Const::Sort)
-        | ExprKind::Annot(..) => unreachable!(), // Handled in type_with
+        | ExprKind::Annot(..) => {
+            unreachable!("This case should have been handled in type_with")
+        }
 
         ExprKind::Lam(binder, annot, body) => {
             if annot.ty().as_const().is_none() {
@@ -738,30 +740,6 @@ fn type_one_layer(
             }
 
             selection_val
-        }
-        ExprKind::Completion(ty, compl) => {
-            let ty_field_default = type_one_layer(
-                env,
-                ExprKind::Field(ty.clone(), "default".into()),
-                None,
-                span.clone(),
-            )?;
-            let ty_field_type = type_one_layer(
-                env,
-                ExprKind::Field(ty.clone(), "Type".into()),
-                None,
-                span.clone(),
-            )?;
-            return type_one_layer(
-                env,
-                ExprKind::BinOp(
-                    BinOp::RightBiasedRecordMerge,
-                    ty_field_default,
-                    compl.clone(),
-                ),
-                Some(ty_field_type.eval(env)),
-                span.clone(),
-            );
         }
     };
 

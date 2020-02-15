@@ -14,7 +14,7 @@ pub struct AlphaVar {
 pub(crate) enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
-    // Forbidden ExprKind variants: Var, Import
+    // Forbidden ExprKind variants: Var, Import, Completion
     Expr(ExprKind<Hir>),
 }
 
