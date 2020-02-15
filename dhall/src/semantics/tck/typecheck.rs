@@ -12,6 +12,38 @@ use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
 };
 
+fn check_rectymerge(
+    span: &Span,
+    env: &TyEnv,
+    x: Type,
+    y: Type,
+) -> Result<(), TypeError> {
+    let kts_x = match x.kind() {
+        ValueKind::RecordType(kts) => kts,
+        _ => {
+            return mk_span_err(
+                span.clone(),
+                "RecordTypeMergeRequiresRecordType",
+            )
+        }
+    };
+    let kts_y = match y.kind() {
+        ValueKind::RecordType(kts) => kts,
+        _ => {
+            return mk_span_err(
+                span.clone(),
+                "RecordTypeMergeRequiresRecordType",
+            )
+        }
+    };
+    for (k, tx) in kts_x {
+        if let Some(ty) = kts_y.get(k) {
+            check_rectymerge(span, env, tx.clone(), ty.clone())?;
+        }
+    }
+    Ok(())
+}
+
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {
         Const::Type
@@ -51,11 +83,39 @@ fn type_one_layer(
         | ExprKind::Annot(..) => unreachable!(), // Handled in type_with
 
         ExprKind::Lam(binder, annot, body) => {
-            let body_ty = body.get_type_tyexpr(
-                &env.insert_type(&binder.clone(), annot.eval(env)),
-            )?;
-            let pi_ekind = ExprKind::Pi(binder.clone(), annot.clone(), body_ty);
-            type_one_layer(env, pi_ekind, None, Span::Artificial)?.eval(env)
+            if annot.ty().as_const().is_none() {
+                return mkerr(
+                    ErrorBuilder::new(format!(
+                        "Invalid input type: `{}`",
+                        annot.ty().to_expr_tyenv(env),
+                    ))
+                    .span_err(
+                        annot.span(),
+                        format!(
+                            "this has type: `{}`",
+                            annot.ty().to_expr_tyenv(env)
+                        ),
+                    )
+                    .help(format!(
+                        "The input type of a function must have type `Type`, \
+                         `Kind` or `Sort`",
+                    ))
+                    .format(),
+                );
+            }
+            let body_env = env.insert_type(&binder, annot.eval(env));
+            if body.get_kind(&body_env)?.is_none() {
+                return span_err("Invalid output type");
+            }
+            Hir::new(
+                HirKind::Expr(ExprKind::Pi(
+                    binder.clone(),
+                    annot.to_hir(),
+                    body.ty().to_hir(body_env.as_varenv()),
+                )),
+                span.clone(),
+            )
+            .eval(env)
         }
         ExprKind::Pi(_, annot, body) => {
             let ks = match annot.ty().as_const() {
@@ -348,45 +408,19 @@ fn type_one_layer(
             Value::from_kind(ValueKind::RecordType(kts))
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
-            let ekind = ExprKind::BinOp(
-                BinOp::RecursiveRecordTypeMerge,
-                x.get_type_tyexpr(env)?,
-                y.get_type_tyexpr(env)?,
-            );
-            type_one_layer(env, ekind, None, span.clone())?.eval(env)
+            check_rectymerge(&span, env, x.ty().clone(), y.ty().clone())?;
+
+            Hir::new(
+                HirKind::Expr(ExprKind::BinOp(
+                    BinOp::RecursiveRecordTypeMerge,
+                    x.ty().to_hir(env.as_varenv()),
+                    y.ty().to_hir(env.as_varenv()),
+                )),
+                span.clone(),
+            )
+            .eval(env)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
-            fn check_rectymerge(
-                span: &Span,
-                env: &TyEnv,
-                x: Type,
-                y: Type,
-            ) -> Result<(), TypeError> {
-                let kts_x = match x.kind() {
-                    ValueKind::RecordType(kts) => kts,
-                    _ => {
-                        return mk_span_err(
-                            span.clone(),
-                            "RecordTypeMergeRequiresRecordType",
-                        )
-                    }
-                };
-                let kts_y = match y.kind() {
-                    ValueKind::RecordType(kts) => kts,
-                    _ => {
-                        return mk_span_err(
-                            span.clone(),
-                            "RecordTypeMergeRequiresRecordType",
-                        )
-                    }
-                };
-                for (k, tx) in kts_x {
-                    if let Some(ty) = kts_y.get(k) {
-                        check_rectymerge(span, env, tx.clone(), ty.clone())?;
-                    }
-                }
-                Ok(())
-            }
             check_rectymerge(&span, env, x.eval(env), y.eval(env))?;
 
             // A RecordType's type is always a const

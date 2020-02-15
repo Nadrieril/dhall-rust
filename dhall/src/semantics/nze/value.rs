@@ -87,7 +87,7 @@ pub(crate) enum ValueKind {
     UnionLit(Label, Value, HashMap<Label, Option<Value>>),
     TextLit(TextLit),
     Equivalence(Value, Value),
-    /// Invariant: evaluation must not be able to progress with `normalize_one_layer`?
+    /// Invariant: evaluation must not be able to progress with `normalize_one_layer`.
     PartialExpr(ExprKind<Value>),
 }
 
@@ -387,7 +387,7 @@ impl Closure {
     pub fn apply(&self, val: Value) -> Value {
         match self {
             Closure::Closure { env, body, .. } => {
-                body.eval(&env.insert_value(val, ()))
+                body.eval(env.insert_value(val, ()))
             }
             Closure::ConstantClosure { body, .. } => body.clone(),
         }

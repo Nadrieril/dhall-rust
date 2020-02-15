@@ -26,13 +26,15 @@ impl TyExpr {
     pub fn ty(&self) -> &Type {
         &self.ty
     }
-    pub fn get_type_tyexpr(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
-        Ok(self.ty().to_hir(env.as_varenv()).typecheck(env)?)
-    }
     /// Get the kind (the type of the type) of this value
     // TODO: avoid recomputing so much
     pub fn get_kind(&self, env: &TyEnv) -> Result<Option<Const>, TypeError> {
-        Ok(self.get_type_tyexpr(env)?.ty().as_const())
+        Ok(self
+            .ty()
+            .to_hir(env.as_varenv())
+            .typecheck(env)?
+            .ty()
+            .as_const())
     }
 
     pub fn to_hir(&self) -> Hir {
@@ -48,7 +50,7 @@ impl TyExpr {
 
     /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
-        self.as_hir().eval(&env.into())
+        self.as_hir().eval(env.into())
     }
     /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
