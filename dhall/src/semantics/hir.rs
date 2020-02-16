@@ -1,6 +1,5 @@
-#![allow(dead_code)]
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, NzEnv, TyEnv, TyExpr, Type, Value};
+use crate::semantics::{type_with, NameEnv, NzEnv, TyEnv, TyExpr, Value};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -78,21 +77,6 @@ impl Hir {
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
         Value::new_thunk(env.into(), self.clone())
-    }
-    /// Evaluate to a Type.
-    pub fn eval_to_type(&self, env: impl Into<NzEnv>) -> Type {
-        self.eval(env).into()
-    }
-    /// Eval a closed Hir (i.e. without free variables). It will actually get evaluated only as
-    /// needed on demand.
-    pub fn eval_closed_expr(&self) -> Value {
-        self.eval(&NzEnv::new())
-    }
-    /// Eval a closed Hir fully and recursively (TODO: ish, need to fix under lambdas)
-    pub fn rec_eval_closed_expr(&self) -> Value {
-        let val = self.eval_closed_expr();
-        val.normalize();
-        val
     }
 }
 
