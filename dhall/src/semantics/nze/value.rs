@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::semantics::nze::lazy;
 use crate::semantics::{
     apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit, Binder,
-    BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, VarEnv,
+    BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, LitKind,
@@ -139,8 +139,8 @@ impl Value {
         self.0.kind()
     }
 
-    pub(crate) fn to_type(&self) -> Type {
-        self.clone().into()
+    pub(crate) fn to_type(&self, u: impl Into<Universe>) -> Type {
+        Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {

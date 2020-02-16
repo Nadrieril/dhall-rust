@@ -1,1 +1,6 @@
-Type error: error: Sort does not have a type
+Type error: error: InvalidFieldType
+ --> <current file>:1:0
+  |
+1 | { a = Kind }
+  | ^^^^^^^^^^^^ InvalidFieldType
+  |

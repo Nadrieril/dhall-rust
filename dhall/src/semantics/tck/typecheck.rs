@@ -136,24 +136,30 @@ fn type_one_layer(
                     return span_err("InvalidListElement");
                 }
             }
-            if x.ty().ty(env)? != Some(Const::Type) {
+            if x.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("InvalidListType");
             }
 
             let t = x.ty().to_value();
-            Value::from_builtin(Builtin::List).app(t).to_type()
+            Value::from_builtin(Builtin::List)
+                .app(t)
+                .to_type(Const::Type)
         }
         ExprKind::SomeLit(x) => {
-            if x.ty().ty(env)? != Some(Const::Type) {
+            if x.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("InvalidOptionalType");
             }
 
             let t = x.ty().to_value();
-            Value::from_builtin(Builtin::Optional).app(t).to_type()
+            Value::from_builtin(Builtin::Optional)
+                .app(t)
+                .to_type(Const::Type)
         }
         ExprKind::RecordLit(kvs) => {
             use std::collections::hash_map::Entry;
             let mut kts = HashMap::new();
+            // An empty record type has type Type
+            let mut k = Const::Type;
             for (x, v) in kvs {
                 // Check for duplicated entries
                 match kts.entry(x.clone()) {
@@ -164,13 +170,13 @@ fn type_one_layer(
                 };
 
                 // Check that the fields have a valid kind
-                match v.ty().ty(env)? {
-                    Some(_) => {}
+                match v.ty().ty().as_const() {
+                    Some(c) => k = max(k, c),
                     None => return span_err("InvalidFieldType"),
                 }
             }
 
-            Value::from_kind(ValueKind::RecordType(kts)).to_type()
+            Value::from_kind(ValueKind::RecordType(kts)).to_type(k)
         }
         ExprKind::RecordType(kts) => {
             use std::collections::hash_map::Entry;
@@ -226,29 +232,31 @@ fn type_one_layer(
         ExprKind::Field(scrut, x) => {
             match scrut.ty().kind() {
                 ValueKind::RecordType(kts) => match kts.get(&x) {
-                    Some(val) => val.clone().to_type(),
+                    Some(val) => Type::new_infer_universe(env, val.clone())?,
                     None => return span_err("MissingRecordField"),
                 },
-                // TODO: branch here only when scrut.ty() is a Const
-                _ => {
-                    let scrut_nf = scrut.eval(env);
-                    match scrut_nf.kind() {
+                ValueKind::Const(_) => {
+                    let scrut = scrut.eval_to_type(env)?;
+                    match scrut.kind() {
                         ValueKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(ty)) => {
                                 Value::from_kind(ValueKind::PiClosure {
                                     binder: Binder::new(x.clone()),
                                     annot: ty.clone(),
-                                    closure: Closure::new_constant(scrut_nf),
+                                    closure: Closure::new_constant(
+                                        scrut.to_value(),
+                                    ),
                                 })
-                                .to_type()
+                                .to_type(scrut.ty())
                             }
-                            Some(None) => scrut_nf.to_type(),
+                            Some(None) => scrut,
                             None => return span_err("MissingUnionField"),
                         },
                         _ => return span_err("NotARecord"),
                     }
-                } // _ => span_err("NotARecord"),
+                }
+                _ => return span_err("NotARecord"),
             }
         }
         ExprKind::Assert(t) => {
@@ -295,7 +303,7 @@ fn type_one_layer(
                     }
 
                     let arg_nf = arg.eval(env);
-                    closure.apply(arg_nf).to_type()
+                    Type::new_infer_universe(env, closure.apply(arg_nf))?
                 }
                 _ => return mkerr(
                     ErrorBuilder::new(format!(
@@ -314,7 +322,7 @@ fn type_one_layer(
             if *x.ty().kind() != ValueKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
-            if y.ty().ty(env)? != Some(Const::Type) {
+            if y.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("IfBranchMustBeTerm");
             }
             if y.ty() != z.ty() {
@@ -344,7 +352,8 @@ fn type_one_layer(
                 Ok(r_t.clone())
             })?;
 
-            Value::from_kind(ValueKind::RecordType(kts)).to_type()
+            let u = max(x.ty().ty(), y.ty().ty());
+            Value::from_kind(ValueKind::RecordType(kts)).to_type(u)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
             check_rectymerge(&span, env, x.ty().to_value(), y.ty().to_value())?;
@@ -357,8 +366,8 @@ fn type_one_layer(
                 )),
                 span.clone(),
             );
-            let x_u = x.ty().ty_univ(env)?;
-            let y_u = y.ty().ty_univ(env)?;
+            let x_u = x.ty().ty();
+            let y_u = y.ty().ty();
             Type::new(hir.eval(env), max(x_u, y_u))
         }
         ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
@@ -388,7 +397,7 @@ fn type_one_layer(
             if l.ty() != r.ty() {
                 return span_err("EquivalenceTypeMismatch");
             }
-            if l.ty().ty(env)? != Some(Const::Type) {
+            if l.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("EquivalenceArgumentsMustBeTerms");
             }
 
@@ -480,8 +489,11 @@ fn type_one_layer(
                                 );
                             }
 
+                            // TODO: this actually doesn't check anything yet
                             match closure.remove_binder() {
-                                Ok(v) => v.to_type(),
+                                Ok(v) => {
+                                    Type::new_infer_universe(env, v.clone())?
+                                }
                                 Err(()) => {
                                     return span_err(
                                         "MergeReturnTypeIsDependent",
@@ -525,7 +537,9 @@ fn type_one_layer(
                         }
                     },
                     // Union alternative without type
-                    Some(None) => handler_type.clone().to_type(),
+                    Some(None) => {
+                        Type::new_infer_universe(env, handler_type.clone())?
+                    }
                     None => return span_err("MergeHandlerMissingVariant"),
                 };
                 match &inferred_type {
@@ -560,7 +574,7 @@ fn type_one_layer(
             }
         }
         ExprKind::ToMap(record, annot) => {
-            if record.ty().ty(env)? != Some(Const::Type) {
+            if record.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("`toMap` only accepts records of type `Type`");
             }
             let record_t = record.ty();
@@ -623,7 +637,7 @@ fn type_one_layer(
                 kts.insert("mapValue".into(), entry_type);
                 let output_type: Type = Value::from_builtin(Builtin::List)
                     .app(Value::from_kind(ValueKind::RecordType(kts)))
-                    .to_type();
+                    .to_type(Const::Type);
                 if let Some(annot) = annot {
                     let annot_val = annot.eval_to_type(env)?;
                     if output_type != annot_val {
@@ -656,7 +670,10 @@ fn type_one_layer(
                 };
             }
 
-            Value::from_kind(ValueKind::RecordType(new_kts)).to_type()
+            Type::new_infer_universe(
+                env,
+                Value::from_kind(ValueKind::RecordType(new_kts)),
+            )?
         }
         ExprKind::ProjectionByExpr(record, selection) => {
             let record_type = record.ty();
@@ -721,7 +738,7 @@ pub(crate) fn type_with(
             let body = type_with(&body_env, body, None)?;
 
             let u_annot = annot.ty().as_const().unwrap();
-            let u_body = match body.ty().ty(&body_env)? {
+            let u_body = match body.ty().ty().as_const() {
                 Some(k) => k,
                 _ => return mk_span_err(hir.span(), "Invalid output type"),
             };

@@ -11,6 +11,7 @@ pub(crate) struct Universe(u8);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Type {
     val: Value,
+    univ: Universe,
 }
 
 /// A hir expression plus its inferred type.
@@ -39,18 +40,28 @@ impl Universe {
     pub fn next(self) -> Self {
         Universe(self.0 + 1)
     }
-    pub fn previous(self) -> Option<Self> {
-        if self.0 == 0 {
-            None
-        } else {
-            Some(Universe(self.0 - 1))
-        }
-    }
 }
 
 impl Type {
-    pub fn new(val: Value, _u: Universe) -> Self {
-        Type { val }
+    pub fn new(val: Value, univ: Universe) -> Self {
+        Type { val, univ }
+    }
+    /// Creates a new Type and infers its universe by re-typechecking its value.
+    /// TODO: ideally avoid this function altogether. Would need to store types in RecordType and
+    /// PiClosure.
+    pub fn new_infer_universe(
+        env: &TyEnv,
+        val: Value,
+    ) -> Result<Self, TypeError> {
+        let c = val.to_hir(env.as_varenv()).typecheck(env)?.ty().as_const();
+        let u = match c {
+            Some(c) => c.to_universe(),
+            None => unreachable!(
+                "internal type error: this is not a type: {:?}",
+                val
+            ),
+        };
+        Ok(Type::new(val, u))
     }
     pub fn from_const(c: Const) -> Self {
         Self::new(Value::from_const(c), c.to_universe().next())
@@ -66,18 +77,8 @@ impl Type {
     }
 
     /// Get the type of this type
-    // TODO: avoid recomputing so much
-    pub fn ty(&self, env: &TyEnv) -> Result<Option<Const>, TypeError> {
-        Ok(self.to_hir(env.as_varenv()).typecheck(env)?.ty().as_const())
-    }
-    /// Get the type of this type
-    // TODO: avoid recomputing so much
-    pub fn ty_univ(&self, env: &TyEnv) -> Result<Universe, TypeError> {
-        Ok(match self.ty(env)? {
-            Some(c) => c.to_universe(),
-            // TODO: hack, might explode
-            None => Const::Sort.to_universe().next(),
-        })
+    pub fn ty(&self) -> Universe {
+        self.univ
     }
 
     pub fn to_value(&self) -> Value {
@@ -184,8 +185,8 @@ impl TyExpr {
     }
 }
 
-impl From<Value> for Type {
-    fn from(x: Value) -> Type {
-        Type { val: x }
+impl From<Const> for Universe {
+    fn from(x: Const) -> Universe {
+        Universe::from_const(x)
     }
 }
