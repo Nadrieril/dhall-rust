@@ -471,7 +471,7 @@ pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> ValueKind {
                 closure: Closure::new(env, body.clone()),
             }
         }
-        HirKind::Expr(ExprKind::Let(_, None, val, body)) => {
+        HirKind::Expr(ExprKind::Let(_, _, val, body)) => {
             let val = val.eval(env);
             body.eval(env.insert_value(val, ())).kind().clone()
         }

@@ -1,3 +1,4 @@
+use crate::semantics::Universe;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor;
 use crate::syntax::*;
@@ -16,6 +17,12 @@ pub enum Const {
     Type,
     Kind,
     Sort,
+}
+
+impl Const {
+    pub(crate) fn to_universe(self) -> Universe {
+        Universe::from_const(self)
+    }
 }
 
 /// Bound variable
