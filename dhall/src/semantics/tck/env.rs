@@ -1,16 +1,10 @@
-use crate::semantics::{AlphaVar, NzEnv, NzVar, Type, ValEnv, Value};
-use crate::syntax::{Label, V};
+use crate::semantics::{AlphaVar, NameEnv, NzEnv, NzVar, Type, ValEnv, Value};
+use crate::syntax::Label;
 
 /// Environment for indexing variables.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VarEnv {
     size: usize,
-}
-
-/// Environment for resolving names.
-#[derive(Debug, Clone)]
-pub(crate) struct NameEnv {
-    names: Vec<Label>,
 }
 
 /// Environment for typing expressions.
@@ -23,6 +17,9 @@ pub(crate) struct TyEnv {
 impl VarEnv {
     pub fn new() -> Self {
         VarEnv { size: 0 }
+    }
+    pub fn from_size(size: usize) -> Self {
+        VarEnv { size }
     }
     pub fn size(&self) -> usize {
         self.size
@@ -38,52 +35,6 @@ impl VarEnv {
     pub fn lookup_fallible(&self, var: &NzVar) -> Option<AlphaVar> {
         let idx = self.size.checked_sub(var.idx() + 1)?;
         Some(AlphaVar::new(idx))
-    }
-}
-
-impl NameEnv {
-    pub fn new() -> Self {
-        NameEnv { names: Vec::new() }
-    }
-    pub fn as_varenv(&self) -> VarEnv {
-        VarEnv {
-            size: self.names.len(),
-        }
-    }
-
-    pub fn insert(&self, x: &Label) -> Self {
-        let mut env = self.clone();
-        env.insert_mut(x);
-        env
-    }
-    pub fn insert_mut(&mut self, x: &Label) {
-        self.names.push(x.clone())
-    }
-    pub fn remove_mut(&mut self) {
-        self.names.pop();
-    }
-
-    pub fn unlabel_var(&self, var: &V) -> Option<AlphaVar> {
-        let V(name, idx) = var;
-        let (idx, _) = self
-            .names
-            .iter()
-            .rev()
-            .enumerate()
-            .filter(|(_, n)| *n == name)
-            .nth(*idx)?;
-        Some(AlphaVar::new(idx))
-    }
-    pub fn label_var(&self, var: &AlphaVar) -> V {
-        let name = &self.names[self.names.len() - 1 - var.idx()];
-        let idx = self
-            .names
-            .iter()
-            .rev()
-            .take(var.idx())
-            .filter(|n| *n == name)
-            .count();
-        V(name.clone(), idx)
     }
 }
 

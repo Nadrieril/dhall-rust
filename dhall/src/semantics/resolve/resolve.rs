@@ -1,14 +1,13 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
-use crate::semantics::{mkerr, Hir, HirKind, NameEnv};
+use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv};
 use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
 use crate::{Parsed, ParsedExpr, Resolved};
 
-type Import = syntax::Import<Hir>;
+pub(crate) type Import = syntax::Import<Hir>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,56 +15,8 @@ pub(crate) enum ImportRoot {
     LocalDir(PathBuf),
 }
 
-type ImportCache = HashMap<Import, Hir>;
-
-pub(crate) type ImportStack = Vec<Import>;
-
-struct ResolveEnv {
-    cache: ImportCache,
-    stack: ImportStack,
-}
-
-impl ResolveEnv {
-    pub fn new() -> Self {
-        ResolveEnv {
-            cache: HashMap::new(),
-            stack: Vec::new(),
-        }
-    }
-
-    pub fn handle_import(
-        &mut self,
-        import: Import,
-        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<Hir, Error>,
-    ) -> Result<Hir, Error> {
-        if self.stack.contains(&import) {
-            return Err(
-                ImportError::ImportCycle(self.stack.clone(), import).into()
-            );
-        }
-        Ok(match self.cache.get(&import) {
-            Some(expr) => expr.clone(),
-            None => {
-                // Push the current import on the stack
-                self.stack.push(import.clone());
-
-                // Resolve the import recursively
-                let expr = do_resolve(self, &import)?;
-
-                // Remove import from the stack.
-                self.stack.pop();
-
-                // Add the import to the cache
-                self.cache.insert(import, expr.clone());
-
-                expr
-            }
-        })
-    }
-}
-
 fn resolve_one_import(
-    env: &mut ResolveEnv,
+    env: &mut ImportEnv,
     import: &Import,
     root: &ImportRoot,
 ) -> Result<Hir, Error> {
@@ -90,7 +41,7 @@ fn resolve_one_import(
     }
 }
 
-fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Hir, Error> {
+fn load_import(env: &mut ImportEnv, f: &Path) -> Result<Hir, Error> {
     let parsed = Parsed::parse_file(f)?;
     Ok(resolve_with_env(env, parsed)?
         .typecheck()?
@@ -99,7 +50,7 @@ fn load_import(env: &mut ResolveEnv, f: &Path) -> Result<Hir, Error> {
 }
 
 /// Traverse the expression, handling import alternatives and passing
-/// found imports to the provided function.
+/// found imports to the provided function. Also resolving names.
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
     expr: &Expr,
@@ -169,7 +120,7 @@ fn traverse_resolve_expr(
 }
 
 fn resolve_with_env(
-    env: &mut ResolveEnv,
+    env: &mut ImportEnv,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
     let Parsed(expr, root) = parsed;
@@ -183,7 +134,7 @@ fn resolve_with_env(
 }
 
 pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    resolve_with_env(&mut ResolveEnv::new(), parsed)
+    resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
 pub(crate) fn skip_resolve(expr: &ParsedExpr) -> Result<Hir, Error> {
