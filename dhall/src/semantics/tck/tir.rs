@@ -15,8 +15,9 @@ pub(crate) struct Type {
 }
 
 /// A hir expression plus its inferred type.
+/// Stands for "Typed intermediate representation"
 #[derive(Debug, Clone)]
-pub(crate) struct TyExpr {
+pub(crate) struct Tir {
     hir: Hir,
     ty: Type,
 }
@@ -105,9 +106,9 @@ impl Type {
     }
 }
 
-impl TyExpr {
+impl Tir {
     pub fn from_hir(hir: &Hir, ty: Type) -> Self {
-        TyExpr {
+        Tir {
             hir: hir.clone(),
             ty,
         }
@@ -134,7 +135,7 @@ impl TyExpr {
         self.as_hir().to_expr_tyenv(env)
     }
 
-    /// Eval the TyExpr. It will actually get evaluated only as needed on demand.
+    /// Eval the Tir. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
         self.as_hir().eval(env.into())
     }
@@ -172,12 +173,12 @@ impl TyExpr {
                 .to_universe(),
         ))
     }
-    /// Eval a closed TyExpr (i.e. without free variables). It will actually get evaluated only as
+    /// Eval a closed Tir (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
     pub fn eval_closed_expr(&self) -> Value {
         self.eval(NzEnv::new())
     }
-    /// Eval a closed TyExpr fully and recursively;
+    /// Eval a closed Tir fully and recursively;
     pub fn rec_eval_closed_expr(&self) -> Value {
         let val = self.eval_closed_expr();
         val.normalize();

@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, TyEnv,
-    TyExpr, Type, Value, ValueKind,
+    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, Tir, TyEnv,
+    Type, Value, ValueKind,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
@@ -69,7 +69,7 @@ pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
 /// layer.
 fn type_one_layer(
     env: &TyEnv,
-    ekind: ExprKind<TyExpr>,
+    ekind: ExprKind<Tir>,
     span: Span,
 ) -> Result<Type, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
@@ -91,8 +91,7 @@ fn type_one_layer(
         ExprKind::Const(Const::Kind) => Type::from_const(Const::Sort),
         ExprKind::Builtin(b) => {
             let t_hir = type_of_builtin(*b);
-            let t_tyexpr = typecheck(&t_hir)?;
-            t_tyexpr.eval_to_type(env)?
+            typecheck(&t_hir)?.eval_to_type(env)?
         }
         ExprKind::Lit(LitKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
         ExprKind::Lit(LitKind::Natural(_)) => {
@@ -712,9 +711,9 @@ pub(crate) fn type_with(
     env: &TyEnv,
     hir: &Hir,
     annot: Option<Type>,
-) -> Result<TyExpr, TypeError> {
-    let tyexpr = match hir.kind() {
-        HirKind::Var(var) => TyExpr::from_hir(hir, env.lookup(var)),
+) -> Result<Tir, TypeError> {
+    let tir = match hir.kind() {
+        HirKind::Var(var) => Tir::from_hir(hir, env.lookup(var)),
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }
@@ -753,7 +752,7 @@ pub(crate) fn type_with(
             );
             let ty = Type::new(ty_hir.eval(env), u);
 
-            TyExpr::from_hir(hir, ty)
+            Tir::from_hir(hir, ty)
         }
         HirKind::Expr(ExprKind::Pi(binder, annot, body)) => {
             let annot = type_with(env, annot, None)?;
@@ -765,7 +764,7 @@ pub(crate) fn type_with(
             let ks = annot.ty().as_const().unwrap();
             let kt = body.ty().as_const().unwrap();
             let ty = Type::from_const(function_check(ks, kt));
-            TyExpr::from_hir(hir, ty)
+            Tir::from_hir(hir, ty)
         }
         HirKind::Expr(ExprKind::Let(binder, annot, val, body)) => {
             let val_annot = annot
@@ -777,39 +776,39 @@ pub(crate) fn type_with(
             let body_env = env.insert_value(&binder, val_nf, val.ty().clone());
             let body = type_with(&body_env, body, None)?;
             let ty = body.ty().clone();
-            TyExpr::from_hir(hir, ty)
+            Tir::from_hir(hir, ty)
         }
         HirKind::Expr(ekind) => {
             let ekind = ekind.traverse_ref(|e| type_with(env, e, None))?;
             let ty = type_one_layer(env, ekind, hir.span())?;
-            TyExpr::from_hir(hir, ty)
+            Tir::from_hir(hir, ty)
         }
     };
 
     if let Some(annot) = annot {
-        if *tyexpr.ty() != annot {
+        if *tir.ty() != annot {
             return mk_span_err(
                 hir.span(),
                 &format!(
                     "annot mismatch: {} != {}",
-                    tyexpr.ty().to_expr_tyenv(env),
+                    tir.ty().to_expr_tyenv(env),
                     annot.to_expr_tyenv(env)
                 ),
             );
         }
     }
 
-    Ok(tyexpr)
+    Ok(tir)
 }
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck(hir: &Hir) -> Result<TyExpr, TypeError> {
+pub(crate) fn typecheck(hir: &Hir) -> Result<Tir, TypeError> {
     type_with(&TyEnv::new(), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<TyExpr, TypeError> {
+pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<Tir, TypeError> {
     let ty = typecheck(&ty)?.eval_to_type(&TyEnv::new())?;
     type_with(&TyEnv::new(), hir, Some(ty))
 }

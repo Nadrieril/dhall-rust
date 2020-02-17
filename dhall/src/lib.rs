@@ -22,9 +22,7 @@ use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
-use crate::semantics::{
-    typecheck, typecheck_with, Hir, TyExpr, Value, ValueKind,
-};
+use crate::semantics::{typecheck, typecheck_with, Hir, Tir, Value, ValueKind};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
@@ -44,7 +42,7 @@ pub struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TyExpr);
+pub struct Typed(Tir);
 
 /// A normalized expression.
 ///

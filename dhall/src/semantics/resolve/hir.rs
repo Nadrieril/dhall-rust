@@ -1,5 +1,5 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, NzEnv, TyEnv, TyExpr, Value};
+use crate::semantics::{type_with, NameEnv, NzEnv, Tir, TyEnv, Value};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -70,7 +70,7 @@ impl Hir {
     }
 
     /// Typecheck the Hir.
-    pub fn typecheck(&self, env: &TyEnv) -> Result<TyExpr, TypeError> {
+    pub fn typecheck(&self, env: &TyEnv) -> Result<Tir, TypeError> {
         type_with(env, self, None)
     }
 
