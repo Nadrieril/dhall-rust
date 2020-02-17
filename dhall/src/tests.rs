@@ -208,7 +208,7 @@ impl TestFile {
                     from_slice::<Value>(&expr_data).unwrap(),
                     from_slice::<Value>(&expected_data).unwrap()
                 );
-                // If difference was not visible in the cbor::Value, compare normally.
+                // If difference was not visible in the cbor::Nir, compare normally.
                 assert_eq!(expr_data, expected_data);
             }
         }

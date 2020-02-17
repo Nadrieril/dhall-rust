@@ -1,5 +1,5 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, NzEnv, Tir, TyEnv, Value};
+use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -75,8 +75,8 @@ impl Hir {
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
-    pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
-        Value::new_thunk(env.into(), self.clone())
+    pub fn eval(&self, env: impl Into<NzEnv>) -> Nir {
+        Nir::new_thunk(env.into(), self.clone())
     }
 }
 

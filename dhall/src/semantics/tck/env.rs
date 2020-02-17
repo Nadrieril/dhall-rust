@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, NameEnv, NzEnv, NzVar, Type, ValEnv, Value};
+use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
 use crate::syntax::Label;
 
 /// Environment for indexing variables.
@@ -61,7 +61,7 @@ impl TyEnv {
             items: self.items.insert_type(ty),
         }
     }
-    pub fn insert_value(&self, x: &Label, e: Value, ty: Type) -> Self {
+    pub fn insert_value(&self, x: &Label, e: Nir, ty: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
             items: self.items.insert_value(e, ty),

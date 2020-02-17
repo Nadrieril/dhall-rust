@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, Tir, TyEnv,
-    Type, Value, ValueKind,
+    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, Nir,
+    NirKind, Tir, TyEnv, Type,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
@@ -15,11 +15,11 @@ use crate::syntax::{
 fn check_rectymerge(
     span: &Span,
     env: &TyEnv,
-    x: Value,
-    y: Value,
+    x: Nir,
+    y: Nir,
 ) -> Result<(), TypeError> {
     let kts_x = match x.kind() {
-        ValueKind::RecordType(kts) => kts,
+        NirKind::RecordType(kts) => kts,
         _ => {
             return mk_span_err(
                 span.clone(),
@@ -28,7 +28,7 @@ fn check_rectymerge(
         }
     };
     let kts_y = match y.kind() {
-        ValueKind::RecordType(kts) => kts,
+        NirKind::RecordType(kts) => kts,
         _ => {
             return mk_span_err(
                 span.clone(),
@@ -118,7 +118,7 @@ fn type_one_layer(
         ExprKind::EmptyListLit(t) => {
             let t = t.eval_to_type(env)?;
             match t.kind() {
-                ValueKind::AppliedBuiltin(BuiltinClosure {
+                NirKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     args,
                     ..
@@ -139,18 +139,16 @@ fn type_one_layer(
                 return span_err("InvalidListType");
             }
 
-            let t = x.ty().to_value();
-            Value::from_builtin(Builtin::List)
-                .app(t)
-                .to_type(Const::Type)
+            let t = x.ty().to_nir();
+            Nir::from_builtin(Builtin::List).app(t).to_type(Const::Type)
         }
         ExprKind::SomeLit(x) => {
             if x.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("InvalidOptionalType");
             }
 
-            let t = x.ty().to_value();
-            Value::from_builtin(Builtin::Optional)
+            let t = x.ty().to_nir();
+            Nir::from_builtin(Builtin::Optional)
                 .app(t)
                 .to_type(Const::Type)
         }
@@ -165,7 +163,7 @@ fn type_one_layer(
                     Entry::Occupied(_) => {
                         return span_err("RecordTypeDuplicateField")
                     }
-                    Entry::Vacant(e) => e.insert(v.ty().to_value()),
+                    Entry::Vacant(e) => e.insert(v.ty().to_nir()),
                 };
 
                 // Check that the fields have a valid kind
@@ -175,7 +173,7 @@ fn type_one_layer(
                 }
             }
 
-            Value::from_kind(ValueKind::RecordType(kts)).to_type(k)
+            Nir::from_kind(NirKind::RecordType(kts)).to_type(k)
         }
         ExprKind::RecordType(kts) => {
             use std::collections::hash_map::Entry;
@@ -230,21 +228,21 @@ fn type_one_layer(
         }
         ExprKind::Field(scrut, x) => {
             match scrut.ty().kind() {
-                ValueKind::RecordType(kts) => match kts.get(&x) {
+                NirKind::RecordType(kts) => match kts.get(&x) {
                     Some(val) => Type::new_infer_universe(env, val.clone())?,
                     None => return span_err("MissingRecordField"),
                 },
-                ValueKind::Const(_) => {
+                NirKind::Const(_) => {
                     let scrut = scrut.eval_to_type(env)?;
                     match scrut.kind() {
-                        ValueKind::UnionType(kts) => match kts.get(x) {
+                        NirKind::UnionType(kts) => match kts.get(x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(ty)) => {
-                                Value::from_kind(ValueKind::PiClosure {
+                                Nir::from_kind(NirKind::PiClosure {
                                     binder: Binder::new(x.clone()),
                                     annot: ty.clone(),
                                     closure: Closure::new_constant(
-                                        scrut.to_value(),
+                                        scrut.to_nir(),
                                     ),
                                 })
                                 .to_type(scrut.ty())
@@ -261,10 +259,8 @@ fn type_one_layer(
         ExprKind::Assert(t) => {
             let t = t.eval_to_type(env)?;
             match t.kind() {
-                ValueKind::Equivalence(x, y) if x == y => {}
-                ValueKind::Equivalence(..) => {
-                    return span_err("AssertMismatch")
-                }
+                NirKind::Equivalence(x, y) if x == y => {}
+                NirKind::Equivalence(..) => return span_err("AssertMismatch"),
                 _ => return span_err("AssertMustTakeEquivalence"),
             }
             t
@@ -272,8 +268,8 @@ fn type_one_layer(
         ExprKind::App(f, arg) => {
             match f.ty().kind() {
                 // TODO: store Type in closure
-                ValueKind::PiClosure { annot, closure, .. } => {
-                    if arg.ty().as_value() != annot {
+                NirKind::PiClosure { annot, closure, .. } => {
+                    if arg.ty().as_nir() != annot {
                         return mkerr(
                             ErrorBuilder::new(format!(
                                 "wrong type of function argument"
@@ -318,7 +314,7 @@ fn type_one_layer(
             }
         }
         ExprKind::BoolIf(x, y, z) => {
-            if *x.ty().kind() != ValueKind::from_builtin(Builtin::Bool) {
+            if *x.ty().kind() != NirKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
             if y.ty().ty().as_const() != Some(Const::Type) {
@@ -336,12 +332,12 @@ fn type_one_layer(
 
             // Extract the LHS record type
             let kts_x = match x_type.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("MustCombineRecord"),
             };
             // Extract the RHS record type
             let kts_y = match y_type.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("MustCombineRecord"),
             };
 
@@ -352,10 +348,10 @@ fn type_one_layer(
             })?;
 
             let u = max(x.ty().ty(), y.ty().ty());
-            Value::from_kind(ValueKind::RecordType(kts)).to_type(u)
+            Nir::from_kind(NirKind::RecordType(kts)).to_type(u)
         }
         ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
-            check_rectymerge(&span, env, x.ty().to_value(), y.ty().to_value())?;
+            check_rectymerge(&span, env, x.ty().to_nir(), y.ty().to_nir())?;
 
             let hir = Hir::new(
                 HirKind::Expr(ExprKind::BinOp(
@@ -379,7 +375,7 @@ fn type_one_layer(
         }
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             match l.ty().kind() {
-                ValueKind::AppliedBuiltin(BuiltinClosure {
+                NirKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::List,
                     ..
                 }) => {}
@@ -431,14 +427,14 @@ fn type_one_layer(
         ExprKind::Merge(record, union, type_annot) => {
             let record_type = record.ty();
             let handlers = match record_type.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("Merge1ArgMustBeRecord"),
             };
 
             let union_type = union.ty();
             let variants = match union_type.kind() {
-                ValueKind::UnionType(kts) => Cow::Borrowed(kts),
-                ValueKind::AppliedBuiltin(BuiltinClosure {
+                NirKind::UnionType(kts) => Cow::Borrowed(kts),
+                NirKind::AppliedBuiltin(BuiltinClosure {
                     b: Builtin::Optional,
                     args,
                     ..
@@ -457,7 +453,7 @@ fn type_one_layer(
                 let handler_return_type: Type = match variants.get(x) {
                     // Union alternative with type
                     Some(Some(variant_type)) => match handler_type.kind() {
-                        ValueKind::PiClosure { closure, annot, .. } => {
+                        NirKind::PiClosure { closure, annot, .. } => {
                             if variant_type != annot {
                                 return mkerr(
                                     ErrorBuilder::new(format!(
@@ -578,7 +574,7 @@ fn type_one_layer(
             }
             let record_t = record.ty();
             let kts = match record_t.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => {
                     return span_err("The argument to `toMap` must be a record")
                 }
@@ -598,7 +594,7 @@ fn type_one_layer(
                 let err_msg = "The type of `toMap x` must be of the form \
                                `List { mapKey : Text, mapValue : T }`";
                 let arg = match annot_val.kind() {
-                    ValueKind::AppliedBuiltin(BuiltinClosure {
+                    NirKind::AppliedBuiltin(BuiltinClosure {
                         b: Builtin::List,
                         args,
                         ..
@@ -606,14 +602,14 @@ fn type_one_layer(
                     _ => return span_err(err_msg),
                 };
                 let kts = match arg.kind() {
-                    ValueKind::RecordType(kts) => kts,
+                    NirKind::RecordType(kts) => kts,
                     _ => return span_err(err_msg),
                 };
                 if kts.len() != 2 {
                     return span_err(err_msg);
                 }
                 match kts.get(&"mapKey".into()) {
-                    Some(t) if *t == Value::from_builtin(Builtin::Text) => {}
+                    Some(t) if *t == Nir::from_builtin(Builtin::Text) => {}
                     _ => return span_err(err_msg),
                 }
                 match kts.get(&"mapValue".into()) {
@@ -632,10 +628,10 @@ fn type_one_layer(
                 }
 
                 let mut kts = HashMap::new();
-                kts.insert("mapKey".into(), Value::from_builtin(Builtin::Text));
+                kts.insert("mapKey".into(), Nir::from_builtin(Builtin::Text));
                 kts.insert("mapValue".into(), entry_type);
-                let output_type: Type = Value::from_builtin(Builtin::List)
-                    .app(Value::from_kind(ValueKind::RecordType(kts)))
+                let output_type: Type = Nir::from_builtin(Builtin::List)
+                    .app(Nir::from_kind(NirKind::RecordType(kts)))
                     .to_type(Const::Type);
                 if let Some(annot) = annot {
                     let annot_val = annot.eval_to_type(env)?;
@@ -649,7 +645,7 @@ fn type_one_layer(
         ExprKind::Projection(record, labels) => {
             let record_type = record.ty();
             let kts = match record_type.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("ProjectionMustBeRecord"),
             };
 
@@ -671,19 +667,19 @@ fn type_one_layer(
 
             Type::new_infer_universe(
                 env,
-                Value::from_kind(ValueKind::RecordType(new_kts)),
+                Nir::from_kind(NirKind::RecordType(new_kts)),
             )?
         }
         ExprKind::ProjectionByExpr(record, selection) => {
             let record_type = record.ty();
             let rec_kts = match record_type.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("ProjectionMustBeRecord"),
             };
 
             let selection_val = selection.eval_to_type(env)?;
             let sel_kts = match selection_val.kind() {
-                ValueKind::RecordType(kts) => kts,
+                NirKind::RecordType(kts) => kts,
                 _ => return span_err("ProjectionByExprTakesRecordType"),
             };
 

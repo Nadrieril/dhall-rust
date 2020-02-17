@@ -1,5 +1,5 @@
 use crate::error::{ErrorBuilder, TypeError};
-use crate::semantics::{mkerr, Hir, NzEnv, TyEnv, Value, ValueKind, VarEnv};
+use crate::semantics::{mkerr, Hir, Nir, NirKind, NzEnv, TyEnv, VarEnv};
 use crate::syntax::{Builtin, Const, Span};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -10,7 +10,7 @@ pub(crate) struct Universe(u8);
 /// An expression representing a type
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Type {
-    val: Value,
+    val: Nir,
     univ: Universe,
 }
 
@@ -44,7 +44,7 @@ impl Universe {
 }
 
 impl Type {
-    pub fn new(val: Value, univ: Universe) -> Self {
+    pub fn new(val: Nir, univ: Universe) -> Self {
         Type { val, univ }
     }
     /// Creates a new Type and infers its universe by re-typechecking its value.
@@ -52,7 +52,7 @@ impl Type {
     /// PiClosure.
     pub fn new_infer_universe(
         env: &TyEnv,
-        val: Value,
+        val: Nir,
     ) -> Result<Self, TypeError> {
         let c = val.to_hir(env.as_varenv()).typecheck(env)?.ty().as_const();
         let u = match c {
@@ -65,7 +65,7 @@ impl Type {
         Ok(Type::new(val, u))
     }
     pub fn from_const(c: Const) -> Self {
-        Self::new(Value::from_const(c), c.to_universe().next())
+        Self::new(Nir::from_const(c), c.to_universe().next())
     }
     pub fn from_builtin(b: Builtin) -> Self {
         use Builtin::*;
@@ -74,7 +74,7 @@ impl Type {
             _ => unreachable!("this builtin is not a type: {}", b),
         }
 
-        Self::new(Value::from_builtin(b), Universe::from_const(Const::Type))
+        Self::new(Nir::from_builtin(b), Universe::from_const(Const::Type))
     }
 
     /// Get the type of this type
@@ -82,19 +82,19 @@ impl Type {
         self.univ
     }
 
-    pub fn to_value(&self) -> Value {
+    pub fn to_nir(&self) -> Nir {
         self.val.clone()
     }
-    pub fn as_value(&self) -> &Value {
+    pub fn as_nir(&self) -> &Nir {
         &self.val
     }
-    pub fn into_value(self) -> Value {
+    pub fn into_nir(self) -> Nir {
         self.val
     }
     pub fn as_const(&self) -> Option<Const> {
         self.val.as_const()
     }
-    pub fn kind(&self) -> &ValueKind {
+    pub fn kind(&self) -> &NirKind {
         self.val.kind()
     }
 
@@ -136,7 +136,7 @@ impl Tir {
     }
 
     /// Eval the Tir. It will actually get evaluated only as needed on demand.
-    pub fn eval(&self, env: impl Into<NzEnv>) -> Value {
+    pub fn eval(&self, env: impl Into<NzEnv>) -> Nir {
         self.as_hir().eval(env.into())
     }
     pub fn ensure_is_type(&self, env: &TyEnv) -> Result<(), TypeError> {
@@ -175,11 +175,11 @@ impl Tir {
     }
     /// Eval a closed Tir (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
-    pub fn eval_closed_expr(&self) -> Value {
+    pub fn eval_closed_expr(&self) -> Nir {
         self.eval(NzEnv::new())
     }
     /// Eval a closed Tir fully and recursively;
-    pub fn rec_eval_closed_expr(&self) -> Value {
+    pub fn rec_eval_closed_expr(&self) -> Nir {
         let val = self.eval_closed_expr();
         val.normalize();
         val

@@ -22,7 +22,7 @@ use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
-use crate::semantics::{typecheck, typecheck_with, Hir, Tir, Value, ValueKind};
+use crate::semantics::{typecheck, typecheck_with, Hir, Nir, NirKind, Tir};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
@@ -48,9 +48,9 @@ pub struct Typed(Tir);
 ///
 /// Invariant: the contained Typed expression must be in normal form,
 #[derive(Debug, Clone)]
-pub struct Normalized(Value);
+pub struct Normalized(Nir);
 
-/// Controls conversion from `Value` to `Expr`
+/// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone)]
 pub(crate) struct ToExprOptions {
     /// Whether to convert all variables to `_`
@@ -118,7 +118,7 @@ impl Typed {
     }
 
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
-        Ok(Normalized(self.0.ty().clone().into_value()))
+        Ok(Normalized(self.0.ty().clone().into_nir()))
     }
 }
 
@@ -145,45 +145,43 @@ impl Normalized {
             normalize: false,
         })
     }
-    pub(crate) fn to_value(&self) -> Value {
+    pub(crate) fn to_nir(&self) -> Nir {
         self.0.clone()
     }
-    pub(crate) fn into_value(self) -> Value {
+    pub(crate) fn into_nir(self) -> Nir {
         self.0
     }
 
-    pub(crate) fn from_kind(v: ValueKind) -> Self {
-        Normalized(Value::from_kind(v))
+    pub(crate) fn from_kind(v: NirKind) -> Self {
+        Normalized(Nir::from_kind(v))
     }
-    pub(crate) fn from_value(th: Value) -> Self {
+    pub(crate) fn from_nir(th: Nir) -> Self {
         Normalized(th)
     }
 
     pub fn make_builtin_type(b: Builtin) -> Self {
-        Normalized::from_value(Value::from_builtin(b))
+        Normalized::from_nir(Nir::from_builtin(b))
     }
     pub fn make_optional_type(t: Normalized) -> Self {
-        Normalized::from_value(
-            Value::from_builtin(Builtin::Optional).app(t.to_value()),
+        Normalized::from_nir(
+            Nir::from_builtin(Builtin::Optional).app(t.to_nir()),
         )
     }
     pub fn make_list_type(t: Normalized) -> Self {
-        Normalized::from_value(
-            Value::from_builtin(Builtin::List).app(t.to_value()),
-        )
+        Normalized::from_nir(Nir::from_builtin(Builtin::List).app(t.to_nir()))
     }
     pub fn make_record_type(
         kts: impl Iterator<Item = (String, Normalized)>,
     ) -> Self {
-        Normalized::from_kind(ValueKind::RecordType(
-            kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
+        Normalized::from_kind(NirKind::RecordType(
+            kts.map(|(k, t)| (k.into(), t.into_nir())).collect(),
         ))
     }
     pub fn make_union_type(
         kts: impl Iterator<Item = (String, Option<Normalized>)>,
     ) -> Self {
-        Normalized::from_kind(ValueKind::UnionType(
-            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
+        Normalized::from_kind(NirKind::UnionType(
+            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_nir())))
                 .collect(),
         ))
     }

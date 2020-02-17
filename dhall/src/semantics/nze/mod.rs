@@ -1,9 +1,9 @@
 pub mod env;
 pub mod lazy;
+pub mod nir;
 pub mod normalize;
-pub mod value;
 pub mod var;
 pub(crate) use env::*;
+pub(crate) use nir::*;
 pub(crate) use normalize::*;
-pub(crate) use value::*;
 pub(crate) use var::*;

@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, Value, ValueKind};
+use crate::semantics::{AlphaVar, Nir, NirKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NzVar {
@@ -13,7 +13,7 @@ enum EnvItem<Type> {
     // Variable is bound with given type
     Kept(Type),
     // Variable has been replaced by corresponding value
-    Replaced(Value, Type),
+    Replaced(Nir, Type),
 }
 
 #[derive(Debug, Clone)]
@@ -67,15 +67,15 @@ impl<Type: Clone> ValEnv<Type> {
         env.items.push(EnvItem::Kept(ty));
         env
     }
-    pub fn insert_value(&self, e: Value, ty: Type) -> Self {
+    pub fn insert_value(&self, e: Nir, ty: Type) -> Self {
         let mut env = self.clone();
         env.items.push(EnvItem::Replaced(e, ty));
         env
     }
-    pub fn lookup_val(&self, var: &AlphaVar) -> ValueKind {
+    pub fn lookup_val(&self, var: &AlphaVar) -> NirKind {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            EnvItem::Kept(_) => ValueKind::Var(NzVar::new(idx)),
+            EnvItem::Kept(_) => NirKind::Var(NzVar::new(idx)),
             EnvItem::Replaced(x, _) => x.kind().clone(),
         }
     }
