@@ -24,7 +24,6 @@ pub(crate) struct Nir(Rc<NirInternal>);
 #[derive(Debug)]
 struct NirInternal {
     kind: lazy::Lazy<Thunk, NirKind>,
-    span: Span,
 }
 
 /// An unevaluated subexpression
@@ -95,26 +94,21 @@ pub(crate) enum NirKind {
 impl Nir {
     /// Construct a Nir from a completely unnormalized expression.
     pub(crate) fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
-        let span = hir.span();
-        NirInternal::from_thunk(Thunk::new(env, hir), span).into_nir()
+        NirInternal::from_thunk(Thunk::new(env, hir)).into_nir()
     }
     /// Construct a Nir from a partially normalized expression that's not in WHNF.
     pub(crate) fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
         // TODO: env
         let env = NzEnv::new();
-        NirInternal::from_thunk(
-            Thunk::from_partial_expr(env, e),
-            Span::Artificial,
-        )
-        .into_nir()
+        NirInternal::from_thunk(Thunk::from_partial_expr(env, e)).into_nir()
     }
     /// Make a Nir from a NirKind
     pub(crate) fn from_kind(v: NirKind) -> Nir {
-        NirInternal::from_whnf(v, Span::Artificial).into_nir()
+        NirInternal::from_whnf(v).into_nir()
     }
     pub(crate) fn from_const(c: Const) -> Self {
         let v = NirKind::Const(c);
-        NirInternal::from_whnf(v, Span::Artificial).into_nir()
+        NirInternal::from_whnf(v).into_nir()
     }
     pub(crate) fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
@@ -258,7 +252,7 @@ impl Nir {
             }),
         };
 
-        Hir::new(hir, self.0.span.clone())
+        Hir::new(hir, Span::Artificial)
     }
     pub fn to_hir_noenv(&self) -> Hir {
         self.to_hir(VarEnv::new())
@@ -266,16 +260,14 @@ impl Nir {
 }
 
 impl NirInternal {
-    fn from_whnf(k: NirKind, span: Span) -> Self {
+    fn from_whnf(k: NirKind) -> Self {
         NirInternal {
             kind: lazy::Lazy::new_completed(k),
-            span,
         }
     }
-    fn from_thunk(th: Thunk, span: Span) -> Self {
+    fn from_thunk(th: Thunk) -> Self {
         NirInternal {
             kind: lazy::Lazy::new(th),
-            span,
         }
     }
     fn into_nir(self) -> Nir {
