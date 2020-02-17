@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use crate::error::ErrorBuilder;
@@ -49,6 +50,35 @@ fn load_import(env: &mut ImportEnv, f: &Path) -> Result<Hir, Error> {
         .to_hir())
 }
 
+/// Desugar the first level of the expression.
+fn desugar(expr: &Expr) -> Cow<'_, Expr> {
+    match expr.kind() {
+        ExprKind::Completion(ty, compl) => {
+            let ty_field_default = Expr::new(
+                ExprKind::Field(ty.clone(), "default".into()),
+                expr.span(),
+            );
+            let merged = Expr::new(
+                ExprKind::BinOp(
+                    BinOp::RightBiasedRecordMerge,
+                    ty_field_default,
+                    compl.clone(),
+                ),
+                expr.span(),
+            );
+            let ty_field_type = Expr::new(
+                ExprKind::Field(ty.clone(), "Type".into()),
+                expr.span(),
+            );
+            Cow::Owned(Expr::new(
+                ExprKind::Annot(merged, ty_field_type),
+                expr.span(),
+            ))
+        }
+        _ => Cow::Borrowed(expr),
+    }
+}
+
 /// Traverse the expression, handling import alternatives and passing
 /// found imports to the provided function. Also resolving names.
 fn traverse_resolve_expr(
@@ -56,6 +86,7 @@ fn traverse_resolve_expr(
     expr: &Expr,
     f: &mut impl FnMut(Import) -> Result<Hir, Error>,
 ) -> Result<Hir, Error> {
+    let expr = desugar(expr);
     Ok(match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
             Some(v) => Hir::new(HirKind::Var(v), expr.span()),
@@ -76,28 +107,6 @@ fn traverse_resolve_expr(
                     }
                 }
             }
-        }
-        // Desugar
-        ExprKind::Completion(ty, compl) => {
-            let ty_field_default = Expr::new(
-                ExprKind::Field(ty.clone(), "default".into()),
-                expr.span(),
-            );
-            let merged = Expr::new(
-                ExprKind::BinOp(
-                    BinOp::RightBiasedRecordMerge,
-                    ty_field_default,
-                    compl.clone(),
-                ),
-                expr.span(),
-            );
-            let ty_field_type = Expr::new(
-                ExprKind::Field(ty.clone(), "Type".into()),
-                expr.span(),
-            );
-            let desugared =
-                Expr::new(ExprKind::Annot(merged, ty_field_type), expr.span());
-            traverse_resolve_expr(name_env, &desugared, f)?
         }
         kind => {
             let kind = kind.traverse_ref_maybe_binder(|l, e| {
