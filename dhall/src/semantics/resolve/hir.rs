@@ -48,11 +48,11 @@ impl Hir {
         self.span.clone()
     }
 
-    /// Converts a HIR expr back to the corresponding AST expression.
+    /// Converts a closed Hir expr back to the corresponding AST expression.
     pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
         hir_to_expr(self, opts, &mut NameEnv::new())
     }
-    /// Converts a HIR expr back to the corresponding AST expression.
+    /// Converts a closed Hir expr back to the corresponding AST expression.
     pub fn to_expr_noopts(&self) -> NormalizedExpr {
         let opts = ToExprOptions {
             normalize: false,
@@ -70,13 +70,27 @@ impl Hir {
     }
 
     /// Typecheck the Hir.
-    pub fn typecheck(&self, env: &TyEnv) -> Result<Tir, TypeError> {
+    pub fn typecheck<'hir>(
+        &'hir self,
+        env: &TyEnv,
+    ) -> Result<Tir<'hir>, TypeError> {
         type_with(env, self, None)
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Nir {
         Nir::new_thunk(env.into(), self.clone())
+    }
+    /// Eval a closed Hir (i.e. without free variables). It will actually get evaluated only as
+    /// needed on demand.
+    pub fn eval_closed_expr(&self) -> Nir {
+        self.eval(NzEnv::new())
+    }
+    /// Eval a closed Hir fully and recursively;
+    pub fn rec_eval_closed_expr(&self) -> Nir {
+        let val = self.eval_closed_expr();
+        val.normalize();
+        val
     }
 }
 

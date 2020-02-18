@@ -1,7 +1,7 @@
 use crate::error::{ErrorBuilder, TypeError};
 use crate::semantics::{mkerr, Hir, Nir, NirKind, NzEnv, TyEnv, VarEnv};
 use crate::syntax::{Builtin, Const, Span};
-use crate::{NormalizedExpr, ToExprOptions};
+use crate::NormalizedExpr;
 
 /// The type of a type. 0 is `Type`, 1 is `Kind`, etc...
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -17,8 +17,8 @@ pub(crate) struct Type {
 /// A hir expression plus its inferred type.
 /// Stands for "Typed intermediate representation"
 #[derive(Debug, Clone)]
-pub(crate) struct Tir {
-    hir: Hir,
+pub(crate) struct Tir<'hir> {
+    hir: &'hir Hir,
     ty: Type,
 }
 
@@ -106,12 +106,9 @@ impl Type {
     }
 }
 
-impl Tir {
-    pub fn from_hir(hir: &Hir, ty: Type) -> Self {
-        Tir {
-            hir: hir.clone(),
-            ty,
-        }
+impl<'hir> Tir<'hir> {
+    pub fn from_hir(hir: &'hir Hir, ty: Type) -> Self {
+        Tir { hir, ty }
     }
 
     pub fn span(&self) -> Span {
@@ -126,10 +123,6 @@ impl Tir {
     }
     pub fn as_hir(&self) -> &Hir {
         &self.hir
-    }
-    /// Converts a closed expression back to the corresponding AST expression.
-    pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        self.as_hir().to_expr(opts)
     }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
         self.as_hir().to_expr_tyenv(env)
@@ -172,17 +165,6 @@ impl Tir {
                 .expect("case handled in ensure_is_type")
                 .to_universe(),
         ))
-    }
-    /// Eval a closed Tir (i.e. without free variables). It will actually get evaluated only as
-    /// needed on demand.
-    pub fn eval_closed_expr(&self) -> Nir {
-        self.eval(NzEnv::new())
-    }
-    /// Eval a closed Tir fully and recursively;
-    pub fn rec_eval_closed_expr(&self) -> Nir {
-        let val = self.eval_closed_expr();
-        val.normalize();
-        val
     }
 }
 

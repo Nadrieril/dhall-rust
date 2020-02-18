@@ -22,7 +22,9 @@ use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
-use crate::semantics::{typecheck, typecheck_with, Hir, Nir, NirKind, Tir};
+use crate::semantics::{
+    typecheck, typecheck_with, Hir, Nir, NirKind, Tir, Type,
+};
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
@@ -42,7 +44,10 @@ pub struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(Tir);
+pub struct Typed {
+    hir: Hir,
+    ty: Type,
+}
 
 /// A normalized expression.
 ///
@@ -92,10 +97,10 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck(&self.0)?))
+        Ok(Typed::from_tir(typecheck(&self.0)?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck_with(&self.0, ty.to_hir())?))
+        Ok(Typed::from_tir(typecheck_with(&self.0, ty.to_hir())?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
@@ -104,21 +109,27 @@ impl Resolved {
 }
 
 impl Typed {
+    fn from_tir(tir: Tir<'_>) -> Self {
+        Typed {
+            hir: tir.as_hir().clone(),
+            ty: tir.ty().clone(),
+        }
+    }
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        Normalized(self.0.rec_eval_closed_expr())
+        Normalized(self.hir.rec_eval_closed_expr())
     }
 
     /// Converts a value back to the corresponding AST expression.
     fn to_expr(&self) -> ResolvedExpr {
-        self.0.to_expr(ToExprOptions {
+        self.hir.to_expr(ToExprOptions {
             alpha: false,
             normalize: false,
         })
     }
 
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
-        Ok(Normalized(self.0.ty().clone().into_nir()))
+        Ok(Normalized(self.ty.clone().into_nir()))
     }
 }
 

@@ -53,6 +53,8 @@ success/
 failure/
     \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
     unit/FunctionTypeOutputTypeNotAType Bool -> 1
+    unit/NestedAnnotInnerWrong (0 : Bool) : Natural
+    unit/NestedAnnotOuterWrong (0 : Natural) : Bool
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
     merge { x = True, y = 1 } < x | y >.x

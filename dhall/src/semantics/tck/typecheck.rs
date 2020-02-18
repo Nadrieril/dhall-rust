@@ -69,7 +69,7 @@ pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
 /// layer.
 fn type_one_layer(
     env: &TyEnv,
-    ekind: ExprKind<Tir>,
+    ekind: ExprKind<Tir<'_>>,
     span: Span,
 ) -> Result<Type, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
@@ -703,11 +703,11 @@ fn type_one_layer(
 
 /// `type_with` typechecks an expression in the provided environment. Optionally pass an annotation
 /// to compare with.
-pub(crate) fn type_with(
+pub(crate) fn type_with<'hir>(
     env: &TyEnv,
-    hir: &Hir,
+    hir: &'hir Hir,
     annot: Option<Type>,
-) -> Result<Tir, TypeError> {
+) -> Result<Tir<'hir>, TypeError> {
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(var)),
         HirKind::Expr(ExprKind::Var(_)) => {
@@ -799,12 +799,15 @@ pub(crate) fn type_with(
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck(hir: &Hir) -> Result<Tir, TypeError> {
+pub(crate) fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
     type_with(&TyEnv::new(), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub(crate) fn typecheck_with(hir: &Hir, ty: Hir) -> Result<Tir, TypeError> {
+pub(crate) fn typecheck_with<'hir>(
+    hir: &'hir Hir,
+    ty: Hir,
+) -> Result<Tir<'hir>, TypeError> {
     let ty = typecheck(&ty)?.eval_to_type(&TyEnv::new())?;
     type_with(&TyEnv::new(), hir, Some(ty))
 }
