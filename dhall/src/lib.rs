@@ -51,7 +51,7 @@ pub struct Typed {
 
 /// A normalized expression.
 ///
-/// Invariant: the contained Typed expression must be in normal form,
+/// Invariant: the contained expression must be in normal form,
 #[derive(Debug, Clone)]
 pub struct Normalized(Nir);
 
@@ -60,8 +60,6 @@ pub struct Normalized(Nir);
 pub(crate) struct ToExprOptions {
     /// Whether to convert all variables to `_`
     pub(crate) alpha: bool,
-    /// Whether to normalize before converting
-    pub(crate) normalize: bool,
 }
 
 impl Parsed {
@@ -122,10 +120,7 @@ impl Typed {
 
     /// Converts a value back to the corresponding AST expression.
     fn to_expr(&self) -> ResolvedExpr {
-        self.hir.to_expr(ToExprOptions {
-            alpha: false,
-            normalize: false,
-        })
+        self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
@@ -140,10 +135,7 @@ impl Normalized {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: false,
-            normalize: false,
-        })
+        self.0.to_expr(ToExprOptions { alpha: false })
     }
     /// Converts a value back to the corresponding Hir expression.
     pub(crate) fn to_hir(&self) -> Hir {
@@ -151,10 +143,7 @@ impl Normalized {
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: true,
-            normalize: false,
-        })
+        self.0.to_expr(ToExprOptions { alpha: true })
     }
     pub(crate) fn to_nir(&self) -> Nir {
         self.0.clone()

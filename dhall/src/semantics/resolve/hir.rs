@@ -54,17 +54,11 @@ impl Hir {
     }
     /// Converts a closed Hir expr back to the corresponding AST expression.
     pub fn to_expr_noopts(&self) -> NormalizedExpr {
-        let opts = ToExprOptions {
-            normalize: false,
-            alpha: false,
-        };
+        let opts = ToExprOptions { alpha: false };
         self.to_expr(opts)
     }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
-        let opts = ToExprOptions {
-            normalize: true,
-            alpha: false,
-        };
+        let opts = ToExprOptions { alpha: false };
         let mut env = env.as_nameenv().clone();
         hir_to_expr(self, opts, &mut env)
     }

@@ -137,9 +137,6 @@ impl Nir {
     }
     /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
-        if opts.normalize {
-            self.normalize();
-        }
         self.to_hir_noenv().to_expr(opts)
     }
     pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
