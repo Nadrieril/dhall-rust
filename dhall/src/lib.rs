@@ -123,6 +123,9 @@ impl Typed {
         self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
+    pub(crate) fn ty(&self) -> &Type {
+        &self.ty
+    }
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
         Ok(Normalized(self.ty.clone().into_nir()))
     }

@@ -1,7 +1,6 @@
 use std::io::Error as IOError;
 
 use crate::semantics::resolve::ImportStack;
-use crate::semantics::Hir;
 use crate::syntax::{Import, ParseError};
 
 mod builder;

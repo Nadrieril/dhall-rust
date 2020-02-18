@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, Hir, Import, VarEnv};
+use crate::semantics::{AlphaVar, Import, TypedHir, VarEnv};
 use crate::syntax::{Label, V};
 
 /// Environment for resolving names.
@@ -10,7 +10,7 @@ pub(crate) struct NameEnv {
     names: Vec<Label>,
 }
 
-pub(crate) type ImportCache = HashMap<Import, Hir>;
+pub(crate) type ImportCache = HashMap<Import, TypedHir>;
 pub(crate) type ImportStack = Vec<Import>;
 
 /// Environment for resolving imports
@@ -75,8 +75,8 @@ impl ImportEnv {
     pub fn handle_import(
         &mut self,
         import: Import,
-        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<Hir, Error>,
-    ) -> Result<Hir, Error> {
+        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<TypedHir, Error>,
+    ) -> Result<TypedHir, Error> {
         if self.stack.contains(&import) {
             return Err(
                 ImportError::ImportCycle(self.stack.clone(), import).into()

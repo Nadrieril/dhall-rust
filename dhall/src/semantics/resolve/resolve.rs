@@ -3,13 +3,16 @@ use std::path::{Path, PathBuf};
 
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
-use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv};
+use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
 use crate::{Parsed, ParsedExpr, Resolved};
 
 // TODO: evaluate import headers
 pub(crate) type Import = syntax::Import<()>;
+
+/// Owned Hir with a type. Different from Tir because the Hir is owned.
+pub(crate) type TypedHir = (Hir, Type);
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +24,7 @@ fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
     root: &ImportRoot,
-) -> Result<Hir, Error> {
+) -> Result<TypedHir, Error> {
     use self::ImportRoot::*;
     use syntax::FilePrefix::*;
     use syntax::ImportLocation::*;
@@ -43,12 +46,10 @@ fn resolve_one_import(
     }
 }
 
-fn load_import(env: &mut ImportEnv, f: &Path) -> Result<Hir, Error> {
+fn load_import(env: &mut ImportEnv, f: &Path) -> Result<TypedHir, Error> {
     let parsed = Parsed::parse_file(f)?;
-    Ok(resolve_with_env(env, parsed)?
-        .typecheck()?
-        .normalize()
-        .to_hir())
+    let typed = resolve_with_env(env, parsed)?.typecheck()?;
+    Ok((typed.normalize().to_hir(), typed.ty().clone()))
 }
 
 /// Desugar the first level of the expression.
@@ -85,7 +86,7 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
     expr: &Expr,
-    f: &mut impl FnMut(Import) -> Result<Hir, Error>,
+    f: &mut impl FnMut(Import) -> Result<TypedHir, Error>,
 ) -> Result<Hir, Error> {
     let expr = desugar(expr);
     Ok(match expr.kind() {
@@ -124,7 +125,8 @@ fn traverse_resolve_expr(
                 ExprKind::Import(import) => {
                     // TODO: evaluate import headers
                     let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
-                    f(import)?.kind().clone()
+                    let imported = f(import)?;
+                    HirKind::Import(imported.0, imported.1)
                 }
                 kind => HirKind::Expr(kind),
             };

@@ -442,6 +442,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
 pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> NirKind {
     match hir.kind() {
         HirKind::Var(var) => env.lookup_val(var),
+        HirKind::Import(hir, _) => normalize_hir_whnf(env, hir),
         HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             NirKind::LamClosure {

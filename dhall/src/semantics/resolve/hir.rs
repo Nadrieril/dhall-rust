@@ -1,5 +1,5 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv};
+use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv, Type};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{NormalizedExpr, ToExprOptions};
 
@@ -13,6 +13,8 @@ pub struct AlphaVar {
 pub(crate) enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
+    /// Result of resolving an import.
+    Import(Hir, Type),
     // Forbidden ExprKind variants: Var, Import, Completion
     Expr(ExprKind<Hir>),
 }
@@ -96,6 +98,9 @@ fn hir_to_expr(
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(v)),
+        HirKind::Import(hir, _) => {
+            return hir_to_expr(hir, opts, &mut NameEnv::new())
+        }
         HirKind::Expr(e) => {
             let e = e.map_ref_maybe_binder(|l, hir| {
                 if let Some(l) = l {
