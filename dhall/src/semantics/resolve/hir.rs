@@ -9,7 +9,7 @@ pub struct AlphaVar {
     idx: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
@@ -128,11 +128,3 @@ impl std::cmp::PartialEq for Hir {
     }
 }
 impl std::cmp::Eq for Hir {}
-impl std::hash::Hash for Hir {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        self.kind.hash(state)
-    }
-}

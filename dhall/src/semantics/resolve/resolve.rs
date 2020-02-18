@@ -8,7 +8,8 @@ use crate::syntax;
 use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
 use crate::{Parsed, ParsedExpr, Resolved};
 
-pub(crate) type Import = syntax::Import<Hir>;
+// TODO: evaluate import headers
+pub(crate) type Import = syntax::Import<()>;
 
 /// A root from which to resolve relative imports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +121,11 @@ fn traverse_resolve_expr(
                 Ok::<_, Error>(hir)
             })?;
             let kind = match kind {
-                ExprKind::Import(import) => f(import)?.kind().clone(),
+                ExprKind::Import(import) => {
+                    // TODO: evaluate import headers
+                    let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
+                    f(import)?.kind().clone()
+                }
                 kind => HirKind::Expr(kind),
             };
             Hir::new(kind, expr.span())

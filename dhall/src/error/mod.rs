@@ -27,8 +27,8 @@ pub(crate) enum ErrorKind {
 
 #[derive(Debug)]
 pub(crate) enum ImportError {
-    UnexpectedImport(Import<Hir>),
-    ImportCycle(ImportStack, Import<Hir>),
+    UnexpectedImport(Import<()>),
+    ImportCycle(ImportStack, Import<()>),
 }
 
 #[derive(Debug)]
