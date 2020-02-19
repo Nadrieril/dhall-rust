@@ -18,18 +18,20 @@ pub mod syntax;
 use std::fmt::Display;
 use std::path::Path;
 
-use crate::error::{EncodeError, Error, ImportError, TypeError};
+use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportRoot;
-use crate::semantics::{typecheck, typecheck_with, TyExpr, Value, ValueKind};
+use crate::semantics::{
+    typecheck, typecheck_with, Hir, Nir, NirKind, Tir, Type,
+};
 use crate::syntax::binary;
-use crate::syntax::{Builtin, Const, Expr};
+use crate::syntax::{Builtin, Expr};
 
-pub type ParsedExpr = Expr<Normalized>;
-pub type DecodedExpr = Expr<Normalized>;
-pub type ResolvedExpr = Expr<Normalized>;
-pub type NormalizedExpr = Expr<Normalized>;
+pub type ParsedExpr = Expr;
+pub type DecodedExpr = Expr;
+pub type ResolvedExpr = Expr;
+pub type NormalizedExpr = Expr;
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedExpr, ImportRoot);
@@ -38,25 +40,26 @@ pub struct Parsed(ParsedExpr, ImportRoot);
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub struct Resolved(ResolvedExpr);
+pub struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed(TyExpr);
+pub struct Typed {
+    hir: Hir,
+    ty: Type,
+}
 
 /// A normalized expression.
 ///
-/// Invariant: the contained Typed expression must be in normal form,
+/// Invariant: the contained expression must be in normal form,
 #[derive(Debug, Clone)]
-pub struct Normalized(Value);
+pub struct Normalized(Nir);
 
-/// Controls conversion from `Value` to `Expr`
+/// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone)]
 pub(crate) struct ToExprOptions {
     /// Whether to convert all variables to `_`
     pub(crate) alpha: bool,
-    /// Whether to normalize before converting
-    pub(crate) normalize: bool,
 }
 
 impl Parsed {
@@ -73,11 +76,11 @@ impl Parsed {
         parse::parse_binary(data)
     }
 
-    pub fn resolve(self) -> Result<Resolved, ImportError> {
+    pub fn resolve(self) -> Result<Resolved, Error> {
         resolve::resolve(self)
     }
-    pub fn skip_resolve(self) -> Result<Resolved, ImportError> {
-        resolve::skip_resolve_expr(self)
+    pub fn skip_resolve(self) -> Result<Resolved, Error> {
+        Ok(Resolved(resolve::skip_resolve(&self.0)?))
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
@@ -92,33 +95,39 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck(&self.0)?))
+        Ok(Typed::from_tir(typecheck(&self.0)?))
     }
     pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed(typecheck_with(&self.0, ty.to_expr())?))
+        Ok(Typed::from_tir(typecheck_with(&self.0, ty.to_hir())?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
-        self.0.clone()
+        self.0.to_expr_noopts()
     }
 }
 
 impl Typed {
+    fn from_tir(tir: Tir<'_>) -> Self {
+        Typed {
+            hir: tir.as_hir().clone(),
+            ty: tir.ty().clone(),
+        }
+    }
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        Normalized(self.0.rec_eval_closed_expr())
+        Normalized(self.hir.rec_eval_closed_expr())
     }
 
     /// Converts a value back to the corresponding AST expression.
     fn to_expr(&self) -> ResolvedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: false,
-            normalize: false,
-        })
+        self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
+    pub(crate) fn ty(&self) -> &Type {
+        &self.ty
+    }
     pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
-        Ok(Normalized(self.0.get_type()?))
+        Ok(Normalized(self.ty.clone().into_nir()))
     }
 }
 
@@ -129,71 +138,55 @@ impl Normalized {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: false,
-            normalize: false,
-        })
+        self.0.to_expr(ToExprOptions { alpha: false })
+    }
+    /// Converts a value back to the corresponding Hir expression.
+    pub(crate) fn to_hir(&self) -> Hir {
+        self.0.to_hir_noenv()
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions {
-            alpha: true,
-            normalize: false,
-        })
+        self.0.to_expr(ToExprOptions { alpha: true })
     }
-    pub(crate) fn to_value(&self) -> Value {
+    pub(crate) fn to_nir(&self) -> Nir {
         self.0.clone()
     }
-    pub(crate) fn into_value(self) -> Value {
+    pub(crate) fn into_nir(self) -> Nir {
         self.0
     }
 
-    pub(crate) fn from_const(c: Const) -> Self {
-        Normalized(Value::from_const(c))
+    pub(crate) fn from_kind(v: NirKind) -> Self {
+        Normalized(Nir::from_kind(v))
     }
-    pub(crate) fn from_kind_and_type(v: ValueKind, t: Normalized) -> Self {
-        Normalized(Value::from_kind_and_type(v, t.into_value()))
-    }
-    pub(crate) fn from_value(th: Value) -> Self {
+    pub(crate) fn from_nir(th: Nir) -> Self {
         Normalized(th)
-    }
-    pub(crate) fn const_type() -> Self {
-        Normalized::from_const(Const::Type)
     }
 
     pub fn make_builtin_type(b: Builtin) -> Self {
-        Normalized::from_value(Value::from_builtin(b))
+        Normalized::from_nir(Nir::from_builtin(b))
     }
     pub fn make_optional_type(t: Normalized) -> Self {
-        Normalized::from_value(
-            Value::from_builtin(Builtin::Optional).app(t.to_value()),
+        Normalized::from_nir(
+            Nir::from_builtin(Builtin::Optional).app(t.to_nir()),
         )
     }
     pub fn make_list_type(t: Normalized) -> Self {
-        Normalized::from_value(
-            Value::from_builtin(Builtin::List).app(t.to_value()),
-        )
+        Normalized::from_nir(Nir::from_builtin(Builtin::List).app(t.to_nir()))
     }
     pub fn make_record_type(
         kts: impl Iterator<Item = (String, Normalized)>,
     ) -> Self {
-        Normalized::from_kind_and_type(
-            ValueKind::RecordType(
-                kts.map(|(k, t)| (k.into(), t.into_value())).collect(),
-            ),
-            Normalized::const_type(),
-        )
+        Normalized::from_kind(NirKind::RecordType(
+            kts.map(|(k, t)| (k.into(), t.into_nir())).collect(),
+        ))
     }
     pub fn make_union_type(
         kts: impl Iterator<Item = (String, Option<Normalized>)>,
     ) -> Self {
-        Normalized::from_kind_and_type(
-            ValueKind::UnionType(
-                kts.map(|(k, t)| (k.into(), t.map(|t| t.into_value())))
-                    .collect(),
-            ),
-            Normalized::const_type(),
-        )
+        Normalized::from_kind(NirKind::UnionType(
+            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_nir())))
+                .collect(),
+        ))
     }
 }
 
@@ -219,7 +212,6 @@ macro_rules! derive_traits_for_wrapper_struct {
 }
 
 derive_traits_for_wrapper_struct!(Parsed);
-derive_traits_for_wrapper_struct!(Resolved);
 
 impl std::hash::Hash for Normalized {
     fn hash<H>(&self, state: &mut H)
@@ -240,6 +232,12 @@ impl From<Parsed> for NormalizedExpr {
 impl From<Normalized> for NormalizedExpr {
     fn from(other: Normalized) -> Self {
         other.to_expr()
+    }
+}
+
+impl Display for Resolved {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.to_expr().fmt(f)
     }
 }
 

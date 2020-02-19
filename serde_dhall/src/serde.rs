@@ -4,7 +4,7 @@ use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
 
-use dhall::syntax::ExprKind;
+use dhall::syntax::{ExprKind, LitKind};
 use dhall::NormalizedExpr;
 
 use crate::de::{Deserialize, Error, Result};
@@ -39,6 +39,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     {
         use std::convert::TryInto;
         use ExprKind::*;
+        use LitKind::*;
         let expr = self.0.as_ref();
         let not_serde_compatible = || {
             Err(Error::Deserialize(format!(
@@ -48,8 +49,8 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         };
 
         match expr.as_ref() {
-            BoolLit(x) => visitor.visit_bool(*x),
-            NaturalLit(x) => {
+            Lit(Bool(x)) => visitor.visit_bool(*x),
+            Lit(Natural(x)) => {
                 if let Ok(x64) = (*x).try_into() {
                     visitor.visit_u64(x64)
                 } else if let Ok(x32) = (*x).try_into() {
@@ -58,7 +59,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                     unimplemented!()
                 }
             }
-            IntegerLit(x) => {
+            Lit(Integer(x)) => {
                 if let Ok(x64) = (*x).try_into() {
                     visitor.visit_i64(x64)
                 } else if let Ok(x32) = (*x).try_into() {
@@ -67,7 +68,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                     unimplemented!()
                 }
             }
-            DoubleLit(x) => visitor.visit_f64((*x).into()),
+            Lit(Double(x)) => visitor.visit_f64((*x).into()),
             TextLit(x) => {
                 // Normal form ensures that the tail is empty.
                 assert!(x.tail().is_empty());
@@ -115,7 +116,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
             | Assert(..) | Builtin(..) | BinOp(..) | BoolIf(..)
             | RecordType(..) | UnionType(..) | Merge(..) | ToMap(..)
             | Projection(..) | ProjectionByExpr(..) | Completion(..)
-            | Import(..) | Embed(..) => not_serde_compatible(),
+            | Import(..) => not_serde_compatible(),
         }
     }
 

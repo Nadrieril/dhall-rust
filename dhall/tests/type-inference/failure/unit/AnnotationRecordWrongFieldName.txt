@@ -1,6 +1,6 @@
-Type error: error: annot mismatch: ({ x = 1 } : { x : Natural }) : { y : Natural }
+Type error: error: annot mismatch: { x : Natural } != { y : Natural }
  --> <current file>:1:0
   |
 1 | { x = 1 } : { y : Natural }
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ annot mismatch: ({ x = 1 } : { x : Natural }) : { y : Natural }
+  | ^^^^^^^^^ annot mismatch: { x : Natural } != { y : Natural }
   |

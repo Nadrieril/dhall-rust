@@ -1,6 +1,6 @@
-Type error: error: annot mismatch: ([1] : List Natural) : Optional Natural
+Type error: error: annot mismatch: List Natural != Optional Natural
  --> <current file>:1:0
   |
 1 | [ 1 ] : Optional Natural
-  | ^^^^^^^^^^^^^^^^^^^^^^^^ annot mismatch: ([1] : List Natural) : Optional Natural
+  | ^^^^^ annot mismatch: List Natural != Optional Natural
   |

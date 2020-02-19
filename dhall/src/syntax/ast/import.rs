@@ -75,15 +75,6 @@ impl<SE> URL<SE> {
             headers,
         })
     }
-    pub fn traverse_mut<'a, Err>(
-        &'a mut self,
-        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
-    ) -> Result<(), Err> {
-        if let Some(header) = &mut self.headers {
-            f(header)?;
-        }
-        Ok(())
-    }
 }
 
 impl<SE> ImportLocation<SE> {
@@ -99,15 +90,6 @@ impl<SE> ImportLocation<SE> {
             Missing => Missing,
         })
     }
-    pub fn traverse_mut<'a, Err>(
-        &'a mut self,
-        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
-    ) -> Result<(), Err> {
-        if let ImportLocation::Remote(url) = self {
-            url.traverse_mut(f)?;
-        }
-        Ok(())
-    }
 }
 
 impl<SE> Import<SE> {
@@ -120,11 +102,5 @@ impl<SE> Import<SE> {
             location: self.location.traverse_ref(f)?,
             hash: self.hash.clone(),
         })
-    }
-    pub fn traverse_mut<'a, Err>(
-        &'a mut self,
-        f: impl FnOnce(&'a mut SE) -> Result<(), Err>,
-    ) -> Result<(), Err> {
-        self.location.traverse_mut(f)
     }
 }

@@ -1,1 +1,6 @@
-Type error: Unhandled error: Sort
+Type error: error: InvalidFieldType
+ --> <current file>:1:0
+  |
+1 | { x = Type, y = Kind }
+  | ^^^^^^^^^^^^^^^^^^^^^^ InvalidFieldType
+  |

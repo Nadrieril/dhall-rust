@@ -1,1 +1,7 @@
-Recursive(Import { mode: Code, location: Local(Parent, FilePath { file_path: ["data", "importBoundary.dhall"] }), hash: None }, Typecheck(TypeError { message: Custom("error: unbound variable `x`\n --> <current file>:1:0\n  |\n...\n3 | x\n  | ^ not found in this scope\n  |") }))
+Type error: error: unbound variable `x`
+ --> <current file>:1:0
+  |
+...
+3 | x
+  | ^ not found in this scope
+  |

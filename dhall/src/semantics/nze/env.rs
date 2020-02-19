@@ -1,4 +1,4 @@
-use crate::semantics::{AlphaVar, Value, ValueKind};
+use crate::semantics::{AlphaVar, Nir, NirKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NzVar {
@@ -9,17 +9,19 @@ pub(crate) enum NzVar {
 }
 
 #[derive(Debug, Clone)]
-enum NzEnvItem {
+enum EnvItem<Type> {
     // Variable is bound with given type
-    Kept(Value),
+    Kept(Type),
     // Variable has been replaced by corresponding value
-    Replaced(Value),
+    Replaced(Nir, Type),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NzEnv {
-    items: Vec<NzEnvItem>,
+pub(crate) struct ValEnv<Type> {
+    items: Vec<EnvItem<Type>>,
 }
+
+pub(crate) type NzEnv = ValEnv<()>;
 
 impl NzVar {
     pub fn new(idx: usize) -> Self {
@@ -44,33 +46,49 @@ impl NzVar {
     }
 }
 
-impl NzEnv {
+impl<Type: Clone> ValEnv<Type> {
     pub fn new() -> Self {
-        NzEnv { items: Vec::new() }
+        ValEnv { items: Vec::new() }
+    }
+    pub fn discard_types(&self) -> ValEnv<()> {
+        let items = self
+            .items
+            .iter()
+            .map(|i| match i {
+                EnvItem::Kept(_) => EnvItem::Kept(()),
+                EnvItem::Replaced(val, _) => EnvItem::Replaced(val.clone(), ()),
+            })
+            .collect();
+        ValEnv { items }
     }
 
-    pub fn insert_type(&self, t: Value) -> Self {
+    pub fn insert_type(&self, ty: Type) -> Self {
         let mut env = self.clone();
-        env.items.push(NzEnvItem::Kept(t));
+        env.items.push(EnvItem::Kept(ty));
         env
     }
-    pub fn insert_value(&self, e: Value) -> Self {
+    pub fn insert_value(&self, e: Nir, ty: Type) -> Self {
         let mut env = self.clone();
-        env.items.push(NzEnvItem::Replaced(e));
+        env.items.push(EnvItem::Replaced(e, ty));
         env
     }
-    pub fn lookup_val(&self, var: &AlphaVar) -> ValueKind {
+    pub fn lookup_val(&self, var: &AlphaVar) -> NirKind {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            NzEnvItem::Kept(_) => ValueKind::Var(NzVar::new(idx)),
-            NzEnvItem::Replaced(x) => x.kind().clone(),
+            EnvItem::Kept(_) => NirKind::Var(NzVar::new(idx)),
+            EnvItem::Replaced(x, _) => x.kind().clone(),
         }
     }
-    pub fn lookup_ty(&self, var: &AlphaVar) -> Value {
+    pub fn lookup_ty(&self, var: &AlphaVar) -> Type {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
-            NzEnvItem::Kept(ty) => ty.clone(),
-            NzEnvItem::Replaced(x) => x.get_type().unwrap(),
+            EnvItem::Kept(ty) | EnvItem::Replaced(_, ty) => ty.clone(),
         }
+    }
+}
+
+impl<'a> From<&'a NzEnv> for NzEnv {
+    fn from(x: &'a NzEnv) -> Self {
+        x.clone()
     }
 }

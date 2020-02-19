@@ -1,5 +1,6 @@
+use crate::semantics::Universe;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
-use crate::syntax::visitor::{self, ExprKindMutVisitor, ExprKindVisitor};
+use crate::syntax::visitor;
 use crate::syntax::*;
 
 pub type Integer = isize;
@@ -16,6 +17,12 @@ pub enum Const {
     Type,
     Kind,
     Sort,
+}
+
+impl Const {
+    pub(crate) fn to_universe(self) -> Universe {
+        Universe::from_const(self)
+    }
 }
 
 /// Bound variable
@@ -96,20 +103,34 @@ pub enum Builtin {
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
-pub struct Expr<Embed> {
-    kind: Box<ExprKind<Expr<Embed>, Embed>>,
+pub struct Expr {
+    kind: Box<ExprKind<Expr>>,
     span: Span,
 }
 
-pub type UnspannedExpr<Embed> = ExprKind<Expr<Embed>, Embed>;
+pub type UnspannedExpr = ExprKind<Expr>;
+
+/// Simple literals
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LitKind {
+    ///  `True`
+    Bool(bool),
+    ///  `1`
+    Natural(Natural),
+    ///  `+2`
+    Integer(Integer),
+    ///  `3.24`
+    Double(Double),
+}
 
 /// Syntax tree for expressions
 // Having the recursion out of the enum definition enables writing
 // much more generic code and improves pattern-matching behind
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExprKind<SubExpr, Embed> {
+pub enum ExprKind<SubExpr> {
     Const(Const),
+    Lit(LitKind),
     ///  `x`
     ///  `x@n`
     Var(V),
@@ -131,16 +152,8 @@ pub enum ExprKind<SubExpr, Embed> {
     Builtin(Builtin),
     // Binary operations
     BinOp(BinOp, SubExpr, SubExpr),
-    ///  `True`
-    BoolLit(bool),
     ///  `if x then y else z`
     BoolIf(SubExpr, SubExpr, SubExpr),
-    ///  `1`
-    NaturalLit(Natural),
-    ///  `+2`
-    IntegerLit(Integer),
-    ///  `3.24`
-    DoubleLit(Double),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
     ///  `[] : t`
@@ -169,29 +182,21 @@ pub enum ExprKind<SubExpr, Embed> {
     Completion(SubExpr, SubExpr),
     /// `./some/path`
     Import(Import<SubExpr>),
-    /// Embeds the result of resolving an import
-    Embed(Embed),
 }
 
-impl<SE, E> ExprKind<SE, E> {
+impl<SE> ExprKind<SE> {
     pub fn traverse_ref_maybe_binder<'a, SE2, Err>(
         &'a self,
         visit: impl FnMut(Option<&'a Label>, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
-        visitor::TraverseRefMaybeBinderVisitor(visit).visit(self)
+    ) -> Result<ExprKind<SE2>, Err> {
+        visitor::visit_ref(self, visit)
     }
 
     pub fn traverse_ref_with_special_handling_of_binders<'a, SE2, Err>(
         &'a self,
         mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
         mut visit_under_binder: impl FnMut(&'a Label, &'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
+    ) -> Result<ExprKind<SE2>, Err> {
         self.traverse_ref_maybe_binder(|l, x| match l {
             None => visit_subexpr(x),
             Some(l) => visit_under_binder(l, x),
@@ -201,27 +206,14 @@ impl<SE, E> ExprKind<SE, E> {
     pub(crate) fn traverse_ref<'a, SE2, Err>(
         &'a self,
         mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ExprKind<SE2, E>, Err>
-    where
-        E: Clone,
-    {
+    ) -> Result<ExprKind<SE2>, Err> {
         self.traverse_ref_maybe_binder(|_, e| visit_subexpr(e))
-    }
-
-    fn traverse_mut<'a, Err>(
-        &'a mut self,
-        visit_subexpr: impl FnMut(&'a mut SE) -> Result<(), Err>,
-    ) -> Result<(), Err> {
-        visitor::TraverseMutVisitor { visit_subexpr }.visit(self)
     }
 
     pub fn map_ref_maybe_binder<'a, SE2>(
         &'a self,
         mut map: impl FnMut(Option<&'a Label>, &'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         trivial_result(self.traverse_ref_maybe_binder(|l, x| Ok(map(l, x))))
     }
 
@@ -229,10 +221,7 @@ impl<SE, E> ExprKind<SE, E> {
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
         mut map_under_binder: impl FnMut(&'a Label, &'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         self.map_ref_maybe_binder(|l, x| match l {
             None => map_subexpr(x),
             Some(l) => map_under_binder(l, x),
@@ -242,34 +231,30 @@ impl<SE, E> ExprKind<SE, E> {
     pub fn map_ref<'a, SE2>(
         &'a self,
         mut map_subexpr: impl FnMut(&'a SE) -> SE2,
-    ) -> ExprKind<SE2, E>
-    where
-        E: Clone,
-    {
+    ) -> ExprKind<SE2> {
         self.map_ref_maybe_binder(|_, e| map_subexpr(e))
-    }
-
-    pub fn map_mut<'a>(&'a mut self, mut map_subexpr: impl FnMut(&'a mut SE)) {
-        trivial_result(self.traverse_mut(|x| Ok(map_subexpr(x))))
     }
 }
 
-impl<E> Expr<E> {
-    pub fn as_ref(&self) -> &UnspannedExpr<E> {
+impl Expr {
+    pub fn as_ref(&self) -> &UnspannedExpr {
+        &self.kind
+    }
+    pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub fn new(kind: UnspannedExpr<E>, span: Span) -> Self {
+    pub fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
             span,
         }
     }
 
-    pub fn rewrap<E2>(&self, kind: UnspannedExpr<E2>) -> Expr<E2> {
+    pub fn rewrap(&self, kind: UnspannedExpr) -> Expr {
         Expr {
             kind: Box::new(kind),
             span: self.span.clone(),
@@ -280,43 +265,6 @@ impl<E> Expr<E> {
             kind: self.kind,
             span,
         }
-    }
-
-    pub fn traverse_resolve_mut<Err, F1>(
-        &mut self,
-        f: &mut F1,
-    ) -> Result<(), Err>
-    where
-        E: Clone,
-        F1: FnMut(Import<Expr<E>>) -> Result<E, Err>,
-    {
-        match self.kind.as_mut() {
-            ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
-                let garbage_expr = ExprKind::BoolLit(false);
-                let new_self = if l.traverse_resolve_mut(f).is_ok() {
-                    l
-                } else {
-                    r.traverse_resolve_mut(f)?;
-                    r
-                };
-                *self.kind =
-                    std::mem::replace(new_self.kind.as_mut(), garbage_expr);
-            }
-            _ => {
-                self.kind.traverse_mut(|e| e.traverse_resolve_mut(f))?;
-                if let ExprKind::Import(import) = self.kind.as_mut() {
-                    let garbage_import = Import {
-                        mode: ImportMode::Code,
-                        location: ImportLocation::Missing,
-                        hash: None,
-                    };
-                    // Move out of &mut import
-                    let import = std::mem::replace(import, garbage_import);
-                    *self.kind = ExprKind::Embed(f(import)?);
-                }
-            }
-        }
-        Ok(())
     }
 }
 
@@ -362,15 +310,15 @@ impl From<Label> for V {
     }
 }
 
-impl<Embed: PartialEq> std::cmp::PartialEq for Expr<Embed> {
+impl std::cmp::PartialEq for Expr {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
 
-impl<Embed: Eq> std::cmp::Eq for Expr<Embed> {}
+impl std::cmp::Eq for Expr {}
 
-impl<Embed: std::hash::Hash> std::hash::Hash for Expr<Embed> {
+impl std::hash::Hash for Expr {
     fn hash<H>(&self, state: &mut H)
     where
         H: std::hash::Hasher,

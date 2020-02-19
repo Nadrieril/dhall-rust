@@ -1,7 +1,7 @@
 use crate::syntax::Label;
 
 // Exactly like a Label, but equality returns always true.
-// This is so that ValueKind equality is exactly alpha-equivalence.
+// This is so that NirKind equality is exactly alpha-equivalence.
 #[derive(Clone, Eq)]
 pub struct Binder {
     name: Label,

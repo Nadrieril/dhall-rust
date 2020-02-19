@@ -1,11 +1,12 @@
 use crate::semantics::{
-    typecheck, NzEnv, TyExpr, TyExprKind, Value, ValueKind, VarEnv,
+    skip_resolve, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, NaiveDouble, Span, UnspannedExpr, V,
+    InterpolatedTextContents, Label, LitKind, NaiveDouble, Span, UnspannedExpr,
+    V,
 };
 use crate::Normalized;
 use std::collections::HashMap;
@@ -14,32 +15,26 @@ use std::convert::TryInto;
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
-pub(crate) struct BuiltinClosure<Value> {
+pub(crate) struct BuiltinClosure<Nir> {
     pub env: NzEnv,
     pub b: Builtin,
     /// Arguments applied to the closure so far.
-    pub args: Vec<Value>,
-    /// Keeps the types of the partial applications around to be able to convert back to TyExpr.
-    /// If the args so far are `x_1`, ..., `x_n`, this contains the types of `b`, `b x1`, ...,
-    /// `b x_1 x_2 ... x_(n-1)`.
-    pub types: Vec<Value>,
+    pub args: Vec<Nir>,
 }
 
-impl BuiltinClosure<Value> {
+impl BuiltinClosure<Nir> {
     pub fn new(b: Builtin, env: NzEnv) -> Self {
         BuiltinClosure {
             env,
             b,
             args: Vec::new(),
-            types: Vec::new(),
         }
     }
 
-    pub fn apply(&self, a: Value, f_ty: Value, ret_ty: &Value) -> ValueKind {
+    pub fn apply(&self, a: Nir) -> NirKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a.clone())).collect();
-        let types = self.types.iter().cloned().chain(once(f_ty)).collect();
-        apply_builtin(self.b, args, ret_ty, types, self.env.clone())
+        apply_builtin(self.b, args, self.env.clone())
     }
     /// This doesn't break the invariant because we already checked that the appropriate arguments
     /// did not normalize to something that allows evaluation to proceed.
@@ -48,24 +43,20 @@ impl BuiltinClosure<Value> {
             x.normalize();
         }
     }
-    pub fn to_tyexprkind(&self, venv: VarEnv) -> TyExprKind {
-        TyExprKind::Expr(self.args.iter().zip(self.types.iter()).fold(
+    pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
+        HirKind::Expr(self.args.iter().fold(
             ExprKind::Builtin(self.b),
-            |acc, (v, ty)| {
+            |acc, v| {
                 ExprKind::App(
-                    TyExpr::new(
-                        TyExprKind::Expr(acc),
-                        Some(ty.clone()),
-                        Span::Artificial,
-                    ),
-                    v.to_tyexpr(venv),
+                    Hir::new(HirKind::Expr(acc), Span::Artificial),
+                    v.to_hir(venv),
                 )
             },
         ))
     }
 }
 
-pub(crate) fn rc<E>(x: UnspannedExpr<E>) -> Expr<E> {
+pub(crate) fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Artificial)
 }
 
@@ -125,9 +116,9 @@ macro_rules! make_type {
     };
 }
 
-pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
+pub(crate) fn type_of_builtin(b: Builtin) -> Hir {
     use Builtin::*;
-    match b {
+    let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
         List | Optional => make_type!(
             Type -> Type
@@ -210,7 +201,8 @@ pub(crate) fn type_of_builtin<E>(b: Builtin) -> Expr<E> {
         OptionalNone => make_type!(
             forall (A: Type) -> Optional A
         ),
-    }
+    };
+    skip_resolve(&expr).unwrap()
 }
 
 // Ad-hoc macro to help construct closures
@@ -249,7 +241,7 @@ macro_rules! make_closure {
         rc(ExprKind::BinOp(
             BinOp::NaturalPlus,
             make_closure!($($v)*),
-            rc(ExprKind::NaturalLit(1))
+            rc(ExprKind::Lit(LitKind::Natural(1)))
         ))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
@@ -264,148 +256,140 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn apply_builtin(
-    b: Builtin,
-    args: Vec<Value>,
-    ty: &Value,
-    types: Vec<Value>,
-    env: NzEnv,
-) -> ValueKind {
-    use Builtin::*;
-    use ValueKind::*;
+fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
+    use LitKind::{Bool, Double, Integer, Natural};
+    use NirKind::*;
 
     // Small helper enum
     enum Ret {
-        ValueKind(ValueKind),
-        Value(Value),
+        NirKind(NirKind),
+        Nir(Nir),
         DoneAsIs,
     }
-    let make_closure = |e| typecheck(&e).unwrap().eval(&env);
+    let make_closure = |e| {
+        typecheck(&skip_resolve(&e).unwrap())
+            .unwrap()
+            .eval(env.clone())
+    };
 
     let ret = match (b, args.as_slice()) {
-        (OptionalNone, [t]) => Ret::ValueKind(EmptyOptionalLit(t.clone())),
-        (NaturalIsZero, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::ValueKind(BoolLit(*n == 0)),
+        (Builtin::OptionalNone, [t]) => {
+            Ret::NirKind(EmptyOptionalLit(t.clone()))
+        }
+        (Builtin::NaturalIsZero, [n]) => match &*n.kind() {
+            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n == 0))),
             _ => Ret::DoneAsIs,
         },
-        (NaturalEven, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 == 0)),
+        (Builtin::NaturalEven, [n]) => match &*n.kind() {
+            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 == 0))),
             _ => Ret::DoneAsIs,
         },
-        (NaturalOdd, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::ValueKind(BoolLit(*n % 2 != 0)),
+        (Builtin::NaturalOdd, [n]) => match &*n.kind() {
+            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 != 0))),
             _ => Ret::DoneAsIs,
         },
-        (NaturalToInteger, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::ValueKind(IntegerLit(*n as isize)),
+        (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
+            Lit(Natural(n)) => Ret::NirKind(Lit(Integer(*n as isize))),
             _ => Ret::DoneAsIs,
         },
-        (NaturalShow, [n]) => match &*n.kind() {
-            NaturalLit(n) => Ret::Value(Value::from_text(n)),
+        (Builtin::NaturalShow, [n]) => match &*n.kind() {
+            Lit(Natural(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
-        (NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
-            (NaturalLit(a), NaturalLit(b)) => {
-                Ret::ValueKind(NaturalLit(if b > a { b - a } else { 0 }))
+        (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
+            (Lit(Natural(a)), Lit(Natural(b))) => {
+                Ret::NirKind(Lit(Natural(if b > a { b - a } else { 0 })))
             }
-            (NaturalLit(0), _) => Ret::Value(b.clone()),
-            (_, NaturalLit(0)) => Ret::ValueKind(NaturalLit(0)),
-            _ if a == b => Ret::ValueKind(NaturalLit(0)),
+            (Lit(Natural(0)), _) => Ret::Nir(b.clone()),
+            (_, Lit(Natural(0))) => Ret::NirKind(Lit(Natural(0))),
+            _ if a == b => Ret::NirKind(Lit(Natural(0))),
             _ => Ret::DoneAsIs,
         },
-        (IntegerShow, [n]) => match &*n.kind() {
-            IntegerLit(n) => {
+        (Builtin::IntegerShow, [n]) => match &*n.kind() {
+            Lit(Integer(n)) => {
                 let s = if *n < 0 {
                     n.to_string()
                 } else {
                     format!("+{}", n)
                 };
-                Ret::Value(Value::from_text(s))
+                Ret::Nir(Nir::from_text(s))
             }
             _ => Ret::DoneAsIs,
         },
-        (IntegerToDouble, [n]) => match &*n.kind() {
-            IntegerLit(n) => {
-                Ret::ValueKind(DoubleLit(NaiveDouble::from(*n as f64)))
+        (Builtin::IntegerToDouble, [n]) => match &*n.kind() {
+            Lit(Integer(n)) => {
+                Ret::NirKind(Lit(Double(NaiveDouble::from(*n as f64))))
             }
             _ => Ret::DoneAsIs,
         },
-        (IntegerNegate, [n]) => match &*n.kind() {
-            IntegerLit(n) => Ret::ValueKind(IntegerLit(-n)),
+        (Builtin::IntegerNegate, [n]) => match &*n.kind() {
+            Lit(Integer(n)) => Ret::NirKind(Lit(Integer(-n))),
             _ => Ret::DoneAsIs,
         },
-        (IntegerClamp, [n]) => match &*n.kind() {
-            IntegerLit(n) => {
-                Ret::ValueKind(NaturalLit((*n).try_into().unwrap_or(0)))
+        (Builtin::IntegerClamp, [n]) => match &*n.kind() {
+            Lit(Integer(n)) => {
+                Ret::NirKind(Lit(Natural((*n).try_into().unwrap_or(0))))
             }
             _ => Ret::DoneAsIs,
         },
-        (DoubleShow, [n]) => match &*n.kind() {
-            DoubleLit(n) => Ret::Value(Value::from_text(n)),
+        (Builtin::DoubleShow, [n]) => match &*n.kind() {
+            Lit(Double(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
-        (TextShow, [v]) => match &*v.kind() {
+        (Builtin::TextShow, [v]) => match &*v.kind() {
             TextLit(tlit) => {
                 if let Some(s) = tlit.as_text() {
                     // Printing InterpolatedText takes care of all the escaping
                     let txt: InterpolatedText<Normalized> =
                         std::iter::once(InterpolatedTextContents::Text(s))
                             .collect();
-                    Ret::Value(Value::from_text(txt))
+                    Ret::Nir(Nir::from_text(txt))
                 } else {
                     Ret::DoneAsIs
                 }
             }
             _ => Ret::DoneAsIs,
         },
-        (ListLength, [_, l]) => match &*l.kind() {
-            EmptyListLit(_) => Ret::ValueKind(NaturalLit(0)),
-            NEListLit(xs) => Ret::ValueKind(NaturalLit(xs.len())),
+        (Builtin::ListLength, [_, l]) => match &*l.kind() {
+            EmptyListLit(_) => Ret::NirKind(Lit(Natural(0))),
+            NEListLit(xs) => Ret::NirKind(Lit(Natural(xs.len()))),
             _ => Ret::DoneAsIs,
         },
-        (ListHead, [_, l]) => match &*l.kind() {
-            EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
+        (Builtin::ListHead, [_, l]) => match &*l.kind() {
+            EmptyListLit(n) => Ret::NirKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => {
-                Ret::ValueKind(NEOptionalLit(xs.iter().next().unwrap().clone()))
+                Ret::NirKind(NEOptionalLit(xs.iter().next().unwrap().clone()))
             }
             _ => Ret::DoneAsIs,
         },
-        (ListLast, [_, l]) => match &*l.kind() {
-            EmptyListLit(n) => Ret::ValueKind(EmptyOptionalLit(n.clone())),
-            NEListLit(xs) => Ret::ValueKind(NEOptionalLit(
+        (Builtin::ListLast, [_, l]) => match &*l.kind() {
+            EmptyListLit(n) => Ret::NirKind(EmptyOptionalLit(n.clone())),
+            NEListLit(xs) => Ret::NirKind(NEOptionalLit(
                 xs.iter().rev().next().unwrap().clone(),
             )),
             _ => Ret::DoneAsIs,
         },
-        (ListReverse, [_, l]) => match &*l.kind() {
-            EmptyListLit(n) => Ret::ValueKind(EmptyListLit(n.clone())),
+        (Builtin::ListReverse, [_, l]) => match &*l.kind() {
+            EmptyListLit(n) => Ret::NirKind(EmptyListLit(n.clone())),
             NEListLit(xs) => {
-                Ret::ValueKind(NEListLit(xs.iter().rev().cloned().collect()))
+                Ret::NirKind(NEListLit(xs.iter().rev().cloned().collect()))
             }
             _ => Ret::DoneAsIs,
         },
-        (ListIndexed, [_, l]) => {
-            let l_whnf = l.kind();
-            match &*l_whnf {
+        (Builtin::ListIndexed, [t, l]) => {
+            match l.kind() {
                 EmptyListLit(_) | NEListLit(_) => {
-                    // Extract the type of the list elements
-                    let t = match &*l_whnf {
-                        EmptyListLit(t) => t.clone(),
-                        NEListLit(xs) => xs[0].get_type_not_sort(),
-                        _ => unreachable!(),
-                    };
-
                     // Construct the returned record type: { index: Natural, value: t }
                     let mut kts = HashMap::new();
-                    kts.insert("index".into(), Value::from_builtin(Natural));
-                    kts.insert("value".into(), t.clone());
-                    let t = Value::from_kind_and_type(
-                        RecordType(kts),
-                        Value::from_const(Type),
+                    kts.insert(
+                        "index".into(),
+                        Nir::from_builtin(Builtin::Natural),
                     );
+                    kts.insert("value".into(), t.clone());
+                    let t = Nir::from_kind(RecordType(kts));
 
                     // Construct the new list, with added indices
-                    let list = match &*l_whnf {
+                    let list = match l.kind() {
                         EmptyListLit(_) => EmptyListLit(t),
                         NEListLit(xs) => NEListLit(
                             xs.iter()
@@ -414,31 +398,23 @@ fn apply_builtin(
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Value::from_kind_and_type(
-                                            NaturalLit(i),
-                                            Value::from_builtin(
-                                                Builtin::Natural,
-                                            ),
-                                        ),
+                                        Nir::from_kind(Lit(Natural(i))),
                                     );
                                     kvs.insert("value".into(), e.clone());
-                                    Value::from_kind_and_type(
-                                        RecordLit(kvs),
-                                        t.clone(),
-                                    )
+                                    Nir::from_kind(RecordLit(kvs))
                                 })
                                 .collect(),
                         ),
                         _ => unreachable!(),
                     };
-                    Ret::ValueKind(list)
+                    Ret::NirKind(list)
                 }
                 _ => Ret::DoneAsIs,
             }
         }
-        (ListBuild, [t, f]) => {
-            let list_t = Value::from_builtin(List).app(t.clone());
-            Ret::Value(
+        (Builtin::ListBuild, [t, f]) => {
+            let list_t = Nir::from_builtin(Builtin::List).app(t.clone());
+            Ret::Nir(
                 f.app(list_t.clone())
                     .app(
                         make_closure(make_closure!(
@@ -449,23 +425,24 @@ fn apply_builtin(
                         ))
                         .app(t.clone()),
                     )
-                    .app(EmptyListLit(t.clone()).into_value_with_type(list_t)),
+                    .app(EmptyListLit(t.clone()).into_nir()),
             )
         }
-        (ListFold, [_, l, _, cons, nil]) => match &*l.kind() {
-            EmptyListLit(_) => Ret::Value(nil.clone()),
+        (Builtin::ListFold, [_, l, _, cons, nil]) => match &*l.kind() {
+            EmptyListLit(_) => Ret::Nir(nil.clone()),
             NEListLit(xs) => {
                 let mut v = nil.clone();
                 for x in xs.iter().cloned().rev() {
                     v = cons.app(x).app(v);
                 }
-                Ret::Value(v)
+                Ret::Nir(v)
             }
             _ => Ret::DoneAsIs,
         },
-        (OptionalBuild, [t, f]) => {
-            let optional_t = Value::from_builtin(Optional).app(t.clone());
-            Ret::Value(
+        (Builtin::OptionalBuild, [t, f]) => {
+            let optional_t =
+                Nir::from_builtin(Builtin::Optional).app(t.clone());
+            Ret::Nir(
                 f.app(optional_t.clone())
                     .app(
                         make_closure(make_closure!(
@@ -475,61 +452,47 @@ fn apply_builtin(
                         ))
                         .app(t.clone()),
                     )
-                    .app(
-                        EmptyOptionalLit(t.clone())
-                            .into_value_with_type(optional_t),
-                    ),
+                    .app(EmptyOptionalLit(t.clone()).into_nir()),
             )
         }
-        (OptionalFold, [_, v, _, just, nothing]) => match &*v.kind() {
-            EmptyOptionalLit(_) => Ret::Value(nothing.clone()),
-            NEOptionalLit(x) => Ret::Value(just.app(x.clone())),
+        (Builtin::OptionalFold, [_, v, _, just, nothing]) => match &*v.kind() {
+            EmptyOptionalLit(_) => Ret::Nir(nothing.clone()),
+            NEOptionalLit(x) => Ret::Nir(just.app(x.clone())),
             _ => Ret::DoneAsIs,
         },
-        (NaturalBuild, [f]) => Ret::Value(
-            f.app(Value::from_builtin(Natural))
+        (Builtin::NaturalBuild, [f]) => Ret::Nir(
+            f.app(Nir::from_builtin(Builtin::Natural))
                 .app(make_closure(make_closure!(
                     λ(x : Natural) ->
                     1 + var(x)
                 )))
-                .app(
-                    NaturalLit(0)
-                        .into_value_with_type(Value::from_builtin(Natural)),
-                ),
+                .app(Lit(Natural(0)).into_nir()),
         ),
 
-        (NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
-            NaturalLit(0) => Ret::Value(zero.clone()),
-            NaturalLit(n) => {
-                let fold = Value::from_builtin(NaturalFold)
-                    .app(
-                        NaturalLit(n - 1)
-                            .into_value_with_type(Value::from_builtin(Natural)),
-                    )
+        (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
+            Lit(Natural(0)) => Ret::Nir(zero.clone()),
+            Lit(Natural(n)) => {
+                let fold = Nir::from_builtin(Builtin::NaturalFold)
+                    .app(Lit(Natural(n - 1)).into_nir())
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());
-                Ret::Value(succ.app(fold))
+                Ret::Nir(succ.app(fold))
             }
             _ => Ret::DoneAsIs,
         },
         _ => Ret::DoneAsIs,
     };
     match ret {
-        Ret::ValueKind(v) => v,
-        Ret::Value(v) => v.to_whnf_check_type(ty),
-        Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure {
-            b,
-            args,
-            types,
-            env,
-        }),
+        Ret::NirKind(v) => v,
+        Ret::Nir(v) => v.kind().clone(),
+        Ret::DoneAsIs => AppliedBuiltin(BuiltinClosure { b, args, env }),
     }
 }
 
-impl<Value: std::cmp::PartialEq> std::cmp::PartialEq for BuiltinClosure<Value> {
+impl<Nir: std::cmp::PartialEq> std::cmp::PartialEq for BuiltinClosure<Nir> {
     fn eq(&self, other: &Self) -> bool {
         self.b == other.b && self.args == other.args
     }
 }
-impl<Value: std::cmp::Eq> std::cmp::Eq for BuiltinClosure<Value> {}
+impl<Nir: std::cmp::Eq> std::cmp::Eq for BuiltinClosure<Nir> {}

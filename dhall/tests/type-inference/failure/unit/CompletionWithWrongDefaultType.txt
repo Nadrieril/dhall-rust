@@ -1,7 +1,7 @@
-Type error: error: annot mismatch: (Example.default ⫽ {=} : { id : Optional Natural, name : Bool }) : { id : Optional Natural, name : Text }
+Type error: error: annot mismatch: { id : Optional Natural, name : Bool } != { id : Optional Natural, name : Text }
  --> <current file>:1:4
   |
 ...
 6 | in  Example::{=}
-  |     ^^^^^^^^^^^^ annot mismatch: (Example.default ⫽ {=} : { id : Optional Natural, name : Bool }) : { id : Optional Natural, name : Text }
+  |     ^^^^^^^^^^^^ annot mismatch: { id : Optional Natural, name : Bool } != { id : Optional Natural, name : Text }
   |

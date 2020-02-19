@@ -299,9 +299,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection2"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection3"
-                    // TODO: record completion
-                    || path == "simple/completion"
-                    || path == "unit/Completion"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),

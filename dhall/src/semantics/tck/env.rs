@@ -1,5 +1,5 @@
-use crate::semantics::{AlphaVar, NzEnv, NzVar, Type, Value};
-use crate::syntax::{Label, V};
+use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
+use crate::syntax::Label;
 
 /// Environment for indexing variables.
 #[derive(Debug, Clone, Copy)]
@@ -7,22 +7,19 @@ pub(crate) struct VarEnv {
     size: usize,
 }
 
-/// Environment for resolving names.
-#[derive(Debug, Clone)]
-pub(crate) struct NameEnv {
-    names: Vec<Label>,
-}
-
 /// Environment for typing expressions.
 #[derive(Debug, Clone)]
 pub(crate) struct TyEnv {
     names: NameEnv,
-    items: NzEnv,
+    items: ValEnv<Type>,
 }
 
 impl VarEnv {
     pub fn new() -> Self {
         VarEnv { size: 0 }
+    }
+    pub fn from_size(size: usize) -> Self {
+        VarEnv { size }
     }
     pub fn size(&self) -> usize {
         self.size
@@ -41,84 +38,42 @@ impl VarEnv {
     }
 }
 
-impl NameEnv {
-    pub fn new() -> Self {
-        NameEnv { names: Vec::new() }
-    }
-    pub fn as_varenv(&self) -> VarEnv {
-        VarEnv {
-            size: self.names.len(),
-        }
-    }
-
-    pub fn insert(&self, x: &Label) -> Self {
-        let mut env = self.clone();
-        env.insert_mut(x);
-        env
-    }
-    pub fn insert_mut(&mut self, x: &Label) {
-        self.names.push(x.clone())
-    }
-    pub fn remove_mut(&mut self) {
-        self.names.pop();
-    }
-
-    pub fn unlabel_var(&self, var: &V) -> Option<AlphaVar> {
-        let V(name, idx) = var;
-        let (idx, _) = self
-            .names
-            .iter()
-            .rev()
-            .enumerate()
-            .filter(|(_, n)| *n == name)
-            .nth(*idx)?;
-        Some(AlphaVar::new(idx))
-    }
-    pub fn label_var(&self, var: &AlphaVar) -> V {
-        let name = &self.names[self.names.len() - 1 - var.idx()];
-        let idx = self
-            .names
-            .iter()
-            .rev()
-            .take(var.idx())
-            .filter(|n| *n == name)
-            .count();
-        V(name.clone(), idx)
-    }
-}
-
 impl TyEnv {
     pub fn new() -> Self {
         TyEnv {
             names: NameEnv::new(),
-            items: NzEnv::new(),
+            items: ValEnv::new(),
         }
     }
     pub fn as_varenv(&self) -> VarEnv {
         self.names.as_varenv()
     }
-    pub fn as_nzenv(&self) -> &NzEnv {
-        &self.items
+    pub fn to_nzenv(&self) -> NzEnv {
+        self.items.discard_types()
     }
     pub fn as_nameenv(&self) -> &NameEnv {
         &self.names
     }
 
-    pub fn insert_type(&self, x: &Label, t: Type) -> Self {
+    pub fn insert_type(&self, x: &Label, ty: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
-            items: self.items.insert_type(t),
+            items: self.items.insert_type(ty),
         }
     }
-    pub fn insert_value(&self, x: &Label, e: Value) -> Self {
+    pub fn insert_value(&self, x: &Label, e: Nir, ty: Type) -> Self {
         TyEnv {
             names: self.names.insert(x),
-            items: self.items.insert_value(e),
+            items: self.items.insert_value(e, ty),
         }
     }
-    pub fn lookup(&self, var: &V) -> Option<(AlphaVar, Type)> {
-        let var = self.names.unlabel_var(var)?;
-        let ty = self.items.lookup_ty(&var);
-        Some((var, ty))
+    pub fn lookup(&self, var: &AlphaVar) -> Type {
+        self.items.lookup_ty(&var)
+    }
+}
+
+impl<'a> From<&'a TyEnv> for NzEnv {
+    fn from(x: &'a TyEnv) -> Self {
+        x.to_nzenv()
     }
 }

@@ -1,1 +1,6 @@
-Type error: Unhandled error: Sort
+Type error: error: Sort does not have a type
+ --> <current file>:1:7
+  |
+1 | Kind → Sort
+  |        ^^^^ Sort does not have a type
+  |

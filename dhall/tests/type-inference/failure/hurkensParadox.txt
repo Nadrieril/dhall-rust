@@ -1,15 +1,15 @@
 Type error: error: wrong type of function argument
-  --> <current file>:6:23
+  --> <current file>:6:15
    |
  1 |     let bottom : Type = ∀(any : Type) → any
  2 | 
  3 | in  let not : Type → Type = λ(p : Type) → p → bottom
  4 | 
 ...
+ 9 | in  let tau
 10 |         : pow (pow U) → U
-11 |         =   λ(t : pow (pow U))
-   |                        ^^^ this expects an argument of type: Kind
-   |                            ^ but this has type: Sort
+   |                ^^^ this expects an argument of type: Kind
+   |                    ^ but this has type: Sort
    |
    = note: expected type `Kind`
               found type `Sort`
