@@ -48,7 +48,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
             )))
         };
 
-        match expr.as_ref() {
+        match expr.kind() {
             Lit(Bool(x)) => visitor.visit_bool(*x),
             Lit(Natural(x)) => {
                 if let Ok(x64) = (*x).try_into() {
@@ -81,11 +81,11 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                 xs.iter().map(|x| Deserializer(Cow::Borrowed(x))),
             )),
             SomeLit(x) => visitor.visit_some(Deserializer(Cow::Borrowed(x))),
-            App(f, x) => match f.as_ref() {
+            App(f, x) => match f.kind() {
                 Builtin(dhall::syntax::Builtin::OptionalNone) => {
                     visitor.visit_none()
                 }
-                Field(y, name) => match y.as_ref() {
+                Field(y, name) => match y.kind() {
                     UnionType(..) => {
                         let name: String = name.into();
                         visitor.visit_enum(MapAccessDeserializer::new(
@@ -103,7 +103,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                 .visit_map(MapDeserializer::new(m.iter().map(|(k, v)| {
                     (k.as_ref(), Deserializer(Cow::Borrowed(v)))
                 }))),
-            Field(y, name) => match y.as_ref() {
+            Field(y, name) => match y.kind() {
                 UnionType(..) => {
                     let name: String = name.into();
                     visitor.visit_enum(MapAccessDeserializer::new(
@@ -127,7 +127,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         use ExprKind::*;
         let expr = self.0.as_ref();
 
-        match expr.as_ref() {
+        match expr.kind() {
             // Blindly takes keys in sorted order.
             RecordLit(m) => visitor.visit_seq(SeqDeserializer::new(
                 m.iter().map(|(_, v)| Deserializer(Cow::Borrowed(v))),

@@ -7,7 +7,7 @@ use annotate_snippets::{
 use crate::syntax::{ParsedSpan, Span};
 
 #[derive(Debug, Clone, Default)]
-pub struct ErrorBuilder {
+pub(crate) struct ErrorBuilder {
     title: FreeAnnotation,
     annotations: Vec<SpannedAnnotation>,
     footer: Vec<FreeAnnotation>,

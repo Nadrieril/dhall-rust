@@ -237,32 +237,19 @@ impl<SE> ExprKind<SE> {
 }
 
 impl Expr {
-    pub fn as_ref(&self) -> &UnspannedExpr {
+    pub(crate) fn as_ref(&self) -> &UnspannedExpr {
         &self.kind
     }
     pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
-    pub fn span(&self) -> Span {
+    pub(crate) fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub fn new(kind: UnspannedExpr, span: Span) -> Self {
+    pub(crate) fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
-            span,
-        }
-    }
-
-    pub fn rewrap(&self, kind: UnspannedExpr) -> Expr {
-        Expr {
-            kind: Box::new(kind),
-            span: self.span.clone(),
-        }
-    }
-    pub fn with_span(self, span: Span) -> Self {
-        Expr {
-            kind: self.kind,
             span,
         }
     }
