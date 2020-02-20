@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::semantics::Universe;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor;
@@ -165,7 +167,7 @@ pub enum ExprKind<SubExpr> {
     ///  `{ k1 : t1, k2 : t1 }`
     RecordType(DupTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
-    RecordLit(DupTreeMap<Label, SubExpr>),
+    RecordLit(BTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
     UnionType(DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`
@@ -237,32 +239,19 @@ impl<SE> ExprKind<SE> {
 }
 
 impl Expr {
-    pub fn as_ref(&self) -> &UnspannedExpr {
+    pub(crate) fn as_ref(&self) -> &UnspannedExpr {
         &self.kind
     }
     pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
-    pub fn span(&self) -> Span {
+    pub(crate) fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub fn new(kind: UnspannedExpr, span: Span) -> Self {
+    pub(crate) fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
-            span,
-        }
-    }
-
-    pub fn rewrap(&self, kind: UnspannedExpr) -> Expr {
-        Expr {
-            kind: Box::new(kind),
-            span: self.span.clone(),
-        }
-    }
-    pub fn with_span(self, span: Span) -> Self {
-        Expr {
-            kind: self.kind,
             span,
         }
     }

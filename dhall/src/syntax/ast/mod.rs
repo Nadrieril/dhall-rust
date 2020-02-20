@@ -5,7 +5,7 @@ pub use import::*;
 mod label;
 pub use label::*;
 mod span;
-pub use span::*;
+pub(crate) use span::*;
 mod text;
 pub use text::*;
 pub mod map;

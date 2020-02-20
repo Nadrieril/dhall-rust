@@ -1,6 +1,6 @@
- --> 1:5
+ --> 1:3
   |
 1 | { x :T }␊
-  |     ^---
+  |   ^---
   |
-  = expected non_empty_record_literal or non_empty_record_type
+  = expected empty_record_literal or non_empty_record_type_or_literal
