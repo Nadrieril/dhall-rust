@@ -63,7 +63,7 @@ assert_eq!(deserialized_map, expected_map);
 ## Standard-compliance
 
 This implementation currently supports partially the [Dhall
-standard](https://github.com/dhall-lang/dhall-lang) version `13.0.0`.
+standard](https://github.com/dhall-lang/dhall-lang) version `14.0.0`.
 
 Only local imports are supported, but otherwise the main features are
 implemented. See
@@ -161,6 +161,7 @@ same name as the corresponding test.
 
 [???]
 
+- Update to supporting dhall v14.0.0
 - Add support for dotted field syntax
 - Disallow Natural literals with leading zeros
 - Add support for duplicate record fields
