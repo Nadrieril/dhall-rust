@@ -162,6 +162,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    || path == "usingToMap"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -186,6 +187,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    || path == "usingToMap"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -208,6 +210,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
                     || path == "unit/import/urls/emptyPathSegment"
+                    || path == "usingToMap"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
