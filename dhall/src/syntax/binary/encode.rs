@@ -1,4 +1,5 @@
 use serde_cbor::value::value as cbor;
+use std::collections::BTreeMap;
 use std::vec;
 
 use crate::error::EncodeError;
@@ -17,7 +18,8 @@ pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
 enum Serialize<'a> {
     Expr(&'a Expr),
     CBOR(cbor::Value),
-    RecordMap(&'a DupTreeMap<Label, Expr>),
+    RecordMap(&'a BTreeMap<Label, Expr>),
+    RecordDupMap(&'a DupTreeMap<Label, Expr>),
     UnionMap(&'a DupTreeMap<Label, Option<Expr>>),
 }
 
@@ -48,7 +50,7 @@ where
     use syntax::ExprKind::*;
     use syntax::LitKind::*;
 
-    use self::Serialize::{RecordMap, UnionMap};
+    use self::Serialize::{RecordDupMap, RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {
         self::Serialize::Expr(x)
     }
@@ -127,7 +129,7 @@ where
                 Text(x) => cbor(String(x.clone())),
             })))
         }
-        RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
+        RecordType(map) => ser_seq!(ser; tag(7), RecordDupMap(map)),
         RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
         Field(x, l) => ser_seq!(ser; tag(9), expr(x), label(l)),
@@ -258,6 +260,11 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
         match self {
             Serialize::Expr(e) => serialize_subexpr(ser, e),
             Serialize::CBOR(v) => v.serialize(ser),
+            Serialize::RecordDupMap(map) => {
+                ser.collect_map(map.iter().map(|(k, v)| {
+                    (cbor::Value::String(k.into()), Serialize::Expr(v))
+                }))
+            }
             Serialize::RecordMap(map) => {
                 ser.collect_map(map.iter().map(|(k, v)| {
                     (cbor::Value::String(k.into()), Serialize::Expr(v))

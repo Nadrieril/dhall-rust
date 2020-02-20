@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use pest_consume::{match_nodes, Parser};
@@ -120,6 +121,25 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
     for line in lines.iter_mut() {
         if !line.is_empty() {
             line.head_mut().replace_range(0..=min_indent_idx, "");
+        }
+    }
+}
+
+/// Insert the expr into the map; in case of collision, create a RecursiveRecordMerge node.
+fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
+    use crate::syntax::BinOp::RecursiveRecordMerge;
+    use std::collections::btree_map::Entry;
+    match map.entry(l) {
+        Entry::Vacant(entry) => {
+            entry.insert(e);
+        }
+        Entry::Occupied(mut entry) => {
+            let dummy = Expr::new(Lit(Bool(false)), Span::Artificial);
+            let other = entry.insert(dummy);
+            entry.insert(Expr::new(
+                BinOp(RecursiveRecordMerge, other, e),
+                Span::DuplicateRecordFieldsSugar,
+            ));
         }
     }
 }
@@ -860,26 +880,16 @@ impl DhallParser {
         input: ParseInput,
     ) -> ParseResult<UnspannedExpr> {
         Ok(match_nodes!(input.children();
-            [label(first_label), non_empty_record_type(rest)] => {
-                let (first_expr, mut map) = rest;
-                map.insert(first_label, first_expr);
-                RecordType(map)
-            },
-            [label(first_label), non_empty_record_literal(rest)] => {
-                let (first_expr, mut map) = rest;
-                map.insert(first_label, first_expr);
-                RecordLit(map)
-            },
+            [non_empty_record_type(map)] => RecordType(map),
+            [non_empty_record_literal(map)] => RecordLit(map),
         ))
     }
 
     fn non_empty_record_type(
         input: ParseInput,
-    ) -> ParseResult<(Expr, DupTreeMap<Label, Expr>)> {
+    ) -> ParseResult<DupTreeMap<Label, Expr>> {
         Ok(match_nodes!(input.into_children();
-            [expression(expr), record_type_entry(entries)..] => {
-                (expr, entries.collect())
-            }
+            [record_type_entry(entries)..] => entries.collect()
         ))
     }
 
@@ -891,10 +901,14 @@ impl DhallParser {
 
     fn non_empty_record_literal(
         input: ParseInput,
-    ) -> ParseResult<(Expr, DupTreeMap<Label, Expr>)> {
+    ) -> ParseResult<BTreeMap<Label, Expr>> {
         Ok(match_nodes!(input.into_children();
-            [expression(expr), record_literal_entry(entries)..] => {
-                (expr, entries.collect())
+            [record_literal_entry(entries)..] => {
+                let mut map = BTreeMap::new();
+                for (l, e) in entries {
+                    insert_recordlit_entry(&mut map, l, e);
+                }
+                map
             }
         ))
     }

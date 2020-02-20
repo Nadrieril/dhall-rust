@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::semantics::Universe;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor;
@@ -165,7 +167,7 @@ pub enum ExprKind<SubExpr> {
     ///  `{ k1 : t1, k2 : t1 }`
     RecordType(DupTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
-    RecordLit(DupTreeMap<Label, SubExpr>),
+    RecordLit(BTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
     UnionType(DupTreeMap<Label, Option<SubExpr>>),
     ///  `merge x y : t`

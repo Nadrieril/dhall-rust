@@ -161,19 +161,20 @@ same name as the corresponding test.
 
 [???]
 
-Update to supporting dhall v13.0.0
+- Add support for duplicate record fields
+- Update to supporting dhall v13.0.0
 
 [0.2.1]
 
-Improve documentation and deserialize many more types
+- Improve documentation and deserialize many more types
 
 [0.2.0]
 
-Update to supporting dhall v12.0.0
+- Update to supporting dhall v12.0.0
 
 [0.1.0]
 
-Initial release
+- Initial release
 
 ## License
 

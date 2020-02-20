@@ -18,6 +18,8 @@ pub(crate) struct ParsedSpan {
 pub(crate) enum Span {
     /// A location in the source text
     Parsed(ParsedSpan),
+    /// Desugaring of duplicate fields
+    DuplicateRecordFieldsSugar,
     /// For expressions obtained from decoding binary
     Decoded,
     /// For expressions constructed during normalization/typecheck
