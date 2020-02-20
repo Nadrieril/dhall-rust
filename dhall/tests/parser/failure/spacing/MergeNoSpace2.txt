@@ -3,4 +3,4 @@
 1 | merge x(y)␊
   |       ^---
   |
-  = expected missing, non_empty_list_literal, double_quote_literal, single_quote_literal, if_, merge, NaN, Some_, toMap, assert, forall, numeric_double_literal, minus_infinity_literal, plus_infinity_literal, natural_literal, integer_literal, or import_hashed
+  = expected missing, double_quote_literal, single_quote_literal, if_, merge, non_empty_list_literal, NaN, Some_, toMap, assert, forall, numeric_double_literal, minus_infinity_literal, plus_infinity_literal, natural_literal, integer_literal, or import_hashed

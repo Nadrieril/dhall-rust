@@ -161,6 +161,7 @@ same name as the corresponding test.
 
 [???]
 
+- Add support for dotted field syntax
 - Disallow Natural literals with leading zeros
 - Add support for duplicate record fields
 - Update to supporting dhall v13.0.0

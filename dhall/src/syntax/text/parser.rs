@@ -915,7 +915,18 @@ impl DhallParser {
 
     fn record_literal_entry(input: ParseInput) -> ParseResult<(Label, Expr)> {
         Ok(match_nodes!(input.into_children();
-            [label(name), expression(expr)] => (name, expr)
+            [label(name), expression(expr)] => (name, expr),
+            [label(first_name), label(names).., expression(expr)] => {
+                // Desugar dotted field syntax into nested records
+                let expr = names.rev().fold(expr, |e, l| {
+                    let map = Some((l, e)).into_iter().collect();
+                    Expr::new(
+                        RecordLit(map),
+                        Span::DottedFieldSugar,
+                    )
+                });
+                (first_name, expr)
+            },
         ))
     }
 

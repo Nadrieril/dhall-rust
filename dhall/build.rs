@@ -375,26 +375,6 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     rules.remove("url_path");
     writeln!(&mut file, "url_path = _{{ path }}")?;
 
-    // TODO: workaround to simplify record parsing
-    rules.remove("non_empty_record_type_or_literal");
-    rules.remove("non_empty_record_literal");
-    rules.remove("non_empty_record_type");
-    writeln!(
-        &mut file,
-        "non_empty_record_type_or_literal = {{ non_empty_record_literal | \
-         non_empty_record_type }}"
-    )?;
-    writeln!(
-        &mut file,
-        "non_empty_record_literal = {{ record_literal_entry ~ (whsp ~ ^\",\" \
-         ~ whsp ~ record_literal_entry)*}}"
-    )?;
-    writeln!(
-        &mut file,
-        "non_empty_record_type = {{ record_type_entry ~ (whsp ~ ^\",\" ~ whsp \
-         ~ record_type_entry)* }}"
-    )?;
-
     // Work around some greediness issue in the grammar.
     rules.remove("missing");
     writeln!(
