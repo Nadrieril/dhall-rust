@@ -77,8 +77,10 @@ struct TestFeature {
     directory: &'static str,
     /// Relevant variant of `dhall::tests::Test`
     variant: &'static str,
+    /// Given a file name, whether to only include it in release tests
+    too_slow_path: Box<dyn FnMut(&str) -> bool>,
     /// Given a file name, whether to exclude it
-    path_filter: Box<dyn FnMut(&str) -> bool>,
+    exclude_path: Box<dyn FnMut(&str) -> bool>,
     /// Type of the input file
     input_type: FileType,
     /// Type of the output file, if any
@@ -98,8 +100,11 @@ fn make_test_module(
         for (name, path) in
             dhall_files_in_dir(&tests_dir, take_ab_suffix, feature.input_type)
         {
-            if (feature.path_filter)(&path) {
+            if (feature.exclude_path)(&path) {
                 continue;
+            }
+            if (feature.too_slow_path)(&path) {
+                writeln!(w, "#[cfg(not(debug_assertions))]")?;
             }
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
@@ -152,10 +157,9 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "parser_success",
             directory: "parser/success/",
             variant: "ParserSuccess",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
+            exclude_path: Box::new(|path: &str| {
                 false
-                    // Too slow in debug mode
-                    || path == "largeExpression"
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
                     // TODO: RFC3986 URLs
@@ -171,7 +175,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "parser_failure",
             directory: "parser/failure/",
             variant: "ParserFailure",
-            path_filter: Box::new(|_path: &str| false),
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|_path: &str| false),
             input_type: FileType::Text,
             output_type: Some(FileType::UI),
         },
@@ -179,10 +184,9 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "printer",
             directory: "parser/success/",
             variant: "Printer",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
+            exclude_path: Box::new(|path: &str| {
                 false
-                    // Too slow in debug mode
-                    || path == "largeExpression"
                     // TODO: RFC3986 URLs
                     || path == "unit/import/urls/emptyPath0"
                     || path == "unit/import/urls/emptyPath1"
@@ -196,10 +200,9 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "binary_encoding",
             directory: "parser/success/",
             variant: "BinaryEncoding",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
+            exclude_path: Box::new(|path: &str| {
                 false
-                    // Too slow in debug mode
-                    || path == "largeExpression"
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
                     // See https://github.com/pyfisch/cbor/issues/109
@@ -219,7 +222,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "binary_decoding_success",
             directory: "binary-decode/success/",
             variant: "BinaryDecodingSuccess",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 false
                     // We don't support bignums
                     || path == "unit/IntegerBigNegative"
@@ -233,7 +237,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "binary_decoding_failure",
             directory: "binary-decode/failure/",
             variant: "BinaryDecodingFailure",
-            path_filter: Box::new(|_path: &str| false),
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
             output_type: Some(FileType::UI),
         },
@@ -241,7 +246,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "import_success",
             directory: "import/success/",
             variant: "ImportSuccess",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 false
                     || path == "alternativeEnvNatural"
                     || path == "alternativeEnvSimple"
@@ -260,7 +266,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "import_failure",
             directory: "import/failure/",
             variant: "ImportFailure",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 false
                     || path == "alternativeEnv"
                     || path == "alternativeEnvMissing"
@@ -276,11 +283,11 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "beta_normalize",
             directory: "normalization/success/",
             variant: "Normalization",
-            path_filter: Box::new(|path: &str| {
-                // We don't support bignums
-                path == "simple/integerToDouble"
-                    // Too slow
-                    || path == "remoteSystems"
+            too_slow_path: Box::new(|path: &str| path == "remoteSystems"),
+            exclude_path: Box::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "simple/integerToDouble"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
                     // TODO: doesn't typecheck
@@ -296,7 +303,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "alpha_normalize",
             directory: "alpha-normalization/success/",
             variant: "AlphaNormalization",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 // This test is designed to not typecheck
                 path == "unit/FunctionNestedBindingXXFree"
             }),
@@ -307,9 +315,11 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "type_inference_success",
             directory: "type-inference/success/",
             variant: "TypeInferenceSuccess",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 false
-                    // Too slow
+                    // Too slow, but also not all features implemented
+                    // For now needs support for hashed imports
                     || path == "prelude"
             }),
             input_type: FileType::Text,
@@ -319,7 +329,8 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "type_inference_failure",
             directory: "type-inference/failure/",
             variant: "TypeInferenceFailure",
-            path_filter: Box::new(|path: &str| {
+            too_slow_path: Box::new(|_path: &str| false),
+            exclude_path: Box::new(|path: &str| {
                 false
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
