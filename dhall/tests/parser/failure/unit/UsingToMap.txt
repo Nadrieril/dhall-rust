@@ -1,0 +1,6 @@
+ --> 8:20
+  |
+8 | https://example.com using toMap { Foo = "Bar" }␊
+  |                    ^---
+  |
+  = expected path
