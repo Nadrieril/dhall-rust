@@ -5,6 +5,5 @@ members = [
     "abnf_to_pest",
     "dhall",
     "dhall_proc_macros",
-    "improved_slice_patterns",
     "serde_dhall"
 ]
