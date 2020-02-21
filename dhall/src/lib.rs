@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/dhall/0.2.1")]
+#![doc(html_root_url = "https://docs.rs/dhall/0.3.0")]
 #![feature(never_type)]
 #![allow(
     clippy::type_complexity,

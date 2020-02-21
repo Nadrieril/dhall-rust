@@ -39,7 +39,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.2.1"
+serde_dhall = "0.3.0"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
@@ -159,7 +159,7 @@ same name as the corresponding test.
 
 ## Changelog
 
-[???]
+[0.3.0]
 
 - Update to supporting dhall v14.0.0
 - Add support for dotted field syntax
