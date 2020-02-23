@@ -1,0 +1,6 @@
+Type error: error: annot mismatch: Natural != Bool
+ --> <current file>:1:1
+  |
+1 | (0 : Bool) : Natural
+  |  ^ annot mismatch: Natural != Bool
+  |

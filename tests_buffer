@@ -1,26 +1,3 @@
-normalization/success/unit/TextShowEmpty Text/show ""
-normalization/success/unit/TextLitNested1 λ(x: Text) → "${""}${x}"
-normalization/success/unit/TextLitNested2 λ(x: Text) → "${"${x}"}"
-normalization/success/unit/TextLitNested3 λ(x: Text) → "${"${""}"}${x}"
-normalization/success/regression/NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
-normalization/success/regression/TrickyBinderIdentity let T = Natural let ap = λ(f : T → List T) -> λ(x : T) -> f x in ap (λ(x : T) -> ap (λ(y : T) -> [x, y]) 1) 0
-parser/success/unit/LetNoAnnot let x = y in e
-parser/success/unit/LetAnnot let x: T = y in e
-parser/success/unit/EmptyRecordLiteral {=}
-parser/success/unit/ToMap toMap x
-parser/success/unit/ToMapAnnot toMap x : T
-parser/success/unit/VariableQuotedWithSpace ` x `
-parser/failure/unit/AssertNoAnnotation assert
-type-inference/failure/unit/FunctionTypeOutputTypeNotAType Bool -> 1
-type-inference/failure/unit/NestedAnnotInnerWrong (0 : Bool) : Natural
-type-inference/failure/unit/NestedAnnotOuterWrong (0 : Natural) : Bool
-type-inference/failure/unit/MergeBool merge x True
-type-inference/failure/unit/LetInSort \(x: let x = 0 in Sort) -> 1
-type-inference/success/regression/RecursiveRecordTypeMergeTripleCollision { x : { a : Bool } } ⩓ { x : { b : Bool } } ⩓ { x : { c : Bool } }
-type-inference/success/regression/Todo λ(todo : ∀(a : Type) → a) → todo
-type-inference/success/regression/LambdaInLetScoping1 let T = 0 in λ(T : Type) → λ(x : T) → 1
-type-inference/success/regression/LambdaInLetScoping2 (λ(T : Type) → let x = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
-
 parser:
 ./a%20b
 ./"a%20b"
