@@ -1,3 +1,26 @@
+normalization/success/unit/TextShowEmpty Text/show ""
+normalization/success/unit/TextLitNested1 λ(x: Text) → "${""}${x}"
+normalization/success/unit/TextLitNested2 λ(x: Text) → "${"${x}"}"
+normalization/success/unit/TextLitNested3 λ(x: Text) → "${"${""}"}${x}"
+normalization/success/regression/NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
+normalization/success/regression/TrickyBinderIdentity let T = Natural let ap = λ(f : T → List T) -> λ(x : T) -> f x in ap (λ(x : T) -> ap (λ(y : T) -> [x, y]) 1) 0
+parser/success/unit/LetNoAnnot let x = y in e
+parser/success/unit/LetAnnot let x: T = y in e
+parser/success/unit/EmptyRecordLiteral {=}
+parser/success/unit/ToMap toMap x
+parser/success/unit/ToMapAnnot toMap x : T
+parser/success/unit/VariableQuotedWithSpace ` x `
+parser/failure/unit/AssertNoAnnotation assert
+type-inference/failure/unit/FunctionTypeOutputTypeNotAType Bool -> 1
+type-inference/failure/unit/NestedAnnotInnerWrong (0 : Bool) : Natural
+type-inference/failure/unit/NestedAnnotOuterWrong (0 : Natural) : Bool
+type-inference/failure/unit/MergeBool merge x True
+type-inference/failure/unit/LetInSort \(x: let x = 0 in Sort) -> 1
+type-inference/success/regression/RecursiveRecordTypeMergeTripleCollision { x : { a : Bool } } ⩓ { x : { b : Bool } } ⩓ { x : { c : Bool } }
+type-inference/success/regression/Todo λ(todo : ∀(a : Type) → a) → todo
+type-inference/success/regression/LambdaInLetScoping1 let T = 0 in λ(T : Type) → λ(x : T) → 1
+type-inference/success/regression/LambdaInLetScoping2 (λ(T : Type) → let x = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
+
 parser:
 ./a%20b
 ./"a%20b"
@@ -5,18 +28,6 @@ text interpolation and escapes
 projection by expression unit tests
 fix fakeurlencode test
 s/QuotedVariable/VariableQuoted/
-success/
-    operators/
-        PrecedenceAll1 a ? b || c + d ++ e # f && g ∧ h ⫽ i ⩓ j * k == l != m n.o
-        PrecedenceAll2 a b != c == d * e ⩓ f ⫽ g ∧ h && i # j ++ k + l || m ? n
-    LetNoAnnot let x = y in e
-    LetAnnot let x: T = y in e
-    EmptyRecordLiteral {=}
-    ToMap toMap x
-    ToMapAnnot toMap x : T
-    VariableQuotedWithSpace ` x `
-failure/
-    AssertNoAnnotation assert
 
 binary decoding:
 decode old-style optional literals ?
@@ -30,37 +41,21 @@ failure/
 
 normalization:
 variables across import boundaries
-    Text/show ""
-    TextLitNested1 "${""}${x}"
-    TextLitNested2 "${"${x}"}"
-    TextLitNested3 "${"${""}"}${x}"
-    regression/
-        NaturalFoldExtraArg Natural/fold 0 (Bool -> Bool) (λ(_ : (Bool -> Bool)) → λ(_ : Bool) → True) (λ(_ : Bool) → False) True
-            let T = Natural let ap = λ(f : T → List T) -> λ(x : T) -> f x in ap (λ(x : T) -> ap (λ(y : T) -> [x, y]) 1) 0
 
 typecheck:
 something that involves destructuring a recordtype after merge
 add some of the more complicated Prelude tests back, like List/enumerate
 success/
     regression/
-        RecursiveRecordTypeMergeTripleCollision { x : { a : Bool } } ⩓ { x : { b : Bool } } ⩓ { x : { c : Bool } }
         somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
         somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
         somehow test types added to the Foo/build closures
-            λ(todo : ∀(a : Type) → a) → todo
-            let T = 0 in λ(T : Type) → λ(x : T) → 1
-            (λ(T : Type) → let x = 0 in λ(x : T) → x) : ∀(T : Type) → ∀(x : T) → T
 failure/
     \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
-    unit/FunctionTypeOutputTypeNotAType Bool -> 1
-    unit/NestedAnnotInnerWrong (0 : Bool) : Natural
-    unit/NestedAnnotOuterWrong (0 : Natural) : Bool
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
     merge { x = True, y = 1 } < x | y >.x
     merge {x=...,y=...} <x>.x
     merge {x=...,y=...} <x:T>.x
-    MergeBool merge x True
-    LetInSort \(x: let x = 0 in Sort) -> 1
 
 equivalence:
