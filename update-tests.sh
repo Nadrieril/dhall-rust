@@ -75,7 +75,7 @@ function generate_output_file() {
     INPUT_FILE="$(${folder}_input_file "$file")"
     OUTPUT_FILE="$(${folder}_output_file "$file")"
     if [ ! -f "$OUTPUT_FILE" ]; then
-        echo "$INPUT_FILE"
+        echo "$OUTPUT_FILE"
         ${folder}_process "$INPUT_FILE" > "$tmpfile"
         if [ $? -eq 0 ]; then
             mv "$tmpfile" "$OUTPUT_FILE"
@@ -88,8 +88,6 @@ function generate_output_file() {
 
 if [ "$1" = "missing" ]; then
     echo "Generating missing output files..."
-    # This is not robust to spaces in filenames, but there should be none in the
-    # repo anyways.
     for folder in parser binary-decode semantic-hash import type-inference normalization alpha-normalization; do
         fd 'A\.dhallb?$' ./dhall-lang/tests/$folder/success  ./dhall/tests/$folder/success \
             | sed 's/A.dhallb\?$//' \
@@ -97,6 +95,28 @@ if [ "$1" = "missing" ]; then
                 generate_output_file "$folder" "$file"
             done
     done
+
+elif [ "$1" = "add" ]; then
+    # Takes in stdin lists of a path and file contents, like:
+    #   normalization/unit/TextShowEmpty Text/show ""
+    # This will add a test to the local tests folder for each such line, and generate
+    # the output using the `dhall` command in the PATH.
+    while read file contents; do
+        folder="$(echo "$file" | cut -d/ -f1)"
+        is_success="$(echo "$file" | cut -d/ -f2)"
+        file="./dhall/tests/$file"
+        mkdir -p "$(dirname "$file")"
+
+        if [ "$is_success" = "success" ]; then
+            INPUT_FILE="${file}A.dhall"
+            echo "$contents" > $INPUT_FILE
+            generate_output_file "$folder" "$file"
+        else
+            INPUT_FILE="${file}.dhall"
+            echo "$contents" > $INPUT_FILE
+        fi
+    done
+
 else
     echo "$usage_text"
 fi
