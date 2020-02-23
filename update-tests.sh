@@ -89,11 +89,14 @@ function generate_output_file() {
 if [ "$1" = "missing" ]; then
     echo "Generating missing output files..."
     for folder in parser binary-decode semantic-hash import type-inference normalization alpha-normalization; do
-        fd 'A\.dhallb?$' ./dhall-lang/tests/$folder/success  ./dhall/tests/$folder/success \
-            | sed 's/A.dhallb\?$//' \
-            | while read file; do
-                generate_output_file "$folder" "$file"
-            done
+        for root in "./dhall-lang/tests" "./dhall/tests"; do
+            # This is not robust to spaces in filenames, but hopefully there should be none
+            fd 'A\.dhallb?$' "$root/$folder/success" \
+                | sed 's/A.dhallb\?$//' \
+                | while read file; do
+                    generate_output_file "$folder" "$file"
+                done
+        done
     done
 
 elif [ "$1" = "add" ]; then
