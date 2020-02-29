@@ -72,6 +72,9 @@ impl Hir {
     ) -> Result<Tir<'hir>, TypeError> {
         type_with(env, self, None)
     }
+    pub fn typecheck_noenv<'hir>(&'hir self) -> Result<Tir<'hir>, TypeError> {
+        self.typecheck(&TyEnv::new())
+    }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
     pub fn eval(&self, env: impl Into<NzEnv>) -> Nir {

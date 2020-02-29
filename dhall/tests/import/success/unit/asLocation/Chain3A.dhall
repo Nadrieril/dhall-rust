@@ -1,1 +1,1 @@
-./../asLocation/Canonicalize4A.dhall
+../asLocation/Canonicalize4A.dhall

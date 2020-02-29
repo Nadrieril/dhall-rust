@@ -258,6 +258,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "hashFromCache"
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
+                    || path == "unit/asLocation/Remote"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
