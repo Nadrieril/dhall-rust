@@ -19,7 +19,7 @@ failure/
 normalization:
 variables across import boundaries
 
-typecheck:
+type-inference:
 something that involves destructuring a recordtype after merge
 add some of the more complicated Prelude tests back, like List/enumerate
 success/

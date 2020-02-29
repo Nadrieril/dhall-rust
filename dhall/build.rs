@@ -321,6 +321,8 @@ fn generate_tests() -> std::io::Result<()> {
                     // Too slow, but also not all features implemented
                     // For now needs support for hashed imports
                     || path == "prelude"
+                    // TODO: imports
+                    || path == "CacheImports"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
