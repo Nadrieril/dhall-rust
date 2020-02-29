@@ -12,7 +12,7 @@ Usage: update-tests.sh [missing | add]
 END
 )
 
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/dhall" || exit 1
 
 if [ ! -x "$(which dhall)" ] ; then
     echo "Error: 'dhall' executable not found in PATH"
@@ -89,7 +89,7 @@ function generate_output_file() {
 if [ "$1" = "missing" ]; then
     echo "Generating missing output files..."
     for folder in parser binary-decode semantic-hash import type-inference normalization alpha-normalization; do
-        for root in "./dhall-lang/tests" "./dhall/tests"; do
+        for root in "../dhall-lang/tests" "tests"; do
             # This is not robust to spaces in filenames, but hopefully there should be none
             fd 'A\.dhallb?$' "$root/$folder/success" \
                 | sed 's/A.dhallb\?$//' \
