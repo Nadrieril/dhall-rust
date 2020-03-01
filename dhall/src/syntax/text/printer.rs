@@ -406,7 +406,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                 f.write_str(&path)?;
             }
             Remote(url) => {
-                write!(f, "{}://{}/", url.scheme, url.authority,)?;
+                write!(f, "{}://{}/", url.scheme, url.authority)?;
                 let path: String = url.path.file_path.iter().join("/");
                 f.write_str(&path)?;
                 if let Some(q) = &url.query {

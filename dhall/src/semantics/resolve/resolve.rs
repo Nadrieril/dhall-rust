@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::borrow::Cow;
 use std::env;
 use std::path::PathBuf;
@@ -127,11 +128,21 @@ fn resolve_one_import(
                         .into_owned();
                     ("Local", Some(path))
                 }
+                ImportLocation::Remote(url) => {
+                    let path =
+                        url.path.canonicalize().file_path.iter().join("/");
+                    let mut url_str =
+                        format!("{}://{}/{}", url.scheme, url.authority, path);
+                    if let Some(q) = &url.query {
+                        url_str.push('?');
+                        url_str.push_str(q.as_ref());
+                    }
+                    ("Remote", Some(url_str))
+                }
                 ImportLocation::Env(name) => {
                     ("Environment", Some(name.clone()))
                 }
                 ImportLocation::Missing => ("Missing", None),
-                _ => unimplemented!("{:?}", import),
             };
 
             let asloc_ty = make_aslocation_uniontype();

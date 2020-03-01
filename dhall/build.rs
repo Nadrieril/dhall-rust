@@ -253,13 +253,17 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "alternativeHashMismatch"
                     || path == "hashFromCache"
                     || path == "unit/AlternativeHashMismatch"
-                    // TODO: remote imports
+                    // TODO: This test is wrong
                     || path == "asLocation"
+                    // TODO: remote imports
+                    || path == "unit/SimpleRemote"
+                    || path == "unit/asLocation/RemoteChain1"
+                    || path == "unit/asLocation/RemoteChain2"
+                    || path == "unit/asLocation/RemoteChain3"
+                    // TODO: import headers
                     || path == "customHeaders"
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
-                    || path == "unit/SimpleRemote"
-                    || path == "unit/asLocation/Remote"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -273,9 +277,10 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // TODO: import hash
                     || path == "hashMismatch"
-                    // TODO: remote imports
-                    || path == "customHeadersUsingBoundVariable"
+                    // TODO: remote imports CORS/sanity check
                     || path == "referentiallyInsane"
+                    // TODO: import headers
+                    || path == "customHeadersUsingBoundVariable"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::UI),

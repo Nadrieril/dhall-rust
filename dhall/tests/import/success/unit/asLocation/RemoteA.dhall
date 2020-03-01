@@ -1,1 +1,1 @@
-https://prelude.dhall-lang.org/package.dhall as Location
+https://example.com/foo/import.dhall as Location
