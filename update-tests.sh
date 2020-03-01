@@ -13,6 +13,7 @@ END
 )
 
 cd "$(dirname "$0")" || exit 1
+export DHALL_TEST_VAR=42
 
 if [ ! -x "$(which dhall)" ] ; then
     echo "Error: 'dhall' executable not found in PATH"
@@ -45,7 +46,7 @@ function semantic-hash_process() {
 function import_input_file() { echo "$1A.dhall"; }
 function import_output_file() { echo "$1B.dhall"; }
 function import_process() {
-    dhall resolve --file "$1"
+    dhall --file "$1"
 }
 
 function type-inference_input_file() { echo "$1A.dhall"; }
@@ -57,7 +58,7 @@ function type-inference_process() {
 function normalization_input_file() { echo "$1A.dhall"; }
 function normalization_output_file() { echo "$1B.dhall"; }
 function normalization_process() {
-    dhall resolve --file "$1" | dhall normalize
+    dhall --file "$1"
 }
 
 function alpha-normalization_input_file() { echo "$1A.dhall"; }

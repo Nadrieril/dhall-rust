@@ -259,6 +259,17 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
                     || path == "unit/asLocation/Remote"
+                    || path == "unit/AlternativeChain1"
+                    || path == "unit/AlternativeChain2"
+                    || path == "unit/AlternativeEnv"
+                    || path == "unit/AlternativeHashMismatch"
+                    || path == "unit/AlternativeImportError"
+                    || path == "unit/AlternativeNoError3"
+                    || path == "unit/AlternativeSubExpr"
+                    || path == "unit/AsText"
+                    || path == "unit/EnvSet"
+                    || path == "unit/EnvSetAsText"
+                    || path == "unit/SimpleRemote"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -276,6 +287,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "missing"
                     || path == "referentiallyInsane"
                     || path == "customHeadersUsingBoundVariable"
+                    || path == "unit/EnvUnset"
+                    || path == "unit/EnvUnsetAsText"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::UI),
@@ -322,8 +335,9 @@ fn generate_tests() -> std::io::Result<()> {
                     // Too slow, but also not all features implemented
                     // For now needs support for hashed imports
                     || path == "prelude"
-                    // TODO: imports
+                    // TODO: remote imports
                     || path == "CacheImports"
+                    || path == "CacheImportsCanonicalize"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
