@@ -9,9 +9,8 @@ use crate::syntax::parse_expr;
 use crate::Parsed;
 
 pub(crate) fn parse_file(f: &Path) -> Result<Parsed, Error> {
-    let mut buffer = String::new();
-    File::open(f)?.read_to_string(&mut buffer)?;
-    let expr = parse_expr(&*buffer)?;
+    let text = std::fs::read_to_string(f)?;
+    let expr = parse_expr(&text)?;
     let root = ImportRoot::LocalDir(f.parent().unwrap().to_owned());
     Ok(Parsed(expr, root))
 }

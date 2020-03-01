@@ -99,7 +99,26 @@ fn resolve_one_import(
             let typed = resolve_with_env(env, parsed)?.typecheck()?;
             Ok((typed.normalize().to_hir(), typed.ty().clone()))
         }
-        ImportMode::RawText => unimplemented!("{:?}", import),
+        ImportMode::RawText => {
+            let text = match &import.location {
+                ImportLocation::Local(prefix, path) => {
+                    let path = compute_relative_path(root, prefix, path);
+                    std::fs::read_to_string(path)?
+                }
+                ImportLocation::Env(var_name) => match env::var(var_name) {
+                    Ok(val) => val,
+                    Err(_) => Err(ImportError::MissingEnvVar)?,
+                },
+                ImportLocation::Missing => Err(ImportError::Missing)?,
+                _ => unimplemented!("{:?}", import),
+            };
+
+            let hir = Hir::new(
+                HirKind::Expr(ExprKind::TextLit(text.into())),
+                Span::Artificial,
+            );
+            Ok((hir, Type::from_builtin(Builtin::Text)))
+        }
         ImportMode::Location => {
             let (field_name, arg) = match &import.location {
                 ImportLocation::Local(prefix, path) => {

@@ -249,18 +249,15 @@ fn generate_tests() -> std::io::Result<()> {
             too_slow_path: Box::new(|_path: &str| false),
             exclude_path: Box::new(|path: &str| {
                 false
-                    || path == "alternativeEnvNatural"
-                    || path == "alternativeEnvSimple"
+                    // TODO: import hash
                     || path == "alternativeHashMismatch"
-                    || path == "asLocation"
-                    || path == "asText"
-                    || path == "customHeaders"
                     || path == "hashFromCache"
+                    || path == "unit/AlternativeHashMismatch"
+                    // TODO: remote imports
+                    || path == "asLocation"
+                    || path == "customHeaders"
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
-                    || path == "unit/AlternativeHashMismatch"
-                    || path == "unit/AsText"
-                    || path == "unit/EnvSetAsText"
                     || path == "unit/SimpleRemote"
                     || path == "unit/asLocation/Remote"
             }),
@@ -274,12 +271,11 @@ fn generate_tests() -> std::io::Result<()> {
             too_slow_path: Box::new(|_path: &str| false),
             exclude_path: Box::new(|path: &str| {
                 false
-                    || path == "alternativeEnv"
-                    || path == "alternativeEnvMissing"
-                    || path == "customHeadersUsingBoundVariable"
+                    // TODO: import hash
                     || path == "hashMismatch"
+                    // TODO: remote imports
+                    || path == "customHeadersUsingBoundVariable"
                     || path == "referentiallyInsane"
-                    || path == "unit/EnvUnsetAsText"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::UI),
