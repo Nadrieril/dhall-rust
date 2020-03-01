@@ -1,2 +1,2 @@
 < Environment : Text | Remote : Text | Local : Text | Missing >.Local
-  "./tests/import/success/bar/import.dhall"
+  "./dhall/tests/import/success/bar/import.dhall"

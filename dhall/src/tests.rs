@@ -80,7 +80,7 @@ impl TestFile {
         match self {
             TestFile::Source(path)
             | TestFile::Binary(path)
-            | TestFile::UI(path) => PathBuf::from(path),
+            | TestFile::UI(path) => PathBuf::from("dhall").join(path),
         }
     }
 
@@ -243,6 +243,11 @@ fn run_test_stringy_error(test: Test) -> std::result::Result<(), String> {
 
 fn run_test(test: Test) -> Result<()> {
     use self::Test::*;
+    // Setup current directory to the root of the repository. Important for import tests.
+    env::set_current_dir(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap(),
+    )?;
+
     match test {
         ParserSuccess(expr, expected) => {
             let expr = expr.parse()?;
@@ -302,6 +307,7 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare(expr)?;
         }
     }
+
     Ok(())
 }
 
