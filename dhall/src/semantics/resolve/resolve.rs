@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::borrow::Cow;
 use std::env;
 use std::path::PathBuf;
@@ -10,7 +9,7 @@ use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, ImportLocation,
-    ImportMode, Span, URL,
+    ImportMode, Span, UnspannedExpr, URL,
 };
 use crate::{Parsed, ParsedExpr, Resolved};
 
@@ -26,107 +25,104 @@ pub(crate) enum ImportRoot {
     LocalDir(PathBuf),
 }
 
+fn mkexpr(kind: UnspannedExpr) -> Expr {
+    Expr::new(kind, Span::Artificial)
+}
+
+fn make_aslocation_uniontype() -> Expr {
+    let text_type = mkexpr(ExprKind::Builtin(Builtin::Text));
+    let mut union = DupTreeMap::default();
+    union.insert("Local".into(), Some(text_type.clone()));
+    union.insert("Remote".into(), Some(text_type.clone()));
+    union.insert("Environment".into(), Some(text_type.clone()));
+    union.insert("Missing".into(), None);
+    mkexpr(ExprKind::UnionType(union))
+}
+
+fn compute_relative_path(
+    root: &ImportRoot,
+    prefix: &FilePrefix,
+    path: &FilePath,
+) -> PathBuf {
+    let cwd = match root {
+        ImportRoot::LocalDir(cwd) => cwd,
+    };
+    let mut cwd: Vec<String> = cwd
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let root = match prefix {
+        FilePrefix::Here => cwd,
+        FilePrefix::Parent => {
+            cwd.push("..".to_string());
+            cwd
+        }
+        FilePrefix::Absolute => vec![],
+        FilePrefix::Home => vec![],
+    };
+    let path: Vec<_> = root
+        .into_iter()
+        .chain(path.file_path.iter().cloned())
+        .collect();
+    let path = (FilePath { file_path: path }).canonicalize().file_path;
+    let prefix = match prefix {
+        FilePrefix::Here | FilePrefix::Parent => ".",
+        FilePrefix::Absolute => "/",
+        FilePrefix::Home => "~",
+    };
+    Some(prefix.to_string()).into_iter().chain(path).collect()
+}
+
 fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
     root: &ImportRoot,
 ) -> Result<TypedHir, Error> {
-    let cwd = match root {
-        ImportRoot::LocalDir(cwd) => cwd,
-    };
-
     match import.mode {
         ImportMode::Code => {
-            match &import.location {
+            let parsed = match &import.location {
                 ImportLocation::Local(prefix, path) => {
-                    let path_buf: PathBuf = path.file_path.iter().collect();
-                    let path_buf = match prefix {
-                        // TODO: fail gracefully
-                        FilePrefix::Parent => {
-                            cwd.parent().unwrap().join(path_buf)
-                        }
-                        FilePrefix::Here => cwd.join(path_buf),
-                        _ => unimplemented!("{:?}", import),
-                    };
-
-                    let parsed = Parsed::parse_file(&path_buf)?;
-                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
-                    Ok((typed.normalize().to_hir(), typed.ty().clone()))
+                    let path = compute_relative_path(root, prefix, path);
+                    Parsed::parse_file(&path)?
                 }
                 ImportLocation::Env(var_name) => {
                     let val = match env::var(var_name) {
                         Ok(val) => val,
                         Err(_) => Err(ImportError::MissingEnvVar)?,
                     };
-                    let parsed = Parsed::parse_str(&val)?;
-                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
-                    Ok((typed.normalize().to_hir(), typed.ty().clone()))
+                    Parsed::parse_str(&val)?
                 }
-                ImportLocation::Missing => Err(ImportError::Missing.into()),
+                ImportLocation::Missing => Err(ImportError::Missing)?,
                 _ => unimplemented!("{:?}", import),
-            }
+            };
+
+            let typed = resolve_with_env(env, parsed)?.typecheck()?;
+            Ok((typed.normalize().to_hir(), typed.ty().clone()))
         }
         ImportMode::RawText => unimplemented!("{:?}", import),
         ImportMode::Location => {
-            let mkexpr = |kind| Expr::new(kind, Span::Artificial);
-            let text_type = mkexpr(ExprKind::Builtin(Builtin::Text));
-            let mut location_union = DupTreeMap::default();
-            location_union.insert("Local".into(), Some(text_type.clone()));
-            location_union.insert("Remote".into(), Some(text_type.clone()));
-            location_union
-                .insert("Environment".into(), Some(text_type.clone()));
-            location_union.insert("Missing".into(), None);
-            let location_union = mkexpr(ExprKind::UnionType(location_union));
-
-            let expr = match &import.location {
+            let (field_name, arg) = match &import.location {
                 ImportLocation::Local(prefix, path) => {
-                    let mut cwd: Vec<String> = cwd
-                        .components()
-                        .map(|component| {
-                            component.as_os_str().to_string_lossy().into_owned()
-                        })
-                        .collect();
-                    let root = match prefix {
-                        FilePrefix::Here => cwd,
-                        FilePrefix::Parent => {
-                            cwd.push("..".to_string());
-                            cwd
-                        }
-                        FilePrefix::Absolute => vec![],
-                        FilePrefix::Home => vec![],
-                    };
-                    let path: Vec<_> = root
-                        .into_iter()
-                        .chain(path.file_path.iter().cloned())
-                        .collect();
-                    let path =
-                        (FilePath { file_path: path }).canonicalize().file_path;
-                    let prefix = match prefix {
-                        FilePrefix::Here | FilePrefix::Parent => ".",
-                        FilePrefix::Absolute => "",
-                        FilePrefix::Home => "~",
-                    };
-                    let path = Some(prefix.to_string())
-                        .into_iter()
-                        .chain(path)
-                        .join("/");
-
-                    mkexpr(ExprKind::App(
-                        mkexpr(ExprKind::Field(location_union, "Local".into())),
-                        mkexpr(ExprKind::TextLit(path.into())),
-                    ))
+                    let path = compute_relative_path(root, prefix, path)
+                        .to_string_lossy()
+                        .into_owned();
+                    ("Local", Some(path))
                 }
-                ImportLocation::Env(name) => mkexpr(ExprKind::App(
-                    mkexpr(ExprKind::Field(
-                        location_union,
-                        "Environment".into(),
-                    )),
-                    mkexpr(ExprKind::TextLit(name.clone().into())),
-                )),
-                ImportLocation::Missing => {
-                    mkexpr(ExprKind::Field(location_union, "Missing".into()))
+                ImportLocation::Env(name) => {
+                    ("Environment", Some(name.clone()))
                 }
+                ImportLocation::Missing => ("Missing", None),
                 _ => unimplemented!("{:?}", import),
+            };
+
+            let asloc_ty = make_aslocation_uniontype();
+            let expr = mkexpr(ExprKind::Field(asloc_ty, field_name.into()));
+            let expr = match arg {
+                Some(arg) => mkexpr(ExprKind::App(
+                    expr,
+                    mkexpr(ExprKind::TextLit(arg.into())),
+                )),
+                None => expr,
             };
 
             let hir = skip_resolve(&expr)?;
