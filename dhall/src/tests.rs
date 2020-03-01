@@ -247,6 +247,8 @@ fn run_test(test: Test) -> Result<()> {
     env::set_current_dir(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap(),
     )?;
+    // Set environment variable for import tests.
+    env::set_var("DHALL_TEST_VAR", "6 * 7");
 
     match test {
         ParserSuccess(expr, expected) => {

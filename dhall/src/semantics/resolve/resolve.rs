@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::env;
+use std::path::PathBuf;
 
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
@@ -47,8 +48,21 @@ fn resolve_one_import(
                         FilePrefix::Here => cwd.join(path_buf),
                         _ => unimplemented!("{:?}", import),
                     };
-                    Ok(load_import(env, &path_buf)?)
+
+                    let parsed = Parsed::parse_file(&path_buf)?;
+                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
+                    Ok((typed.normalize().to_hir(), typed.ty().clone()))
                 }
+                ImportLocation::Env(var_name) => {
+                    let val = match env::var(var_name) {
+                        Ok(val) => val,
+                        Err(_) => Err(ImportError::MissingEnvVar)?,
+                    };
+                    let parsed = Parsed::parse_str(&val)?;
+                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
+                    Ok((typed.normalize().to_hir(), typed.ty().clone()))
+                }
+                ImportLocation::Missing => Err(ImportError::Missing.into()),
                 _ => unimplemented!("{:?}", import),
             }
         }
@@ -120,12 +134,6 @@ fn resolve_one_import(
             Ok((hir, ty))
         }
     }
-}
-
-fn load_import(env: &mut ImportEnv, f: &Path) -> Result<TypedHir, Error> {
-    let parsed = Parsed::parse_file(f)?;
-    let typed = resolve_with_env(env, parsed)?.typecheck()?;
-    Ok((typed.normalize().to_hir(), typed.ty().clone()))
 }
 
 /// Desugar the first level of the expression.

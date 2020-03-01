@@ -258,18 +258,11 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "hashFromCache"
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
-                    || path == "unit/asLocation/Remote"
-                    || path == "unit/AlternativeChain1"
-                    || path == "unit/AlternativeChain2"
-                    || path == "unit/AlternativeEnv"
                     || path == "unit/AlternativeHashMismatch"
-                    || path == "unit/AlternativeImportError"
-                    || path == "unit/AlternativeNoError3"
-                    || path == "unit/AlternativeSubExpr"
                     || path == "unit/AsText"
-                    || path == "unit/EnvSet"
                     || path == "unit/EnvSetAsText"
                     || path == "unit/SimpleRemote"
+                    || path == "unit/asLocation/Remote"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -283,11 +276,9 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     || path == "alternativeEnv"
                     || path == "alternativeEnvMissing"
-                    || path == "hashMismatch"
-                    || path == "missing"
-                    || path == "referentiallyInsane"
                     || path == "customHeadersUsingBoundVariable"
-                    || path == "unit/EnvUnset"
+                    || path == "hashMismatch"
+                    || path == "referentiallyInsane"
                     || path == "unit/EnvUnsetAsText"
             }),
             input_type: FileType::Text,

@@ -13,7 +13,7 @@ END
 )
 
 cd "$(dirname "$0")" || exit 1
-export DHALL_TEST_VAR=42
+export DHALL_TEST_VAR="6 * 7"
 
 if [ ! -x "$(which dhall)" ] ; then
     echo "Error: 'dhall' executable not found in PATH"

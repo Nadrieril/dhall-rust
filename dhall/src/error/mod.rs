@@ -26,6 +26,8 @@ pub(crate) enum ErrorKind {
 
 #[derive(Debug)]
 pub(crate) enum ImportError {
+    Missing,
+    MissingEnvVar,
     UnexpectedImport(Import<()>),
     ImportCycle(ImportStack, Import<()>),
 }
