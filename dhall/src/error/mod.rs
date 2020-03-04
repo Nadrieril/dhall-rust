@@ -30,6 +30,7 @@ pub(crate) enum ImportError {
     MissingEnvVar,
     UnexpectedImport(Import<()>),
     ImportCycle(ImportStack, Import<()>),
+    Url(url::ParseError),
 }
 
 #[derive(Debug)]
@@ -109,6 +110,11 @@ impl From<IOError> for Error {
 impl From<ParseError> for Error {
     fn from(err: ParseError) -> Error {
         ErrorKind::Parse(err).into()
+    }
+}
+impl From<url::ParseError> for Error {
+    fn from(err: url::ParseError) -> Error {
+        ErrorKind::Resolve(ImportError::Url(err)).into()
     }
 }
 impl From<DecodeError> for Error {

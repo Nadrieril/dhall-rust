@@ -17,11 +17,12 @@ pub mod syntax;
 
 use std::fmt::Display;
 use std::path::Path;
+use url::Url;
 
 use crate::error::{EncodeError, Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
-use crate::semantics::resolve::ImportRoot;
+use crate::semantics::resolve::ImportLocation;
 use crate::semantics::{
     typecheck, typecheck_with, Hir, Nir, NirKind, Tir, Type,
 };
@@ -34,7 +35,7 @@ pub type ResolvedExpr = Expr;
 pub type NormalizedExpr = Expr;
 
 #[derive(Debug, Clone)]
-pub struct Parsed(ParsedExpr, ImportRoot);
+pub struct Parsed(ParsedExpr, ImportLocation);
 
 /// An expression where all imports have been resolved
 ///
@@ -65,6 +66,9 @@ pub(crate) struct ToExprOptions {
 impl Parsed {
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_file(f)
+    }
+    pub fn parse_remote(url: Url) -> Result<Parsed, Error> {
+        parse::parse_remote(url)
     }
     pub fn parse_str(s: &str) -> Result<Parsed, Error> {
         parse::parse_str(s)

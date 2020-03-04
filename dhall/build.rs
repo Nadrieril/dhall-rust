@@ -255,11 +255,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/AlternativeHashMismatch"
                     // TODO: This test is wrong
                     || path == "asLocation"
-                    // TODO: remote imports
-                    || path == "unit/SimpleRemote"
-                    || path == "unit/asLocation/RemoteChain1"
-                    || path == "unit/asLocation/RemoteChain2"
-                    || path == "unit/asLocation/RemoteChain3"
+                    // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
+                    || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
                     || path == "customHeaders"
                     || path == "headerForwarding"

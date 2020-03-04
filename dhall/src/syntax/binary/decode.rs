@@ -5,7 +5,7 @@ use std::iter::FromIterator;
 use crate::error::DecodeError;
 use crate::syntax;
 use crate::syntax::{
-    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Integer, InterpolatedText, Label, LitKind, Natural, Scheme, Span,
     UnspannedExpr, URL, V,
 };
@@ -305,7 +305,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                             })
                             .collect::<Result<_, _>>()?;
                         let path = FilePath { file_path };
-                        ImportLocation::Remote(URL {
+                        ImportTarget::Remote(URL {
                             scheme,
                             authority,
                             path,
@@ -332,7 +332,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                             })
                             .collect::<Result<_, _>>()?;
                         let path = FilePath { file_path };
-                        ImportLocation::Local(prefix, path)
+                        ImportTarget::Local(prefix, path)
                     }
                     6 => {
                         let env = match rest.next() {
@@ -341,9 +341,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 "import/env".to_owned(),
                             ))?,
                         };
-                        ImportLocation::Env(env)
+                        ImportTarget::Env(env)
                     }
-                    7 => ImportLocation::Missing,
+                    7 => ImportTarget::Missing,
                     _ => Err(DecodeError::WrongFormatError(
                         "import/type".to_owned(),
                     ))?,

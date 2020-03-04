@@ -10,7 +10,7 @@ use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::ExprKind::*;
 use crate::syntax::LitKind::*;
 use crate::syntax::{
-    Double, Expr, FilePath, FilePrefix, Hash, ImportLocation, ImportMode,
+    Double, Expr, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Integer, InterpolatedText, InterpolatedTextContents, Label, NaiveDouble,
     Natural, Scheme, Span, UnspannedExpr, URL, V,
 };
@@ -483,9 +483,9 @@ impl DhallParser {
     }
 
     #[alias(import_type)]
-    fn local(input: ParseInput) -> ParseResult<ImportLocation<Expr>> {
+    fn local(input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
         Ok(match_nodes!(input.into_children();
-            [local_path((prefix, p))] => ImportLocation::Local(prefix, p),
+            [local_path((prefix, p))] => ImportTarget::Local(prefix, p),
         ))
     }
 
@@ -550,17 +550,17 @@ impl DhallParser {
     }
 
     #[alias(import_type)]
-    fn http(input: ParseInput) -> ParseResult<ImportLocation<Expr>> {
-        Ok(ImportLocation::Remote(match_nodes!(input.into_children();
+    fn http(input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
+        Ok(ImportTarget::Remote(match_nodes!(input.into_children();
             [http_raw(url)] => url,
             [http_raw(url), expression(e)] => URL { headers: Some(e), ..url },
         )))
     }
 
     #[alias(import_type)]
-    fn env(input: ParseInput) -> ParseResult<ImportLocation<Expr>> {
+    fn env(input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
         Ok(match_nodes!(input.into_children();
-            [environment_variable(v)] => ImportLocation::Env(v),
+            [environment_variable(v)] => ImportTarget::Env(v),
         ))
     }
     #[alias(environment_variable)]
@@ -593,8 +593,8 @@ impl DhallParser {
     }
 
     #[alias(import_type)]
-    fn missing(_input: ParseInput) -> ParseResult<ImportLocation<Expr>> {
-        Ok(ImportLocation::Missing)
+    fn missing(_input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
+        Ok(ImportTarget::Missing)
     }
 
     fn hash(input: ParseInput) -> ParseResult<Hash> {
