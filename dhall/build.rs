@@ -281,13 +281,6 @@ fn generate_tests() -> std::io::Result<()> {
                 path == "simple/integerToDouble"
                     // Too slow
                     || path == "remoteSystems"
-                    // TODO: projection by expression
-                    || path == "unit/RecordProjectionByTypeEmpty"
-                    || path == "unit/RecordProjectionByTypeNonEmpty"
-                    || path == "unit/RecordProjectionByTypeNormalizeProjection"
-                    || path == "unit/RecordProjectionByTypeWithinFieldSelection"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection1"
-                    || path == "unit/NestedRecordProjectionByType"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
                     // TODO: doesn't typecheck
@@ -298,8 +291,8 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
                     || path == "simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
                     || path == "simplifications/issue661"
-                    || path == "unit/RecordProjectionWithinFieldSelection"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
+                    || path == "unit/RecursiveRecordMergeWithinFieldSelection1"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection2"
                     || path == "unit/RecursiveRecordMergeWithinFieldSelection3"
             }),

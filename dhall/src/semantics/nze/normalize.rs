@@ -372,11 +372,42 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
                 },
                 _ => Ret::Expr(expr),
             },
+            PartialExpr(ExprKind::Projection(v2, _)) => {
+                return normalize_one_layer(
+                    ExprKind::Field(v2.clone(), l.clone()),
+                    env,
+                )
+            }
             _ => Ret::Expr(expr),
         },
-        ExprKind::ProjectionByExpr(_, _) => {
-            unimplemented!("selection by expression")
-        }
+
+        ExprKind::ProjectionByExpr(ref v, ref t) => match dbg!(v).kind() {
+            RecordLit(kvs) => match dbg!(t).kind() {
+                RecordType(kts) => Ret::NirKind(RecordLit(
+                    kts.iter()
+                        .filter_map(|(l, _)| {
+                            kvs.get(l).map(|x| (l.clone(), x.clone()))
+                        })
+                        .collect(),
+                )),
+                _ => Ret::Expr(expr),
+            },
+            _ => match dbg!(t).kind() {
+                RecordType(kts) => {
+                    use crate::syntax::map::DupTreeSet;
+                    use std::iter::FromIterator;
+
+                    let ts = DupTreeSet::from_iter(
+                        kts.iter().map(|(l, _)| l.clone()),
+                    );
+                    return normalize_one_layer(
+                        ExprKind::Projection(v.clone(), ts),
+                        env,
+                    );
+                }
+                _ => Ret::Expr(expr),
+            },
+        },
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
             match handlers.kind() {
