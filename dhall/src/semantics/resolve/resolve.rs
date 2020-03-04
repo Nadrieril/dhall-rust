@@ -37,15 +37,24 @@ pub(crate) enum ImportLocation {
 impl ImportLocation {
     /// Given an import pointing to `target` found in the current location, compute the next
     /// location, or error if not allowed.
+    /// `sanity_check` indicates whether to check if that location is allowed to be referenced,
+    /// for example to prevent a remote file from reading an environment variable.
     fn chain(
         &self,
         target: &ImportTarget<()>,
+        sanity_check: bool,
     ) -> Result<ImportLocation, Error> {
         Ok(match target {
             ImportTarget::Local(prefix, path) => {
                 self.chain_local(prefix, path)?
             }
             ImportTarget::Remote(remote) => {
+                if sanity_check {
+                    if let ImportLocation::Remote(..) = self {
+                        // TODO: allow if CORS check passes
+                        Err(ImportError::SanityCheck)?
+                    }
+                }
                 let mut url = Url::parse(&format!(
                     "{}://{}",
                     remote.scheme, remote.authority
@@ -55,6 +64,11 @@ impl ImportLocation {
                 ImportLocation::Remote(url)
             }
             ImportTarget::Env(var_name) => {
+                if sanity_check {
+                    if let ImportLocation::Remote(..) = self {
+                        Err(ImportError::SanityCheck)?
+                    }
+                }
                 ImportLocation::Env(var_name.clone())
             }
             ImportTarget::Missing => ImportLocation::Missing,
@@ -124,6 +138,56 @@ impl ImportLocation {
             }
         })
     }
+
+    fn fetch_dhall(self) -> Result<Parsed, Error> {
+        Ok(match self {
+            ImportLocation::Local(path) => Parsed::parse_file(&path)?,
+            ImportLocation::Remote(url) => Parsed::parse_remote(url)?,
+            ImportLocation::Env(var_name) => {
+                let val = match env::var(var_name) {
+                    Ok(val) => val,
+                    Err(_) => Err(ImportError::MissingEnvVar)?,
+                };
+                Parsed::parse_str(&val)?
+            }
+            ImportLocation::Missing => Err(ImportError::Missing)?,
+        })
+    }
+
+    fn fetch_text(self) -> Result<String, Error> {
+        Ok(match self {
+            ImportLocation::Local(path) => std::fs::read_to_string(&path)?,
+            ImportLocation::Remote(url) => {
+                reqwest::blocking::get(url).unwrap().text().unwrap()
+            }
+            ImportLocation::Env(var_name) => match env::var(var_name) {
+                Ok(val) => val,
+                Err(_) => Err(ImportError::MissingEnvVar)?,
+            },
+            ImportLocation::Missing => Err(ImportError::Missing)?,
+        })
+    }
+
+    fn into_location(self) -> Expr {
+        let (field_name, arg) = match self {
+            ImportLocation::Local(path) => {
+                ("Local", Some(path.to_string_lossy().into_owned()))
+            }
+            ImportLocation::Remote(url) => ("Remote", Some(url.into_string())),
+            ImportLocation::Env(name) => ("Environment", Some(name)),
+            ImportLocation::Missing => ("Missing", None),
+        };
+
+        let asloc_ty = make_aslocation_uniontype();
+        let expr = mkexpr(ExprKind::Field(asloc_ty, field_name.into()));
+        match arg {
+            Some(arg) => mkexpr(ExprKind::App(
+                expr,
+                mkexpr(ExprKind::TextLit(arg.into())),
+            )),
+            None => expr,
+        }
+    }
 }
 
 fn mkexpr(kind: UnspannedExpr) -> Expr {
@@ -143,39 +207,18 @@ fn make_aslocation_uniontype() -> Expr {
 fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
-    location: ImportLocation,
+    location: &ImportLocation,
 ) -> Result<TypedHir, Error> {
-    match import.mode {
+    let do_sanity_check = import.mode != ImportMode::Location;
+    let location = location.chain(&import.location, do_sanity_check)?;
+    env.handle_import(location.clone(), |env| match import.mode {
         ImportMode::Code => {
-            let parsed = match location {
-                ImportLocation::Local(path) => Parsed::parse_file(&path)?,
-                ImportLocation::Remote(url) => Parsed::parse_remote(url)?,
-                ImportLocation::Env(var_name) => {
-                    let val = match env::var(var_name) {
-                        Ok(val) => val,
-                        Err(_) => Err(ImportError::MissingEnvVar)?,
-                    };
-                    Parsed::parse_str(&val)?
-                }
-                ImportLocation::Missing => Err(ImportError::Missing)?,
-            };
-
+            let parsed = location.fetch_dhall()?;
             let typed = resolve_with_env(env, parsed)?.typecheck()?;
             Ok((typed.normalize().to_hir(), typed.ty().clone()))
         }
         ImportMode::RawText => {
-            let text = match location {
-                ImportLocation::Local(path) => std::fs::read_to_string(&path)?,
-                ImportLocation::Remote(url) => {
-                    reqwest::blocking::get(url).unwrap().text().unwrap()
-                }
-                ImportLocation::Env(var_name) => match env::var(var_name) {
-                    Ok(val) => val,
-                    Err(_) => Err(ImportError::MissingEnvVar)?,
-                },
-                ImportLocation::Missing => Err(ImportError::Missing)?,
-            };
-
+            let text = location.fetch_text()?;
             let hir = Hir::new(
                 HirKind::Expr(ExprKind::TextLit(text.into())),
                 Span::Artificial,
@@ -183,32 +226,12 @@ fn resolve_one_import(
             Ok((hir, Type::from_builtin(Builtin::Text)))
         }
         ImportMode::Location => {
-            let (field_name, arg) = match location {
-                ImportLocation::Local(path) => {
-                    ("Local", Some(path.to_string_lossy().into_owned()))
-                }
-                ImportLocation::Remote(url) => {
-                    ("Remote", Some(url.into_string()))
-                }
-                ImportLocation::Env(name) => ("Environment", Some(name)),
-                ImportLocation::Missing => ("Missing", None),
-            };
-
-            let asloc_ty = make_aslocation_uniontype();
-            let expr = mkexpr(ExprKind::Field(asloc_ty, field_name.into()));
-            let expr = match arg {
-                Some(arg) => mkexpr(ExprKind::App(
-                    expr,
-                    mkexpr(ExprKind::TextLit(arg.into())),
-                )),
-                None => expr,
-            };
-
+            let expr = location.into_location();
             let hir = skip_resolve(&expr)?;
             let ty = hir.typecheck_noenv()?.ty().clone();
             Ok((hir, ty))
         }
-    }
+    })
 }
 
 /// Desugar the first level of the expression.
@@ -301,10 +324,7 @@ fn resolve_with_env(
     let Parsed(expr, location) = parsed;
     let resolved =
         traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
-            let location = location.chain(&import.location)?;
-            env.handle_import(location.clone(), |env| {
-                resolve_one_import(env, &import, location)
-            })
+            resolve_one_import(env, &import, &location)
         })?;
     Ok(Resolved(resolved))
 }

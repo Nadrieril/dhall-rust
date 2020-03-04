@@ -85,16 +85,16 @@ impl ImportEnv {
         Ok(match self.cache.get(&location) {
             Some(expr) => expr.clone(),
             None => {
-                // Push the current import on the stack
+                // Push the current location on the stack
                 self.stack.push(location);
 
                 // Resolve the import recursively
                 let expr = do_resolve(self)?;
 
-                // Remove import from the stack.
+                // Remove location from the stack.
                 let location = self.stack.pop().unwrap();
 
-                // Add the import to the cache
+                // Add the resolved import to the cache
                 self.cache.insert(location, expr.clone());
 
                 expr

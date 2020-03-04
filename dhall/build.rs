@@ -274,8 +274,6 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // TODO: import hash
                     || path == "hashMismatch"
-                    // TODO: remote imports CORS/sanity check
-                    || path == "referentiallyInsane"
                     // TODO: import headers
                     || path == "customHeadersUsingBoundVariable"
             }),

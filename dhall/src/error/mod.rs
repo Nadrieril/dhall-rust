@@ -28,6 +28,7 @@ pub(crate) enum ErrorKind {
 pub(crate) enum ImportError {
     Missing,
     MissingEnvVar,
+    SanityCheck,
     UnexpectedImport(Import<()>),
     ImportCycle(ImportStack, ImportLocation),
     Url(url::ParseError),
