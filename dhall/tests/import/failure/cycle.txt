@@ -1,1 +1,1 @@
-ImportCycle([Import { mode: Code, location: Local(Parent, FilePath { file_path: ["data", "cycle.dhall"] }), hash: None }, Import { mode: Code, location: Local(Parent, FilePath { file_path: ["failure", "cycle.dhall"] }), hash: None }], Import { mode: Code, location: Local(Parent, FilePath { file_path: ["data", "cycle.dhall"] }), hash: None })
+ImportCycle([Local("./dhall-lang/tests/import/data/cycle.dhall"), Local("./dhall-lang/tests/import/failure/cycle.dhall")], Local("./dhall-lang/tests/import/data/cycle.dhall"))

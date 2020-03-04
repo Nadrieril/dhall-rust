@@ -22,7 +22,7 @@ pub(crate) type Import = syntax::Import<()>;
 pub(crate) type TypedHir = (Hir, Type);
 
 /// The location of some data, usually some dhall code.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ImportLocation {
     /// Local file
     Local(PathBuf),
@@ -143,9 +143,8 @@ fn make_aslocation_uniontype() -> Expr {
 fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
-    location: &ImportLocation,
+    location: ImportLocation,
 ) -> Result<TypedHir, Error> {
-    let location = location.chain(&import.location)?;
     match import.mode {
         ImportMode::Code => {
             let parsed = match location {
@@ -189,7 +188,7 @@ fn resolve_one_import(
                     ("Local", Some(path.to_string_lossy().into_owned()))
                 }
                 ImportLocation::Remote(url) => {
-                    ("Remote", Some(url.to_string()))
+                    ("Remote", Some(url.into_string()))
                 }
                 ImportLocation::Env(name) => ("Environment", Some(name)),
                 ImportLocation::Missing => ("Missing", None),
@@ -299,11 +298,12 @@ fn resolve_with_env(
     env: &mut ImportEnv,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
-    let Parsed(expr, root) = parsed;
+    let Parsed(expr, location) = parsed;
     let resolved =
         traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
-            env.handle_import(import, |env, import| {
-                resolve_one_import(env, import, &root)
+            let location = location.chain(&import.location)?;
+            env.handle_import(location.clone(), |env| {
+                resolve_one_import(env, &import, location)
             })
         })?;
     Ok(Resolved(resolved))

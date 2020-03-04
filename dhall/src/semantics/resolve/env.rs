@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, Import, TypedHir, VarEnv};
+use crate::semantics::{AlphaVar, ImportLocation, TypedHir, VarEnv};
 use crate::syntax::{Label, V};
 
 /// Environment for resolving names.
@@ -10,8 +10,8 @@ pub(crate) struct NameEnv {
     names: Vec<Label>,
 }
 
-pub(crate) type ImportCache = HashMap<Import, TypedHir>;
-pub(crate) type ImportStack = Vec<Import>;
+pub(crate) type ImportCache = HashMap<ImportLocation, TypedHir>;
+pub(crate) type ImportStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
 #[derive(Debug, Clone)]
@@ -74,28 +74,28 @@ impl ImportEnv {
 
     pub fn handle_import(
         &mut self,
-        import: Import,
-        mut do_resolve: impl FnMut(&mut Self, &Import) -> Result<TypedHir, Error>,
+        location: ImportLocation,
+        do_resolve: impl FnOnce(&mut Self) -> Result<TypedHir, Error>,
     ) -> Result<TypedHir, Error> {
-        if self.stack.contains(&import) {
+        if self.stack.contains(&location) {
             return Err(
-                ImportError::ImportCycle(self.stack.clone(), import).into()
+                ImportError::ImportCycle(self.stack.clone(), location).into()
             );
         }
-        Ok(match self.cache.get(&import) {
+        Ok(match self.cache.get(&location) {
             Some(expr) => expr.clone(),
             None => {
                 // Push the current import on the stack
-                self.stack.push(import.clone());
+                self.stack.push(location);
 
                 // Resolve the import recursively
-                let expr = do_resolve(self, &import)?;
+                let expr = do_resolve(self)?;
 
                 // Remove import from the stack.
-                self.stack.pop();
+                let location = self.stack.pop().unwrap();
 
                 // Add the import to the cache
-                self.cache.insert(import, expr.clone());
+                self.cache.insert(location, expr.clone());
 
                 expr
             }
