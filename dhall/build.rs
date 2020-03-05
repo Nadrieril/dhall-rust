@@ -286,15 +286,8 @@ fn generate_tests() -> std::io::Result<()> {
                     // TODO: doesn't typecheck
                     || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
                     || path == "unit/Sort"
-                    // // TODO: Further record simplifications
-                    || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection0"
-                    || path == "simplifications/rightBiasedMergeWithinRecordProjectionWithinFieldSelection1"
-                    || path == "simplifications/rightBiasedMergeWithinRecursiveRecordMergeWithinFieldselection"
+                    // TODO: Further record simplifications
                     || path == "simplifications/issue661"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection0"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection1"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection2"
-                    || path == "unit/RecursiveRecordMergeWithinFieldSelection3"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),
@@ -304,7 +297,7 @@ fn generate_tests() -> std::io::Result<()> {
             directory: "alpha-normalization/success/",
             variant: "AlphaNormalization",
             path_filter: Box::new(|path: &str| {
-                // This test doesn't typecheck
+                // This test is designed to not typecheck
                 path == "unit/FunctionNestedBindingXXFree"
             }),
             input_type: FileType::Text,
