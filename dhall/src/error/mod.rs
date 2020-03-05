@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use crate::semantics::resolve::ImportStack;
+use crate::semantics::resolve::{ImportLocation, ImportStack};
 use crate::syntax::{Import, ParseError};
 
 mod builder;
@@ -26,8 +26,12 @@ pub(crate) enum ErrorKind {
 
 #[derive(Debug)]
 pub(crate) enum ImportError {
+    Missing,
+    MissingEnvVar,
+    SanityCheck,
     UnexpectedImport(Import<()>),
-    ImportCycle(ImportStack, Import<()>),
+    ImportCycle(ImportStack, ImportLocation),
+    Url(url::ParseError),
 }
 
 #[derive(Debug)]
@@ -107,6 +111,11 @@ impl From<IOError> for Error {
 impl From<ParseError> for Error {
     fn from(err: ParseError) -> Error {
         ErrorKind::Parse(err).into()
+    }
+}
+impl From<url::ParseError> for Error {
+    fn from(err: url::ParseError) -> Error {
+        ErrorKind::Resolve(ImportError::Url(err)).into()
     }
 }
 impl From<DecodeError> for Error {

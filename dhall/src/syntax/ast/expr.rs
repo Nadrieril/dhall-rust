@@ -178,7 +178,7 @@ pub enum ExprKind<SubExpr> {
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
     Projection(SubExpr, DupTreeSet<Label>),
-    ///  `e.(s)`
+    ///  `e.(t)`
     ProjectionByExpr(SubExpr, SubExpr),
     ///  `x::y`
     Completion(SubExpr, SubExpr),

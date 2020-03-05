@@ -1,11 +1,18 @@
+use itertools::Itertools;
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::env;
+use std::path::PathBuf;
+use url::Url;
 
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
-use crate::syntax::{BinOp, Expr, ExprKind, FilePath, ImportLocation, URL};
+use crate::syntax::map::DupTreeMap;
+use crate::syntax::{
+    BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, ImportMode,
+    ImportTarget, Span, UnspannedExpr, URL,
+};
 use crate::{Parsed, ParsedExpr, Resolved};
 
 // TODO: evaluate import headers
@@ -14,42 +21,217 @@ pub(crate) type Import = syntax::Import<()>;
 /// Owned Hir with a type. Different from Tir because the Hir is owned.
 pub(crate) type TypedHir = (Hir, Type);
 
-/// A root from which to resolve relative imports.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ImportRoot {
-    LocalDir(PathBuf),
+/// The location of some data, usually some dhall code.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ImportLocation {
+    /// Local file
+    Local(PathBuf),
+    /// Remote file
+    Remote(Url),
+    /// Environment variable
+    Env(String),
+    /// Data without a location
+    Missing,
+}
+
+impl ImportLocation {
+    /// Given an import pointing to `target` found in the current location, compute the next
+    /// location, or error if not allowed.
+    /// `sanity_check` indicates whether to check if that location is allowed to be referenced,
+    /// for example to prevent a remote file from reading an environment variable.
+    fn chain(
+        &self,
+        target: &ImportTarget<()>,
+        sanity_check: bool,
+    ) -> Result<ImportLocation, Error> {
+        Ok(match target {
+            ImportTarget::Local(prefix, path) => {
+                self.chain_local(prefix, path)?
+            }
+            ImportTarget::Remote(remote) => {
+                if sanity_check {
+                    if let ImportLocation::Remote(..) = self {
+                        // TODO: allow if CORS check passes
+                        Err(ImportError::SanityCheck)?
+                    }
+                }
+                let mut url = Url::parse(&format!(
+                    "{}://{}",
+                    remote.scheme, remote.authority
+                ))?;
+                url.set_path(&remote.path.file_path.iter().join("/"));
+                url.set_query(remote.query.as_ref().map(String::as_ref));
+                ImportLocation::Remote(url)
+            }
+            ImportTarget::Env(var_name) => {
+                if sanity_check {
+                    if let ImportLocation::Remote(..) = self {
+                        Err(ImportError::SanityCheck)?
+                    }
+                }
+                ImportLocation::Env(var_name.clone())
+            }
+            ImportTarget::Missing => ImportLocation::Missing,
+        })
+    }
+
+    fn chain_local(
+        &self,
+        prefix: &FilePrefix,
+        path: &FilePath,
+    ) -> Result<ImportLocation, Error> {
+        Ok(match self {
+            ImportLocation::Local(..)
+            | ImportLocation::Env(..)
+            | ImportLocation::Missing => {
+                let dir = match self {
+                    ImportLocation::Local(path) => {
+                        path.parent().unwrap().to_owned()
+                    }
+                    ImportLocation::Env(..) | ImportLocation::Missing => {
+                        std::env::current_dir()?
+                    }
+                    _ => unreachable!(),
+                };
+                let mut dir: Vec<String> = dir
+                    .components()
+                    .map(|component| {
+                        component.as_os_str().to_string_lossy().into_owned()
+                    })
+                    .collect();
+                let root = match prefix {
+                    FilePrefix::Here => dir,
+                    FilePrefix::Parent => {
+                        dir.push("..".to_string());
+                        dir
+                    }
+                    FilePrefix::Absolute => vec![],
+                    FilePrefix::Home => vec![],
+                };
+                let path: Vec<_> = root
+                    .into_iter()
+                    .chain(path.file_path.iter().cloned())
+                    .collect();
+                let path =
+                    (FilePath { file_path: path }).canonicalize().file_path;
+                let prefix = match prefix {
+                    FilePrefix::Here | FilePrefix::Parent => ".",
+                    FilePrefix::Absolute => "/",
+                    FilePrefix::Home => "~",
+                };
+                let path =
+                    Some(prefix.to_string()).into_iter().chain(path).collect();
+                ImportLocation::Local(path)
+            }
+            ImportLocation::Remote(url) => {
+                let mut url = url.clone();
+                match prefix {
+                    FilePrefix::Here => {}
+                    FilePrefix::Parent => {
+                        url = url.join("..")?;
+                    }
+                    FilePrefix::Absolute => panic!("error"),
+                    FilePrefix::Home => panic!("error"),
+                }
+                url = url.join(&path.file_path.join("/"))?;
+                ImportLocation::Remote(url)
+            }
+        })
+    }
+
+    fn fetch_dhall(self) -> Result<Parsed, Error> {
+        Ok(match self {
+            ImportLocation::Local(path) => Parsed::parse_file(&path)?,
+            ImportLocation::Remote(url) => Parsed::parse_remote(url)?,
+            ImportLocation::Env(var_name) => {
+                let val = match env::var(var_name) {
+                    Ok(val) => val,
+                    Err(_) => Err(ImportError::MissingEnvVar)?,
+                };
+                Parsed::parse_str(&val)?
+            }
+            ImportLocation::Missing => Err(ImportError::Missing)?,
+        })
+    }
+
+    fn fetch_text(self) -> Result<String, Error> {
+        Ok(match self {
+            ImportLocation::Local(path) => std::fs::read_to_string(&path)?,
+            ImportLocation::Remote(url) => {
+                reqwest::blocking::get(url).unwrap().text().unwrap()
+            }
+            ImportLocation::Env(var_name) => match env::var(var_name) {
+                Ok(val) => val,
+                Err(_) => Err(ImportError::MissingEnvVar)?,
+            },
+            ImportLocation::Missing => Err(ImportError::Missing)?,
+        })
+    }
+
+    fn into_location(self) -> Expr {
+        let (field_name, arg) = match self {
+            ImportLocation::Local(path) => {
+                ("Local", Some(path.to_string_lossy().into_owned()))
+            }
+            ImportLocation::Remote(url) => ("Remote", Some(url.into_string())),
+            ImportLocation::Env(name) => ("Environment", Some(name)),
+            ImportLocation::Missing => ("Missing", None),
+        };
+
+        let asloc_ty = make_aslocation_uniontype();
+        let expr = mkexpr(ExprKind::Field(asloc_ty, field_name.into()));
+        match arg {
+            Some(arg) => mkexpr(ExprKind::App(
+                expr,
+                mkexpr(ExprKind::TextLit(arg.into())),
+            )),
+            None => expr,
+        }
+    }
+}
+
+fn mkexpr(kind: UnspannedExpr) -> Expr {
+    Expr::new(kind, Span::Artificial)
+}
+
+fn make_aslocation_uniontype() -> Expr {
+    let text_type = mkexpr(ExprKind::Builtin(Builtin::Text));
+    let mut union = DupTreeMap::default();
+    union.insert("Local".into(), Some(text_type.clone()));
+    union.insert("Remote".into(), Some(text_type.clone()));
+    union.insert("Environment".into(), Some(text_type.clone()));
+    union.insert("Missing".into(), None);
+    mkexpr(ExprKind::UnionType(union))
 }
 
 fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
-    root: &ImportRoot,
+    location: &ImportLocation,
 ) -> Result<TypedHir, Error> {
-    use self::ImportRoot::*;
-    use syntax::FilePrefix::*;
-    use syntax::ImportLocation::*;
-    let cwd = match root {
-        LocalDir(cwd) => cwd,
-    };
-    match &import.location {
-        Local(prefix, path) => {
-            let path_buf: PathBuf = path.file_path.iter().collect();
-            let path_buf = match prefix {
-                // TODO: fail gracefully
-                Parent => cwd.parent().unwrap().join(path_buf),
-                Here => cwd.join(path_buf),
-                _ => unimplemented!("{:?}", import),
-            };
-            Ok(load_import(env, &path_buf)?)
+    let do_sanity_check = import.mode != ImportMode::Location;
+    let location = location.chain(&import.location, do_sanity_check)?;
+    env.handle_import(location.clone(), |env| match import.mode {
+        ImportMode::Code => {
+            let parsed = location.fetch_dhall()?;
+            let typed = resolve_with_env(env, parsed)?.typecheck()?;
+            Ok((typed.normalize().to_hir(), typed.ty().clone()))
         }
-        _ => unimplemented!("{:?}", import),
-    }
-}
-
-fn load_import(env: &mut ImportEnv, f: &Path) -> Result<TypedHir, Error> {
-    let parsed = Parsed::parse_file(f)?;
-    let typed = resolve_with_env(env, parsed)?.typecheck()?;
-    Ok((typed.normalize().to_hir(), typed.ty().clone()))
+        ImportMode::RawText => {
+            let text = location.fetch_text()?;
+            let hir = Hir::new(
+                HirKind::Expr(ExprKind::TextLit(text.into())),
+                Span::Artificial,
+            );
+            Ok((hir, Type::from_builtin(Builtin::Text)))
+        }
+        ImportMode::Location => {
+            let expr = location.into_location();
+            let hir = skip_resolve(&expr)?;
+            let ty = hir.typecheck_noenv()?.ty().clone();
+            Ok((hir, ty))
+        }
+    })
 }
 
 /// Desugar the first level of the expression.
@@ -139,12 +321,10 @@ fn resolve_with_env(
     env: &mut ImportEnv,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
-    let Parsed(expr, root) = parsed;
+    let Parsed(expr, location) = parsed;
     let resolved =
         traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
-            env.handle_import(import, |env, import| {
-                resolve_one_import(env, import, &root)
-            })
+            resolve_one_import(env, &import, &location)
         })?;
     Ok(Resolved(resolved))
 }
@@ -166,21 +346,15 @@ pub trait Canonicalize {
 impl Canonicalize for FilePath {
     fn canonicalize(&self) -> FilePath {
         let mut file_path = Vec::new();
-        let mut file_path_components = self.file_path.clone().into_iter();
 
-        loop {
-            let component = file_path_components.next();
-            match component.as_ref() {
-                // ───────────────────
-                // canonicalize(ε) = ε
-                None => break,
-
+        for c in &self.file_path {
+            match c.as_ref() {
                 // canonicalize(directory₀) = directory₁
                 // ───────────────────────────────────────
                 // canonicalize(directory₀/.) = directory₁
-                Some(c) if c == "." => continue,
+                "." => continue,
 
-                Some(c) if c == ".." => match file_path_components.next() {
+                ".." => match file_path.last() {
                     // canonicalize(directory₀) = ε
                     // ────────────────────────────
                     // canonicalize(directory₀/..) = /..
@@ -189,21 +363,20 @@ impl Canonicalize for FilePath {
                     // canonicalize(directory₀) = directory₁/..
                     // ──────────────────────────────────────────────
                     // canonicalize(directory₀/..) = directory₁/../..
-                    Some(ref c) if c == ".." => {
-                        file_path.push("..".to_string());
-                        file_path.push("..".to_string());
-                    }
+                    Some(c) if c == ".." => file_path.push("..".to_string()),
 
                     // canonicalize(directory₀) = directory₁/component
                     // ───────────────────────────────────────────────  ; If "component" is not
                     // canonicalize(directory₀/..) = directory₁         ; ".."
-                    Some(_) => continue,
+                    Some(_) => {
+                        file_path.pop();
+                    }
                 },
 
                 // canonicalize(directory₀) = directory₁
                 // ─────────────────────────────────────────────────────────  ; If no other
                 // canonicalize(directory₀/component) = directory₁/component  ; rule matches
-                Some(c) => file_path.push(c.clone()),
+                _ => file_path.push(c.clone()),
             }
         }
 
@@ -211,21 +384,21 @@ impl Canonicalize for FilePath {
     }
 }
 
-impl<SE: Copy> Canonicalize for ImportLocation<SE> {
-    fn canonicalize(&self) -> ImportLocation<SE> {
+impl<SE: Copy> Canonicalize for ImportTarget<SE> {
+    fn canonicalize(&self) -> ImportTarget<SE> {
         match self {
-            ImportLocation::Local(prefix, file) => {
-                ImportLocation::Local(*prefix, file.canonicalize())
+            ImportTarget::Local(prefix, file) => {
+                ImportTarget::Local(*prefix, file.canonicalize())
             }
-            ImportLocation::Remote(url) => ImportLocation::Remote(URL {
+            ImportTarget::Remote(url) => ImportTarget::Remote(URL {
                 scheme: url.scheme,
                 authority: url.authority.clone(),
                 path: url.path.canonicalize(),
                 query: url.query.clone(),
                 headers: url.headers.clone(),
             }),
-            ImportLocation::Env(name) => ImportLocation::Env(name.to_string()),
-            ImportLocation::Missing => ImportLocation::Missing,
+            ImportTarget::Env(name) => ImportTarget::Env(name.to_string()),
+            ImportTarget::Missing => ImportTarget::Missing,
         }
     }
 }

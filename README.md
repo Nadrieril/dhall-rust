@@ -62,13 +62,12 @@ assert_eq!(deserialized_map, expected_map);
 
 ## Standard-compliance
 
-This implementation currently supports partially the [Dhall
+This implementation currently supports most of the [Dhall
 standard](https://github.com/dhall-lang/dhall-lang) version `14.0.0`.
 
-Only local imports are supported, but otherwise the main features are
-implemented. See
+The main missing features are import caching and import headers. See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
-for a list of missing features.
+for a list of the other missing features.
 
 # Contributing
 
@@ -158,6 +157,14 @@ for the tests coming from dhall-lang. They are stored in a `.txt` file with the
 same name as the corresponding test.
 
 ## Changelog
+
+[???]
+
+- Implement remote imports with conservative sanity checking
+- Implement `missing` and `env:VAR` imports
+- Implement `as Text` and `as Location` imports
+- Implement projection by expression
+- Implement some normalization simplifications
 
 [0.3.0]
 

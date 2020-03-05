@@ -1,0 +1,7 @@
+Type error: error: Expected a type, found: `1`
+ --> <current file>:1:8
+  |
+1 | Bool -> 1
+  |         ^ this has type: `Natural`
+  |
+  = help: An expression in type position must have type `Type`, `Kind` or `Sort`

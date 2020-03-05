@@ -379,8 +379,8 @@ impl Display for Hash {
 impl<SubExpr: Display> Display for Import<SubExpr> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use FilePrefix::*;
-        use ImportLocation::*;
         use ImportMode::*;
+        use ImportTarget::*;
         let quote_if_needed = |s: &str| -> String {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
                 s.to_string()
@@ -406,7 +406,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                 f.write_str(&path)?;
             }
             Remote(url) => {
-                write!(f, "{}://{}/", url.scheme, url.authority,)?;
+                write!(f, "{}://{}/", url.scheme, url.authority)?;
                 let path: String = url.path.file_path.iter().join("/");
                 f.write_str(&path)?;
                 if let Some(q) = &url.query {

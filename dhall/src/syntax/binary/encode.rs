@@ -6,8 +6,8 @@ use crate::error::EncodeError;
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
-    Expr, ExprKind, FilePrefix, Hash, Import, ImportLocation, ImportMode,
-    Label, Scheme, V,
+    Expr, ExprKind, FilePrefix, Hash, Import, ImportMode, ImportTarget, Label,
+    Scheme, V,
 };
 
 pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
@@ -179,10 +179,10 @@ where
     use serde::ser::SerializeSeq;
 
     let count = 4 + match &import.location {
-        ImportLocation::Remote(url) => 3 + url.path.file_path.len(),
-        ImportLocation::Local(_, path) => path.file_path.len(),
-        ImportLocation::Env(_) => 1,
-        ImportLocation::Missing => 0,
+        ImportTarget::Remote(url) => 3 + url.path.file_path.len(),
+        ImportTarget::Local(_, path) => path.file_path.len(),
+        ImportTarget::Env(_) => 1,
+        ImportTarget::Missing => 0,
     };
     let mut ser_seq = ser.serialize_seq(Some(count))?;
 
@@ -206,23 +206,23 @@ where
     ser_seq.serialize_element(&U64(mode))?;
 
     let scheme = match &import.location {
-        ImportLocation::Remote(url) => match url.scheme {
+        ImportTarget::Remote(url) => match url.scheme {
             Scheme::HTTP => 0,
             Scheme::HTTPS => 1,
         },
-        ImportLocation::Local(prefix, _) => match prefix {
+        ImportTarget::Local(prefix, _) => match prefix {
             FilePrefix::Absolute => 2,
             FilePrefix::Here => 3,
             FilePrefix::Parent => 4,
             FilePrefix::Home => 5,
         },
-        ImportLocation::Env(_) => 6,
-        ImportLocation::Missing => 7,
+        ImportTarget::Env(_) => 6,
+        ImportTarget::Missing => 7,
     };
     ser_seq.serialize_element(&U64(scheme))?;
 
     match &import.location {
-        ImportLocation::Remote(url) => {
+        ImportTarget::Remote(url) => {
             match &url.headers {
                 None => ser_seq.serialize_element(&Null)?,
                 Some(e) => {
@@ -238,15 +238,15 @@ where
                 Some(x) => ser_seq.serialize_element(x)?,
             };
         }
-        ImportLocation::Local(_, path) => {
+        ImportTarget::Local(_, path) => {
             for p in path.file_path.iter() {
                 ser_seq.serialize_element(&p)?;
             }
         }
-        ImportLocation::Env(env) => {
+        ImportTarget::Env(env) => {
             ser_seq.serialize_element(env)?;
         }
-        ImportLocation::Missing => {}
+        ImportTarget::Missing => {}
     }
 
     ser_seq.end()

@@ -18,7 +18,7 @@ pub struct FilePath {
 
 /// The location of import (i.e. local vs. remote vs. environment)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ImportLocation<SubExpr> {
+pub enum ImportTarget<SubExpr> {
     Local(FilePrefix, FilePath),
     Remote(URL<SubExpr>),
     Env(String),
@@ -57,7 +57,7 @@ pub enum Hash {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Import<SubExpr> {
     pub mode: ImportMode,
-    pub location: ImportLocation<SubExpr>,
+    pub location: ImportTarget<SubExpr>,
     pub hash: Option<Hash>,
 }
 
@@ -77,12 +77,12 @@ impl<SE> URL<SE> {
     }
 }
 
-impl<SE> ImportLocation<SE> {
+impl<SE> ImportTarget<SE> {
     pub fn traverse_ref<'a, Err, SE2>(
         &'a self,
         f: impl FnOnce(&'a SE) -> Result<SE2, Err>,
-    ) -> Result<ImportLocation<SE2>, Err> {
-        use ImportLocation::*;
+    ) -> Result<ImportTarget<SE2>, Err> {
+        use ImportTarget::*;
         Ok(match self {
             Local(prefix, path) => Local(*prefix, path.clone()),
             Remote(url) => Remote(url.traverse_ref(f)?),

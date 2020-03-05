@@ -233,7 +233,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::Builtin(b) => Ret::Nir(Nir::from_builtin_env(b, env)),
         ExprKind::Assert(_) => Ret::Expr(expr),
         ExprKind::App(v, a) => Ret::Nir(v.app(a)),
-        ExprKind::Lit(l) => Ret::NirKind(Lit(l.clone())),
+        ExprKind::Lit(l) => Ret::NirKind(Lit(l)),
         ExprKind::SomeLit(e) => Ret::NirKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match t.kind() {
@@ -286,23 +286,6 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             None => Ret::Expr(expr),
         },
 
-        ExprKind::Projection(_, ref ls) if ls.is_empty() => {
-            Ret::NirKind(RecordLit(HashMap::new()))
-        }
-        ExprKind::Projection(ref v, ref ls) => match v.kind() {
-            RecordLit(kvs) => Ret::NirKind(RecordLit(
-                ls.iter()
-                    .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
-                    .collect(),
-            )),
-            PartialExpr(ExprKind::Projection(v2, _)) => {
-                return normalize_one_layer(
-                    ExprKind::Projection(v2.clone(), ls.clone()),
-                    env,
-                )
-            }
-            _ => Ret::Expr(expr),
-        },
         ExprKind::Field(ref v, ref l) => match v.kind() {
             RecordLit(kvs) => match kvs.get(l) {
                 Some(r) => Ret::Nir(r.clone()),
@@ -310,6 +293,12 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             },
             UnionType(kts) => {
                 Ret::NirKind(UnionConstructor(l.clone(), kts.clone()))
+            }
+            PartialExpr(ExprKind::Projection(x, _)) => {
+                return normalize_one_layer(
+                    ExprKind::Field(x.clone(), l.clone()),
+                    env,
+                )
             }
             PartialExpr(ExprKind::BinOp(
                 BinOp::RightBiasedRecordMerge,
@@ -329,11 +318,11 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
                     Some(r) => Ret::Expr(ExprKind::Field(
                         Nir::from_kind(PartialExpr(ExprKind::BinOp(
                             BinOp::RightBiasedRecordMerge,
-                            Nir::from_kind(RecordLit({
-                                let mut kvs = HashMap::new();
-                                kvs.insert(l.clone(), r.clone());
-                                kvs
-                            })),
+                            Nir::from_kind(RecordLit(
+                                Some((l.clone(), r.clone()))
+                                    .into_iter()
+                                    .collect(),
+                            )),
                             y.clone(),
                         ))),
                         l.clone(),
@@ -347,66 +336,81 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
                 },
                 _ => Ret::Expr(expr),
             },
-            PartialExpr(ExprKind::BinOp(
-                BinOp::RecursiveRecordTypeMerge,
-                x,
-                y,
-            )) => match (x.kind(), y.kind()) {
-                (RecordLit(kvs), _) => match kvs.get(l) {
-                    Some(_) => Ret::Expr(expr),
-                    None => {
-                        return normalize_one_layer(
-                            ExprKind::Field(y.clone(), l.clone()),
-                            env,
-                        )
-                    }
-                },
-                (_, RecordLit(kvs)) => match kvs.get(l) {
-                    Some(_) => Ret::Expr(expr),
-                    None => {
-                        return normalize_one_layer(
-                            ExprKind::Field(x.clone(), l.clone()),
-                            env,
-                        )
-                    }
-                },
-                _ => Ret::Expr(expr),
-            },
+            PartialExpr(ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y)) => {
+                match (x.kind(), y.kind()) {
+                    (RecordLit(kvs), _) => match kvs.get(l) {
+                        Some(r) => Ret::Expr(ExprKind::Field(
+                            Nir::from_kind(PartialExpr(ExprKind::BinOp(
+                                BinOp::RecursiveRecordMerge,
+                                Nir::from_kind(RecordLit(
+                                    Some((l.clone(), r.clone()))
+                                        .into_iter()
+                                        .collect(),
+                                )),
+                                y.clone(),
+                            ))),
+                            l.clone(),
+                        )),
+                        None => {
+                            return normalize_one_layer(
+                                ExprKind::Field(y.clone(), l.clone()),
+                                env,
+                            )
+                        }
+                    },
+                    (_, RecordLit(kvs)) => match kvs.get(l) {
+                        Some(r) => Ret::Expr(ExprKind::Field(
+                            Nir::from_kind(PartialExpr(ExprKind::BinOp(
+                                BinOp::RecursiveRecordMerge,
+                                x.clone(),
+                                Nir::from_kind(RecordLit(
+                                    Some((l.clone(), r.clone()))
+                                        .into_iter()
+                                        .collect(),
+                                )),
+                            ))),
+                            l.clone(),
+                        )),
+                        None => {
+                            return normalize_one_layer(
+                                ExprKind::Field(x.clone(), l.clone()),
+                                env,
+                            )
+                        }
+                    },
+                    _ => Ret::Expr(expr),
+                }
+            }
+            _ => Ret::Expr(expr),
+        },
+        ExprKind::Projection(_, ref ls) if ls.is_empty() => {
+            Ret::NirKind(RecordLit(HashMap::new()))
+        }
+        ExprKind::Projection(ref v, ref ls) => match v.kind() {
+            RecordLit(kvs) => Ret::NirKind(RecordLit(
+                ls.iter()
+                    .filter_map(|l| kvs.get(l).map(|x| (l.clone(), x.clone())))
+                    .collect(),
+            )),
             PartialExpr(ExprKind::Projection(v2, _)) => {
                 return normalize_one_layer(
-                    ExprKind::Field(v2.clone(), l.clone()),
+                    ExprKind::Projection(v2.clone(), ls.clone()),
                     env,
                 )
             }
             _ => Ret::Expr(expr),
         },
-
-        ExprKind::ProjectionByExpr(ref v, ref t) => match dbg!(v).kind() {
-            RecordLit(kvs) => match dbg!(t).kind() {
-                RecordType(kts) => Ret::NirKind(RecordLit(
-                    kts.iter()
-                        .filter_map(|(l, _)| {
-                            kvs.get(l).map(|x| (l.clone(), x.clone()))
-                        })
-                        .collect(),
-                )),
-                _ => Ret::Expr(expr),
-            },
-            _ => match dbg!(t).kind() {
-                RecordType(kts) => {
-                    use crate::syntax::map::DupTreeSet;
-                    use std::iter::FromIterator;
-
-                    let ts = DupTreeSet::from_iter(
-                        kts.iter().map(|(l, _)| l.clone()),
-                    );
-                    return normalize_one_layer(
-                        ExprKind::Projection(v.clone(), ts),
-                        env,
-                    );
-                }
-                _ => Ret::Expr(expr),
-            },
+        ExprKind::ProjectionByExpr(ref v, ref t) => match t.kind() {
+            RecordType(kts) => {
+                return normalize_one_layer(
+                    ExprKind::Projection(
+                        v.clone(),
+                        kts.keys().cloned().collect(),
+                    ),
+                    env,
+                )
+            }
+            _ => Ret::Expr(expr),
         },
 
         ExprKind::Merge(ref handlers, ref variant, _) => {
