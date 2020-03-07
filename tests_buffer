@@ -10,24 +10,15 @@ binary decoding:
 decode old-style optional literals ?
 
 import:
-success/
-    recover type error
-    recover recursive import error
 failure/
     don't recover cycle
     don't resolve symlinks in canonicalizing
 
 normalization:
-variables across import boundaries
 
 type-inference:
 something that involves destructuring a recordtype after merge
 add some of the more complicated Prelude tests back, like List/enumerate
-success/
-    regression/
-        somehow test that ({ x = { z = 1 } } ∧ { x = { y = 2 } }).x has a type
-        somehow test that the recordtype from List/indexed has a type in both empty and nonempty cases
-        somehow test types added to the Foo/build closures
 failure/
     \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
