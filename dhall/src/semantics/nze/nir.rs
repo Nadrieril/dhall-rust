@@ -11,7 +11,7 @@ use crate::syntax::{
     Span,
 };
 use crate::{NormalizedExpr, ToExprOptions};
-use crate::{SValKind, SimpleValue};
+use crate::{STyKind, SValKind, SimpleType, SimpleValue};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a Rc<RefCell> to share computation.
@@ -173,6 +173,52 @@ impl Nir {
             {
                 SValKind::Union(field.into(), None)
             }
+            _ => return None,
+        }))
+    }
+    pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
+        Some(SimpleType::new(match self.kind() {
+            NirKind::AppliedBuiltin(BuiltinClosure { b, args, .. })
+                if args.is_empty() =>
+            {
+                match b {
+                    Builtin::Bool => STyKind::Bool,
+                    Builtin::Natural => STyKind::Natural,
+                    Builtin::Integer => STyKind::Integer,
+                    Builtin::Double => STyKind::Double,
+                    Builtin::Text => STyKind::Text,
+                    _ => return None,
+                }
+            }
+            NirKind::AppliedBuiltin(BuiltinClosure {
+                b: Builtin::Optional,
+                args,
+                ..
+            }) if args.len() == 1 => {
+                STyKind::Optional(args[0].to_simple_type()?)
+            }
+            NirKind::AppliedBuiltin(BuiltinClosure {
+                b: Builtin::List,
+                args,
+                ..
+            }) if args.len() == 1 => STyKind::List(args[0].to_simple_type()?),
+            NirKind::RecordType(kts) => STyKind::Record(
+                kts.iter()
+                    .map(|(k, v)| Some((k.into(), v.to_simple_type()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::UnionType(kts) => STyKind::Union(
+                kts.iter()
+                    .map(|(k, v)| {
+                        Some((
+                            k.into(),
+                            v.as_ref()
+                                .map(|v| Ok(v.to_simple_type()?))
+                                .transpose()?,
+                        ))
+                    })
+                    .collect::<Option<_>>()?,
+            ),
             _ => return None,
         }))
     }

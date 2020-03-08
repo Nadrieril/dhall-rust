@@ -30,7 +30,7 @@ pub type ParsedExpr = Expr;
 pub type DecodedExpr = Expr;
 pub type ResolvedExpr = Expr;
 pub type NormalizedExpr = Expr;
-pub use crate::simple::{SValKind, SimpleValue};
+pub use crate::simple::{STyKind, SValKind, SimpleType, SimpleValue};
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedExpr, ImportLocation);
@@ -145,6 +145,10 @@ impl Normalized {
     /// Converts a value into a SimpleValue.
     pub fn to_simple_value(&self) -> Result<SimpleValue, Expr> {
         self.0.to_simple_value().ok_or_else(|| self.to_expr())
+    }
+    /// Converts a value into a SimpleType.
+    pub fn to_simple_type(&self) -> Result<SimpleType, Expr> {
+        self.0.to_simple_type().ok_or_else(|| self.to_expr())
     }
     /// Converts a value back to the corresponding Hir expression.
     pub(crate) fn to_hir(&self) -> Hir {

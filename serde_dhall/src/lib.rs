@@ -183,7 +183,7 @@ pub use value::Value;
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::{Normalized, NormalizedExpr, Parsed, SimpleValue};
+    use dhall::{Normalized, NormalizedExpr, Parsed, SimpleType, SimpleValue};
 
     use super::de::Error;
     use super::Type;
@@ -203,7 +203,7 @@ pub mod value {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
                 None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(t.as_normalized())?,
+                Some(t) => resolved.typecheck_with(&t.to_normalized())?,
             };
             Ok(Value(typed.normalize()))
         }
@@ -211,6 +211,11 @@ pub mod value {
             &self,
         ) -> Result<SimpleValue, NormalizedExpr> {
             self.0.to_simple_value()
+        }
+        pub(crate) fn to_simple_type(
+            &self,
+        ) -> Result<SimpleType, NormalizedExpr> {
+            self.0.to_simple_type()
         }
     }
 
@@ -226,56 +231,46 @@ pub mod value {
 // A Dhall type.
 #[doc(hidden)]
 pub mod ty {
-    use dhall::syntax::Builtin;
-    use dhall::{Normalized, Parsed};
+    use dhall::{Normalized, STyKind, SimpleType};
 
     use super::de::Error;
 
-    /// A Dhall value
+    /// A Dhall type
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Type(Normalized);
+    pub struct Type(SimpleType);
 
     impl Type {
-        pub fn from_str(s: &str, ty: Option<&Type>) -> super::de::Result<Self> {
-            Type::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
-        }
-        fn from_str_using_dhall_error_type(
-            s: &str,
-            ty: Option<&Type>,
-        ) -> dhall::error::Result<Self> {
-            let resolved = Parsed::parse_str(s)?.resolve()?;
-            let typed = match ty {
-                None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(t.as_normalized())?,
-            };
-            Ok(Type(typed.normalize()))
-        }
-        pub(crate) fn as_normalized(&self) -> &Normalized {
-            &self.0
+        pub(crate) fn to_normalized(&self) -> Normalized {
+            self.0.clone().into_normalized()
         }
 
-        pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Type(Normalized::make_builtin_type(b))
+        pub(crate) fn from_simple_type(ty: SimpleType) -> Self {
+            Type(ty)
+        }
+        pub(crate) fn from_stykind(k: STyKind) -> Self {
+            Type(SimpleType::new(k))
         }
         pub(crate) fn make_optional_type(t: Type) -> Self {
-            Type(Normalized::make_optional_type(t.0))
+            Type::from_stykind(STyKind::Optional(t.0))
         }
         pub(crate) fn make_list_type(t: Type) -> Self {
-            Type(Normalized::make_list_type(t.0))
+            Type::from_stykind(STyKind::List(t.0))
         }
         // Made public for the StaticType derive macro
         #[doc(hidden)]
         pub fn make_record_type(
             kts: impl Iterator<Item = (String, Type)>,
         ) -> Self {
-            Type(Normalized::make_record_type(kts.map(|(k, t)| (k, t.0))))
+            Type::from_stykind(STyKind::Record(
+                kts.map(|(k, t)| (k, t.0)).collect(),
+            ))
         }
         #[doc(hidden)]
         pub fn make_union_type(
             kts: impl Iterator<Item = (String, Option<Type>)>,
         ) -> Self {
-            Type(Normalized::make_union_type(
-                kts.map(|(k, t)| (k, t.map(|t| t.0))),
+            Type::from_stykind(STyKind::Union(
+                kts.map(|(k, t)| (k, t.map(|t| t.0))).collect(),
             ))
         }
     }
@@ -284,7 +279,13 @@ pub mod ty {
 
     impl super::de::Deserialize for Type {
         fn from_dhall(v: &super::Value) -> super::de::Result<Self> {
-            Ok(Type(v.0.clone()))
+            let sty = v.to_simple_type().map_err(|expr| {
+                Error::Deserialize(format!(
+                    "this cannot be deserialized into a simple type: {}",
+                    expr
+                ))
+            })?;
+            Ok(Type(sty))
         }
     }
 }

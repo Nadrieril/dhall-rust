@@ -1,4 +1,4 @@
-use dhall::syntax::Builtin;
+use dhall::{STyKind, SimpleType};
 
 use crate::Type;
 
@@ -18,10 +18,10 @@ pub trait StaticType {
 }
 
 macro_rules! derive_builtin {
-    ($ty:ty, $builtin:ident) => {
-        impl StaticType for $ty {
+    ($rust_ty:ty, $dhall_ty:ident) => {
+        impl StaticType for $rust_ty {
             fn static_type() -> Type {
-                Type::make_builtin_type(Builtin::$builtin)
+                Type::from_simple_type(SimpleType::new(STyKind::$dhall_ty))
             }
         }
     };
