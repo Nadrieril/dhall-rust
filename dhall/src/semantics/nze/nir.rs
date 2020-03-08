@@ -11,6 +11,7 @@ use crate::syntax::{
     Span,
 };
 use crate::{NormalizedExpr, ToExprOptions};
+use crate::{SValKind, SimpleValue};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a Rc<RefCell> to share computation.
@@ -141,6 +142,39 @@ impl Nir {
     }
     pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
+    }
+    pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
+        Some(SimpleValue::new(match self.kind() {
+            NirKind::Lit(lit) => SValKind::Lit(lit.clone()),
+            NirKind::TextLit(x) => SValKind::Text(
+                x.as_text()
+                    .expect("Normal form should ensure the text is a string"),
+            ),
+            NirKind::EmptyOptionalLit(_) => SValKind::Optional(None),
+            NirKind::NEOptionalLit(x) => {
+                SValKind::Optional(Some(x.to_simple_value()?))
+            }
+            NirKind::EmptyListLit(_) => SValKind::List(vec![]),
+            NirKind::NEListLit(xs) => SValKind::List(
+                xs.iter()
+                    .map(|v| v.to_simple_value())
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::RecordLit(kvs) => SValKind::Record(
+                kvs.iter()
+                    .map(|(k, v)| Some((k.into(), v.to_simple_value()?)))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::UnionLit(field, x, _) => {
+                SValKind::Union(field.into(), Some(x.to_simple_value()?))
+            }
+            NirKind::UnionConstructor(field, ty)
+                if ty.get(field).map(|f| f.is_some()) == Some(false) =>
+            {
+                SValKind::Union(field.into(), None)
+            }
+            _ => return None,
+        }))
     }
 
     pub(crate) fn normalize(&self) {

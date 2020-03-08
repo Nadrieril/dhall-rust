@@ -182,16 +182,19 @@ pub use value::Value;
 #[doc(hidden)]
 pub mod value {
     use dhall::syntax::Builtin;
-    use dhall::{Normalized, NormalizedExpr, Parsed};
+    use dhall::{Normalized, NormalizedExpr, Parsed, SimpleValue};
 
-    use super::de::{Error, Result};
+    use super::de::Error;
 
     /// A Dhall value
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Value(Normalized);
 
     impl Value {
-        pub fn from_str(s: &str, ty: Option<&Value>) -> Result<Self> {
+        pub fn from_str(
+            s: &str,
+            ty: Option<&Value>,
+        ) -> super::de::Result<Self> {
             Value::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
         }
         fn from_str_using_dhall_error_type(
@@ -205,8 +208,10 @@ pub mod value {
             };
             Ok(Value(typed.normalize()))
         }
-        pub(crate) fn to_expr(&self) -> NormalizedExpr {
-            self.0.to_expr()
+        pub(crate) fn to_simple_value(
+            &self,
+        ) -> Result<SimpleValue, NormalizedExpr> {
+            self.0.to_simple_value()
         }
         pub(crate) fn as_normalized(&self) -> &Normalized {
             &self.0
@@ -241,7 +246,7 @@ pub mod value {
     impl super::de::sealed::Sealed for Value {}
 
     impl super::de::Deserialize for Value {
-        fn from_dhall(v: &Value) -> Result<Self> {
+        fn from_dhall(v: &Value) -> super::de::Result<Self> {
             Ok(v.clone())
         }
     }

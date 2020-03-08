@@ -9,6 +9,7 @@ mod tests;
 
 pub mod error;
 pub mod semantics;
+pub mod simple;
 pub mod syntax;
 
 use std::fmt::Display;
@@ -29,6 +30,7 @@ pub type ParsedExpr = Expr;
 pub type DecodedExpr = Expr;
 pub type ResolvedExpr = Expr;
 pub type NormalizedExpr = Expr;
+pub use crate::simple::{SValKind, SimpleValue};
 
 #[derive(Debug, Clone)]
 pub struct Parsed(ParsedExpr, ImportLocation);
@@ -53,7 +55,7 @@ pub struct Typed {
 pub struct Normalized(Nir);
 
 /// Controls conversion from `Nir` to `Expr`
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub(crate) struct ToExprOptions {
     /// Whether to convert all variables to `_`
     pub(crate) alpha: bool,
@@ -138,7 +140,11 @@ impl Normalized {
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions { alpha: false })
+        self.0.to_expr(ToExprOptions::default())
+    }
+    /// Converts a value into a SimpleValue.
+    pub fn to_simple_value(&self) -> Result<SimpleValue, Expr> {
+        self.0.to_simple_value().ok_or_else(|| self.to_expr())
     }
     /// Converts a value back to the corresponding Hir expression.
     pub(crate) fn to_hir(&self) -> Hir {

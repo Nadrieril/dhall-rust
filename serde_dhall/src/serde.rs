@@ -4,24 +4,30 @@ use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
 
-use dhall::syntax::{ExprKind, LitKind};
-use dhall::NormalizedExpr;
+use dhall::syntax::LitKind;
+use dhall::{SValKind, SimpleValue};
 
 use crate::de::{Deserialize, Error, Result};
 use crate::Value;
 
 impl<'a, T> crate::de::sealed::Sealed for T where T: serde::Deserialize<'a> {}
 
+struct Deserializer<'a>(Cow<'a, SimpleValue>);
+
 impl<'a, T> Deserialize for T
 where
     T: serde::Deserialize<'a>,
 {
     fn from_dhall(v: &Value) -> Result<Self> {
-        T::deserialize(Deserializer(Cow::Owned(v.to_expr())))
+        let sval = v.to_simple_value().map_err(|expr| {
+            Error::Deserialize(format!(
+                "this cannot be deserialized into the serde data model: {}",
+                expr
+            ))
+        })?;
+        T::deserialize(Deserializer(Cow::Owned(sval)))
     }
 }
-
-struct Deserializer<'a>(Cow<'a, NormalizedExpr>);
 
 impl<'de: 'a, 'a> serde::de::IntoDeserializer<'de, Error> for Deserializer<'a> {
     type Deserializer = Deserializer<'a>;
@@ -38,17 +44,11 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         V: serde::de::Visitor<'de>,
     {
         use std::convert::TryInto;
-        use ExprKind::*;
         use LitKind::*;
-        let expr = self.0.as_ref();
-        let not_serde_compatible = || {
-            Err(Error::Deserialize(format!(
-                "this cannot be deserialized into the serde data model: {}",
-                expr
-            )))
-        };
+        use SValKind::*;
 
-        match expr.kind() {
+        let val = |x| Deserializer(Cow::Borrowed(x));
+        match self.0.kind() {
             Lit(Bool(x)) => visitor.visit_bool(*x),
             Lit(Natural(x)) => {
                 if let Ok(x64) = (*x).try_into() {
@@ -69,54 +69,25 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                 }
             }
             Lit(Double(x)) => visitor.visit_f64((*x).into()),
-            TextLit(x) => {
-                // Normal form ensures that the tail is empty.
-                assert!(x.tail().is_empty());
-                visitor.visit_str(x.head())
+            Text(x) => visitor.visit_str(x),
+            List(xs) => {
+                visitor.visit_seq(SeqDeserializer::new(xs.iter().map(val)))
             }
-            EmptyListLit(..) => {
-                visitor.visit_seq(SeqDeserializer::new(None::<()>.into_iter()))
-            }
-            NEListLit(xs) => visitor.visit_seq(SeqDeserializer::new(
-                xs.iter().map(|x| Deserializer(Cow::Borrowed(x))),
+            Optional(None) => visitor.visit_none(),
+            Optional(Some(x)) => visitor.visit_some(val(x)),
+            Record(m) => visitor.visit_map(MapDeserializer::new(
+                m.iter().map(|(k, v)| (k.as_ref(), val(v))),
             )),
-            SomeLit(x) => visitor.visit_some(Deserializer(Cow::Borrowed(x))),
-            App(f, x) => match f.kind() {
-                Builtin(dhall::syntax::Builtin::OptionalNone) => {
-                    visitor.visit_none()
-                }
-                Field(y, name) => match y.kind() {
-                    UnionType(..) => {
-                        let name: String = name.into();
-                        visitor.visit_enum(MapAccessDeserializer::new(
-                            MapDeserializer::new(
-                                Some((name, Deserializer(Cow::Borrowed(x))))
-                                    .into_iter(),
-                            ),
-                        ))
-                    }
-                    _ => not_serde_compatible(),
-                },
-                _ => not_serde_compatible(),
-            },
-            RecordLit(m) => visitor
-                .visit_map(MapDeserializer::new(m.iter().map(|(k, v)| {
-                    (k.as_ref(), Deserializer(Cow::Borrowed(v)))
-                }))),
-            Field(y, name) => match y.kind() {
-                UnionType(..) => {
-                    let name: String = name.into();
-                    visitor.visit_enum(MapAccessDeserializer::new(
-                        MapDeserializer::new(Some((name, ())).into_iter()),
-                    ))
-                }
-                _ => not_serde_compatible(),
-            },
-            Const(..) | Var(..) | Lam(..) | Pi(..) | Let(..) | Annot(..)
-            | Assert(..) | Builtin(..) | BinOp(..) | BoolIf(..)
-            | RecordType(..) | UnionType(..) | Merge(..) | ToMap(..)
-            | Projection(..) | ProjectionByExpr(..) | Completion(..)
-            | Import(..) => not_serde_compatible(),
+            Union(field_name, Some(x)) => visitor.visit_enum(
+                MapAccessDeserializer::new(MapDeserializer::new(
+                    Some((field_name.as_str(), val(x))).into_iter(),
+                )),
+            ),
+            Union(field_name, None) => visitor.visit_enum(
+                MapAccessDeserializer::new(MapDeserializer::new(
+                    Some((field_name.as_str(), ())).into_iter(),
+                )),
+            ),
         }
     }
 
@@ -124,14 +95,11 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     where
         V: serde::de::Visitor<'de>,
     {
-        use ExprKind::*;
-        let expr = self.0.as_ref();
-
-        match expr.kind() {
+        let val = |x| Deserializer(Cow::Borrowed(x));
+        match self.0.kind() {
             // Blindly takes keys in sorted order.
-            RecordLit(m) => visitor.visit_seq(SeqDeserializer::new(
-                m.iter().map(|(_, v)| Deserializer(Cow::Borrowed(v))),
-            )),
+            SValKind::Record(m) => visitor
+                .visit_seq(SeqDeserializer::new(m.iter().map(|(_, v)| val(v)))),
             _ => self.deserialize_any(visitor),
         }
     }

@@ -51,6 +51,8 @@ fn test_de_typed() {
         Y(i64),
     }
     assert_eq!(parse::<Baz>("< X | Y: Integer >.X"), Baz::X);
+
+    assert!(from_str_auto_type::<Baz>("< X | Y: Integer >.Y").is_err());
 }
 
 #[test]
