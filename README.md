@@ -167,6 +167,10 @@ same name as the corresponding test.
 
 ## Changelog
 
+#### [???]
+
+- Breaking change: use `serde_dhall::Type` type for type-checking instead of `serde_dhall::Value`
+
 #### [0.4.0]
 
 - `dhall` now uses the stable Rust toolchain !

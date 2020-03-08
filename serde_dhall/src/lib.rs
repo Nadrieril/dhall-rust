@@ -106,17 +106,17 @@
 //! There are two ways to typecheck a Dhall value: you can provide the type as Dhall text or you
 //! can let Rust infer it for you.
 //!
-//! To provide a type written in Dhall, first parse it into a [`serde_dhall::Value`][Value], then
+//! To provide a type written in Dhall, first parse it into a [`serde_dhall::Type`][Type], then
 //! pass it to [`from_str_check_type`][from_str_check_type].
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::de::Result<()> {
-//! use serde_dhall::Value;
+//! use serde_dhall::Type;
 //! use std::collections::HashMap;
 //!
 //! // Parse a Dhall type
 //! let point_type_str = "{ x: Natural, y: Natural }";
-//! let point_type: Value = serde_dhall::from_str(point_type_str)?;
+//! let point_type: Type = serde_dhall::from_str(point_type_str)?;
 //!
 //! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
@@ -176,30 +176,29 @@ pub use de::{from_str, from_str_auto_type, from_str_check_type};
 pub use dhall_proc_macros::StaticType;
 pub use static_type::StaticType;
 #[doc(inline)]
+pub use ty::Type;
+#[doc(inline)]
 pub use value::Value;
 
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::syntax::Builtin;
     use dhall::{Normalized, NormalizedExpr, Parsed, SimpleValue};
 
     use super::de::Error;
+    use super::Type;
 
     /// A Dhall value
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Value(Normalized);
+    pub struct Value(pub(crate) Normalized);
 
     impl Value {
-        pub fn from_str(
-            s: &str,
-            ty: Option<&Value>,
-        ) -> super::de::Result<Self> {
+        pub fn from_str(s: &str, ty: Option<&Type>) -> super::de::Result<Self> {
             Value::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
         }
         fn from_str_using_dhall_error_type(
             s: &str,
-            ty: Option<&Value>,
+            ty: Option<&Type>,
         ) -> dhall::error::Result<Self> {
             let resolved = Parsed::parse_str(s)?.resolve()?;
             let typed = match ty {
@@ -213,34 +212,6 @@ pub mod value {
         ) -> Result<SimpleValue, NormalizedExpr> {
             self.0.to_simple_value()
         }
-        pub(crate) fn as_normalized(&self) -> &Normalized {
-            &self.0
-        }
-
-        pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-            Value(Normalized::make_builtin_type(b))
-        }
-        pub(crate) fn make_optional_type(t: Value) -> Self {
-            Value(Normalized::make_optional_type(t.0))
-        }
-        pub(crate) fn make_list_type(t: Value) -> Self {
-            Value(Normalized::make_list_type(t.0))
-        }
-        // Made public for the StaticType derive macro
-        #[doc(hidden)]
-        pub fn make_record_type(
-            kts: impl Iterator<Item = (String, Value)>,
-        ) -> Self {
-            Value(Normalized::make_record_type(kts.map(|(k, t)| (k, t.0))))
-        }
-        #[doc(hidden)]
-        pub fn make_union_type(
-            kts: impl Iterator<Item = (String, Option<Value>)>,
-        ) -> Self {
-            Value(Normalized::make_union_type(
-                kts.map(|(k, t)| (k, t.map(|t| t.0))),
-            ))
-        }
     }
 
     impl super::de::sealed::Sealed for Value {}
@@ -252,9 +223,76 @@ pub mod value {
     }
 }
 
+// A Dhall type.
+#[doc(hidden)]
+pub mod ty {
+    use dhall::syntax::Builtin;
+    use dhall::{Normalized, Parsed};
+
+    use super::de::Error;
+
+    /// A Dhall value
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Type(Normalized);
+
+    impl Type {
+        pub fn from_str(s: &str, ty: Option<&Type>) -> super::de::Result<Self> {
+            Type::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
+        }
+        fn from_str_using_dhall_error_type(
+            s: &str,
+            ty: Option<&Type>,
+        ) -> dhall::error::Result<Self> {
+            let resolved = Parsed::parse_str(s)?.resolve()?;
+            let typed = match ty {
+                None => resolved.typecheck()?,
+                Some(t) => resolved.typecheck_with(t.as_normalized())?,
+            };
+            Ok(Type(typed.normalize()))
+        }
+        pub(crate) fn as_normalized(&self) -> &Normalized {
+            &self.0
+        }
+
+        pub(crate) fn make_builtin_type(b: Builtin) -> Self {
+            Type(Normalized::make_builtin_type(b))
+        }
+        pub(crate) fn make_optional_type(t: Type) -> Self {
+            Type(Normalized::make_optional_type(t.0))
+        }
+        pub(crate) fn make_list_type(t: Type) -> Self {
+            Type(Normalized::make_list_type(t.0))
+        }
+        // Made public for the StaticType derive macro
+        #[doc(hidden)]
+        pub fn make_record_type(
+            kts: impl Iterator<Item = (String, Type)>,
+        ) -> Self {
+            Type(Normalized::make_record_type(kts.map(|(k, t)| (k, t.0))))
+        }
+        #[doc(hidden)]
+        pub fn make_union_type(
+            kts: impl Iterator<Item = (String, Option<Type>)>,
+        ) -> Self {
+            Type(Normalized::make_union_type(
+                kts.map(|(k, t)| (k, t.map(|t| t.0))),
+            ))
+        }
+    }
+
+    impl super::de::sealed::Sealed for Type {}
+
+    impl super::de::Deserialize for Type {
+        fn from_dhall(v: &super::Value) -> super::de::Result<Self> {
+            Ok(Type(v.0.clone()))
+        }
+    }
+}
+
 /// Deserialize Dhall data to a Rust data structure.
 pub mod de {
     use super::StaticType;
+    use super::Type;
     use super::Value;
     pub use error::{Error, Result};
 
@@ -324,7 +362,7 @@ pub mod de {
     ///
     /// Like [from_str], but this additionally checks that
     /// the type of the provided expression matches the supplied type.
-    pub fn from_str_check_type<T>(s: &str, ty: &Value) -> Result<T>
+    pub fn from_str_check_type<T>(s: &str, ty: &Type) -> Result<T>
     where
         T: Deserialize,
     {

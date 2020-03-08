@@ -1,6 +1,6 @@
 use dhall::syntax::Builtin;
 
-use crate::Value;
+use crate::Type;
 
 /// A Rust type that can be represented as a Dhall type.
 ///
@@ -14,14 +14,14 @@ use crate::Value;
 /// [StaticType] because each different value would
 /// have a different Dhall record type.
 pub trait StaticType {
-    fn static_type() -> Value;
+    fn static_type() -> Type;
 }
 
 macro_rules! derive_builtin {
     ($ty:ty, $builtin:ident) => {
         impl StaticType for $ty {
-            fn static_type() -> Value {
-                Value::make_builtin_type(Builtin::$builtin)
+            fn static_type() -> Type {
+                Type::make_builtin_type(Builtin::$builtin)
             }
         }
     };
@@ -43,8 +43,8 @@ where
     A: StaticType,
     B: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_record_type(
+    fn static_type() -> Type {
+        Type::make_record_type(
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
@@ -59,8 +59,8 @@ where
     T: StaticType,
     E: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_union_type(
+    fn static_type() -> Type {
+        Type::make_union_type(
             vec![
                 ("Ok".to_owned(), Some(T::static_type())),
                 ("Err".to_owned(), Some(E::static_type())),
@@ -74,8 +74,8 @@ impl<T> StaticType for Option<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_optional_type(T::static_type())
+    fn static_type() -> Type {
+        Type::make_optional_type(T::static_type())
     }
 }
 
@@ -83,8 +83,8 @@ impl<T> StaticType for Vec<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_list_type(T::static_type())
+    fn static_type() -> Type {
+        Type::make_list_type(T::static_type())
     }
 }
 
@@ -92,7 +92,7 @@ impl<'a, T> StaticType for &'a T
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
+    fn static_type() -> Type {
         T::static_type()
     }
 }

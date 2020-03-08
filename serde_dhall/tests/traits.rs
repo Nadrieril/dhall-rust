@@ -1,8 +1,8 @@
-use serde_dhall::{from_str, StaticType, Value};
+use serde_dhall::{from_str, StaticType, Type};
 
 #[test]
 fn test_static_type() {
-    fn parse(s: &str) -> Value {
+    fn parse(s: &str) -> Type {
         from_str(s).unwrap()
     }
 
