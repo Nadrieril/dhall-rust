@@ -21,6 +21,7 @@ pub(crate) enum Span {
     /// Desugarings
     DuplicateRecordFieldsSugar,
     DottedFieldSugar,
+    WithSugar,
     /// For expressions obtained from decoding binary
     Decoded,
     /// For expressions constructed during normalization/typecheck

@@ -1,0 +1,7 @@
+Type error: error: unbound variable ``_``
+ --> <current file>:1:23
+  |
+...
+5 | { a.b = 1 } with a.c = _
+  |                        ^ not found in this scope
+  |

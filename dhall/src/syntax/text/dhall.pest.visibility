@@ -95,6 +95,7 @@ equivalent
 prefer
 lambda
 forall
+# with
 arrow
 # complete
 # exponent
@@ -164,6 +165,8 @@ times_expression
 equal_expression
 not_equal_expression
 equivalent_expression
+with_expression
+with_clause
 application_expression
 first_application_expression
 # import_expression

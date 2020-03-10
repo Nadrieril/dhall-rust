@@ -3,4 +3,4 @@
 1 | { x :T }␊
   |   ^---
   |
-  = expected empty_record_literal or non_empty_record_type_or_literal
+  = expected non_empty_record_type_or_literal or empty_record_literal

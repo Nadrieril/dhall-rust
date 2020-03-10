@@ -376,6 +376,19 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     rules.remove("url_path");
     writeln!(&mut file, "url_path = _{{ path }}")?;
 
+    // TODO: upstream this tweak
+    rules.remove("with_expression");
+    writeln!(
+        &mut file,
+        r#"
+            with_expression = {{ application_expression ~ (whsp1 ~ with ~ whsp1 ~ with_clause)* }}
+            with_clause = {{
+                any_label_or_some ~ (whsp ~ "." ~ whsp ~ any_label_or_some)*
+                    ~ whsp ~ "=" ~ whsp ~ application_expression
+            }}
+        "#
+    )?;
+
     // Work around some greediness issue in the grammar.
     rules.remove("missing");
     writeln!(
@@ -439,7 +452,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
             bool_or |
             import_alt
         }}
-        operator_expression = {{ application_expression ~ (whsp ~ operator ~ whsp ~ application_expression)* }}
+        operator_expression = {{ with_expression ~ (whsp ~ operator ~ whsp ~ with_expression)* }}
     "##)?;
 
     writeln!(

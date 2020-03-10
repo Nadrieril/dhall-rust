@@ -160,6 +160,7 @@ same name as the corresponding test.
 
 [???]
 
+- Add support for `with` keyword
 - Implement remote imports with conservative sanity checking
 - Implement `missing` and `env:VAR` imports
 - Implement `as Text` and `as Location` imports
