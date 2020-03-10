@@ -2,6 +2,7 @@ use itertools::Itertools;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use std::collections::BTreeMap;
+use std::iter::once;
 use std::rc::Rc;
 
 use pest_consume::{match_nodes, Parser};
@@ -140,6 +141,23 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
                 BinOp(RecursiveRecordMerge, other, e),
                 Span::DuplicateRecordFieldsSugar,
             ));
+        }
+    }
+}
+
+fn desugar_with_expr(x: Expr, labels: &[Label], y: Expr) -> Expr {
+    use crate::syntax::BinOp::RightBiasedRecordMerge;
+    let expr = |k| Expr::new(k, Span::WithSugar);
+    match labels {
+        [] => y,
+        [l, rest @ ..] => {
+            let res =
+                desugar_with_expr(expr(Field(x.clone(), l.clone())), rest, y);
+            expr(BinOp(
+                RightBiasedRecordMerge,
+                x,
+                expr(RecordLit(once((l.clone(), res)).collect())),
+            ))
         }
     }
 }
@@ -760,6 +778,27 @@ impl DhallParser {
     }
 
     #[alias(expression, shortcut = true)]
+    fn with_expression(input: ParseInput) -> ParseResult<Expr> {
+        Ok(match_nodes!(input.children();
+            [expression(e)] => e,
+            [expression(first), with_clause(clauses)..] => {
+                clauses.fold(
+                    first,
+                    |acc, (labels, e)| {
+                        desugar_with_expr(acc, &labels, e)
+                    }
+                )
+            },
+        ))
+    }
+
+    fn with_clause(input: ParseInput) -> ParseResult<(Vec<Label>, Expr)> {
+        Ok(match_nodes!(input.children();
+            [label(labels).., expression(e)] => (labels.collect(), e),
+        ))
+    }
+
+    #[alias(expression, shortcut = true)]
     fn application_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
             [expression(e)] => e,
@@ -919,7 +958,7 @@ impl DhallParser {
             [label(first_name), label(names).., expression(expr)] => {
                 // Desugar dotted field syntax into nested records
                 let expr = names.rev().fold(expr, |e, l| {
-                    let map = Some((l, e)).into_iter().collect();
+                    let map = once((l, e)).collect();
                     Expr::new(
                         RecordLit(map),
                         Span::DottedFieldSugar,
