@@ -253,8 +253,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "alternativeHashMismatch"
                     || path == "hashFromCache"
                     || path == "unit/AlternativeHashMismatch"
-                    // TODO: This test is wrong
-                    || path == "asLocation"
                     // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
                     || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
@@ -287,15 +285,15 @@ fn generate_tests() -> std::io::Result<()> {
             too_slow_path: Box::new(|path: &str| path == "remoteSystems"),
             exclude_path: Box::new(|path: &str| {
                 false
+                    // Cannot typecheck
+                    || path == "unit/Sort"
                     // We don't support bignums
                     || path == "simple/integerToDouble"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
-                    // TODO: doesn't typecheck
-                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
-                    || path == "unit/Sort"
                     // TODO: Further record simplifications
                     || path == "simplifications/issue661"
+                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Text),

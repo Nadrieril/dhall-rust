@@ -1,1 +1,0 @@
-./simple.dhall as Location
