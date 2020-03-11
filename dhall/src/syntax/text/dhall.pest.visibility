@@ -184,6 +184,8 @@ non_empty_record_type
 record_type_entry
 non_empty_record_literal
 record_literal_entry
+# record_literal_punned_entry
+# record_literal_normal_entry
 union_type
 empty_union_type
 # non_empty_union_type

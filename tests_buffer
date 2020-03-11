@@ -3,11 +3,10 @@ parser:
 ./"a%20b"
 text interpolation and escapes
 projection by expression unit tests
-fix fakeurlencode test
+x.({ a : Bool, b })
+x.({ a })
+x.{ a : Bool }
 s/QuotedVariable/VariableQuoted/
-
-binary decoding:
-decode old-style optional literals ?
 
 import:
 failure/
@@ -15,6 +14,9 @@ failure/
     don't resolve symlinks in canonicalizing
 
 normalization:
+move builtins and operators in their own folder ?
+RecordSortFields { b = 1, a = 0 }
+RecordTypeSortFields { b : Bool, a : Natural }
 
 type-inference:
 something that involves destructuring a recordtype after merge

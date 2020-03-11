@@ -954,6 +954,11 @@ impl DhallParser {
 
     fn record_literal_entry(input: ParseInput) -> ParseResult<(Label, Expr)> {
         Ok(match_nodes!(input.into_children();
+            [label(name)] => {
+                // Desugar record pun into a variable
+                let expr = Expr::new(Var(name.clone().into()), Span::RecordPunSugar);
+                (name, expr)
+            },
             [label(name), expression(expr)] => (name, expr),
             [label(first_name), label(names).., expression(expr)] => {
                 // Desugar dotted field syntax into nested records
