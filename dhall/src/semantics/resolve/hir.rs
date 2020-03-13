@@ -85,12 +85,6 @@ impl Hir {
     pub fn eval_closed_expr(&self) -> Nir {
         self.eval(NzEnv::new())
     }
-    /// Eval a closed Hir fully and recursively;
-    pub fn rec_eval_closed_expr(&self) -> Nir {
-        let val = self.eval_closed_expr();
-        val.normalize();
-        val
-    }
 }
 
 fn hir_to_expr(hir: &Hir, opts: ToExprOptions, env: &mut NameEnv) -> Expr {

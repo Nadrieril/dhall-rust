@@ -42,6 +42,8 @@ pub(crate) struct Typed {
 }
 
 /// A normalized expression.
+///
+/// This is actually a lie, because the expression will only get normalized on demand.
 #[derive(Debug, Clone)]
 pub(crate) struct Normalized(Nir);
 
@@ -112,7 +114,7 @@ impl Typed {
     }
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        Normalized(self.hir.rec_eval_closed_expr())
+        Normalized(self.hir.eval_closed_expr())
     }
 
     /// Converts a value back to the corresponding AST expression.

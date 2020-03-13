@@ -30,13 +30,6 @@ impl BuiltinClosure {
         let args = self.args.iter().cloned().chain(once(a)).collect();
         apply_builtin(self.b, args, self.env.clone())
     }
-    /// This doesn't break the invariant because we already checked that the appropriate arguments
-    /// did not normalize to something that allows evaluation to proceed.
-    pub fn normalize(&self) {
-        for x in self.args.iter() {
-            x.normalize();
-        }
-    }
     pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
         HirKind::Expr(self.args.iter().fold(
             ExprKind::Builtin(self.b),

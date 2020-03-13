@@ -146,9 +146,6 @@ impl Nir {
     pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
-    pub(crate) fn normalize(&self) {
-        self.0.normalize()
-    }
 
     pub(crate) fn app(&self, v: Nir) -> Nir {
         Nir::from_kind(apply_any(self.clone(), v))
@@ -286,74 +283,11 @@ impl NirInternal {
     fn kind(&self) -> &NirKind {
         &self.kind
     }
-    fn normalize(&self) {
-        self.kind().normalize();
-    }
 }
 
 impl NirKind {
     pub(crate) fn into_nir(self) -> Nir {
         Nir::from_kind(self)
-    }
-
-    pub(crate) fn normalize(&self) {
-        match self {
-            NirKind::Var(..)
-            | NirKind::Const(_)
-            | NirKind::Num(_)
-            | NirKind::BuiltinType(..) => {}
-
-            NirKind::EmptyOptionalLit(v)
-            | NirKind::EmptyListLit(v)
-            | NirKind::OptionalType(v)
-            | NirKind::ListType(v) => {
-                v.normalize();
-            }
-
-            NirKind::NEOptionalLit(v) => {
-                v.normalize();
-            }
-            NirKind::LamClosure { annot, closure, .. }
-            | NirKind::PiClosure { annot, closure, .. } => {
-                annot.normalize();
-                closure.normalize();
-            }
-            NirKind::AppliedBuiltin(closure) => closure.normalize(),
-            NirKind::NEListLit(elts) => {
-                for x in elts.iter() {
-                    x.normalize();
-                }
-            }
-            NirKind::RecordLit(kvs) => {
-                for x in kvs.values() {
-                    x.normalize();
-                }
-            }
-            NirKind::RecordType(kvs) => {
-                for x in kvs.values() {
-                    x.normalize();
-                }
-            }
-            NirKind::UnionType(kts) | NirKind::UnionConstructor(_, kts) => {
-                for x in kts.values().flatten() {
-                    x.normalize();
-                }
-            }
-            NirKind::UnionLit(_, v, kts) => {
-                v.normalize();
-                for x in kts.values().flatten() {
-                    x.normalize();
-                }
-            }
-            NirKind::TextLit(tlit) => tlit.normalize(),
-            NirKind::Equivalence(x, y) => {
-                x.normalize();
-                y.normalize();
-            }
-            NirKind::PartialExpr(e) => {
-                e.map_ref(Nir::normalize);
-            }
-        }
     }
 
     pub(crate) fn from_builtin(b: Builtin) -> NirKind {
@@ -407,9 +341,6 @@ impl Closure {
             Closure::ConstantClosure { body, .. } => body.clone(),
         }
     }
-
-    // TODO: somehow normalize the body. Might require to pass an env.
-    pub fn normalize(&self) {}
 
     /// Convert this closure to a Hir expression
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
@@ -473,13 +404,6 @@ impl TextLit {
     }
     pub fn iter(&self) -> impl Iterator<Item = &InterpolatedTextContents<Nir>> {
         self.0.iter()
-    }
-    /// Normalize the contained values. This does not break the invariant because we have already
-    /// ensured that no contained values normalize to a TextLit.
-    pub fn normalize(&self) {
-        for x in self.0.iter() {
-            x.map_ref(Nir::normalize);
-        }
     }
 }
 
