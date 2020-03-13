@@ -37,125 +37,6 @@ pub enum STyKind {
     Union(BTreeMap<String, Option<SimpleType>>),
 }
 
-pub trait SimpleValueFolder: Sized {
-    fn num(x: NumKind) -> Self;
-    fn text(x: String) -> Self;
-    fn optional(x: Option<Self>) -> Self;
-    fn list(x: impl Iterator<Item = Self>) -> Self;
-    fn record(values: impl Iterator<Item = (String, Self)>) -> Self;
-    fn union(variant: String, content: Option<Self>) -> Self;
-}
-
-pub trait SimpleTypeFolder: Sized {
-    fn bool() -> Self;
-    fn natural() -> Self;
-    fn integer() -> Self;
-    fn double() -> Self;
-    fn text() -> Self;
-    fn optional(x: Self) -> Self;
-    fn list(x: Self) -> Self;
-    fn record(types: impl Iterator<Item = (String, Self)>) -> Self;
-    fn union(types: impl Iterator<Item = (String, Option<Self>)>) -> Self;
-}
-
-pub(crate) fn fold_simple_value<T>(nir: &Nir) -> Option<T>
-where
-    T: SimpleValueFolder,
-{
-    // TODO: check the type first and remove error handling
-    Some(match nir.kind() {
-        NirKind::Num(lit) => T::num(lit.clone()),
-        NirKind::TextLit(x) => T::text(
-            x.as_text()
-                .expect("Normal form should ensure the text is a string"),
-        ),
-        NirKind::EmptyOptionalLit(_) => T::optional(None),
-        NirKind::NEOptionalLit(x) => T::optional(Some(fold_simple_value(x)?)),
-        NirKind::EmptyListLit(_) => T::list(std::iter::empty()),
-        NirKind::NEListLit(xs) => T::list(
-            xs.iter()
-                .map(|v| fold_simple_value(v))
-                .collect::<Option<Vec<_>>>()?
-                .into_iter(),
-        ),
-        NirKind::RecordLit(kvs) => T::record(
-            kvs.iter()
-                .map(|(k, v)| Some((k.into(), fold_simple_value(v)?)))
-                .collect::<Option<BTreeMap<_, _>>>()?
-                .into_iter(),
-        ),
-        NirKind::UnionLit(field, x, _) => {
-            T::union(field.into(), Some(fold_simple_value(x)?))
-        }
-        NirKind::UnionConstructor(field, ty)
-            if ty.get(field).map(|f| f.is_some()) == Some(false) =>
-        {
-            T::union(field.into(), None)
-        }
-        _ => return None,
-    })
-}
-
-pub(crate) fn fold_simple_type<T>(nir: &Nir) -> Option<T>
-where
-    T: SimpleTypeFolder,
-{
-    // TODO: avoid unnecessary allocations
-    Some(match nir.kind() {
-        NirKind::BuiltinType(b) => match b {
-            Builtin::Bool => T::bool(),
-            Builtin::Natural => T::natural(),
-            Builtin::Integer => T::integer(),
-            Builtin::Double => T::double(),
-            Builtin::Text => T::text(),
-            _ => unreachable!(),
-        },
-        NirKind::OptionalType(t) => T::optional(fold_simple_type(t)?),
-        NirKind::ListType(t) => T::list(fold_simple_type(t)?),
-        NirKind::RecordType(kts) => T::record(
-            kts.iter()
-                .map(|(k, v)| Some((k.into(), fold_simple_type(v)?)))
-                .collect::<Option<BTreeMap<_, _>>>()?
-                .into_iter(),
-        ),
-        NirKind::UnionType(kts) => T::union(
-            kts.iter()
-                .map(|(k, v)| {
-                    Some((
-                        k.into(),
-                        v.as_ref()
-                            .map(|v| Ok(fold_simple_type(v)?))
-                            .transpose()?,
-                    ))
-                })
-                .collect::<Option<BTreeMap<_, _>>>()?
-                .into_iter(),
-        ),
-        _ => return None,
-    })
-}
-
-impl SimpleValueFolder for SimpleValue {
-    fn num(x: NumKind) -> Self {
-        SimpleValue::new(SValKind::Num(x))
-    }
-    fn text(x: String) -> Self {
-        SimpleValue::new(SValKind::Text(x))
-    }
-    fn optional(x: Option<Self>) -> Self {
-        SimpleValue::new(SValKind::Optional(x))
-    }
-    fn list(xs: impl Iterator<Item = Self>) -> Self {
-        SimpleValue::new(SValKind::List(xs.collect()))
-    }
-    fn record(values: impl Iterator<Item = (String, Self)>) -> Self {
-        SimpleValue::new(SValKind::Record(values.collect()))
-    }
-    fn union(variant: String, content: Option<Self>) -> Self {
-        SimpleValue::new(SValKind::Union(variant, content))
-    }
-}
-
 impl SimpleValue {
     pub(crate) fn new(kind: SValKind) -> Self {
         SimpleValue {
@@ -163,7 +44,37 @@ impl SimpleValue {
         }
     }
     pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
-        fold_simple_value::<Self>(nir)
+        Some(SimpleValue::new(match nir.kind() {
+            NirKind::Num(lit) => SValKind::Num(lit.clone()),
+            NirKind::TextLit(x) => SValKind::Text(
+                x.as_text()
+                    .expect("Normal form should ensure the text is a string"),
+            ),
+            NirKind::EmptyOptionalLit(_) => SValKind::Optional(None),
+            NirKind::NEOptionalLit(x) => {
+                SValKind::Optional(Some(Self::from_nir(x)?))
+            }
+            NirKind::EmptyListLit(_) => SValKind::List(vec![]),
+            NirKind::NEListLit(xs) => SValKind::List(
+                xs.iter()
+                    .map(|v| Self::from_nir(v))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::RecordLit(kvs) => SValKind::Record(
+                kvs.iter()
+                    .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::UnionLit(field, x, _) => {
+                SValKind::Union(field.into(), Some(Self::from_nir(x)?))
+            }
+            NirKind::UnionConstructor(field, ty)
+                if ty.get(field).map(|f| f.is_some()) == Some(false) =>
+            {
+                SValKind::Union(field.into(), None)
+            }
+            _ => return None,
+        }))
     }
 
     pub fn kind(&self) -> &SValKind {
