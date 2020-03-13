@@ -9,7 +9,7 @@ use crate::syntax::{
     Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span,
     UnspannedExpr, URL, V,
 };
-use crate::DecodedExpr;
+type DecodedExpr = Expr;
 
 pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {

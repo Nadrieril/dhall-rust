@@ -23,14 +23,10 @@ use crate::semantics::resolve::ImportLocation;
 use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
 use crate::syntax::Expr;
 
-pub(crate) type ParsedExpr = Expr;
-pub(crate) type DecodedExpr = Expr;
-pub(crate) type ResolvedExpr = Expr;
-pub(crate) type NormalizedExpr = Expr;
 pub use crate::simple::{STyKind, SValKind, SimpleType, SimpleValue};
 
 #[derive(Debug, Clone)]
-pub(crate) struct Parsed(ParsedExpr, ImportLocation);
+pub(crate) struct Parsed(Expr, ImportLocation);
 
 /// An expression where all imports have been resolved
 ///
@@ -89,7 +85,7 @@ impl Parsed {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> ParsedExpr {
+    pub fn to_expr(&self) -> Expr {
         self.0.clone()
     }
 }
@@ -102,7 +98,7 @@ impl Resolved {
         Ok(Typed::from_tir(typecheck_with(&self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> ResolvedExpr {
+    pub fn to_expr(&self) -> Expr {
         self.0.to_expr_noopts()
     }
 }
@@ -120,7 +116,7 @@ impl Typed {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    fn to_expr(&self) -> ResolvedExpr {
+    fn to_expr(&self) -> Expr {
         self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
@@ -142,7 +138,7 @@ impl Normalized {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> NormalizedExpr {
+    pub fn to_expr(&self) -> Expr {
         self.0.to_expr(ToExprOptions::default())
     }
     /// Converts a value back to the corresponding Hir expression.
@@ -150,7 +146,7 @@ impl Normalized {
         self.0.to_hir_noenv()
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
+    pub(crate) fn to_expr_alpha(&self) -> Expr {
         self.0.to_expr(ToExprOptions { alpha: true })
     }
 }
@@ -180,7 +176,7 @@ impl Value {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self) -> NormalizedExpr {
+    pub(crate) fn to_expr(&self) -> Expr {
         self.hir.to_expr(ToExprOptions::default())
     }
 }
@@ -208,12 +204,12 @@ macro_rules! derive_traits_for_wrapper_struct {
 
 derive_traits_for_wrapper_struct!(Parsed);
 
-impl From<Parsed> for NormalizedExpr {
+impl From<Parsed> for Expr {
     fn from(other: Parsed) -> Self {
         other.to_expr()
     }
 }
-impl From<Normalized> for NormalizedExpr {
+impl From<Normalized> for Expr {
     fn from(other: Normalized) -> Self {
         other.to_expr()
     }

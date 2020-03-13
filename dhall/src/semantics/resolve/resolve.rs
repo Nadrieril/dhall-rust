@@ -13,7 +13,7 @@ use crate::syntax::{
     BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, ImportMode,
     ImportTarget, Span, UnspannedExpr, URL,
 };
-use crate::{Parsed, ParsedExpr, Resolved};
+use crate::{Parsed, Resolved};
 
 // TODO: evaluate import headers
 pub(crate) type Import = syntax::Import<()>;
@@ -333,7 +333,7 @@ pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
     resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
-pub(crate) fn skip_resolve(expr: &ParsedExpr) -> Result<Hir, Error> {
+pub(crate) fn skip_resolve(expr: &Expr) -> Result<Hir, Error> {
     traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import| {
         Err(ImportError::UnexpectedImport(import).into())
     })

@@ -7,10 +7,10 @@ use crate::semantics::{
     BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, NumKind,
-    Span,
+    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
+    NumKind, Span,
 };
-use crate::{NormalizedExpr, ToExprOptions};
+use crate::ToExprOptions;
 use crate::{STyKind, SValKind, SimpleType, SimpleValue};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
@@ -137,10 +137,10 @@ impl Nir {
         Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
+    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> Expr {
         self.to_hir_noenv().to_expr(opts)
     }
-    pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
+    pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
     pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {

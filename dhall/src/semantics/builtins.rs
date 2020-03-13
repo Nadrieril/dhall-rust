@@ -8,7 +8,6 @@ use crate::syntax::{
     InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
     V,
 };
-use crate::Normalized;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -340,7 +339,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             TextLit(tlit) => {
                 if let Some(s) = tlit.as_text() {
                     // Printing InterpolatedText takes care of all the escaping
-                    let txt: InterpolatedText<Normalized> =
+                    let txt: InterpolatedText<Expr> =
                         std::iter::once(InterpolatedTextContents::Text(s))
                             .collect();
                     Ret::Nir(Nir::from_text(txt))
