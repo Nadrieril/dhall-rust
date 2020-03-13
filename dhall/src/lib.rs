@@ -16,15 +16,12 @@ use std::fmt::Display;
 use std::path::Path;
 use url::Url;
 
-use crate::error::{EncodeError, Error, TypeError};
+use crate::error::{Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportLocation;
-use crate::semantics::{
-    typecheck, typecheck_with, Hir, Nir, NirKind, Tir, Type,
-};
-use crate::syntax::binary;
-use crate::syntax::{Builtin, Expr};
+use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
+use crate::syntax::Expr;
 
 pub(crate) type ParsedExpr = Expr;
 pub(crate) type DecodedExpr = Expr;
@@ -57,8 +54,9 @@ pub(crate) struct Normalized(Nir);
 pub struct Value {
     /// Invariant: in normal form
     pub(crate) hir: Hir,
-    simple_val: Option<SimpleValue>,
-    simple_ty: Option<SimpleType>,
+    /// Cached conversions because they are annoying to construct from Hir.
+    pub(crate) as_simple_val: Option<SimpleValue>,
+    pub(crate) as_simple_ty: Option<SimpleType>,
 }
 
 /// Controls conversion from `Nir` to `Expr`
@@ -135,14 +133,11 @@ impl Typed {
 }
 
 impl Normalized {
-    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        binary::encode(&self.to_expr())
-    }
     pub fn to_value(&self) -> Value {
         Value {
             hir: self.to_hir(),
-            simple_val: self.0.to_simple_value(),
-            simple_ty: self.0.to_simple_type(),
+            as_simple_val: self.0.to_simple_value(),
+            as_simple_ty: self.0.to_simple_type(),
         }
     }
 
@@ -157,46 +152,6 @@ impl Normalized {
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions { alpha: true })
-    }
-    pub(crate) fn to_nir(&self) -> Nir {
-        self.0.clone()
-    }
-    pub(crate) fn into_nir(self) -> Nir {
-        self.0
-    }
-
-    pub(crate) fn from_kind(v: NirKind) -> Self {
-        Normalized(Nir::from_kind(v))
-    }
-    pub(crate) fn from_nir(th: Nir) -> Self {
-        Normalized(th)
-    }
-
-    pub(crate) fn make_builtin_type(b: Builtin) -> Self {
-        Normalized::from_nir(Nir::from_builtin(b))
-    }
-    pub(crate) fn make_optional_type(t: Normalized) -> Self {
-        Normalized::from_nir(
-            Nir::from_builtin(Builtin::Optional).app(t.to_nir()),
-        )
-    }
-    pub(crate) fn make_list_type(t: Normalized) -> Self {
-        Normalized::from_nir(Nir::from_builtin(Builtin::List).app(t.to_nir()))
-    }
-    pub(crate) fn make_record_type(
-        kts: impl Iterator<Item = (String, Normalized)>,
-    ) -> Self {
-        Normalized::from_kind(NirKind::RecordType(
-            kts.map(|(k, t)| (k.into(), t.into_nir())).collect(),
-        ))
-    }
-    pub(crate) fn make_union_type(
-        kts: impl Iterator<Item = (String, Option<Normalized>)>,
-    ) -> Self {
-        Normalized::from_kind(NirKind::UnionType(
-            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_nir())))
-                .collect(),
-        ))
     }
 }
 
@@ -217,11 +172,11 @@ impl Value {
 
     /// Converts a Value into a SimpleValue.
     pub fn to_simple_value(&self) -> Option<SimpleValue> {
-        self.simple_val.clone()
+        self.as_simple_val.clone()
     }
     /// Converts a Value into a SimpleType.
     pub fn to_simple_type(&self) -> Option<SimpleType> {
-        self.simple_ty.clone()
+        self.as_simple_ty.clone()
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -252,17 +207,6 @@ macro_rules! derive_traits_for_wrapper_struct {
 }
 
 derive_traits_for_wrapper_struct!(Parsed);
-
-impl std::hash::Hash for Normalized {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        if let Ok(vec) = self.encode() {
-            vec.hash(state)
-        }
-    }
-}
 
 impl From<Parsed> for NormalizedExpr {
     fn from(other: Parsed) -> Self {
