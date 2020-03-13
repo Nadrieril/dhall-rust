@@ -8,7 +8,6 @@ use dhall::syntax::NumKind;
 use dhall::{SValKind, SimpleValue};
 
 use crate::de::{Deserialize, Error, Result};
-use crate::Value;
 
 impl<'a, T> crate::de::sealed::Sealed for T where T: serde::Deserialize<'a> {}
 
@@ -18,7 +17,7 @@ impl<'a, T> Deserialize for T
 where
     T: serde::Deserialize<'a>,
 {
-    fn from_dhall(v: &Value) -> Result<Self> {
+    fn from_dhall(v: &dhall::Value) -> Result<Self> {
         let sval = v.to_simple_value().ok_or_else(|| {
             Error::Deserialize(format!(
                 "this cannot be deserialized into the serde data model: {}",

@@ -12,11 +12,11 @@ pub struct SimpleValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SValKind {
     Num(NumKind),
+    Text(String),
     Optional(Option<SimpleValue>),
     List(Vec<SimpleValue>),
     Record(BTreeMap<String, SimpleValue>),
     Union(String, Option<SimpleValue>),
-    Text(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

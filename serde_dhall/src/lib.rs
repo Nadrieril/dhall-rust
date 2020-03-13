@@ -183,44 +183,31 @@ pub use value::Value;
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::{SimpleType, SimpleValue};
+    use dhall::SimpleValue;
 
     use super::de::Error;
-    use super::Type;
 
-    /// A Dhall value
+    /// A Dhall value. This is a wrapper around [`dhall::SimpleValue`].
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Value(pub(crate) dhall::Value);
+    pub struct Value(SimpleValue);
 
     impl Value {
-        pub fn from_str(s: &str, ty: Option<&Type>) -> super::de::Result<Self> {
-            let ty = ty.map(|t| t.to_dhall_value());
-            let val = dhall::Value::from_str_with_annot(s, ty.as_ref())
-                .map_err(Error::Dhall)?;
-            Ok(Value(val))
-        }
-        pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
-            self.0.to_simple_value()
-        }
-        pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
-            self.0.to_simple_type()
+        pub fn into_simple_value(self) -> SimpleValue {
+            self.0
         }
     }
 
     impl super::de::sealed::Sealed for Value {}
 
     impl super::de::Deserialize for Value {
-        fn from_dhall(v: &Value) -> super::de::Result<Self> {
-            Ok(v.clone())
-        }
-    }
-
-    impl std::fmt::Display for Value {
-        fn fmt(
-            &self,
-            f: &mut std::fmt::Formatter,
-        ) -> Result<(), std::fmt::Error> {
-            self.0.fmt(f)
+        fn from_dhall(v: &dhall::Value) -> super::de::Result<Self> {
+            let sval = v.to_simple_value().ok_or_else(|| {
+                Error::Deserialize(format!(
+                    "this cannot be deserialized into a simple type: {}",
+                    v
+                ))
+            })?;
+            Ok(Value(sval))
         }
     }
 }
@@ -232,12 +219,15 @@ pub mod ty {
 
     use super::de::Error;
 
-    /// A Dhall type
+    /// A Dhall type. This is a wrapper around [`dhall::SimpleType`].
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Type(SimpleType);
 
     impl Type {
-        pub(crate) fn to_dhall_value(&self) -> dhall::Value {
+        pub fn into_simple_type(self) -> SimpleType {
+            self.0
+        }
+        pub fn to_dhall_value(&self) -> dhall::Value {
             self.0.to_value()
         }
 
@@ -275,7 +265,7 @@ pub mod ty {
     impl super::de::sealed::Sealed for Type {}
 
     impl super::de::Deserialize for Type {
-        fn from_dhall(v: &super::Value) -> super::de::Result<Self> {
+        fn from_dhall(v: &dhall::Value) -> super::de::Result<Self> {
             let sty = v.to_simple_type().ok_or_else(|| {
                 Error::Deserialize(format!(
                     "this cannot be deserialized into a simple type: {}",
@@ -291,7 +281,6 @@ pub mod ty {
 pub mod de {
     use super::StaticType;
     use super::Type;
-    use super::Value;
     pub use error::{Error, Result};
 
     mod error {
@@ -339,7 +328,17 @@ pub mod de {
     /// This trait cannot be implemented manually.
     pub trait Deserialize: sealed::Sealed + Sized {
         /// See [serde_dhall::from_str][crate::from_str]
-        fn from_dhall(v: &Value) -> Result<Self>;
+        fn from_dhall(v: &dhall::Value) -> Result<Self>;
+    }
+
+    fn from_str_with_annot<T>(s: &str, ty: Option<&Type>) -> Result<T>
+    where
+        T: Deserialize,
+    {
+        let ty = ty.map(|ty| ty.to_dhall_value());
+        let val = dhall::Value::from_str_with_annot(s, ty.as_ref())
+            .map_err(Error::Dhall)?;
+        T::from_dhall(&val)
     }
 
     /// Deserialize an instance of type `T` from a string of Dhall text.
@@ -352,7 +351,7 @@ pub mod de {
     where
         T: Deserialize,
     {
-        T::from_dhall(&Value::from_str(s, None)?)
+        from_str_with_annot(s, None)
     }
 
     /// Deserialize an instance of type `T` from a string of Dhall text,
@@ -364,7 +363,7 @@ pub mod de {
     where
         T: Deserialize,
     {
-        T::from_dhall(&Value::from_str(s, Some(ty))?)
+        from_str_with_annot(s, Some(ty))
     }
 
     /// Deserialize an instance of type `T` from a string of Dhall text,
