@@ -132,8 +132,8 @@ impl Normalized {
     pub fn to_value(&self) -> Value {
         Value {
             hir: self.to_hir(),
-            as_simple_val: self.0.to_simple_value(),
-            as_simple_ty: self.0.to_simple_type(),
+            as_simple_val: SimpleValue::from_nir(&self.0),
+            as_simple_ty: SimpleType::from_nir(&self.0),
         }
     }
 

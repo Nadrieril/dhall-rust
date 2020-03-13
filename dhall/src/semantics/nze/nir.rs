@@ -11,7 +11,6 @@ use crate::syntax::{
     NumKind, Span,
 };
 use crate::ToExprOptions;
-use crate::{STyKind, SValKind, SimpleType, SimpleValue};
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a Rc<RefCell> to share computation.
@@ -143,86 +142,6 @@ impl Nir {
     pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
-    pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
-        Some(SimpleValue::new(match self.kind() {
-            NirKind::Num(lit) => SValKind::Num(lit.clone()),
-            NirKind::TextLit(x) => SValKind::Text(
-                x.as_text()
-                    .expect("Normal form should ensure the text is a string"),
-            ),
-            NirKind::EmptyOptionalLit(_) => SValKind::Optional(None),
-            NirKind::NEOptionalLit(x) => {
-                SValKind::Optional(Some(x.to_simple_value()?))
-            }
-            NirKind::EmptyListLit(_) => SValKind::List(vec![]),
-            NirKind::NEListLit(xs) => SValKind::List(
-                xs.iter()
-                    .map(|v| v.to_simple_value())
-                    .collect::<Option<_>>()?,
-            ),
-            NirKind::RecordLit(kvs) => SValKind::Record(
-                kvs.iter()
-                    .map(|(k, v)| Some((k.into(), v.to_simple_value()?)))
-                    .collect::<Option<_>>()?,
-            ),
-            NirKind::UnionLit(field, x, _) => {
-                SValKind::Union(field.into(), Some(x.to_simple_value()?))
-            }
-            NirKind::UnionConstructor(field, ty)
-                if ty.get(field).map(|f| f.is_some()) == Some(false) =>
-            {
-                SValKind::Union(field.into(), None)
-            }
-            _ => return None,
-        }))
-    }
-    pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
-        Some(SimpleType::new(match self.kind() {
-            NirKind::AppliedBuiltin(BuiltinClosure { b, args, .. })
-                if args.is_empty() =>
-            {
-                match b {
-                    Builtin::Bool => STyKind::Bool,
-                    Builtin::Natural => STyKind::Natural,
-                    Builtin::Integer => STyKind::Integer,
-                    Builtin::Double => STyKind::Double,
-                    Builtin::Text => STyKind::Text,
-                    _ => return None,
-                }
-            }
-            NirKind::AppliedBuiltin(BuiltinClosure {
-                b: Builtin::Optional,
-                args,
-                ..
-            }) if args.len() == 1 => {
-                STyKind::Optional(args[0].to_simple_type()?)
-            }
-            NirKind::AppliedBuiltin(BuiltinClosure {
-                b: Builtin::List,
-                args,
-                ..
-            }) if args.len() == 1 => STyKind::List(args[0].to_simple_type()?),
-            NirKind::RecordType(kts) => STyKind::Record(
-                kts.iter()
-                    .map(|(k, v)| Some((k.into(), v.to_simple_type()?)))
-                    .collect::<Option<_>>()?,
-            ),
-            NirKind::UnionType(kts) => STyKind::Union(
-                kts.iter()
-                    .map(|(k, v)| {
-                        Some((
-                            k.into(),
-                            v.as_ref()
-                                .map(|v| Ok(v.to_simple_type()?))
-                                .transpose()?,
-                        ))
-                    })
-                    .collect::<Option<_>>()?,
-            ),
-            _ => return None,
-        }))
-    }
-
     pub(crate) fn normalize(&self) {
         self.0.normalize()
     }

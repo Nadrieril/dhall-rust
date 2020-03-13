@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::semantics::{Hir, HirKind};
+use crate::semantics::{BuiltinClosure, Hir, HirKind, Nir, NirKind};
 use crate::syntax::{Builtin, ExprKind, NumKind, Span};
 use crate::Value;
 
@@ -43,6 +43,40 @@ impl SimpleValue {
             kind: Box::new(kind),
         }
     }
+    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
+        Some(SimpleValue::new(match nir.kind() {
+            NirKind::Num(lit) => SValKind::Num(lit.clone()),
+            NirKind::TextLit(x) => SValKind::Text(
+                x.as_text()
+                    .expect("Normal form should ensure the text is a string"),
+            ),
+            NirKind::EmptyOptionalLit(_) => SValKind::Optional(None),
+            NirKind::NEOptionalLit(x) => {
+                SValKind::Optional(Some(Self::from_nir(x)?))
+            }
+            NirKind::EmptyListLit(_) => SValKind::List(vec![]),
+            NirKind::NEListLit(xs) => SValKind::List(
+                xs.iter()
+                    .map(|v| Self::from_nir(v))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::RecordLit(kvs) => SValKind::Record(
+                kvs.iter()
+                    .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::UnionLit(field, x, _) => {
+                SValKind::Union(field.into(), Some(Self::from_nir(x)?))
+            }
+            NirKind::UnionConstructor(field, ty)
+                if ty.get(field).map(|f| f.is_some()) == Some(false) =>
+            {
+                SValKind::Union(field.into(), None)
+            }
+            _ => return None,
+        }))
+    }
+
     pub fn kind(&self) -> &SValKind {
         self.kind.as_ref()
     }
@@ -54,6 +88,53 @@ impl SimpleType {
             kind: Box::new(kind),
         }
     }
+    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
+        Some(SimpleType::new(match nir.kind() {
+            NirKind::AppliedBuiltin(BuiltinClosure { b, args, .. })
+                if args.is_empty() =>
+            {
+                match b {
+                    Builtin::Bool => STyKind::Bool,
+                    Builtin::Natural => STyKind::Natural,
+                    Builtin::Integer => STyKind::Integer,
+                    Builtin::Double => STyKind::Double,
+                    Builtin::Text => STyKind::Text,
+                    _ => return None,
+                }
+            }
+            NirKind::AppliedBuiltin(BuiltinClosure {
+                b: Builtin::Optional,
+                args,
+                ..
+            }) if args.len() == 1 => {
+                STyKind::Optional(Self::from_nir(&args[0])?)
+            }
+            NirKind::AppliedBuiltin(BuiltinClosure {
+                b: Builtin::List,
+                args,
+                ..
+            }) if args.len() == 1 => STyKind::List(Self::from_nir(&args[0])?),
+            NirKind::RecordType(kts) => STyKind::Record(
+                kts.iter()
+                    .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
+                    .collect::<Option<_>>()?,
+            ),
+            NirKind::UnionType(kts) => STyKind::Union(
+                kts.iter()
+                    .map(|(k, v)| {
+                        Some((
+                            k.into(),
+                            v.as_ref()
+                                .map(|v| Ok(Self::from_nir(v)?))
+                                .transpose()?,
+                        ))
+                    })
+                    .collect::<Option<_>>()?,
+            ),
+            _ => return None,
+        }))
+    }
+
     pub fn kind(&self) -> &STyKind {
         self.kind.as_ref()
     }
