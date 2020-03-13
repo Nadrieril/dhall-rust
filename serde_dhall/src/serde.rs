@@ -7,9 +7,9 @@ use serde::de::value::{
 use dhall::syntax::NumKind;
 use dhall::{SValKind, SimpleValue};
 
-use crate::de::{Deserialize, Error, Result};
+use crate::{Deserialize, Error, Result};
 
-impl<'a, T> crate::de::sealed::Sealed for T where T: serde::Deserialize<'a> {}
+impl<'a, T> crate::sealed::Sealed for T where T: serde::Deserialize<'a> {}
 
 struct Deserializer<'a>(Cow<'a, SimpleValue>);
 

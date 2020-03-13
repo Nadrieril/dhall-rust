@@ -3,7 +3,7 @@ use serde_dhall::{from_str, from_str_auto_type, StaticType};
 
 #[test]
 fn test_de_typed() {
-    fn parse<T: serde_dhall::de::Deserialize + StaticType>(s: &str) -> T {
+    fn parse<T: serde_dhall::Deserialize + StaticType>(s: &str) -> T {
         from_str_auto_type(s).unwrap()
     }
 
@@ -57,7 +57,7 @@ fn test_de_typed() {
 
 #[test]
 fn test_de_untyped() {
-    fn parse<T: serde_dhall::de::Deserialize>(s: &str) -> T {
+    fn parse<T: serde_dhall::Deserialize>(s: &str) -> T {
         from_str(s).unwrap()
     }
 
