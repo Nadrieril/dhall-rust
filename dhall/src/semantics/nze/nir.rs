@@ -70,13 +70,17 @@ pub(crate) enum NirKind {
         annot: Nir,
         closure: Closure,
     },
-    AppliedBuiltin(BuiltinClosure<Nir>),
+    AppliedBuiltin(BuiltinClosure),
 
     Var(NzVar),
     Const(Const),
+    // Must be a number type, Bool or Text
+    BuiltinType(Builtin),
     Num(NumKind),
+    OptionalType(Nir),
     EmptyOptionalLit(Nir),
     NEOptionalLit(Nir),
+    ListType(Nir),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Nir),
     NEListLit(Vec<Nir>),
@@ -187,12 +191,21 @@ impl Nir {
                     closure.to_hir(venv),
                 ),
                 NirKind::Const(c) => ExprKind::Const(*c),
+                NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
                 NirKind::Num(l) => ExprKind::Num(l.clone()),
+                NirKind::OptionalType(t) => ExprKind::App(
+                    Nir::from_builtin(Builtin::Optional).to_hir(venv),
+                    t.to_hir(venv),
+                ),
                 NirKind::EmptyOptionalLit(n) => ExprKind::App(
                     Nir::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
                 ),
                 NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
+                NirKind::ListType(t) => ExprKind::App(
+                    Nir::from_builtin(Builtin::List).to_hir(venv),
+                    t.to_hir(venv),
+                ),
                 NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
                     HirKind::Expr(ExprKind::App(
                         Nir::from_builtin(Builtin::List).to_hir(venv),
@@ -285,14 +298,20 @@ impl NirKind {
 
     pub(crate) fn normalize(&self) {
         match self {
-            NirKind::Var(..) | NirKind::Const(_) | NirKind::Num(_) => {}
+            NirKind::Var(..)
+            | NirKind::Const(_)
+            | NirKind::Num(_)
+            | NirKind::BuiltinType(..) => {}
 
-            NirKind::EmptyOptionalLit(tth) | NirKind::EmptyListLit(tth) => {
-                tth.normalize();
+            NirKind::EmptyOptionalLit(v)
+            | NirKind::EmptyListLit(v)
+            | NirKind::OptionalType(v)
+            | NirKind::ListType(v) => {
+                v.normalize();
             }
 
-            NirKind::NEOptionalLit(th) => {
-                th.normalize();
+            NirKind::NEOptionalLit(v) => {
+                v.normalize();
             }
             NirKind::LamClosure { annot, closure, .. }
             | NirKind::PiClosure { annot, closure, .. } => {
@@ -341,7 +360,7 @@ impl NirKind {
         NirKind::from_builtin_env(b, NzEnv::new())
     }
     pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> NirKind {
-        NirKind::AppliedBuiltin(BuiltinClosure::new(b, env))
+        BuiltinClosure::new(b, env)
     }
 }
 

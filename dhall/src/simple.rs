@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::semantics::{BuiltinClosure, Hir, HirKind, Nir, NirKind};
+use crate::semantics::{Hir, HirKind, Nir, NirKind};
 use crate::syntax::{Builtin, ExprKind, NumKind, Span};
 use crate::Value;
 
@@ -90,30 +90,16 @@ impl SimpleType {
     }
     pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
         Some(SimpleType::new(match nir.kind() {
-            NirKind::AppliedBuiltin(BuiltinClosure { b, args, .. })
-                if args.is_empty() =>
-            {
-                match b {
-                    Builtin::Bool => STyKind::Bool,
-                    Builtin::Natural => STyKind::Natural,
-                    Builtin::Integer => STyKind::Integer,
-                    Builtin::Double => STyKind::Double,
-                    Builtin::Text => STyKind::Text,
-                    _ => return None,
-                }
-            }
-            NirKind::AppliedBuiltin(BuiltinClosure {
-                b: Builtin::Optional,
-                args,
-                ..
-            }) if args.len() == 1 => {
-                STyKind::Optional(Self::from_nir(&args[0])?)
-            }
-            NirKind::AppliedBuiltin(BuiltinClosure {
-                b: Builtin::List,
-                args,
-                ..
-            }) if args.len() == 1 => STyKind::List(Self::from_nir(&args[0])?),
+            NirKind::BuiltinType(b) => match b {
+                Builtin::Bool => STyKind::Bool,
+                Builtin::Natural => STyKind::Natural,
+                Builtin::Integer => STyKind::Integer,
+                Builtin::Double => STyKind::Double,
+                Builtin::Text => STyKind::Text,
+                _ => unreachable!(),
+            },
+            NirKind::OptionalType(t) => STyKind::Optional(Self::from_nir(t)?),
+            NirKind::ListType(t) => STyKind::List(Self::from_nir(t)?),
             NirKind::RecordType(kts) => STyKind::Record(
                 kts.iter()
                     .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))

@@ -2,12 +2,8 @@ use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::semantics::NzEnv;
-use crate::semantics::{
-    Binder, BuiltinClosure, Closure, Hir, HirKind, Nir, NirKind, TextLit,
-};
-use crate::syntax::{
-    BinOp, Builtin, ExprKind, InterpolatedTextContents, NumKind,
-};
+use crate::semantics::{Binder, Closure, Hir, HirKind, Nir, NirKind, TextLit};
+use crate::syntax::{BinOp, ExprKind, InterpolatedTextContents, NumKind};
 
 pub(crate) fn apply_any(f: Nir, a: Nir) -> NirKind {
     match f.kind() {
@@ -239,11 +235,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::SomeLit(e) => Ret::NirKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match t.kind() {
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::List,
-                    args,
-                    ..
-                }) if args.len() == 1 => args[0].clone(),
+                NirKind::ListType(t) => t.clone(),
                 _ => panic!("internal type error"),
             };
             Ret::NirKind(NirKind::EmptyListLit(arg))
@@ -442,12 +434,8 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::ToMap(ref v, ref annot) => match v.kind() {
             RecordLit(kvs) if kvs.is_empty() => {
                 match annot.as_ref().map(|v| v.kind()) {
-                    Some(NirKind::AppliedBuiltin(BuiltinClosure {
-                        b: Builtin::List,
-                        args,
-                        ..
-                    })) if args.len() == 1 => {
-                        Ret::NirKind(EmptyListLit(args[0].clone()))
+                    Some(NirKind::ListType(t)) => {
+                        Ret::NirKind(EmptyListLit(t.clone()))
                     }
                     _ => Ret::Expr(expr),
                 }

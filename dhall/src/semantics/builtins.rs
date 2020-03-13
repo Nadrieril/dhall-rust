@@ -14,22 +14,17 @@ use std::convert::TryInto;
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
-pub(crate) struct BuiltinClosure<Nir> {
-    pub env: NzEnv,
-    pub b: Builtin,
+pub(crate) struct BuiltinClosure {
+    env: NzEnv,
+    b: Builtin,
     /// Arguments applied to the closure so far.
-    pub args: Vec<Nir>,
+    args: Vec<Nir>,
 }
 
-impl BuiltinClosure<Nir> {
-    pub fn new(b: Builtin, env: NzEnv) -> Self {
-        BuiltinClosure {
-            env,
-            b,
-            args: Vec::new(),
-        }
+impl BuiltinClosure {
+    pub fn new(b: Builtin, env: NzEnv) -> NirKind {
+        apply_builtin(b, Vec::new(), env)
     }
-
     pub fn apply(&self, a: Nir) -> NirKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a)).collect();
@@ -272,6 +267,14 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
     };
 
     let ret = match (b, args.as_slice()) {
+        (Builtin::Bool, [])
+        | (Builtin::Natural, [])
+        | (Builtin::Integer, [])
+        | (Builtin::Double, [])
+        | (Builtin::Text, []) => Ret::NirKind(BuiltinType(b)),
+        (Builtin::Optional, [t]) => Ret::NirKind(OptionalType(t.clone())),
+        (Builtin::List, [t]) => Ret::NirKind(ListType(t.clone())),
+
         (Builtin::OptionalNone, [t]) => {
             Ret::NirKind(EmptyOptionalLit(t.clone()))
         }
@@ -489,9 +492,9 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
     }
 }
 
-impl<Nir: std::cmp::PartialEq> std::cmp::PartialEq for BuiltinClosure<Nir> {
+impl std::cmp::PartialEq for BuiltinClosure {
     fn eq(&self, other: &Self) -> bool {
         self.b == other.b && self.args == other.args
     }
 }
-impl<Nir: std::cmp::Eq> std::cmp::Eq for BuiltinClosure<Nir> {}
+impl std::cmp::Eq for BuiltinClosure {}

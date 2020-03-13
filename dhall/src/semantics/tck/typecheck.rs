@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, Nir,
-    NirKind, Tir, TyEnv, Type,
+    type_of_builtin, Binder, Closure, Hir, HirKind, Nir, NirKind, Tir, TyEnv,
+    Type,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
@@ -121,11 +121,7 @@ fn type_one_layer(
         ExprKind::EmptyListLit(t) => {
             let t = t.eval_to_type(env)?;
             match t.kind() {
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::List,
-                    args,
-                    ..
-                }) if args.len() == 1 => {}
+                NirKind::ListType(..) => {}
                 _ => return span_err("InvalidListType"),
             };
             t
@@ -376,10 +372,7 @@ fn type_one_layer(
         }
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             match l.ty().kind() {
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::List,
-                    ..
-                }) => {}
+                NirKind::ListType(..) => {}
                 _ => return span_err("BinOpTypeMismatch"),
             }
 
@@ -435,12 +428,7 @@ fn type_one_layer(
             let union_type = union.ty();
             let variants = match union_type.kind() {
                 NirKind::UnionType(kts) => Cow::Borrowed(kts),
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::Optional,
-                    args,
-                    ..
-                }) if args.len() == 1 => {
-                    let ty = &args[0];
+                NirKind::OptionalType(ty) => {
                     let mut kts = HashMap::new();
                     kts.insert("None".into(), None);
                     kts.insert("Some".into(), Some(ty.clone()));
@@ -595,11 +583,7 @@ fn type_one_layer(
                 let err_msg = "The type of `toMap x` must be of the form \
                                `List { mapKey : Text, mapValue : T }`";
                 let arg = match annot_val.kind() {
-                    NirKind::AppliedBuiltin(BuiltinClosure {
-                        b: Builtin::List,
-                        args,
-                        ..
-                    }) if args.len() == 1 => &args[0],
+                    NirKind::ListType(t) => t,
                     _ => return span_err(err_msg),
                 };
                 let kts = match arg.kind() {
