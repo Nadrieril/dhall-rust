@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::semantics::{Hir, HirKind};
-use crate::syntax::{Builtin, ExprKind, LitKind, Span};
+use crate::syntax::{Builtin, ExprKind, NumKind, Span};
 use crate::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct SimpleValue {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SValKind {
-    Lit(LitKind),
+    Num(NumKind),
     Optional(Option<SimpleValue>),
     List(Vec<SimpleValue>),
     Record(BTreeMap<String, SimpleValue>),

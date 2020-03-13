@@ -112,9 +112,9 @@ pub struct Expr {
 
 pub type UnspannedExpr = ExprKind<Expr>;
 
-/// Simple literals
+/// Numeric literals
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LitKind {
+pub enum NumKind {
     ///  `True`
     Bool(bool),
     ///  `1`
@@ -132,7 +132,7 @@ pub enum LitKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind<SubExpr> {
     Const(Const),
-    Lit(LitKind),
+    Num(NumKind),
     ///  `x`
     ///  `x@n`
     Var(V),

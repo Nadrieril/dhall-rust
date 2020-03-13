@@ -201,7 +201,7 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             Var(a) => a.fmt(f)?,
             Const(k) => k.fmt(f)?,
             Builtin(v) => v.fmt(f)?,
-            Lit(a) => a.fmt(f)?,
+            Num(a) => a.fmt(f)?,
             TextLit(a) => a.fmt(f)?,
             RecordType(a) if a.is_empty() => f.write_str("{}")?,
             RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
@@ -240,9 +240,9 @@ impl Display for Expr {
     }
 }
 
-impl Display for LitKind {
+impl Display for NumKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use LitKind::*;
+        use NumKind::*;
         match self {
             Bool(true) => f.write_str("True")?,
             Bool(false) => f.write_str("False")?,

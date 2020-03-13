@@ -7,7 +7,7 @@ use crate::semantics::{
     BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, LitKind,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, NumKind,
     Span,
 };
 use crate::{NormalizedExpr, ToExprOptions};
@@ -75,7 +75,7 @@ pub(crate) enum NirKind {
 
     Var(NzVar),
     Const(Const),
-    Lit(LitKind),
+    Num(NumKind),
     EmptyOptionalLit(Nir),
     NEOptionalLit(Nir),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
@@ -145,7 +145,7 @@ impl Nir {
     }
     pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
         Some(SimpleValue::new(match self.kind() {
-            NirKind::Lit(lit) => SValKind::Lit(lit.clone()),
+            NirKind::Num(lit) => SValKind::Num(lit.clone()),
             NirKind::TextLit(x) => SValKind::Text(
                 x.as_text()
                     .expect("Normal form should ensure the text is a string"),
@@ -268,7 +268,7 @@ impl Nir {
                     closure.to_hir(venv),
                 ),
                 NirKind::Const(c) => ExprKind::Const(*c),
-                NirKind::Lit(l) => ExprKind::Lit(l.clone()),
+                NirKind::Num(l) => ExprKind::Num(l.clone()),
                 NirKind::EmptyOptionalLit(n) => ExprKind::App(
                     Nir::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
@@ -366,7 +366,7 @@ impl NirKind {
 
     pub(crate) fn normalize(&self) {
         match self {
-            NirKind::Var(..) | NirKind::Const(_) | NirKind::Lit(_) => {}
+            NirKind::Var(..) | NirKind::Const(_) | NirKind::Num(_) => {}
 
             NirKind::EmptyOptionalLit(tth) | NirKind::EmptyListLit(tth) => {
                 tth.normalize();

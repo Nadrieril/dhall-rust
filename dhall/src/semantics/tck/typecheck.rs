@@ -9,7 +9,7 @@ use crate::semantics::{
     NirKind, Tir, TyEnv, Type,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
 };
 
 fn check_rectymerge(
@@ -96,14 +96,14 @@ fn type_one_layer(
             let t_hir = type_of_builtin(*b);
             typecheck(&t_hir)?.eval_to_type(env)?
         }
-        ExprKind::Lit(LitKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
-        ExprKind::Lit(LitKind::Natural(_)) => {
+        ExprKind::Num(NumKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
+        ExprKind::Num(NumKind::Natural(_)) => {
             Type::from_builtin(Builtin::Natural)
         }
-        ExprKind::Lit(LitKind::Integer(_)) => {
+        ExprKind::Num(NumKind::Integer(_)) => {
             Type::from_builtin(Builtin::Integer)
         }
-        ExprKind::Lit(LitKind::Double(_)) => {
+        ExprKind::Num(NumKind::Double(_)) => {
             Type::from_builtin(Builtin::Double)
         }
         ExprKind::TextLit(interpolated) => {

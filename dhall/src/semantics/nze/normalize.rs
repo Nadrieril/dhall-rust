@@ -6,7 +6,7 @@ use crate::semantics::{
     Binder, BuiltinClosure, Closure, Hir, HirKind, Nir, NirKind, TextLit,
 };
 use crate::syntax::{
-    BinOp, Builtin, ExprKind, InterpolatedTextContents, LitKind,
+    BinOp, Builtin, ExprKind, InterpolatedTextContents, NumKind,
 };
 
 pub(crate) fn apply_any(f: Nir, a: Nir) -> NirKind {
@@ -99,40 +99,40 @@ fn apply_binop<'a>(o: BinOp, x: &'a Nir, y: &'a Nir) -> Option<Ret<'a>> {
         NaturalTimes, RecursiveRecordMerge, RecursiveRecordTypeMerge,
         RightBiasedRecordMerge, TextAppend,
     };
-    use LitKind::{Bool, Natural};
-    use NirKind::{EmptyListLit, Lit, NEListLit, RecordLit, RecordType};
+    use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
+    use NumKind::{Bool, Natural};
 
     Some(match (o, x.kind(), y.kind()) {
-        (BoolAnd, Lit(Bool(true)), _) => Ret::NirRef(y),
-        (BoolAnd, _, Lit(Bool(true))) => Ret::NirRef(x),
-        (BoolAnd, Lit(Bool(false)), _) => Ret::NirKind(Lit(Bool(false))),
-        (BoolAnd, _, Lit(Bool(false))) => Ret::NirKind(Lit(Bool(false))),
+        (BoolAnd, Num(Bool(true)), _) => Ret::NirRef(y),
+        (BoolAnd, _, Num(Bool(true))) => Ret::NirRef(x),
+        (BoolAnd, Num(Bool(false)), _) => Ret::NirKind(Num(Bool(false))),
+        (BoolAnd, _, Num(Bool(false))) => Ret::NirKind(Num(Bool(false))),
         (BoolAnd, _, _) if x == y => Ret::NirRef(x),
-        (BoolOr, Lit(Bool(true)), _) => Ret::NirKind(Lit(Bool(true))),
-        (BoolOr, _, Lit(Bool(true))) => Ret::NirKind(Lit(Bool(true))),
-        (BoolOr, Lit(Bool(false)), _) => Ret::NirRef(y),
-        (BoolOr, _, Lit(Bool(false))) => Ret::NirRef(x),
+        (BoolOr, Num(Bool(true)), _) => Ret::NirKind(Num(Bool(true))),
+        (BoolOr, _, Num(Bool(true))) => Ret::NirKind(Num(Bool(true))),
+        (BoolOr, Num(Bool(false)), _) => Ret::NirRef(y),
+        (BoolOr, _, Num(Bool(false))) => Ret::NirRef(x),
         (BoolOr, _, _) if x == y => Ret::NirRef(x),
-        (BoolEQ, Lit(Bool(true)), _) => Ret::NirRef(y),
-        (BoolEQ, _, Lit(Bool(true))) => Ret::NirRef(x),
-        (BoolEQ, Lit(Bool(x)), Lit(Bool(y))) => Ret::NirKind(Lit(Bool(x == y))),
-        (BoolEQ, _, _) if x == y => Ret::NirKind(Lit(Bool(true))),
-        (BoolNE, Lit(Bool(false)), _) => Ret::NirRef(y),
-        (BoolNE, _, Lit(Bool(false))) => Ret::NirRef(x),
-        (BoolNE, Lit(Bool(x)), Lit(Bool(y))) => Ret::NirKind(Lit(Bool(x != y))),
-        (BoolNE, _, _) if x == y => Ret::NirKind(Lit(Bool(false))),
+        (BoolEQ, Num(Bool(true)), _) => Ret::NirRef(y),
+        (BoolEQ, _, Num(Bool(true))) => Ret::NirRef(x),
+        (BoolEQ, Num(Bool(x)), Num(Bool(y))) => Ret::NirKind(Num(Bool(x == y))),
+        (BoolEQ, _, _) if x == y => Ret::NirKind(Num(Bool(true))),
+        (BoolNE, Num(Bool(false)), _) => Ret::NirRef(y),
+        (BoolNE, _, Num(Bool(false))) => Ret::NirRef(x),
+        (BoolNE, Num(Bool(x)), Num(Bool(y))) => Ret::NirKind(Num(Bool(x != y))),
+        (BoolNE, _, _) if x == y => Ret::NirKind(Num(Bool(false))),
 
-        (NaturalPlus, Lit(Natural(0)), _) => Ret::NirRef(y),
-        (NaturalPlus, _, Lit(Natural(0))) => Ret::NirRef(x),
-        (NaturalPlus, Lit(Natural(x)), Lit(Natural(y))) => {
-            Ret::NirKind(Lit(Natural(x + y)))
+        (NaturalPlus, Num(Natural(0)), _) => Ret::NirRef(y),
+        (NaturalPlus, _, Num(Natural(0))) => Ret::NirRef(x),
+        (NaturalPlus, Num(Natural(x)), Num(Natural(y))) => {
+            Ret::NirKind(Num(Natural(x + y)))
         }
-        (NaturalTimes, Lit(Natural(0)), _) => Ret::NirKind(Lit(Natural(0))),
-        (NaturalTimes, _, Lit(Natural(0))) => Ret::NirKind(Lit(Natural(0))),
-        (NaturalTimes, Lit(Natural(1)), _) => Ret::NirRef(y),
-        (NaturalTimes, _, Lit(Natural(1))) => Ret::NirRef(x),
-        (NaturalTimes, Lit(Natural(x)), Lit(Natural(y))) => {
-            Ret::NirKind(Lit(Natural(x * y)))
+        (NaturalTimes, Num(Natural(0)), _) => Ret::NirKind(Num(Natural(0))),
+        (NaturalTimes, _, Num(Natural(0))) => Ret::NirKind(Num(Natural(0))),
+        (NaturalTimes, Num(Natural(1)), _) => Ret::NirRef(y),
+        (NaturalTimes, _, Num(Natural(1))) => Ret::NirRef(x),
+        (NaturalTimes, Num(Natural(x)), Num(Natural(y))) => {
+            Ret::NirKind(Num(Natural(x * y)))
         }
 
         (ListAppend, EmptyListLit(_), _) => Ret::NirRef(y),
@@ -212,12 +212,12 @@ fn apply_binop<'a>(o: BinOp, x: &'a Nir, y: &'a Nir) -> Option<Ret<'a>> {
 
 #[allow(clippy::cognitive_complexity)]
 pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
-    use LitKind::Bool;
     use NirKind::{
-        EmptyListLit, EmptyOptionalLit, Lit, NEListLit, NEOptionalLit,
+        EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num,
         PartialExpr, RecordLit, RecordType, UnionConstructor, UnionLit,
         UnionType,
     };
+    use NumKind::Bool;
 
     let ret = match expr {
         ExprKind::Import(..) | ExprKind::Completion(..) => {
@@ -235,7 +235,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::Builtin(b) => Ret::Nir(Nir::from_builtin_env(b, env)),
         ExprKind::Assert(_) => Ret::Expr(expr),
         ExprKind::App(v, a) => Ret::Nir(v.app(a)),
-        ExprKind::Lit(l) => Ret::NirKind(Lit(l)),
+        ExprKind::Num(l) => Ret::NirKind(Num(l)),
         ExprKind::SomeLit(e) => Ret::NirKind(NEOptionalLit(e)),
         ExprKind::EmptyListLit(t) => {
             let arg = match t.kind() {
@@ -271,12 +271,12 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         }
         ExprKind::BoolIf(ref b, ref e1, ref e2) => {
             match b.kind() {
-                Lit(Bool(true)) => Ret::NirRef(e1),
-                Lit(Bool(false)) => Ret::NirRef(e2),
+                Num(Bool(true)) => Ret::NirRef(e1),
+                Num(Bool(false)) => Ret::NirRef(e2),
                 _ => {
                     match (e1.kind(), e2.kind()) {
                         // Simplify `if b then True else False`
-                        (Lit(Bool(true)), Lit(Bool(false))) => Ret::NirRef(b),
+                        (Num(Bool(true)), Num(Bool(false))) => Ret::NirRef(b),
                         _ if e1 == e2 => Ret::NirRef(e1),
                         _ => Ret::Expr(expr),
                     }

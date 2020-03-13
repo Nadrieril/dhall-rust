@@ -4,7 +4,7 @@ use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
 
-use dhall::syntax::LitKind;
+use dhall::syntax::NumKind;
 use dhall::{SValKind, SimpleValue};
 
 use crate::de::{Deserialize, Error, Result};
@@ -44,13 +44,13 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         V: serde::de::Visitor<'de>,
     {
         use std::convert::TryInto;
-        use LitKind::*;
+        use NumKind::*;
         use SValKind::*;
 
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.kind() {
-            Lit(Bool(x)) => visitor.visit_bool(*x),
-            Lit(Natural(x)) => {
+            Num(Bool(x)) => visitor.visit_bool(*x),
+            Num(Natural(x)) => {
                 if let Ok(x64) = (*x).try_into() {
                     visitor.visit_u64(x64)
                 } else if let Ok(x32) = (*x).try_into() {
@@ -59,7 +59,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                     unimplemented!()
                 }
             }
-            Lit(Integer(x)) => {
+            Num(Integer(x)) => {
                 if let Ok(x64) = (*x).try_into() {
                     visitor.visit_i64(x64)
                 } else if let Ok(x32) = (*x).try_into() {
@@ -68,7 +68,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                     unimplemented!()
                 }
             }
-            Lit(Double(x)) => visitor.visit_f64((*x).into()),
+            Num(Double(x)) => visitor.visit_f64((*x).into()),
             Text(x) => visitor.visit_str(x),
             List(xs) => {
                 visitor.visit_seq(SeqDeserializer::new(xs.iter().map(val)))

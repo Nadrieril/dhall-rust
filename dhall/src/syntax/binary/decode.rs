@@ -6,7 +6,7 @@ use crate::error::DecodeError;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
-    Integer, InterpolatedText, Label, LitKind, Natural, Scheme, Span,
+    Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span,
     UnspannedExpr, URL, V,
 };
 use crate::DecodedExpr;
@@ -31,8 +31,8 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
         String(s) => match Builtin::parse(s) {
             Some(b) => ExprKind::Builtin(b),
             None => match s.as_str() {
-                "True" => Lit(LitKind::Bool(true)),
-                "False" => Lit(LitKind::Bool(false)),
+                "True" => Num(NumKind::Bool(true)),
+                "False" => Num(NumKind::Bool(false)),
                 "Type" => Const(Const::Type),
                 "Kind" => Const(Const::Kind),
                 "Sort" => Const(Const::Sort),
@@ -44,8 +44,8 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             },
         },
         U64(n) => Var(V(Label::from("_"), *n as usize)),
-        F64(x) => Lit(LitKind::Double((*x).into())),
-        Bool(b) => Lit(LitKind::Bool(*b)),
+        F64(x) => Num(NumKind::Double((*x).into())),
+        Bool(b) => Num(NumKind::Bool(*b)),
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
                 if l.as_str() == "_" {
@@ -224,9 +224,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let z = cbor_value_to_dhall(&z)?;
                 BoolIf(x, y, z)
             }
-            [U64(15), U64(x)] => Lit(LitKind::Natural(*x as Natural)),
-            [U64(16), U64(x)] => Lit(LitKind::Integer(*x as Integer)),
-            [U64(16), I64(x)] => Lit(LitKind::Integer(*x as Integer)),
+            [U64(15), U64(x)] => Num(NumKind::Natural(*x as Natural)),
+            [U64(16), U64(x)] => Num(NumKind::Integer(*x as Integer)),
+            [U64(16), I64(x)] => Num(NumKind::Integer(*x as Integer)),
             [U64(18), String(first), rest @ ..] => {
                 TextLit(InterpolatedText::from((
                     first.clone(),

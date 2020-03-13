@@ -5,7 +5,7 @@ use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, LitKind, NaiveDouble, Span, UnspannedExpr,
+    InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
     V,
 };
 use crate::Normalized;
@@ -241,7 +241,7 @@ macro_rules! make_closure {
         rc(ExprKind::BinOp(
             BinOp::NaturalPlus,
             make_closure!($($v)*),
-            rc(ExprKind::Lit(LitKind::Natural(1)))
+            rc(ExprKind::Num(NumKind::Natural(1)))
         ))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
@@ -257,8 +257,8 @@ macro_rules! make_closure {
 
 #[allow(clippy::cognitive_complexity)]
 fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
-    use LitKind::{Bool, Double, Integer, Natural};
     use NirKind::*;
+    use NumKind::{Bool, Double, Integer, Natural};
 
     // Small helper enum
     enum Ret {
@@ -277,36 +277,36 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             Ret::NirKind(EmptyOptionalLit(t.clone()))
         }
         (Builtin::NaturalIsZero, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n == 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalEven, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 == 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalOdd, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 != 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 != 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Integer(*n as isize))),
+            Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as isize))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalShow, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::Nir(Nir::from_text(n)),
+            Num(Natural(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
-            (Lit(Natural(a)), Lit(Natural(b))) => {
-                Ret::NirKind(Lit(Natural(if b > a { b - a } else { 0 })))
+            (Num(Natural(a)), Num(Natural(b))) => {
+                Ret::NirKind(Num(Natural(if b > a { b - a } else { 0 })))
             }
-            (Lit(Natural(0)), _) => Ret::Nir(b.clone()),
-            (_, Lit(Natural(0))) => Ret::NirKind(Lit(Natural(0))),
-            _ if a == b => Ret::NirKind(Lit(Natural(0))),
+            (Num(Natural(0)), _) => Ret::Nir(b.clone()),
+            (_, Num(Natural(0))) => Ret::NirKind(Num(Natural(0))),
+            _ if a == b => Ret::NirKind(Num(Natural(0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerShow, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
+            Num(Integer(n)) => {
                 let s = if *n < 0 {
                     n.to_string()
                 } else {
@@ -317,23 +317,23 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerToDouble, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
-                Ret::NirKind(Lit(Double(NaiveDouble::from(*n as f64))))
+            Num(Integer(n)) => {
+                Ret::NirKind(Num(Double(NaiveDouble::from(*n as f64))))
             }
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerNegate, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => Ret::NirKind(Lit(Integer(-n))),
+            Num(Integer(n)) => Ret::NirKind(Num(Integer(-n))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerClamp, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
-                Ret::NirKind(Lit(Natural((*n).try_into().unwrap_or(0))))
+            Num(Integer(n)) => {
+                Ret::NirKind(Num(Natural((*n).try_into().unwrap_or(0))))
             }
             _ => Ret::DoneAsIs,
         },
         (Builtin::DoubleShow, [n]) => match &*n.kind() {
-            Lit(Double(n)) => Ret::Nir(Nir::from_text(n)),
+            Num(Double(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (Builtin::TextShow, [v]) => match &*v.kind() {
@@ -351,8 +351,8 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
-            EmptyListLit(_) => Ret::NirKind(Lit(Natural(0))),
-            NEListLit(xs) => Ret::NirKind(Lit(Natural(xs.len()))),
+            EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
+            NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len()))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListHead, [_, l]) => match &*l.kind() {
@@ -398,7 +398,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Nir::from_kind(Lit(Natural(i))),
+                                        Nir::from_kind(Num(Natural(i))),
                                     );
                                     kvs.insert("value".into(), e.clone());
                                     Nir::from_kind(RecordLit(kvs))
@@ -466,14 +466,14 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                     λ(x : Natural) ->
                     1 + var(x)
                 )))
-                .app(Lit(Natural(0)).into_nir()),
+                .app(Num(Natural(0)).into_nir()),
         ),
 
         (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
-            Lit(Natural(0)) => Ret::Nir(zero.clone()),
-            Lit(Natural(n)) => {
+            Num(Natural(0)) => Ret::Nir(zero.clone()),
+            Num(Natural(n)) => {
                 let fold = Nir::from_builtin(Builtin::NaturalFold)
-                    .app(Lit(Natural(n - 1)).into_nir())
+                    .app(Num(Natural(n - 1)).into_nir())
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());
