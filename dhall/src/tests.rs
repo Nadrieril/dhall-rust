@@ -302,7 +302,7 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare(expr)?;
         }
         ImportFailure(expr, expected) => {
-            let err = expr.parse()?.resolve().unwrap_err();
+            let err = expr.resolve().unwrap_err();
             expected.compare_ui(err)?;
         }
         TypeInferenceSuccess(expr, expected) => {

@@ -238,7 +238,7 @@ pub mod ty {
 
     impl Type {
         pub(crate) fn to_dhall_value(&self) -> dhall::Value {
-            self.0.clone().into_normalized().to_value()
+            self.0.to_value()
         }
 
         pub(crate) fn from_simple_type(ty: SimpleType) -> Self {

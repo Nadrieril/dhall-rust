@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::syntax::{Builtin, LitKind};
-use crate::Normalized;
+use crate::{Normalized, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleValue {
@@ -56,7 +56,10 @@ impl SimpleType {
     pub fn kind(&self) -> &STyKind {
         self.kind.as_ref()
     }
-    pub fn into_normalized(self) -> Normalized {
+    pub fn to_value(&self) -> Value {
+        self.clone().into_normalized().to_value()
+    }
+    fn into_normalized(self) -> Normalized {
         match *self.kind {
             STyKind::Bool => Normalized::make_builtin_type(Builtin::Bool),
             STyKind::Natural => Normalized::make_builtin_type(Builtin::Natural),

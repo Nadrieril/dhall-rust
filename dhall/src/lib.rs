@@ -26,31 +26,31 @@ use crate::semantics::{
 use crate::syntax::binary;
 use crate::syntax::{Builtin, Expr};
 
-pub type ParsedExpr = Expr;
-pub type DecodedExpr = Expr;
-pub type ResolvedExpr = Expr;
-pub type NormalizedExpr = Expr;
+pub(crate) type ParsedExpr = Expr;
+pub(crate) type DecodedExpr = Expr;
+pub(crate) type ResolvedExpr = Expr;
+pub(crate) type NormalizedExpr = Expr;
 pub use crate::simple::{STyKind, SValKind, SimpleType, SimpleValue};
 
 #[derive(Debug, Clone)]
-pub struct Parsed(ParsedExpr, ImportLocation);
+pub(crate) struct Parsed(ParsedExpr, ImportLocation);
 
 /// An expression where all imports have been resolved
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub struct Resolved(Hir);
+pub(crate) struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed {
+pub(crate) struct Typed {
     hir: Hir,
     ty: Type,
 }
 
 /// A normalized expression.
 #[derive(Debug, Clone)]
-pub struct Normalized(Nir);
+pub(crate) struct Normalized(Nir);
 
 /// A Dhall value.
 #[derive(Debug, Clone)]
@@ -81,19 +81,13 @@ impl Parsed {
     pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_binary_file(f)
     }
+    #[allow(dead_code)]
     pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
         parse::parse_binary(data)
     }
 
     pub fn resolve(self) -> Result<Resolved, Error> {
         resolve::resolve(self)
-    }
-    pub fn skip_resolve(self) -> Result<Resolved, Error> {
-        Ok(Resolved(resolve::skip_resolve(&self.0)?))
-    }
-
-    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        binary::encode(&self.0)
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -156,14 +150,6 @@ impl Normalized {
     pub fn to_expr(&self) -> NormalizedExpr {
         self.0.to_expr(ToExprOptions::default())
     }
-    /// Converts a value into a SimpleValue.
-    pub fn to_simple_value(&self) -> Result<SimpleValue, Expr> {
-        self.0.to_simple_value().ok_or_else(|| self.to_expr())
-    }
-    /// Converts a value into a SimpleType.
-    pub fn to_simple_type(&self) -> Result<SimpleType, Expr> {
-        self.0.to_simple_type().ok_or_else(|| self.to_expr())
-    }
     /// Converts a value back to the corresponding Hir expression.
     pub(crate) fn to_hir(&self) -> Hir {
         self.0.to_hir_noenv()
@@ -186,25 +172,25 @@ impl Normalized {
         Normalized(th)
     }
 
-    pub fn make_builtin_type(b: Builtin) -> Self {
+    pub(crate) fn make_builtin_type(b: Builtin) -> Self {
         Normalized::from_nir(Nir::from_builtin(b))
     }
-    pub fn make_optional_type(t: Normalized) -> Self {
+    pub(crate) fn make_optional_type(t: Normalized) -> Self {
         Normalized::from_nir(
             Nir::from_builtin(Builtin::Optional).app(t.to_nir()),
         )
     }
-    pub fn make_list_type(t: Normalized) -> Self {
+    pub(crate) fn make_list_type(t: Normalized) -> Self {
         Normalized::from_nir(Nir::from_builtin(Builtin::List).app(t.to_nir()))
     }
-    pub fn make_record_type(
+    pub(crate) fn make_record_type(
         kts: impl Iterator<Item = (String, Normalized)>,
     ) -> Self {
         Normalized::from_kind(NirKind::RecordType(
             kts.map(|(k, t)| (k.into(), t.into_nir())).collect(),
         ))
     }
-    pub fn make_union_type(
+    pub(crate) fn make_union_type(
         kts: impl Iterator<Item = (String, Option<Normalized>)>,
     ) -> Self {
         Normalized::from_kind(NirKind::UnionType(
