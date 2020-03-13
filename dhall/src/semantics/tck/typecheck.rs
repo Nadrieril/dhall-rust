@@ -808,8 +808,8 @@ pub(crate) fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
 pub(crate) fn typecheck_with<'hir>(
     hir: &'hir Hir,
-    ty: Hir,
+    ty: &Hir,
 ) -> Result<Tir<'hir>, TypeError> {
-    let ty = typecheck(&ty)?.eval_to_type(&TyEnv::new())?;
+    let ty = typecheck(ty)?.eval_to_type(&TyEnv::new())?;
     type_with(&TyEnv::new(), hir, Some(ty))
 }

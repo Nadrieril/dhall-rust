@@ -49,10 +49,17 @@ pub struct Typed {
 }
 
 /// A normalized expression.
-///
-/// Invariant: the contained expression must be in normal form,
 #[derive(Debug, Clone)]
 pub struct Normalized(Nir);
+
+/// A Dhall value.
+#[derive(Debug, Clone)]
+pub struct Value {
+    /// Invariant: in normal form
+    pub(crate) hir: Hir,
+    simple_val: Option<SimpleValue>,
+    simple_ty: Option<SimpleType>,
+}
 
 /// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone, Default)]
@@ -99,8 +106,8 @@ impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
         Ok(Typed::from_tir(typecheck(&self.0)?))
     }
-    pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed::from_tir(typecheck_with(&self.0, ty.to_hir())?))
+    pub(crate) fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
+        Ok(Typed::from_tir(typecheck_with(&self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> ResolvedExpr {
@@ -136,6 +143,13 @@ impl Typed {
 impl Normalized {
     pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
         binary::encode(&self.to_expr())
+    }
+    pub fn to_value(&self) -> Value {
+        Value {
+            hir: self.to_hir(),
+            simple_val: self.0.to_simple_value(),
+            simple_ty: self.0.to_simple_type(),
+        }
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -197,6 +211,36 @@ impl Normalized {
             kts.map(|(k, t)| (k.into(), t.map(|t| t.into_nir())))
                 .collect(),
         ))
+    }
+}
+
+impl Value {
+    /// Parse a string into a Value, and optionally ensure that the value matches the provided type
+    /// annotation.
+    pub fn from_str_with_annot(
+        s: &str,
+        ty: Option<&Self>,
+    ) -> Result<Self, Error> {
+        let resolved = Parsed::parse_str(s)?.resolve()?;
+        let typed = match ty {
+            None => resolved.typecheck()?,
+            Some(ty) => resolved.typecheck_with(&ty.hir)?,
+        };
+        Ok(typed.normalize().to_value())
+    }
+
+    /// Converts a Value into a SimpleValue.
+    pub fn to_simple_value(&self) -> Option<SimpleValue> {
+        self.simple_val.clone()
+    }
+    /// Converts a Value into a SimpleType.
+    pub fn to_simple_type(&self) -> Option<SimpleType> {
+        self.simple_ty.clone()
+    }
+
+    /// Converts a value back to the corresponding AST expression.
+    pub(crate) fn to_expr(&self) -> NormalizedExpr {
+        self.hir.to_expr(ToExprOptions::default())
     }
 }
 
@@ -270,6 +314,18 @@ impl PartialEq for Normalized {
     }
 }
 impl Display for Normalized {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.to_expr().fmt(f)
+    }
+}
+
+impl Eq for Value {}
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        self.hir == other.hir
+    }
+}
+impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }

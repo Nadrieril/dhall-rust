@@ -19,10 +19,10 @@ where
     T: serde::Deserialize<'a>,
 {
     fn from_dhall(v: &Value) -> Result<Self> {
-        let sval = v.to_simple_value().map_err(|expr| {
+        let sval = v.to_simple_value().ok_or_else(|| {
             Error::Deserialize(format!(
                 "this cannot be deserialized into the serde data model: {}",
-                expr
+                v
             ))
         })?;
         T::deserialize(Deserializer(Cow::Owned(sval)))

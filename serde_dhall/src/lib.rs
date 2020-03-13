@@ -183,38 +183,26 @@ pub use value::Value;
 // A Dhall value.
 #[doc(hidden)]
 pub mod value {
-    use dhall::{Normalized, NormalizedExpr, Parsed, SimpleType, SimpleValue};
+    use dhall::{SimpleType, SimpleValue};
 
     use super::de::Error;
     use super::Type;
 
     /// A Dhall value
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Value(pub(crate) Normalized);
+    pub struct Value(pub(crate) dhall::Value);
 
     impl Value {
         pub fn from_str(s: &str, ty: Option<&Type>) -> super::de::Result<Self> {
-            Value::from_str_using_dhall_error_type(s, ty).map_err(Error::Dhall)
+            let ty = ty.map(|t| t.to_dhall_value());
+            let val = dhall::Value::from_str_with_annot(s, ty.as_ref())
+                .map_err(Error::Dhall)?;
+            Ok(Value(val))
         }
-        fn from_str_using_dhall_error_type(
-            s: &str,
-            ty: Option<&Type>,
-        ) -> dhall::error::Result<Self> {
-            let resolved = Parsed::parse_str(s)?.resolve()?;
-            let typed = match ty {
-                None => resolved.typecheck()?,
-                Some(t) => resolved.typecheck_with(&t.to_normalized())?,
-            };
-            Ok(Value(typed.normalize()))
-        }
-        pub(crate) fn to_simple_value(
-            &self,
-        ) -> Result<SimpleValue, NormalizedExpr> {
+        pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
             self.0.to_simple_value()
         }
-        pub(crate) fn to_simple_type(
-            &self,
-        ) -> Result<SimpleType, NormalizedExpr> {
+        pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
             self.0.to_simple_type()
         }
     }
@@ -226,12 +214,21 @@ pub mod value {
             Ok(v.clone())
         }
     }
+
+    impl std::fmt::Display for Value {
+        fn fmt(
+            &self,
+            f: &mut std::fmt::Formatter,
+        ) -> Result<(), std::fmt::Error> {
+            self.0.fmt(f)
+        }
+    }
 }
 
 // A Dhall type.
 #[doc(hidden)]
 pub mod ty {
-    use dhall::{Normalized, STyKind, SimpleType};
+    use dhall::{STyKind, SimpleType};
 
     use super::de::Error;
 
@@ -240,8 +237,8 @@ pub mod ty {
     pub struct Type(SimpleType);
 
     impl Type {
-        pub(crate) fn to_normalized(&self) -> Normalized {
-            self.0.clone().into_normalized()
+        pub(crate) fn to_dhall_value(&self) -> dhall::Value {
+            self.0.clone().into_normalized().to_value()
         }
 
         pub(crate) fn from_simple_type(ty: SimpleType) -> Self {
@@ -279,10 +276,10 @@ pub mod ty {
 
     impl super::de::Deserialize for Type {
         fn from_dhall(v: &super::Value) -> super::de::Result<Self> {
-            let sty = v.to_simple_type().map_err(|expr| {
+            let sty = v.to_simple_type().ok_or_else(|| {
                 Error::Deserialize(format!(
                     "this cannot be deserialized into a simple type: {}",
-                    expr
+                    v
                 ))
             })?;
             Ok(Type(sty))
