@@ -357,7 +357,7 @@ impl Display for Label {
         let s = String::from(self);
         let is_reserved = match s.as_str() {
             "let" | "in" | "if" | "then" | "else" | "Type" | "Kind"
-            | "Sort" | "True" | "False" => true,
+            | "Sort" | "True" | "False" | "Some" => true,
             _ => crate::syntax::Builtin::parse(&s).is_some(),
         };
         if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {

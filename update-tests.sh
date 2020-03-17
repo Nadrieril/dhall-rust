@@ -75,15 +75,17 @@ function generate_output_file() {
     file="$2"
     INPUT_FILE="$(${folder}_input_file "$file")"
     OUTPUT_FILE="$(${folder}_output_file "$file")"
+
     if [ ! -f "$OUTPUT_FILE" ]; then
         echo "$OUTPUT_FILE"
         ${folder}_process "$INPUT_FILE" > "$tmpfile"
         if [ $? -eq 0 ]; then
             mv "$tmpfile" "$OUTPUT_FILE"
-            if [ "$folder" = "parser" ]; then
-                cat "$OUTPUT_FILE" | cbor2diag.rb > "${file}B.diag"
-            fi
         fi
+    fi
+
+    if [ -f "$OUTPUT_FILE" -a "$folder" = "parser" -a ! -f "${file}B.diag" ]; then
+        cat "$OUTPUT_FILE" | cbor2diag.rb > "${file}B.diag"
     fi
 }
 
@@ -94,7 +96,7 @@ if [ "$1" = "missing" ]; then
             # This is not robust to spaces in filenames, but hopefully there should be none
             fd 'A\.dhallb?$' "$root/$folder/success" \
                 | sed 's/A.dhallb\?$//' \
-                | while read file; do
+                | while read -r file; do
                     generate_output_file "$folder" "$file"
                 done
         done
@@ -105,10 +107,11 @@ elif [ "$1" = "add" ]; then
     #   normalization/unit/TextShowEmpty Text/show ""
     # This will add a test to the local tests folder for each such line, and generate
     # the output using the `dhall` command in the PATH.
-    while read file contents; do
+    while read -r file contents; do
         folder="$(echo "$file" | cut -d/ -f1)"
         is_success="$(echo "$file" | cut -d/ -f2)"
         file="./dhall/tests/$file"
+        # file="./dhall-lang/tests/$file"
         mkdir -p "$(dirname "$file")"
 
         if [ "$is_success" = "success" ]; then
