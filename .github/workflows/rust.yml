@@ -1,0 +1,46 @@
+name: Test suite
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+# For inspiration, see https://github.com/nvzqz/static-assertions-rs/blob/a867e97a1b3c2e0c76b7a154abdf4e422b78e5f2/.github/workflows/CI.yml
+jobs:
+  fmt:
+    name: Ensure code is formatted
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          components: rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  test:
+    name: Run test suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+      # - name: Run test suite
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: test
+      #     args: --release
+      - name: Run tests and gather coverage data
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: '--release --all --exclude-files abnf_to_pest/* --exclude-files dhall_proc_macros/*'
+      - name: Upload coverage data to codecov.io
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}

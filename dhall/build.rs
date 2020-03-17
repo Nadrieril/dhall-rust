@@ -411,7 +411,9 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
 
     // Setup grammar for precedence climbing
     rules.remove("operator_expression");
-    writeln!(&mut file, r##"
+    writeln!(
+        &mut file,
+        r##"
         import_alt = {{ "?" ~ whsp1 }}
         bool_or = {{ "||" }}
         natural_plus = {{ "+" ~ whsp1 }}
@@ -438,7 +440,8 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
             import_alt
         }}
         operator_expression = {{ with_expression ~ (whsp ~ operator ~ whsp ~ with_expression)* }}
-    "##)?;
+    "##
+    )?;
 
     writeln!(
         &mut file,
