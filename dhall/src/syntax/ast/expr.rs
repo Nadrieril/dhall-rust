@@ -257,10 +257,12 @@ impl Expr {
     }
 }
 
-pub fn trivial_result<T>(x: Result<T, !>) -> T {
+// Empty enum to indicate that no error can occur
+enum X {}
+fn trivial_result<T>(x: Result<T, X>) -> T {
     match x {
         Ok(x) => x,
-        Err(e) => e,
+        Err(e) => match e {},
     }
 }
 

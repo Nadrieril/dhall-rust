@@ -1,5 +1,4 @@
 #![doc(html_root_url = "https://docs.rs/dhall/0.3.0")]
-#![feature(never_type)]
 #![allow(
     clippy::int_plus_one, // Comes from pest_consume macro
     clippy::module_inception,
