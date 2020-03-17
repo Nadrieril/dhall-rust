@@ -29,7 +29,7 @@ impl<'a> PhasedExpr<'a> {
 
 impl UnspannedExpr {
     // Annotate subexpressions with the appropriate phase, defaulting to Base
-    fn annotate_with_phases<'a>(&'a self) -> ExprKind<PhasedExpr<'a>> {
+    fn annotate_with_phases(&self) -> ExprKind<PhasedExpr<'_>> {
         use crate::syntax::ExprKind::*;
         use PrintPhase::*;
         let with_base = self.map_ref(|e| PhasedExpr(e, Base));

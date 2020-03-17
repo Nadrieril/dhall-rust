@@ -30,7 +30,7 @@ impl AlphaVar {
     pub(crate) fn new(idx: usize) -> Self {
         AlphaVar { idx }
     }
-    pub(crate) fn idx(&self) -> usize {
+    pub(crate) fn idx(self) -> usize {
         self.idx
     }
 }
@@ -100,7 +100,7 @@ fn hir_to_expr(
 ) -> NormalizedExpr {
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
-        HirKind::Var(v) => ExprKind::Var(env.label_var(v)),
+        HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
         HirKind::Import(hir, _) => {
             return hir_to_expr(hir, opts, &mut NameEnv::new())
         }
@@ -110,7 +110,7 @@ fn hir_to_expr(
                     env.insert_mut(l);
                 }
                 let e = hir_to_expr(hir, opts, env);
-                if let Some(_) = l {
+                if l.is_some() {
                     env.remove_mut();
                 }
                 e

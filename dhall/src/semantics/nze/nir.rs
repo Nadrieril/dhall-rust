@@ -162,8 +162,8 @@ impl Nir {
             )
         };
 
-        let hir = match &*self.kind() {
-            NirKind::Var(v) => HirKind::Var(venv.lookup(v)),
+        let hir = match self.kind() {
+            NirKind::Var(v) => HirKind::Var(venv.lookup(*v)),
             NirKind::AppliedBuiltin(closure) => closure.to_hirkind(venv),
             self_kind => HirKind::Expr(match self_kind {
                 NirKind::Var(..) | NirKind::AppliedBuiltin(..) => {
@@ -317,13 +317,13 @@ impl NirKind {
                 }
             }
             NirKind::UnionType(kts) | NirKind::UnionConstructor(_, kts) => {
-                for x in kts.values().flat_map(|opt| opt) {
+                for x in kts.values().flatten() {
                     x.normalize();
                 }
             }
             NirKind::UnionLit(_, v, kts) => {
                 v.normalize();
-                for x in kts.values().flat_map(|opt| opt) {
+                for x in kts.values().flatten() {
                     x.normalize();
                 }
             }
@@ -503,7 +503,7 @@ impl std::fmt::Debug for Nir {
         if let NirKind::Const(c) = kind {
             return write!(fmt, "{:?}", c);
         }
-        let mut x = fmt.debug_struct(&format!("Nir@WHNF"));
+        let mut x = fmt.debug_struct("Nir");
         x.field("kind", kind);
         x.finish()
     }

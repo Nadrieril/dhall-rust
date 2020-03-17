@@ -36,7 +36,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 "Type" => Const(Const::Type),
                 "Kind" => Const(Const::Kind),
                 "Sort" => Const(Const::Sort),
-                _ => Err(DecodeError::WrongFormatError("builtin".to_owned()))?,
+                _ => {
+                    return Err(DecodeError::WrongFormatError(
+                        "builtin".to_owned(),
+                    ))
+                }
             },
         },
         U64(n) => Var(V(Label::from("_"), *n as usize)),
@@ -45,19 +49,19 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
         Array(vec) => match vec.as_slice() {
             [String(l), U64(n)] => {
                 if l.as_str() == "_" {
-                    Err(DecodeError::WrongFormatError(
+                    return Err(DecodeError::WrongFormatError(
                         "`_` variable was encoded incorrectly".to_owned(),
-                    ))?
+                    ));
                 }
                 let l = Label::from(l.as_str());
                 Var(V(l, *n as usize))
             }
             [U64(0), f, args @ ..] => {
                 if args.is_empty() {
-                    Err(DecodeError::WrongFormatError(
+                    return Err(DecodeError::WrongFormatError(
                         "Function application must have at least one argument"
                             .to_owned(),
-                    ))?
+                    ));
                 }
                 let mut f = cbor_value_to_dhall(&f)?;
                 for a in args {
@@ -73,9 +77,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             }
             [U64(1), String(l), x, y] => {
                 if l.as_str() == "_" {
-                    Err(DecodeError::WrongFormatError(
+                    return Err(DecodeError::WrongFormatError(
                         "`_` variable was encoded incorrectly".to_owned(),
-                    ))?
+                    ));
                 }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
@@ -89,9 +93,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             }
             [U64(2), String(l), x, y] => {
                 if l.as_str() == "_" {
-                    Err(DecodeError::WrongFormatError(
+                    return Err(DecodeError::WrongFormatError(
                         "`_` variable was encoded incorrectly".to_owned(),
-                    ))?
+                    ));
                 }
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
@@ -122,7 +126,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     11 => ImportAlt,
                     12 => Equivalence,
                     _ => {
-                        Err(DecodeError::WrongFormatError("binop".to_owned()))?
+                        return Err(DecodeError::WrongFormatError(
+                            "binop".to_owned(),
+                        ))
                     }
                 };
                 BinOp(op, x, y)
@@ -185,9 +191,9 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     let y = cbor_value_to_dhall(&y)?;
                     ProjectionByExpr(x, y)
                 } else {
-                    Err(DecodeError::WrongFormatError(
+                    return Err(DecodeError::WrongFormatError(
                         "projection-by-expr".to_owned(),
-                    ))?
+                    ));
                 }
             }
             [U64(10), x, rest @ ..] => {
@@ -207,9 +213,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let map = cbor_map_to_dhall_opt_map(map)?;
                 UnionType(map)
             }
-            [U64(12), ..] => Err(DecodeError::WrongFormatError(
-                "Union literals are not supported anymore".to_owned(),
-            ))?,
+            [U64(12), ..] => {
+                return Err(DecodeError::WrongFormatError(
+                    "Union literals are not supported anymore".to_owned(),
+                ))
+            }
             [U64(14), x, y, z] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
@@ -228,9 +236,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                             let x = cbor_value_to_dhall(&x)?;
                             let y = match y {
                                 String(s) => s.clone(),
-                                _ => Err(DecodeError::WrongFormatError(
-                                    "text".to_owned(),
-                                ))?,
+                                _ => {
+                                    return Err(DecodeError::WrongFormatError(
+                                        "text".to_owned(),
+                                    ))
+                                }
                             };
                             Ok((x, y))
                         })
@@ -246,10 +256,12 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     0 => ImportMode::Code,
                     1 => ImportMode::RawText,
                     2 => ImportMode::Location,
-                    _ => Err(DecodeError::WrongFormatError(format!(
-                        "import/mode/unknown_mode: {:?}",
-                        mode
-                    )))?,
+                    _ => {
+                        return Err(DecodeError::WrongFormatError(format!(
+                            "import/mode/unknown_mode: {:?}",
+                            mode
+                        )))
+                    }
                 };
                 let hash = match hash {
                     Null => None,
@@ -257,14 +269,18 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                         [18, 32, rest @ ..] => {
                             Some(Hash::SHA256(rest.to_vec()))
                         }
-                        _ => Err(DecodeError::WrongFormatError(format!(
-                            "import/hash/unknown_multihash: {:?}",
-                            bytes
-                        )))?,
+                        _ => {
+                            return Err(DecodeError::WrongFormatError(format!(
+                                "import/hash/unknown_multihash: {:?}",
+                                bytes
+                            )))
+                        }
                     },
-                    _ => Err(DecodeError::WrongFormatError(
-                        "import/hash/should_be_bytes".to_owned(),
-                    ))?,
+                    _ => {
+                        return Err(DecodeError::WrongFormatError(
+                            "import/hash/should_be_bytes".to_owned(),
+                        ))
+                    }
                 };
                 let mut rest = rest.iter();
                 let location = match scheme {
@@ -279,22 +295,28 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                                 let x = cbor_value_to_dhall(&x)?;
                                 Some(x)
                             }
-                            _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/headers".to_owned(),
-                            ))?,
+                            _ => {
+                                return Err(DecodeError::WrongFormatError(
+                                    "import/remote/headers".to_owned(),
+                                ))
+                            }
                         };
                         let authority = match rest.next() {
                             Some(String(s)) => s.to_owned(),
-                            _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/authority".to_owned(),
-                            ))?,
+                            _ => {
+                                return Err(DecodeError::WrongFormatError(
+                                    "import/remote/authority".to_owned(),
+                                ))
+                            }
                         };
                         let query = match rest.next_back() {
                             Some(Null) => None,
                             Some(String(s)) => Some(s.to_owned()),
-                            _ => Err(DecodeError::WrongFormatError(
-                                "import/remote/query".to_owned(),
-                            ))?,
+                            _ => {
+                                return Err(DecodeError::WrongFormatError(
+                                    "import/remote/query".to_owned(),
+                                ))
+                            }
                         };
                         let file_path = rest
                             .map(|s| match s.as_string() {
@@ -319,9 +341,11 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                             3 => FilePrefix::Here,
                             4 => FilePrefix::Parent,
                             5 => FilePrefix::Home,
-                            _ => Err(DecodeError::WrongFormatError(
-                                "import/local/prefix".to_owned(),
-                            ))?,
+                            _ => {
+                                return Err(DecodeError::WrongFormatError(
+                                    "import/local/prefix".to_owned(),
+                                ))
+                            }
                         };
                         let file_path = rest
                             .map(|s| match s.as_string() {
@@ -337,16 +361,20 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                     6 => {
                         let env = match rest.next() {
                             Some(String(s)) => s.to_owned(),
-                            _ => Err(DecodeError::WrongFormatError(
-                                "import/env".to_owned(),
-                            ))?,
+                            _ => {
+                                return Err(DecodeError::WrongFormatError(
+                                    "import/env".to_owned(),
+                                ))
+                            }
                         };
                         ImportTarget::Env(env)
                     }
                     7 => ImportTarget::Missing,
-                    _ => Err(DecodeError::WrongFormatError(
-                        "import/type".to_owned(),
-                    ))?,
+                    _ => {
+                        return Err(DecodeError::WrongFormatError(
+                            "import/type".to_owned(),
+                        ))
+                    }
                 };
                 Import(syntax::Import {
                     mode,
@@ -399,9 +427,14 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let x = cbor_value_to_dhall(&x)?;
                 EmptyListLit(x)
             }
-            _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
+            _ => {
+                return Err(DecodeError::WrongFormatError(format!(
+                    "{:?}",
+                    data
+                )))
+            }
         },
-        _ => Err(DecodeError::WrongFormatError(format!("{:?}", data)))?,
+        _ => return Err(DecodeError::WrongFormatError(format!("{:?}", data))),
     }))
 }
 

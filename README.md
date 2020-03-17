@@ -1,7 +1,7 @@
 <img src="https://github.com/dhall-lang/dhall-lang/blob/master/img/dhall-logo.svg" width="600" alt="Dhall Logo">
 
 [![Crates.io][crates-badge]][crates-url]
-[![Build Status](https://travis-ci.org/Nadrieril/dhall-rust.svg?branch=master)](https://travis-ci.org/Nadrieril/dhall-rust)
+[![Build Status](https://github.com/Nadrieril/dhall-rust/workflows/Test%20suite/badge.svg)](https://github.com/Nadrieril/dhall-rust/actions)
 [![codecov](https://codecov.io/gh/Nadrieril/dhall-rust/branch/master/graph/badge.svg)](https://codecov.io/gh/Nadrieril/dhall-rust)
 
 [crates-badge]: https://img.shields.io/crates/v/serde_dhall.svg

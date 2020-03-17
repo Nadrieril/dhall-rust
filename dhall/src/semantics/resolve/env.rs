@@ -51,7 +51,7 @@ impl NameEnv {
             .nth(*idx)?;
         Some(AlphaVar::new(idx))
     }
-    pub fn label_var(&self, var: &AlphaVar) -> V {
+    pub fn label_var(&self, var: AlphaVar) -> V {
         let name = &self.names[self.names.len() - 1 - var.idx()];
         let idx = self
             .names
