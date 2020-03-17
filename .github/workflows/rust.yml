@@ -6,20 +6,42 @@ on:
   pull_request:
     branches: [ master ]
 
-# For inspiration, see https://github.com/nvzqz/static-assertions-rs/blob/a867e97a1b3c2e0c76b7a154abdf4e422b78e5f2/.github/workflows/CI.yml
 jobs:
   fmt:
-    name: Ensure code is formatted
+    name: Check formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
         with:
           components: rustfmt
-      - uses: actions-rs/cargo@v1
+      - name: Run rustfmt
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
+
+  clippy:
+    name: Run clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          components: clippy
+      - name: Run clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
 
   test:
     name: Run test suite
@@ -31,11 +53,6 @@ jobs:
           submodules: true
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
-      # - name: Run test suite
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: test
-      #     args: --release
       - name: Run tests and gather coverage data
         uses: actions-rs/tarpaulin@v0.1
         with:
