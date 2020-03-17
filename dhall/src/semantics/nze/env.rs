@@ -72,14 +72,14 @@ impl<Type: Clone> ValEnv<Type> {
         env.items.push(EnvItem::Replaced(e, ty));
         env
     }
-    pub fn lookup_val(&self, var: &AlphaVar) -> NirKind {
+    pub fn lookup_val(&self, var: AlphaVar) -> NirKind {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             EnvItem::Kept(_) => NirKind::Var(NzVar::new(idx)),
             EnvItem::Replaced(x, _) => x.kind().clone(),
         }
     }
-    pub fn lookup_ty(&self, var: &AlphaVar) -> Type {
+    pub fn lookup_ty(&self, var: AlphaVar) -> Type {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
             EnvItem::Kept(ty) | EnvItem::Replaced(_, ty) => ty.clone(),

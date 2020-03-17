@@ -209,6 +209,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Nir, y: &'a Nir) -> Option<Ret<'a>> {
     })
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
     use LitKind::Bool;
     use NirKind::{
@@ -286,17 +287,17 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             None => Ret::Expr(expr),
         },
 
-        ExprKind::Field(ref v, ref l) => match v.kind() {
-            RecordLit(kvs) => match kvs.get(l) {
+        ExprKind::Field(ref v, ref field) => match v.kind() {
+            RecordLit(kvs) => match kvs.get(field) {
                 Some(r) => Ret::Nir(r.clone()),
                 None => Ret::Expr(expr),
             },
             UnionType(kts) => {
-                Ret::NirKind(UnionConstructor(l.clone(), kts.clone()))
+                Ret::NirKind(UnionConstructor(field.clone(), kts.clone()))
             }
             PartialExpr(ExprKind::Projection(x, _)) => {
                 return normalize_one_layer(
-                    ExprKind::Field(x.clone(), l.clone()),
+                    ExprKind::Field(x.clone(), field.clone()),
                     env,
                 )
             }
@@ -305,31 +306,31 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
                 x,
                 y,
             )) => match (x.kind(), y.kind()) {
-                (_, RecordLit(kvs)) => match kvs.get(l) {
+                (_, RecordLit(kvs)) => match kvs.get(field) {
                     Some(r) => Ret::Nir(r.clone()),
                     None => {
                         return normalize_one_layer(
-                            ExprKind::Field(x.clone(), l.clone()),
+                            ExprKind::Field(x.clone(), field.clone()),
                             env,
                         )
                     }
                 },
-                (RecordLit(kvs), _) => match kvs.get(l) {
+                (RecordLit(kvs), _) => match kvs.get(field) {
                     Some(r) => Ret::Expr(ExprKind::Field(
                         Nir::from_kind(PartialExpr(ExprKind::BinOp(
                             BinOp::RightBiasedRecordMerge,
                             Nir::from_kind(RecordLit(
-                                Some((l.clone(), r.clone()))
+                                Some((field.clone(), r.clone()))
                                     .into_iter()
                                     .collect(),
                             )),
                             y.clone(),
                         ))),
-                        l.clone(),
+                        field.clone(),
                     )),
                     None => {
                         return normalize_one_layer(
-                            ExprKind::Field(y.clone(), l.clone()),
+                            ExprKind::Field(y.clone(), field.clone()),
                             env,
                         )
                     }
@@ -338,42 +339,42 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             },
             PartialExpr(ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y)) => {
                 match (x.kind(), y.kind()) {
-                    (RecordLit(kvs), _) => match kvs.get(l) {
+                    (RecordLit(kvs), _) => match kvs.get(field) {
                         Some(r) => Ret::Expr(ExprKind::Field(
                             Nir::from_kind(PartialExpr(ExprKind::BinOp(
                                 BinOp::RecursiveRecordMerge,
                                 Nir::from_kind(RecordLit(
-                                    Some((l.clone(), r.clone()))
+                                    Some((field.clone(), r.clone()))
                                         .into_iter()
                                         .collect(),
                                 )),
                                 y.clone(),
                             ))),
-                            l.clone(),
+                            field.clone(),
                         )),
                         None => {
                             return normalize_one_layer(
-                                ExprKind::Field(y.clone(), l.clone()),
+                                ExprKind::Field(y.clone(), field.clone()),
                                 env,
                             )
                         }
                     },
-                    (_, RecordLit(kvs)) => match kvs.get(l) {
+                    (_, RecordLit(kvs)) => match kvs.get(field) {
                         Some(r) => Ret::Expr(ExprKind::Field(
                             Nir::from_kind(PartialExpr(ExprKind::BinOp(
                                 BinOp::RecursiveRecordMerge,
                                 x.clone(),
                                 Nir::from_kind(RecordLit(
-                                    Some((l.clone(), r.clone()))
+                                    Some((field.clone(), r.clone()))
                                         .into_iter()
                                         .collect(),
                                 )),
                             ))),
-                            l.clone(),
+                            field.clone(),
                         )),
                         None => {
                             return normalize_one_layer(
-                                ExprKind::Field(x.clone(), l.clone()),
+                                ExprKind::Field(x.clone(), field.clone()),
                                 env,
                             )
                         }
@@ -452,7 +453,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             }
             RecordLit(kvs) => Ret::NirKind(NEListLit(
                 kvs.iter()
-                    .sorted_by_key(|(k, _)| k.clone())
+                    .sorted_by_key(|(k, _)| *k)
                     .map(|(k, v)| {
                         let mut rec = HashMap::new();
                         rec.insert("mapKey".into(), Nir::from_text(k));
@@ -476,13 +477,13 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
 /// Normalize Hir into WHNF
 pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> NirKind {
     match hir.kind() {
-        HirKind::Var(var) => env.lookup_val(var),
+        HirKind::Var(var) => env.lookup_val(*var),
         HirKind::Import(hir, _) => normalize_hir_whnf(env, hir),
         HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             NirKind::LamClosure {
                 binder: Binder::new(binder.clone()),
-                annot: annot,
+                annot,
                 closure: Closure::new(env, body.clone()),
             }
         }

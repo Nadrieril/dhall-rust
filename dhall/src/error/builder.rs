@@ -116,11 +116,12 @@ impl ErrorBuilder {
     }
 
     // TODO: handle multiple files
+    #[allow(clippy::drop_ref)]
     pub fn format(&mut self) -> String {
         if self.consumed {
             panic!("tried to format the same ErrorBuilder twice")
         }
-        let this = std::mem::replace(self, ErrorBuilder::default());
+        let this = std::mem::take(self);
         self.consumed = true;
         drop(self); // Get rid of the self reference so we don't use it by mistake.
 
@@ -154,7 +155,7 @@ impl ErrorBuilder {
         };
         let dl = DisplayList::from(snippet);
         let dlf = DisplayListFormatter::new(true, false);
-        format!("{}", dlf.format(&dl))
+        dlf.format(&dl)
     }
 }
 

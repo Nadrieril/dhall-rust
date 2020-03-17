@@ -12,7 +12,7 @@ use crate::syntax::{
 
 pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
-        .map_err(|e| EncodeError::CBORError(e))
+        .map_err(EncodeError::CBORError)
 }
 
 enum Serialize<'a> {
@@ -126,7 +126,7 @@ where
             use syntax::InterpolatedTextContents::{Expr, Text};
             ser.collect_seq(once(tag(18)).chain(xs.iter().map(|x| match x {
                 Expr(x) => expr(x),
-                Text(x) => cbor(String(x.clone())),
+                Text(x) => cbor(String(x)),
             })))
         }
         RecordType(map) => ser_seq!(ser; tag(7), RecordDupMap(map)),

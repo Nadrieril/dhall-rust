@@ -52,7 +52,7 @@ fn dhall_files_in_dir<'a>(
         .filter_map(move |path| {
             let path = path.path().strip_prefix(dir).unwrap();
             let ext = path.extension()?;
-            if ext != &OsString::from(filetype.to_ext()) {
+            if *ext != OsString::from(filetype.to_ext()) {
                 return None;
             }
             let path = path.to_string_lossy();
@@ -152,6 +152,7 @@ fn generate_tests() -> std::io::Result<()> {
     let spec_tests_dirs =
         vec![Path::new("../dhall-lang/tests/"), Path::new("tests/")];
 
+    #[allow(clippy::nonminimal_bool)]
     let tests = vec![
         TestFeature {
             module_name: "parser_success",
@@ -363,7 +364,9 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     for line in BufReader::new(File::open(visibility_path)?).lines() {
         let line = line?;
         if line.len() >= 2 && &line[0..2] == "# " {
-            rules.get_mut(&line[2..]).map(|x| x.silent = true);
+            if let Some(x) = rules.get_mut(&line[2..]) {
+                x.silent = true;
+            }
         }
     }
 

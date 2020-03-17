@@ -73,7 +73,7 @@ mod dup_tree_map {
         >,
     >;
 
-    fn zip_repeat<'a, K, I>((k, iter): (K, I)) -> ZipRepeatIter<(K, I)>
+    fn zip_repeat<K, I>((k, iter): (K, I)) -> ZipRepeatIter<(K, I)>
     where
         K: Clone,
         I: IntoIterator,
@@ -229,7 +229,7 @@ mod dup_tree_set {
             self.map.is_empty()
         }
 
-        pub fn iter<'a>(&'a self) -> Iter<'a, K> {
+        pub fn iter(&self) -> Iter<'_, K> {
             self.map.iter().map(drop_second)
         }
     }

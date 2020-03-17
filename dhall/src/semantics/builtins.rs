@@ -33,7 +33,7 @@ impl BuiltinClosure<Nir> {
 
     pub fn apply(&self, a: Nir) -> NirKind {
         use std::iter::once;
-        let args = self.args.iter().cloned().chain(once(a.clone())).collect();
+        let args = self.args.iter().cloned().chain(once(a)).collect();
         apply_builtin(self.b, args, self.env.clone())
     }
     /// This doesn't break the invariant because we already checked that the appropriate arguments
@@ -415,7 +415,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         (Builtin::ListBuild, [t, f]) => {
             let list_t = Nir::from_builtin(Builtin::List).app(t.clone());
             Ret::Nir(
-                f.app(list_t.clone())
+                f.app(list_t)
                     .app(
                         make_closure(make_closure!(
                             λ(T : Type) ->
@@ -443,7 +443,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             let optional_t =
                 Nir::from_builtin(Builtin::Optional).app(t.clone());
             Ret::Nir(
-                f.app(optional_t.clone())
+                f.app(optional_t)
                     .app(
                         make_closure(make_closure!(
                             λ(T : Type) ->

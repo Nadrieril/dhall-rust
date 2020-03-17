@@ -267,9 +267,10 @@ impl DhallParser {
                 };
 
                 if s.len() > 8 {
-                    Err(input.error(format!(
+                    return Err(input.error(
                         "Escape sequences can't have more than 8 chars"
-                    )))?
+                            .to_string(),
+                    ));
                 }
 
                 // pad with zeroes
@@ -282,9 +283,12 @@ impl DhallParser {
                 let bytes: &[u8] = &hex::decode(s).unwrap();
                 let i = u32::from_be_bytes(bytes.try_into().unwrap());
                 match i {
-                    0xD800..=0xDFFF => Err(input.error(format!(
-                        "Escape sequences can't contain surrogate pairs"
-                    )))?,
+                    0xD800..=0xDFFF => {
+                        return Err(input.error(
+                            "Escape sequences can't contain surrogate pairs"
+                                .to_string(),
+                        ))
+                    }
                     0x0FFFE..=0x0FFFF
                     | 0x1FFFE..=0x1FFFF
                     | 0x2FFFE..=0x2FFFF
@@ -301,9 +305,12 @@ impl DhallParser {
                     | 0xDFFFE..=0xDFFFF
                     | 0xEFFFE..=0xEFFFF
                     | 0xFFFFE..=0xFFFFF
-                    | 0x10_FFFE..=0x10_FFFF => Err(input.error(format!(
-                        "Escape sequences can't contain non-characters"
-                    )))?,
+                    | 0x10_FFFE..=0x10_FFFF => {
+                        return Err(input.error(
+                            "Escape sequences can't contain non-characters"
+                                .to_string(),
+                        ))
+                    }
                     _ => {}
                 }
                 let c: char = i.try_into().unwrap();
@@ -389,7 +396,9 @@ impl DhallParser {
                 "Kind" => Const(crate::syntax::Const::Kind),
                 "Sort" => Const(crate::syntax::Const::Sort),
                 _ => {
-                    Err(input.error(format!("Unrecognized builtin: '{}'", s)))?
+                    return Err(
+                        input.error(format!("Unrecognized builtin: '{}'", s))
+                    )
                 }
             },
         };
@@ -620,7 +629,9 @@ impl DhallParser {
         let protocol = &s[..6];
         let hash = &s[7..];
         if protocol != "sha256" {
-            Err(input.error(format!("Unknown hashing protocol '{}'", protocol)))?
+            return Err(
+                input.error(format!("Unknown hashing protocol '{}'", protocol))
+            );
         }
         Ok(Hash::SHA256(hex::decode(hash).unwrap()))
     }
@@ -767,7 +778,9 @@ impl DhallParser {
             bool_eq => BoolEQ,
             bool_ne => BoolNE,
             equivalent => Equivalence,
-            r => Err(op.error(format!("Rule {:?} isn't an operator", r)))?,
+            r => {
+                return Err(op.error(format!("Rule {:?} isn't an operator", r)))
+            }
         };
 
         Ok(spanned_union(l.span(), r.span(), BinOp(op, l, r)))

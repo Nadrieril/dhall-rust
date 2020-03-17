@@ -712,7 +712,7 @@ pub(crate) fn type_with<'hir>(
     annot: Option<Type>,
 ) -> Result<Tir<'hir>, TypeError> {
     let tir = match hir.kind() {
-        HirKind::Var(var) => Tir::from_hir(hir, env.lookup(var)),
+        HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
         HirKind::Import(_, ty) => Tir::from_hir(hir, ty.clone()),
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")

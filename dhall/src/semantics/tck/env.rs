@@ -21,18 +21,18 @@ impl VarEnv {
     pub fn from_size(size: usize) -> Self {
         VarEnv { size }
     }
-    pub fn size(&self) -> usize {
+    pub fn size(self) -> usize {
         self.size
     }
-    pub fn insert(&self) -> Self {
+    pub fn insert(self) -> Self {
         VarEnv {
             size: self.size + 1,
         }
     }
-    pub fn lookup(&self, var: &NzVar) -> AlphaVar {
+    pub fn lookup(self, var: NzVar) -> AlphaVar {
         self.lookup_fallible(var).unwrap()
     }
-    pub fn lookup_fallible(&self, var: &NzVar) -> Option<AlphaVar> {
+    pub fn lookup_fallible(self, var: NzVar) -> Option<AlphaVar> {
         let idx = self.size.checked_sub(var.idx() + 1)?;
         Some(AlphaVar::new(idx))
     }
@@ -67,8 +67,8 @@ impl TyEnv {
             items: self.items.insert_value(e, ty),
         }
     }
-    pub fn lookup(&self, var: &AlphaVar) -> Type {
-        self.items.lookup_ty(&var)
+    pub fn lookup(&self, var: AlphaVar) -> Type {
+        self.items.lookup_ty(var)
     }
 }
 

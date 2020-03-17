@@ -110,7 +110,7 @@ pub fn escape_rulename(x: &str) -> String {
     {
         x + "_"
     } else {
-        x.clone()
+        x
     }
 }
 

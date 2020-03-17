@@ -1,12 +1,10 @@
 #![doc(html_root_url = "https://docs.rs/dhall/0.3.0")]
 #![feature(never_type)]
 #![allow(
-    clippy::type_complexity,
-    clippy::infallible_destructuring_match,
-    clippy::many_single_char_names,
-    clippy::match_wild_err_arm,
-    clippy::redundant_closure,
-    clippy::ptr_arg
+    clippy::int_plus_one, // Comes from pest_consume macro
+    clippy::module_inception,
+    clippy::needless_lifetimes,
+    clippy::useless_format
 )]
 
 mod tests;

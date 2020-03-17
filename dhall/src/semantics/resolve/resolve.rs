@@ -46,13 +46,13 @@ impl ImportLocation {
     ) -> Result<ImportLocation, Error> {
         Ok(match target {
             ImportTarget::Local(prefix, path) => {
-                self.chain_local(prefix, path)?
+                self.chain_local(*prefix, path)?
             }
             ImportTarget::Remote(remote) => {
                 if sanity_check {
                     if let ImportLocation::Remote(..) = self {
                         // TODO: allow if CORS check passes
-                        Err(ImportError::SanityCheck)?
+                        return Err(ImportError::SanityCheck.into());
                     }
                 }
                 let mut url = Url::parse(&format!(
@@ -66,7 +66,7 @@ impl ImportLocation {
             ImportTarget::Env(var_name) => {
                 if sanity_check {
                     if let ImportLocation::Remote(..) = self {
-                        Err(ImportError::SanityCheck)?
+                        return Err(ImportError::SanityCheck.into());
                     }
                 }
                 ImportLocation::Env(var_name.clone())
@@ -77,7 +77,7 @@ impl ImportLocation {
 
     fn chain_local(
         &self,
-        prefix: &FilePrefix,
+        prefix: FilePrefix,
         path: &FilePath,
     ) -> Result<ImportLocation, Error> {
         Ok(match self {
@@ -146,11 +146,11 @@ impl ImportLocation {
             ImportLocation::Env(var_name) => {
                 let val = match env::var(var_name) {
                     Ok(val) => val,
-                    Err(_) => Err(ImportError::MissingEnvVar)?,
+                    Err(_) => return Err(ImportError::MissingEnvVar.into()),
                 };
                 Parsed::parse_str(&val)?
             }
-            ImportLocation::Missing => Err(ImportError::Missing)?,
+            ImportLocation::Missing => return Err(ImportError::Missing.into()),
         })
     }
 
@@ -162,9 +162,9 @@ impl ImportLocation {
             }
             ImportLocation::Env(var_name) => match env::var(var_name) {
                 Ok(val) => val,
-                Err(_) => Err(ImportError::MissingEnvVar)?,
+                Err(_) => return Err(ImportError::MissingEnvVar.into()),
             },
-            ImportLocation::Missing => Err(ImportError::Missing)?,
+            ImportLocation::Missing => return Err(ImportError::Missing.into()),
         })
     }
 
@@ -199,7 +199,7 @@ fn make_aslocation_uniontype() -> Expr {
     let mut union = DupTreeMap::default();
     union.insert("Local".into(), Some(text_type.clone()));
     union.insert("Remote".into(), Some(text_type.clone()));
-    union.insert("Environment".into(), Some(text_type.clone()));
+    union.insert("Environment".into(), Some(text_type));
     union.insert("Missing".into(), None);
     mkexpr(ExprKind::UnionType(union))
 }
@@ -298,7 +298,7 @@ fn traverse_resolve_expr(
                     name_env.insert_mut(l);
                 }
                 let hir = traverse_resolve_expr(name_env, e, f)?;
-                if let Some(_) = l {
+                if l.is_some() {
                     name_env.remove_mut();
                 }
                 Ok::<_, Error>(hir)
@@ -395,7 +395,7 @@ impl<SE: Copy> Canonicalize for ImportTarget<SE> {
                 authority: url.authority.clone(),
                 path: url.path.canonicalize(),
                 query: url.query.clone(),
-                headers: url.headers.clone(),
+                headers: url.headers,
             }),
             ImportTarget::Env(name) => ImportTarget::Env(name.to_string()),
             ImportTarget::Missing => ImportTarget::Missing,
