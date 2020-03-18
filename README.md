@@ -34,7 +34,6 @@ official tooling instead; instructions can be found
 For now, the only supported way of integrating Dhall in your application is via
 the `serde_dhall` crate, and only parsing is supported.
 
-`serde_dhall` is a nightly crate, and only works with a nightly compiler.
 Add this to your `Cargo.toml`:
 
 ```toml
@@ -110,7 +109,7 @@ $ nix-shell -p rustup
 Once `rustup` is installed we can get it to manage our toolchain by running:
 
 ```bash
-$ rustup toolchain install nightly
+$ rustup toolchain install stable
 ```
 
 Then we can manage our building and testing with the [`cargo`](https://crates.io/) dependency manager:

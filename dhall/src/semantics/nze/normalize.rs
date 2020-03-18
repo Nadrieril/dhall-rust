@@ -58,20 +58,21 @@ pub(crate) fn squash_textlit(
     ret
 }
 
-pub(crate) fn merge_maps<K, V, F, Err>(
+pub(crate) fn merge_maps<K, V, F>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,
     mut f: F,
-) -> Result<HashMap<K, V>, Err>
+) -> HashMap<K, V>
 where
-    F: FnMut(&K, &V, &V) -> Result<V, Err>,
+    F: FnMut(&K, &V, &V) -> V,
     K: std::hash::Hash + Eq + Clone,
     V: Clone,
 {
     let mut kvs = HashMap::new();
     for (x, v2) in map2 {
         let newv = if let Some(v1) = map1.get(x) {
-            f(x, v1, v2)?
+            // Collision: the key is present in both maps
+            f(x, v1, v2)
         } else {
             v2.clone()
         };
@@ -81,7 +82,7 @@ where
         // Insert only if key not already present
         kvs.entry(x.clone()).or_insert_with(|| v1.clone());
     }
-    Ok(kvs)
+    kvs
 }
 
 // Small helper enum to avoid repetition
@@ -175,29 +176,29 @@ fn apply_binop<'a>(o: BinOp, x: &'a Nir, y: &'a Nir) -> Option<Ret<'a>> {
             Ret::NirRef(y)
         }
         (RecursiveRecordMerge, RecordLit(kvs1), RecordLit(kvs2)) => {
-            let kvs = merge_maps::<_, _, _, !>(kvs1, kvs2, |_, v1, v2| {
-                Ok(Nir::from_partial_expr(ExprKind::BinOp(
+            let kvs = merge_maps(kvs1, kvs2, |_, v1, v2| {
+                Nir::from_partial_expr(ExprKind::BinOp(
                     RecursiveRecordMerge,
                     v1.clone(),
                     v2.clone(),
-                )))
-            })?;
+                ))
+            });
             Ret::NirKind(RecordLit(kvs))
         }
 
         (RecursiveRecordTypeMerge, RecordType(kts_x), RecordType(kts_y)) => {
-            let kts = merge_maps::<_, _, _, !>(
+            let kts = merge_maps(
                 kts_x,
                 kts_y,
                 // If the Label exists for both records, then we hit the recursive case.
                 |_, l: &Nir, r: &Nir| {
-                    Ok(Nir::from_partial_expr(ExprKind::BinOp(
+                    Nir::from_partial_expr(ExprKind::BinOp(
                         RecursiveRecordTypeMerge,
                         l.clone(),
                         r.clone(),
-                    )))
+                    ))
                 },
-            )?;
+            );
             Ret::NirKind(RecordType(kts))
         }
 

@@ -346,9 +346,7 @@ fn type_one_layer(
 
             // Union the two records, prefering
             // the values found in the RHS.
-            let kts = merge_maps::<_, _, _, !>(kts_x, kts_y, |_, _, r_t| {
-                Ok(r_t.clone())
-            })?;
+            let kts = merge_maps(kts_x, kts_y, |_, _, r_t| r_t.clone());
 
             let u = max(x.ty().ty(), y.ty().ty());
             Nir::from_kind(NirKind::RecordType(kts)).to_type(u)
