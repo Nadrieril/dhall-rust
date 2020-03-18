@@ -3,13 +3,13 @@ use crate::syntax::Label;
 
 /// Environment for indexing variables.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct VarEnv {
+pub struct VarEnv {
     size: usize,
 }
 
 /// Environment for typing expressions.
 #[derive(Debug, Clone)]
-pub(crate) struct TyEnv {
+pub struct TyEnv {
     names: NameEnv,
     items: ValEnv<Type>,
 }

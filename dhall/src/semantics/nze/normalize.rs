@@ -5,7 +5,7 @@ use crate::semantics::NzEnv;
 use crate::semantics::{Binder, Closure, Hir, HirKind, Nir, NirKind, TextLit};
 use crate::syntax::{BinOp, ExprKind, InterpolatedTextContents, NumKind};
 
-pub(crate) fn apply_any(f: Nir, a: Nir) -> NirKind {
+pub fn apply_any(f: Nir, a: Nir) -> NirKind {
     match f.kind() {
         NirKind::LamClosure { closure, .. } => closure.apply(a).kind().clone(),
         NirKind::AppliedBuiltin(closure) => closure.apply(a),
@@ -16,7 +16,7 @@ pub(crate) fn apply_any(f: Nir, a: Nir) -> NirKind {
     }
 }
 
-pub(crate) fn squash_textlit(
+pub fn squash_textlit(
     elts: impl Iterator<Item = InterpolatedTextContents<Nir>>,
 ) -> Vec<InterpolatedTextContents<Nir>> {
     use std::mem::replace;
@@ -54,7 +54,7 @@ pub(crate) fn squash_textlit(
     ret
 }
 
-pub(crate) fn merge_maps<K, V, F>(
+pub fn merge_maps<K, V, F>(
     map1: &HashMap<K, V>,
     map2: &HashMap<K, V>,
     mut f: F,
@@ -207,7 +207,7 @@ fn apply_binop<'a>(o: BinOp, x: &'a Nir, y: &'a Nir) -> Option<Ret<'a>> {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
+pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
     use NirKind::{
         EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num,
         PartialExpr, RecordLit, RecordType, UnionConstructor, UnionLit,
@@ -464,7 +464,7 @@ pub(crate) fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
 }
 
 /// Normalize Hir into WHNF
-pub(crate) fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> NirKind {
+pub fn normalize_hir_whnf(env: &NzEnv, hir: &Hir) -> NirKind {
     match hir.kind() {
         HirKind::Var(var) => env.lookup_val(*var),
         HirKind::Import(hir, _) => normalize_hir_whnf(env, hir),

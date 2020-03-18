@@ -51,7 +51,7 @@ where
         .collect()
 }
 
-pub(crate) fn visit_ref<'a, F, SE1, SE2, Err>(
+pub fn visit_ref<'a, F, SE1, SE2, Err>(
     input: &'a ExprKind<SE1>,
     mut f: F,
 ) -> Result<ExprKind<SE2>, Err>

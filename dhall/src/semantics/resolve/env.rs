@@ -6,16 +6,16 @@ use crate::syntax::{Label, V};
 
 /// Environment for resolving names.
 #[derive(Debug, Clone)]
-pub(crate) struct NameEnv {
+pub struct NameEnv {
     names: Vec<Label>,
 }
 
-pub(crate) type ImportCache = HashMap<ImportLocation, TypedHir>;
-pub(crate) type ImportStack = Vec<ImportLocation>;
+pub type ImportCache = HashMap<ImportLocation, TypedHir>;
+pub type ImportStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
 #[derive(Debug, Clone)]
-pub(crate) struct ImportEnv {
+pub struct ImportEnv {
     cache: ImportCache,
     stack: ImportStack,
 }

@@ -22,7 +22,7 @@ pub enum Const {
 }
 
 impl Const {
-    pub(crate) fn to_universe(self) -> Universe {
+    pub fn to_universe(self) -> Universe {
         Universe::from_const(self)
     }
 }
@@ -205,7 +205,7 @@ impl<SE> ExprKind<SE> {
         })
     }
 
-    pub(crate) fn traverse_ref<'a, SE2, Err>(
+    pub fn traverse_ref<'a, SE2, Err>(
         &'a self,
         mut visit_subexpr: impl FnMut(&'a SE) -> Result<SE2, Err>,
     ) -> Result<ExprKind<SE2>, Err> {
@@ -239,17 +239,17 @@ impl<SE> ExprKind<SE> {
 }
 
 impl Expr {
-    pub(crate) fn as_ref(&self) -> &UnspannedExpr {
+    pub fn as_ref(&self) -> &UnspannedExpr {
         &self.kind
     }
     pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
-    pub(crate) fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         self.span.clone()
     }
 
-    pub(crate) fn new(kind: UnspannedExpr, span: Span) -> Self {
+    pub fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
             span,

@@ -14,7 +14,7 @@ use std::convert::TryInto;
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
-pub(crate) struct BuiltinClosure {
+pub struct BuiltinClosure {
     env: NzEnv,
     b: Builtin,
     /// Arguments applied to the closure so far.
@@ -43,7 +43,7 @@ impl BuiltinClosure {
     }
 }
 
-pub(crate) fn rc(x: UnspannedExpr) -> Expr {
+pub fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Artificial)
 }
 
@@ -103,7 +103,7 @@ macro_rules! make_type {
     };
 }
 
-pub(crate) fn type_of_builtin(b: Builtin) -> Hir {
+pub fn type_of_builtin(b: Builtin) -> Hir {
     use Builtin::*;
     let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),

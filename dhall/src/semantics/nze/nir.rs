@@ -19,7 +19,7 @@ use crate::ToExprOptions;
 /// normalize as needed.
 /// Stands for "Normalized intermediate representation"
 #[derive(Clone)]
-pub(crate) struct Nir(Rc<NirInternal>);
+pub struct Nir(Rc<NirInternal>);
 
 #[derive(Debug)]
 struct NirInternal {
@@ -28,7 +28,7 @@ struct NirInternal {
 
 /// An unevaluated subexpression
 #[derive(Debug, Clone)]
-pub(crate) enum Thunk {
+pub enum Thunk {
     /// A completely unnormalized expression.
     Thunk { env: NzEnv, body: Hir },
     /// A partially normalized expression that may need to go through `normalize_one_layer`.
@@ -37,7 +37,7 @@ pub(crate) enum Thunk {
 
 /// An unevaluated subexpression that takes an argument.
 #[derive(Debug, Clone)]
-pub(crate) enum Closure {
+pub enum Closure {
     /// Normal closure
     Closure { env: NzEnv, body: Hir },
     /// Closure that ignores the argument passed
@@ -48,7 +48,7 @@ pub(crate) enum Closure {
 // Invariant: this must not contain interpolations that are themselves TextLits, and contiguous
 // text values must be merged.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TextLit(Vec<InterpolatedTextContents<Nir>>);
+pub struct TextLit(Vec<InterpolatedTextContents<Nir>>);
 
 /// This represents a value in Weak Head Normal Form (WHNF). This means that the value is
 /// normalized up to the first constructor, but subexpressions may not be fully normalized.
@@ -58,7 +58,7 @@ pub(crate) struct TextLit(Vec<InterpolatedTextContents<Nir>>);
 /// In particular, this means that once we get a `NirKind`, it can be considered immutable, and
 /// we only need to recursively normalize its sub-`Nir`s to get to the NF.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NirKind {
+pub enum NirKind {
     /// Closures
     LamClosure {
         binder: Binder,
@@ -97,34 +97,34 @@ pub(crate) enum NirKind {
 
 impl Nir {
     /// Construct a Nir from a completely unnormalized expression.
-    pub(crate) fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
+    pub fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
         NirInternal::from_thunk(Thunk::new(env, hir)).into_nir()
     }
     /// Construct a Nir from a partially normalized expression that's not in WHNF.
-    pub(crate) fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
+    pub fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
         // TODO: env
         let env = NzEnv::new();
         NirInternal::from_thunk(Thunk::from_partial_expr(env, e)).into_nir()
     }
     /// Make a Nir from a NirKind
-    pub(crate) fn from_kind(v: NirKind) -> Nir {
+    pub fn from_kind(v: NirKind) -> Nir {
         NirInternal::from_whnf(v).into_nir()
     }
-    pub(crate) fn from_const(c: Const) -> Self {
+    pub fn from_const(c: Const) -> Self {
         let v = NirKind::Const(c);
         NirInternal::from_whnf(v).into_nir()
     }
-    pub(crate) fn from_builtin(b: Builtin) -> Self {
+    pub fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
     }
-    pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
+    pub fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
         Nir::from_kind(NirKind::from_builtin_env(b, env.clone()))
     }
-    pub(crate) fn from_text(txt: impl ToString) -> Self {
+    pub fn from_text(txt: impl ToString) -> Self {
         Nir::from_kind(NirKind::TextLit(TextLit::from_text(txt.to_string())))
     }
 
-    pub(crate) fn as_const(&self) -> Option<Const> {
+    pub fn as_const(&self) -> Option<Const> {
         match &*self.kind() {
             NirKind::Const(c) => Some(*c),
             _ => None,
@@ -132,22 +132,22 @@ impl Nir {
     }
 
     /// This is what you want if you want to pattern-match on the value.
-    pub(crate) fn kind(&self) -> &NirKind {
+    pub fn kind(&self) -> &NirKind {
         self.0.kind()
     }
 
-    pub(crate) fn to_type(&self, u: impl Into<Universe>) -> Type {
+    pub fn to_type(&self, u: impl Into<Universe>) -> Type {
         Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> Expr {
+    pub fn to_expr(&self, opts: ToExprOptions) -> Expr {
         self.to_hir_noenv().to_expr(opts)
     }
-    pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
+    pub fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 
-    pub(crate) fn app(&self, v: Nir) -> Nir {
+    pub fn app(&self, v: Nir) -> Nir {
         Nir::from_kind(apply_any(self.clone(), v))
     }
 
@@ -286,14 +286,14 @@ impl NirInternal {
 }
 
 impl NirKind {
-    pub(crate) fn into_nir(self) -> Nir {
+    pub fn into_nir(self) -> Nir {
         Nir::from_kind(self)
     }
 
-    pub(crate) fn from_builtin(b: Builtin) -> NirKind {
+    pub fn from_builtin(b: Builtin) -> NirKind {
         NirKind::from_builtin_env(b, NzEnv::new())
     }
-    pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> NirKind {
+    pub fn from_builtin_env(b: Builtin, env: NzEnv) -> NirKind {
         BuiltinClosure::new(b, env)
     }
 }

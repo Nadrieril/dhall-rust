@@ -4,7 +4,7 @@ use crate::semantics::resolve::{ImportLocation, ImportStack};
 use crate::syntax::{Import, ParseError};
 
 mod builder;
-pub(crate) use builder::*;
+pub use builder::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -15,7 +15,7 @@ pub struct Error {
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub(crate) enum ErrorKind {
+pub enum ErrorKind {
     IO(IOError),
     Parse(ParseError),
     Decode(DecodeError),
@@ -25,7 +25,7 @@ pub(crate) enum ErrorKind {
 }
 
 #[derive(Debug)]
-pub(crate) enum ImportError {
+pub enum ImportError {
     Missing,
     MissingEnvVar,
     SanityCheck,
@@ -53,21 +53,21 @@ pub struct TypeError {
 
 /// The specific type error
 #[derive(Debug)]
-pub(crate) enum TypeMessage {
+pub enum TypeMessage {
     Custom(String),
 }
 
 impl Error {
-    pub(crate) fn new(kind: ErrorKind) -> Self {
+    pub fn new(kind: ErrorKind) -> Self {
         Error { kind }
     }
-    pub(crate) fn kind(&self) -> &ErrorKind {
+    pub fn kind(&self) -> &ErrorKind {
         &self.kind
     }
 }
 
 impl TypeError {
-    pub(crate) fn new(message: TypeMessage) -> Self {
+    pub fn new(message: TypeMessage) -> Self {
         TypeError { message }
     }
 }

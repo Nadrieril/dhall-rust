@@ -4,11 +4,11 @@ use crate::syntax::{Builtin, Const, Expr, Span};
 
 /// The type of a type. 0 is `Type`, 1 is `Kind`, etc...
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub(crate) struct Universe(u8);
+pub struct Universe(u8);
 
 /// An expression representing a type
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Type {
+pub struct Type {
     val: Nir,
     univ: Universe,
 }
@@ -16,7 +16,7 @@ pub(crate) struct Type {
 /// A hir expression plus its inferred type.
 /// Stands for "Typed intermediate representation"
 #[derive(Debug, Clone)]
-pub(crate) struct Tir<'hir> {
+pub struct Tir<'hir> {
     hir: &'hir Hir,
     ty: Type,
 }

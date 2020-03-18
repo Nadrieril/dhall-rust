@@ -1,7 +1,7 @@
 use crate::semantics::{AlphaVar, Nir, NirKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NzVar {
+pub enum NzVar {
     /// Reverse-debruijn index: counts number of binders from the bottom of the stack.
     Bound(usize),
     /// Fake fresh variable generated for expression equality checking.
@@ -17,11 +17,11 @@ enum EnvItem<Type> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ValEnv<Type> {
+pub struct ValEnv<Type> {
     items: Vec<EnvItem<Type>>,
 }
 
-pub(crate) type NzEnv = ValEnv<()>;
+pub type NzEnv = ValEnv<()>;
 
 impl NzVar {
     pub fn new(idx: usize) -> Self {

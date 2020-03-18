@@ -10,7 +10,7 @@ pub struct AlphaVar {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HirKind {
+pub enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
     /// Result of resolving an import.
@@ -21,16 +21,16 @@ pub(crate) enum HirKind {
 
 // An expression with resolved variables and imports.
 #[derive(Debug, Clone)]
-pub(crate) struct Hir {
+pub struct Hir {
     kind: Box<HirKind>,
     span: Span,
 }
 
 impl AlphaVar {
-    pub(crate) fn new(idx: usize) -> Self {
+    pub fn new(idx: usize) -> Self {
         AlphaVar { idx }
     }
-    pub(crate) fn idx(self) -> usize {
+    pub fn idx(self) -> usize {
         self.idx
     }
 }

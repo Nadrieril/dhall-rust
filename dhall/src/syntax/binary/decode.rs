@@ -11,7 +11,7 @@ use crate::syntax::{
 };
 type DecodedExpr = Expr;
 
-pub(crate) fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
+pub fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     match serde_cbor::de::from_slice(data) {
         Ok(v) => cbor_value_to_dhall(&v),
         Err(e) => Err(DecodeError::CBORError(e)),

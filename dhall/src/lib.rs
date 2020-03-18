@@ -26,17 +26,17 @@ use crate::syntax::Expr;
 pub use crate::simple::{STyKind, SValKind, SimpleType, SimpleValue};
 
 #[derive(Debug, Clone)]
-pub(crate) struct Parsed(Expr, ImportLocation);
+pub struct Parsed(Expr, ImportLocation);
 
 /// An expression where all imports have been resolved
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub(crate) struct Resolved(Hir);
+pub struct Resolved(Hir);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub(crate) struct Typed {
+pub struct Typed {
     hir: Hir,
     ty: Type,
 }
@@ -45,23 +45,23 @@ pub(crate) struct Typed {
 ///
 /// This is actually a lie, because the expression will only get normalized on demand.
 #[derive(Debug, Clone)]
-pub(crate) struct Normalized(Nir);
+pub struct Normalized(Nir);
 
 /// A Dhall value.
 #[derive(Debug, Clone)]
 pub struct Value {
     /// Invariant: in normal form
-    pub(crate) hir: Hir,
+    pub hir: Hir,
     /// Cached conversions because they are annoying to construct from Hir.
-    pub(crate) as_simple_val: Option<SimpleValue>,
-    pub(crate) as_simple_ty: Option<SimpleType>,
+    pub as_simple_val: Option<SimpleValue>,
+    pub as_simple_ty: Option<SimpleType>,
 }
 
 /// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone, Default)]
-pub(crate) struct ToExprOptions {
+pub struct ToExprOptions {
     /// Whether to convert all variables to `_`
-    pub(crate) alpha: bool,
+    pub alpha: bool,
 }
 
 impl Parsed {
@@ -96,7 +96,7 @@ impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
         Ok(Typed::from_tir(typecheck(&self.0)?))
     }
-    pub(crate) fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
+    pub fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
         Ok(Typed::from_tir(typecheck_with(&self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
@@ -122,10 +122,10 @@ impl Typed {
         self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
-    pub(crate) fn ty(&self) -> &Type {
+    pub fn ty(&self) -> &Type {
         &self.ty
     }
-    pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
+    pub fn get_type(&self) -> Result<Normalized, TypeError> {
         Ok(Normalized(self.ty.clone().into_nir()))
     }
 }
@@ -144,11 +144,11 @@ impl Normalized {
         self.0.to_expr(ToExprOptions::default())
     }
     /// Converts a value back to the corresponding Hir expression.
-    pub(crate) fn to_hir(&self) -> Hir {
+    pub fn to_hir(&self) -> Hir {
         self.0.to_hir_noenv()
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
-    pub(crate) fn to_expr_alpha(&self) -> Expr {
+    pub fn to_expr_alpha(&self) -> Expr {
         self.0.to_expr(ToExprOptions { alpha: true })
     }
 }
@@ -178,7 +178,7 @@ impl Value {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self) -> Expr {
+    pub fn to_expr(&self) -> Expr {
         self.hir.to_expr(ToExprOptions::default())
     }
 }

@@ -10,7 +10,7 @@ use crate::syntax::{
     Scheme, V,
 };
 
-pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
+pub fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(EncodeError::CBORError)
 }

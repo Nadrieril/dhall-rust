@@ -38,12 +38,12 @@ pub enum STyKind {
 }
 
 impl SimpleValue {
-    pub(crate) fn new(kind: SValKind) -> Self {
+    pub fn new(kind: SValKind) -> Self {
         SimpleValue {
             kind: Box::new(kind),
         }
     }
-    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
+    pub fn from_nir(nir: &Nir) -> Option<Self> {
         Some(SimpleValue::new(match nir.kind() {
             NirKind::Num(lit) => SValKind::Num(lit.clone()),
             NirKind::TextLit(x) => SValKind::Text(
@@ -88,7 +88,7 @@ impl SimpleType {
             kind: Box::new(kind),
         }
     }
-    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
+    pub fn from_nir(nir: &Nir) -> Option<Self> {
         Some(SimpleType::new(match nir.kind() {
             NirKind::BuiltinType(b) => match b {
                 Builtin::Bool => STyKind::Bool,
@@ -131,7 +131,7 @@ impl SimpleType {
             as_simple_ty: Some(self.clone()),
         }
     }
-    pub(crate) fn to_hir(&self) -> Hir {
+    pub fn to_hir(&self) -> Hir {
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
         hir(match self.kind() {
             STyKind::Bool => ExprKind::Builtin(Builtin::Bool),

@@ -53,11 +53,11 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-pub(crate) fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
+pub fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(msg.to_string())))
 }
 
-pub(crate) fn mk_span_err<T, S: ToString>(
+pub fn mk_span_err<T, S: ToString>(
     span: Span,
     msg: S,
 ) -> Result<T, TypeError> {
@@ -688,7 +688,7 @@ fn type_one_layer(
 
 /// `type_with` typechecks an expression in the provided environment. Optionally pass an annotation
 /// to compare with.
-pub(crate) fn type_with<'hir>(
+pub fn type_with<'hir>(
     env: &TyEnv,
     hir: &'hir Hir,
     annot: Option<Type>,
@@ -785,12 +785,12 @@ pub(crate) fn type_with<'hir>(
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
+pub fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
     type_with(&TyEnv::new(), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub(crate) fn typecheck_with<'hir>(
+pub fn typecheck_with<'hir>(
     hir: &'hir Hir,
     ty: &Hir,
 ) -> Result<Tir<'hir>, TypeError> {
