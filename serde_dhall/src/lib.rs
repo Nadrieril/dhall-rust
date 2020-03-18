@@ -16,7 +16,7 @@
 //!
 //! # Basic usage
 //!
-//! The main entrypoint of this library is the [`from_str`][from_str] function. It reads a string
+//! The main entrypoint of this library is the [`from_str`](fn.from_str.html) function. It reads a string
 //! containing a Dhall expression and deserializes it into any serde-compatible type.
 //!
 //! This could mean a common Rust type like `HashMap`:
@@ -88,11 +88,11 @@
 //!
 //! # Replacing `serde_json` or `serde_yaml`
 //!
-//! If you used to consume JSON or YAML, you only need to replace [serde_json::from_str] or
-//! [serde_yaml::from_str] with [serde_dhall::from_str][from_str].
+//! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
+//! [`serde_yaml::from_str`] with [`serde_dhall::from_str`](fn.from_str.html).
 //!
-//! [serde_json::from_str]: https://docs.serde.rs/serde_json/de/fn.from_str.html
-//! [serde_yaml::from_str]: https://docs.serde.rs/serde_yaml/fn.from_str.html
+//! [`serde_json::from_str`]: https://docs.serde.rs/serde_json/fn.from_str.html
+//! [`serde_yaml::from_str`]: https://docs.serde.rs/serde_yaml/fn.from_str.html
 //!
 //!
 //! # Additional Dhall typechecking
@@ -106,8 +106,8 @@
 //! There are two ways to typecheck a Dhall value: you can provide the type as Dhall text or you
 //! can let Rust infer it for you.
 //!
-//! To provide a type written in Dhall, first parse it into a [`serde_dhall::Type`][Type], then
-//! pass it to [`from_str_check_type`][from_str_check_type].
+//! To provide a type written in Dhall, first parse it into a [`simple::Type`](simple/struct.Type.html), then
+//! pass it to [`from_str_check_type`](fn.from_str_check_type.html).
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -135,7 +135,8 @@
 //! # }
 //! ```
 //!
-//! You can also let Rust infer the appropriate Dhall type, using the [StaticType] trait.
+//! You can also let Rust infer the appropriate Dhall type, using the
+//! [StaticType](trait.StaticType.html) trait.
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -169,17 +170,18 @@
 
 mod error;
 mod serde;
+/// Serde-compatible values and their type
 pub mod simple;
 mod static_type;
-mod value;
+/// Arbitrary Dhall values
+pub mod value;
 
+pub use crate::simple::{Type as SimpleType, Value as SimpleValue};
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
 pub use error::{Error, Result};
 pub use static_type::StaticType;
 pub use value::Value;
-
-use simple::Type;
 
 pub(crate) mod sealed {
     pub trait Sealed {}
@@ -196,12 +198,11 @@ pub trait Deserialize: sealed::Sealed + Sized {
     fn from_dhall(v: &Value) -> Result<Self>;
 }
 
-fn from_str_with_annot<T>(s: &str, ty: Option<&Type>) -> Result<T>
+fn from_str_with_annot<T>(s: &str, ty: Option<&simple::Type>) -> Result<T>
 where
     T: Deserialize,
 {
-    let ty = ty.map(|ty| ty.to_value());
-    let val = Value::from_str_with_annot(s, ty.as_ref())?;
+    let val = Value::from_str_with_annot(s, ty)?;
     T::from_dhall(&val)
 }
 
@@ -223,7 +224,7 @@ where
 ///
 /// Like [from_str], but this additionally checks that
 /// the type of the provided expression matches the supplied type.
-pub fn from_str_check_type<T>(s: &str, ty: &Type) -> Result<T>
+pub fn from_str_check_type<T>(s: &str, ty: &simple::Type) -> Result<T>
 where
     T: Deserialize,
 {

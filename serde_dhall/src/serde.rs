@@ -6,7 +6,7 @@ use serde::de::value::{
 
 use dhall::syntax::NumKind;
 
-use crate::simple::{SValKind, SimpleValue};
+use crate::simple::{ValKind, Value as SimpleValue};
 use crate::{Deserialize, Error, Result, Value};
 
 impl<'a, T> crate::sealed::Sealed for T where T: serde::Deserialize<'a> {}
@@ -44,7 +44,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     {
         use std::convert::TryInto;
         use NumKind::*;
-        use SValKind::*;
+        use ValKind::*;
 
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.kind() {
@@ -97,7 +97,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.kind() {
             // Blindly takes keys in sorted order.
-            SValKind::Record(m) => visitor
+            ValKind::Record(m) => visitor
                 .visit_seq(SeqDeserializer::new(m.iter().map(|(_, v)| val(v)))),
             _ => self.deserialize_any(visitor),
         }

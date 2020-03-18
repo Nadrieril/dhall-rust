@@ -169,7 +169,7 @@ same name as the corresponding test.
 
 #### [???]
 
-- Breaking change: use `serde_dhall::Type` type for type-checking instead of `serde_dhall::Value`
+- Breaking change: use `serde_dhall::simple::Type` type for type-checking instead of `serde_dhall::Value`
 
 #### [0.4.0]
 

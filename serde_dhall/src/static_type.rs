@@ -1,5 +1,4 @@
-use crate::simple::{STyKind, SimpleType};
-use crate::Type;
+use crate::simple::{TyKind, Type};
 
 /// A Rust type that can be represented as a Dhall type.
 ///
@@ -20,7 +19,7 @@ macro_rules! derive_builtin {
     ($rust_ty:ty, $dhall_ty:ident) => {
         impl StaticType for $rust_ty {
             fn static_type() -> Type {
-                Type::from_simple_type(SimpleType::new(STyKind::$dhall_ty))
+                Type::new(TyKind::$dhall_ty)
             }
         }
     };
@@ -43,13 +42,15 @@ where
     B: StaticType,
 {
     fn static_type() -> Type {
-        Type::make_record_type(
+        TyKind::Record(
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
             ]
-            .into_iter(),
+            .into_iter()
+            .collect(),
         )
+        .into()
     }
 }
 
@@ -59,13 +60,15 @@ where
     E: StaticType,
 {
     fn static_type() -> Type {
-        Type::make_union_type(
+        TyKind::Union(
             vec![
                 ("Ok".to_owned(), Some(T::static_type())),
                 ("Err".to_owned(), Some(E::static_type())),
             ]
-            .into_iter(),
+            .into_iter()
+            .collect(),
         )
+        .into()
     }
 }
 
@@ -74,7 +77,7 @@ where
     T: StaticType,
 {
     fn static_type() -> Type {
-        Type::make_optional_type(T::static_type())
+        TyKind::Optional(T::static_type()).into()
     }
 }
 
@@ -83,7 +86,7 @@ where
     T: StaticType,
 {
     fn static_type() -> Type {
-        Type::make_list_type(T::static_type())
+        TyKind::List(T::static_type()).into()
     }
 }
 

@@ -1,11 +1,11 @@
-use dhall::semantics::Hir;
+use dhall::semantics::{Hir, Nir};
 use dhall::syntax::Expr;
-use dhall::{Normalized, Parsed};
+use dhall::Parsed;
 
-use crate::simple::{SimpleType, SimpleValue};
+use crate::simple::{Type as SimpleType, Value as SimpleValue};
 use crate::Error;
 
-/// A Dhall value.
+/// An arbitrary Dhall value.
 #[derive(Debug, Clone)]
 pub struct Value {
     /// Invariant: in normal form
@@ -21,28 +21,27 @@ impl Value {
     /// annotation.
     pub fn from_str_with_annot(
         s: &str,
-        ty: Option<&Self>,
+        ty: Option<&SimpleType>,
     ) -> Result<Self, Error> {
         Self::from_str_with_annot_dhall_error(s, ty).map_err(Error::Dhall)
     }
-    fn from_normalized(x: &Normalized) -> Self {
+    fn from_nir(x: &Nir) -> Self {
         Value {
-            hir: x.to_hir(),
-            as_simple_val: SimpleValue::from_nir(x.as_nir()),
-            as_simple_ty: SimpleType::from_nir(x.as_nir()),
+            hir: x.to_hir_noenv(),
+            as_simple_val: SimpleValue::from_nir(x),
+            as_simple_ty: SimpleType::from_nir(x),
         }
     }
-
     fn from_str_with_annot_dhall_error(
         s: &str,
-        ty: Option<&Self>,
+        ty: Option<&SimpleType>,
     ) -> Result<Self, dhall::error::Error> {
         let resolved = Parsed::parse_str(s)?.resolve()?;
         let typed = match ty {
             None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(&ty.hir)?,
+            Some(ty) => resolved.typecheck_with(&ty.to_value().hir)?,
         };
-        Ok(Self::from_normalized(&typed.normalize()))
+        Ok(Self::from_nir(typed.normalize().as_nir()))
     }
 
     /// Converts a Value into a SimpleValue.
@@ -55,7 +54,7 @@ impl Value {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> Expr {
+    pub(crate) fn to_expr(&self) -> Expr {
         self.hir.to_expr(Default::default())
     }
 }
