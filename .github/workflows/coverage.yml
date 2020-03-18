@@ -1,0 +1,27 @@
+name: Coverage
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  coverage:
+    name: Gather coverage data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+      - name: Run tests with tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: '--all --exclude-files abnf_to_pest/* --exclude-files dhall_proc_macros/*'
+      - name: Upload coverage data to codecov.io
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
