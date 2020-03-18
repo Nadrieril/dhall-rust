@@ -157,7 +157,7 @@ same name as the corresponding test.
 
 ## Changelog
 
-[???]
+[0.4.0]
 
 - `dhall` now uses the stable Rust toolchain !
 - Implement record puns
