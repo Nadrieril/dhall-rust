@@ -1,5 +1,4 @@
-use dhall::{STyKind, SimpleType};
-
+use crate::simple::{STyKind, SimpleType};
 use crate::Type;
 
 /// A Rust type that can be represented as a Dhall type.

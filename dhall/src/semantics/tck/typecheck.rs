@@ -57,10 +57,7 @@ pub fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(msg.to_string())))
 }
 
-pub fn mk_span_err<T, S: ToString>(
-    span: Span,
-    msg: S,
-) -> Result<T, TypeError> {
+pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
     mkerr(
         ErrorBuilder::new(msg.to_string())
             .span_err(span, msg.to_string())

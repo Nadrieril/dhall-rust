@@ -171,11 +171,13 @@ mod error;
 mod serde;
 pub mod simple;
 mod static_type;
+mod value;
 
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
 pub use error::{Error, Result};
 pub use static_type::StaticType;
+pub use value::Value;
 
 use simple::Type;
 
@@ -191,16 +193,15 @@ pub(crate) mod sealed {
 /// This trait cannot be implemented manually.
 pub trait Deserialize: sealed::Sealed + Sized {
     /// See [serde_dhall::from_str][crate::from_str]
-    fn from_dhall(v: &dhall::Value) -> Result<Self>;
+    fn from_dhall(v: &Value) -> Result<Self>;
 }
 
 fn from_str_with_annot<T>(s: &str, ty: Option<&Type>) -> Result<T>
 where
     T: Deserialize,
 {
-    let ty = ty.map(|ty| ty.to_dhall_value());
-    let val = dhall::Value::from_str_with_annot(s, ty.as_ref())
-        .map_err(Error::Dhall)?;
+    let ty = ty.map(|ty| ty.to_value());
+    let val = Value::from_str_with_annot(s, ty.as_ref())?;
     T::from_dhall(&val)
 }
 

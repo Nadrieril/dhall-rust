@@ -9,7 +9,6 @@ mod tests;
 
 pub mod error;
 pub mod semantics;
-pub mod simple;
 pub mod syntax;
 
 use std::fmt::Display;
@@ -22,8 +21,6 @@ use crate::semantics::resolve;
 use crate::semantics::resolve::ImportLocation;
 use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
 use crate::syntax::Expr;
-
-pub use crate::simple::{STyKind, SValKind, SimpleType, SimpleValue};
 
 #[derive(Debug, Clone)]
 pub struct Parsed(Expr, ImportLocation);
@@ -46,16 +43,6 @@ pub struct Typed {
 /// This is actually a lie, because the expression will only get normalized on demand.
 #[derive(Debug, Clone)]
 pub struct Normalized(Nir);
-
-/// A Dhall value.
-#[derive(Debug, Clone)]
-pub struct Value {
-    /// Invariant: in normal form
-    pub hir: Hir,
-    /// Cached conversions because they are annoying to construct from Hir.
-    pub as_simple_val: Option<SimpleValue>,
-    pub as_simple_ty: Option<SimpleType>,
-}
 
 /// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone, Default)]
@@ -131,14 +118,6 @@ impl Typed {
 }
 
 impl Normalized {
-    pub fn to_value(&self) -> Value {
-        Value {
-            hir: self.to_hir(),
-            as_simple_val: SimpleValue::from_nir(&self.0),
-            as_simple_ty: SimpleType::from_nir(&self.0),
-        }
-    }
-
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> Expr {
         self.0.to_expr(ToExprOptions::default())
@@ -147,39 +126,12 @@ impl Normalized {
     pub fn to_hir(&self) -> Hir {
         self.0.to_hir_noenv()
     }
+    pub fn as_nir(&self) -> &Nir {
+        &self.0
+    }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
     pub fn to_expr_alpha(&self) -> Expr {
         self.0.to_expr(ToExprOptions { alpha: true })
-    }
-}
-
-impl Value {
-    /// Parse a string into a Value, and optionally ensure that the value matches the provided type
-    /// annotation.
-    pub fn from_str_with_annot(
-        s: &str,
-        ty: Option<&Self>,
-    ) -> Result<Self, Error> {
-        let resolved = Parsed::parse_str(s)?.resolve()?;
-        let typed = match ty {
-            None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(&ty.hir)?,
-        };
-        Ok(typed.normalize().to_value())
-    }
-
-    /// Converts a Value into a SimpleValue.
-    pub fn to_simple_value(&self) -> Option<SimpleValue> {
-        self.as_simple_val.clone()
-    }
-    /// Converts a Value into a SimpleType.
-    pub fn to_simple_type(&self) -> Option<SimpleType> {
-        self.as_simple_ty.clone()
-    }
-
-    /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> Expr {
-        self.hir.to_expr(ToExprOptions::default())
     }
 }
 
@@ -242,18 +194,6 @@ impl PartialEq for Normalized {
     }
 }
 impl Display for Normalized {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.to_expr().fmt(f)
-    }
-}
-
-impl Eq for Value {}
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        self.hir == other.hir
-    }
-}
-impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
