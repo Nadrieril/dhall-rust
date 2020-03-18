@@ -1,0 +1,58 @@
+name: Test suite
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test_release:
+    name: Run tests (release)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
+
+  tests_debug:
+    name: Run tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - beta
+          - nightly
+          - 1.42.0  # Minimum supported version
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
