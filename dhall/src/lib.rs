@@ -1,6 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/dhall/0.4.0")]
 #![allow(
-    clippy::int_plus_one, // Comes from pest_consume macro
     clippy::module_inception,
     clippy::needless_lifetimes,
     clippy::useless_format
