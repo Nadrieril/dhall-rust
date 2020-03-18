@@ -159,6 +159,7 @@ same name as the corresponding test.
 
 [???]
 
+- `dhall` now uses the stable Rust toolchain !
 - Implement record puns
 - Add support for `with` keyword
 - Implement remote imports with conservative sanity checking
