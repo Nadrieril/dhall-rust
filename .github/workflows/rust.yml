@@ -45,16 +45,13 @@ jobs:
           command: clippy
           args: -- -D warnings
 
-  test:
-    name: Run test suite
+  test_and_coverage:
+    name: Run tests and gather coverage data
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
-          - beta
-          - nightly
-          - 1.42.0  # Minimum supported version
     steps:
       - name: Checkout branch
         uses: actions/checkout@master
@@ -74,3 +71,28 @@ jobs:
         uses: codecov/codecov-action@v1.0.2
         with:
           token: ${{secrets.CODECOV_TOKEN}}
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - beta
+          - nightly
+          - 1.42.0  # Minimum supported version
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
