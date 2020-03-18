@@ -18,6 +18,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
+          profile: minimal
           components: rustfmt
       - name: Run rustfmt
         uses: actions-rs/cargo@v1
@@ -36,6 +37,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
+          profile: minimal
           components: clippy
       - name: Run clippy
         uses: actions-rs/cargo@v1
@@ -46,6 +48,13 @@ jobs:
   test:
     name: Run test suite
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+          - 1.42.0  # Minimum supported version
     steps:
       - name: Checkout branch
         uses: actions/checkout@master
@@ -53,6 +62,10 @@ jobs:
           submodules: true
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
       - name: Run tests and gather coverage data
         uses: actions-rs/tarpaulin@v0.1
         with:
