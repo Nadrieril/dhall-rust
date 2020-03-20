@@ -1,1 +1,1 @@
-([x, y]) : List T
+[x, y] : List T

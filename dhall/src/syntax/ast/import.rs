@@ -1,3 +1,5 @@
+use crate::syntax::trivial_result;
+
 /// The beginning of a file path which anchors subsequent path components
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum FilePrefix {
@@ -75,6 +77,12 @@ impl<SE> URL<SE> {
             headers,
         })
     }
+    pub fn map_ref<'a, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> SE2,
+    ) -> URL<SE2> {
+        trivial_result(self.traverse_ref(|x| Ok(f(x))))
+    }
 }
 
 impl<SE> ImportTarget<SE> {
@@ -90,6 +98,12 @@ impl<SE> ImportTarget<SE> {
             Missing => Missing,
         })
     }
+    pub fn map_ref<'a, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> SE2,
+    ) -> ImportTarget<SE2> {
+        trivial_result(self.traverse_ref(|x| Ok(f(x))))
+    }
 }
 
 impl<SE> Import<SE> {
@@ -102,5 +116,11 @@ impl<SE> Import<SE> {
             location: self.location.traverse_ref(f)?,
             hash: self.hash.clone(),
         })
+    }
+    pub fn map_ref<'a, SE2>(
+        &'a self,
+        f: impl FnOnce(&'a SE) -> SE2,
+    ) -> Import<SE2> {
+        trivial_result(self.traverse_ref(|x| Ok(f(x))))
     }
 }

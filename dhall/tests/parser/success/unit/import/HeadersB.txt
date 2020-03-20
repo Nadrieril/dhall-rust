@@ -1,1 +1,1 @@
-https://example.com/foo using (x)
+https://example.com/foo using x
