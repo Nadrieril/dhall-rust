@@ -1,0 +1,1 @@
+λ(record : { `in_ca` : Bool, name : Text, `taxed_value` : Double, value : Double }) → "Hello ${ record.name }\nYou have just won ${ Double/show record.value } dollars!\n${ if record.`in_ca` then "Well, ${ Double/show record.`taxed_value` } dollars, after taxes" else "" }\n"

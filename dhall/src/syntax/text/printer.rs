@@ -8,17 +8,23 @@ use std::fmt::{self, Display};
 // of automatically getting all the parentheses and precedences right.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum PrintPhase {
+    // `expression`
     Base,
+    // `operator-expression`
     Operator,
+    // All the operator `*-expression`s
     BinOp(ast::BinOp),
+    // `application-expression`
     App,
+    // `import-expression`
     Import,
+    // `primitive-expression`
     Primitive,
 }
 
 // Wraps an Expr with a phase, so that phase selection can be done separate from the actual
 // printing.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 struct PhasedExpr<'a>(&'a Expr, PrintPhase);
 
 impl<'a> PhasedExpr<'a> {
@@ -58,7 +64,7 @@ impl UnspannedExpr {
             ),
             SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
             ExprKind::App(f, a) => ExprKind::App(
-                f.phase(PrintPhase::Import),
+                f.phase(PrintPhase::App),
                 a.phase(PrintPhase::Import),
             ),
             Field(a, b) => Field(a.phase(Primitive), b),
@@ -66,6 +72,9 @@ impl UnspannedExpr {
             ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
             Completion(a, b) => {
                 Completion(a.phase(Primitive), b.phase(Primitive))
+            }
+            ExprKind::Import(a) => {
+                ExprKind::Import(a.map_ref(|x| x.phase(PrintPhase::Import)))
             }
             e => e,
         }
@@ -84,7 +93,6 @@ impl UnspannedExpr {
             | Pi(_, _, _)
             | Let(_, _, _, _)
             | EmptyListLit(_)
-            | NEListLit(_)
             | SomeLit(_)
             | Merge(_, _, _)
             | ToMap(_, _)
@@ -92,10 +100,7 @@ impl UnspannedExpr {
             // Precedence is magically handled by the ordering of BinOps.
             ExprKind::BinOp(op, _, _) => phase > PrintPhase::BinOp(*op),
             ExprKind::App(_, _) => phase > PrintPhase::App,
-            Field(_, _)
-            | Projection(_, _)
-            | ProjectionByExpr(_, _)
-            | Completion(_, _) => phase > PrintPhase::Import,
+            Completion(_, _) => phase > PrintPhase::Import,
             _ => false,
         };
 
@@ -413,7 +418,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                     write!(f, "?{}", q)?
                 }
                 if let Some(h) = &url.headers {
-                    write!(f, " using ({})", h)?
+                    write!(f, " using {}", h)?
                 }
             }
             Env(s) => {

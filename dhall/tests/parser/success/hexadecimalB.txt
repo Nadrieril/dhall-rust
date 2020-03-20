@@ -1,0 +1,1 @@
+λ(x : Bool) → λ(x : Bool) → { example0 = 255, example1 = -6672, example2 = x@1 }
