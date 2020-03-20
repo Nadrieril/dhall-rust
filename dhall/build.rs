@@ -333,7 +333,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/MergeHandlerFreeVar"
             }),
             output_type: Some(FileType::UI),
-            ..default_feature.clone()
+            ..default_feature
         },
     ];
 
@@ -450,7 +450,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     Ok(())
 }
 
-// Generate pest parser manually becaue otherwise we'd need to modify something outside of
+// Generate pest parser manually because otherwise we'd need to modify something outside of
 // OUT_DIR and that's forbidden by docs.rs.
 fn generate_pest_parser() -> std::io::Result<()> {
     let out_dir = env::var("OUT_DIR").unwrap();

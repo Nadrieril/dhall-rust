@@ -235,9 +235,22 @@ impl TestFile {
 }
 
 #[allow(dead_code)]
-fn run_test_stringy_error(test: Test) -> std::result::Result<(), String> {
-    run_test(test).map_err(|e| e.to_string())?;
-    Ok(())
+fn run_test_or_panic(test: Test) {
+    let res = if env::var("CI_GRCOV").is_ok() {
+        // Augment stack size when running with 0 inlining to avoid overflows
+        std::thread::Builder::new()
+            .stack_size(128 * 1024 * 1024)
+            .spawn(|| run_test(test))
+            .unwrap()
+            .join()
+            .unwrap()
+    } else {
+        run_test(test)
+    };
+    match res {
+        Ok(_) => {}
+        Err(e) => panic!(e.to_string()),
+    }
 }
 
 fn run_test(test: Test) -> Result<()> {
@@ -322,10 +335,7 @@ mod spec {
             fn $name() {
                 use crate::tests::Test::*;
                 use crate::tests::*;
-                match run_test_stringy_error($type) {
-                    Ok(_) => {}
-                    Err(s) => panic!(s),
-                }
+                run_test_or_panic($type);
             }
         };
     }
