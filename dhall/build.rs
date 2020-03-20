@@ -163,11 +163,6 @@ fn generate_tests() -> std::io::Result<()> {
                 false
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
-                    // TODO: RFC3986 URLs
-                    || path == "unit/import/urls/emptyPath0"
-                    || path == "unit/import/urls/emptyPath1"
-                    || path == "unit/import/urls/emptyPathSegment"
-                    || path == "usingToMap"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -186,14 +181,7 @@ fn generate_tests() -> std::io::Result<()> {
             directory: "parser/success/",
             variant: "Printer",
             too_slow_path: Box::new(|path: &str| path == "largeExpression"),
-            exclude_path: Box::new(|path: &str| {
-                false
-                    // TODO: RFC3986 URLs
-                    || path == "unit/import/urls/emptyPath0"
-                    || path == "unit/import/urls/emptyPath1"
-                    || path == "unit/import/urls/emptyPathSegment"
-                    || path == "usingToMap"
-            }),
+            exclude_path: Box::new(|_path: &str| false),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
         },
@@ -210,11 +198,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "double"
                     || path == "unit/DoubleLitExponentNoDot"
                     || path == "unit/DoubleLitSecretelyInt"
-                    // TODO: RFC3986 URLs
-                    || path == "unit/import/urls/emptyPath0"
-                    || path == "unit/import/urls/emptyPath1"
-                    || path == "unit/import/urls/emptyPathSegment"
-                    || path == "usingToMap"
             }),
             input_type: FileType::Text,
             output_type: Some(FileType::Binary),
@@ -372,10 +355,6 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
 
     let mut file = File::create(grammar_path)?;
     writeln!(&mut file, "// AUTO-GENERATED FILE. See build.rs.")?;
-
-    // TODO: this is a cheat; properly support RFC3986 URLs instead
-    rules.remove("url_path");
-    writeln!(&mut file, "url_path = _{{ path }}")?;
 
     // Work around some greediness issue in the grammar.
     rules.remove("missing");
