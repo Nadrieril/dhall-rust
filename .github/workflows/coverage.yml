@@ -5,8 +5,8 @@ on:
     branches: [ master ]
 
 jobs:
-  coverage:
-    name: Gather coverage data
+  grcov:
+    name: Gather coverage data with grcov
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -17,11 +17,26 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-      - name: Run tests with tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
+          # toolchain: nightly
+          toolchain: nightly-2020-03-12 # latest nightly makes `quote` crash with -Zno-landing-pads
+          override: true
+      - name: Ensure workspace is clean
+        uses: actions-rs/cargo@v1
         with:
-          args: '--all --exclude-files abnf_to_pest/* --exclude-files dhall_proc_macros/*'
+          command: clean
+      - name: Run tests with -Zprofile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+        env:
+          CI_GRCOV: '1' #  Tell the test harness to increase stack size
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads'
+      - name: Run grcov
+        id: grcov
+        uses: actions-rs/grcov@v0.1
       - name: Upload coverage data to codecov.io
-        uses: codecov/codecov-action@v1.0.2
+        uses: codecov/codecov-action@v1
         with:
           token: ${{secrets.CODECOV_TOKEN}}
+          file: ${{steps.grcov.outputs.report}}
