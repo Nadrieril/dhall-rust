@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::fs::{read_to_string, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use walkdir::WalkDir;
 
 use abnf_to_pest::render_rules_to_pest;
@@ -70,6 +71,7 @@ fn dhall_files_in_dir<'a>(
         })
 }
 
+#[derive(Clone)]
 struct TestFeature {
     /// Name of the module, used in the output of `cargo test`
     module_name: &'static str,
@@ -78,9 +80,9 @@ struct TestFeature {
     /// Relevant variant of `dhall::tests::Test`
     variant: &'static str,
     /// Given a file name, whether to only include it in release tests
-    too_slow_path: Box<dyn FnMut(&str) -> bool>,
+    too_slow_path: Rc<dyn Fn(&str) -> bool>,
     /// Given a file name, whether to exclude it
-    exclude_path: Box<dyn FnMut(&str) -> bool>,
+    exclude_path: Rc<dyn Fn(&str) -> bool>,
     /// Type of the input file
     input_type: FileType,
     /// Type of the output file, if any
@@ -90,7 +92,7 @@ struct TestFeature {
 fn make_test_module(
     w: &mut impl Write, // Where to output the generated code
     base_paths: &[&Path],
-    mut feature: TestFeature,
+    feature: TestFeature,
 ) -> std::io::Result<()> {
     writeln!(w, "mod {} {{", feature.module_name)?;
     let take_ab_suffix = feature.output_type.is_some()
@@ -163,45 +165,52 @@ fn generate_tests() -> std::io::Result<()> {
     let spec_tests_dirs =
         vec![Path::new("../dhall-lang/tests/"), Path::new("tests/")];
 
+    let default_feature = TestFeature {
+        module_name: "",
+        directory: "",
+        variant: "",
+        too_slow_path: Rc::new(|_path: &str| false),
+        exclude_path: Rc::new(|_path: &str| false),
+        input_type: FileType::Text,
+        output_type: None,
+    };
+
     #[allow(clippy::nonminimal_bool)]
     let tests = vec![
         TestFeature {
             module_name: "parser_success",
             directory: "parser/success/",
             variant: "ParserSuccess",
-            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
-            exclude_path: Box::new(|path: &str| {
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Binary),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "parser_failure",
             directory: "parser/failure/",
             variant: "ParserFailure",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|_path: &str| false),
-            input_type: FileType::Text,
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "printer",
             directory: "parser/success/",
             variant: "Printer",
-            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
-            exclude_path: Box::new(|_path: &str| false),
-            input_type: FileType::Text,
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "binary_encoding",
             directory: "parser/success/",
             variant: "BinaryEncoding",
-            too_slow_path: Box::new(|path: &str| path == "largeExpression"),
-            exclude_path: Box::new(|path: &str| {
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
@@ -210,15 +219,14 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/DoubleLitExponentNoDot"
                     || path == "unit/DoubleLitSecretelyInt"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Binary),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "binary_decoding_success",
             directory: "binary-decode/success/",
             variant: "BinaryDecodingSuccess",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // We don't support bignums
                     || path == "unit/IntegerBigNegative"
@@ -227,22 +235,21 @@ fn generate_tests() -> std::io::Result<()> {
             }),
             input_type: FileType::Binary,
             output_type: Some(FileType::Text),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "binary_decoding_failure",
             directory: "binary-decode/failure/",
             variant: "BinaryDecodingFailure",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|_path: &str| false),
             input_type: FileType::Binary,
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "import_success",
             directory: "import/success/",
             variant: "ImportSuccess",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // TODO: import hash
                     || path == "alternativeHashMismatch"
@@ -255,30 +262,29 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "headerForwarding"
                     || path == "noHeaderForwarding"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Text),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "import_failure",
             directory: "import/failure/",
             variant: "ImportFailure",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // TODO: import hash
                     || path == "hashMismatch"
                     // TODO: import headers
                     || path == "customHeadersUsingBoundVariable"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "beta_normalize",
             directory: "normalization/success/",
             variant: "Normalization",
-            too_slow_path: Box::new(|path: &str| path == "remoteSystems"),
-            exclude_path: Box::new(|path: &str| {
+            too_slow_path: Rc::new(|path: &str| path == "remoteSystems"),
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // Cannot typecheck
                     || path == "unit/Sort"
@@ -290,47 +296,44 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "simplifications/issue661"
                     || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Text),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "alpha_normalize",
             directory: "alpha-normalization/success/",
             variant: "AlphaNormalization",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 // This test is designed to not typecheck
                 path == "unit/FunctionNestedBindingXXFree"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Text),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "type_inference_success",
             directory: "type-inference/success/",
             variant: "TypeInferenceSuccess",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // Too slow, but also not all features implemented
                     // For now needs support for hashed imports
                     || path == "prelude"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::Text),
+            ..default_feature.clone()
         },
         TestFeature {
             module_name: "type_inference_failure",
             directory: "type-inference/failure/",
             variant: "TypeInferenceFailure",
-            too_slow_path: Box::new(|_path: &str| false),
-            exclude_path: Box::new(|path: &str| {
+            exclude_path: Rc::new(|path: &str| {
                 false
                     // TODO: enable free variable checking
                     || path == "unit/MergeHandlerFreeVar"
             }),
-            input_type: FileType::Text,
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
         },
     ];
 
