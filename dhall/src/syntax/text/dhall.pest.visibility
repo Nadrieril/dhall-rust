@@ -120,6 +120,7 @@ home_path
 absolute_path
 scheme
 http_raw
+url_path
 authority
 # userinfo
 # host
@@ -133,6 +134,7 @@ authority
 # dec_octet
 # domain
 # domainlabel
+segment
 # pchar
 query
 # pct_encoded
