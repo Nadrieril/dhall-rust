@@ -4,8 +4,6 @@
 //!
 //! [dhall-rust]: https://github.com/Nadrieril/dhall-rust
 
-extern crate proc_macro;
-
 mod derive;
 
 use proc_macro::TokenStream;
