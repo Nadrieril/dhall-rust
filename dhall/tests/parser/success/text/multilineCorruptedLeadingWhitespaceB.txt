@@ -1,0 +1,1 @@
+"\thai\n\tthere\n ok\n\t"

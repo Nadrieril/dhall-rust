@@ -94,7 +94,11 @@ fn make_test_module(
 ) -> std::io::Result<()> {
     writeln!(w, "mod {} {{", feature.module_name)?;
     let take_ab_suffix = feature.output_type.is_some()
-        && feature.output_type != Some(FileType::UI);
+        && (feature.output_type != Some(FileType::UI)
+            || feature.module_name == "printer");
+    let input_suffix = if take_ab_suffix { "A" } else { "" };
+    let output_suffix = if take_ab_suffix { "B" } else { "" };
+
     for base_path in base_paths {
         let tests_dir = base_path.join(feature.directory);
         for (name, path) in
@@ -108,27 +112,34 @@ fn make_test_module(
             }
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
-            let test = match feature.output_type {
-                None => {
-                    let input = feature.input_type.construct(&path);
-                    format!("{}({})", feature.variant, input)
-                }
+
+            let input = feature
+                .input_type
+                .construct(&format!("{}{}", path, input_suffix));
+            let output = match feature.output_type {
+                None => None,
                 Some(output_type @ FileType::UI) => {
-                    let input = feature.input_type.construct(&path);
                     // All ui outputs are in the local `tests/` directory.
-                    let output_file = PathBuf::from("tests/").join(
+                    let path = PathBuf::from("tests/").join(
                         PathBuf::from(path.as_ref())
                             .strip_prefix(base_path)
                             .unwrap(),
                     );
-                    let output =
-                        output_type.construct(&output_file.to_str().unwrap());
-                    format!("{}({}, {})", feature.variant, input, output)
+                    let path = path.to_str().unwrap();
+                    let output = output_type
+                        .construct(&format!("{}{}", path, output_suffix));
+                    Some(output)
                 }
                 Some(output_type) => {
-                    let input =
-                        feature.input_type.construct(&format!("{}A", path));
-                    let output = output_type.construct(&format!("{}B", path));
+                    let output = output_type
+                        .construct(&format!("{}{}", path, output_suffix));
+                    Some(output)
+                }
+            };
+
+            let test = match output {
+                None => format!("{}({})", feature.variant, input),
+                Some(output) => {
                     format!("{}({}, {})", feature.variant, input, output)
                 }
             };
@@ -183,7 +194,7 @@ fn generate_tests() -> std::io::Result<()> {
             too_slow_path: Box::new(|path: &str| path == "largeExpression"),
             exclude_path: Box::new(|_path: &str| false),
             input_type: FileType::Text,
-            output_type: Some(FileType::Binary),
+            output_type: Some(FileType::UI),
         },
         TestFeature {
             module_name: "binary_encoding",

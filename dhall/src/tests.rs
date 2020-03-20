@@ -3,6 +3,16 @@ use assert_eq as assert_eq_pretty;
 #[cfg(test)]
 use pretty_assertions::assert_eq as assert_eq_pretty;
 
+use std::env;
+use std::fmt::Display;
+use std::fs::{create_dir_all, read_to_string, File};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
+use crate::error::{ErrorKind, Result};
+use crate::syntax::binary;
+use crate::{Normalized, NormalizedExpr, Parsed, Resolved, Typed};
+
 macro_rules! assert_eq_display {
     ($left:expr, $right:expr) => {{
         match (&$left, &$right) {
@@ -42,15 +52,6 @@ macro_rules! assert_eq_pretty_str {
         );
     };
 }
-
-use std::env;
-use std::fs::{create_dir_all, read_to_string, File};
-use std::io::{Read, Write};
-use std::path::PathBuf;
-
-use crate::error::{Error, ErrorKind, Result};
-use crate::syntax::binary;
-use crate::{Normalized, NormalizedExpr, Parsed, Resolved, Typed};
 
 #[allow(dead_code)]
 enum Test {
@@ -127,17 +128,16 @@ impl TestFile {
         }
         Ok(())
     }
-    /// Write the provided error to the pointed file.
-    fn write_ui(&self, err: impl Into<Error>) -> Result<()> {
+    /// Write the provided string to the pointed file.
+    fn write_ui(&self, x: impl Display) -> Result<()> {
         match self {
             TestFile::UI(_) => {}
             _ => panic!("Can't write an error to a non-UI file"),
         }
-        let err = err.into();
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
-        writeln!(file, "{}", err)?;
+        writeln!(file, "{}", x)?;
         Ok(())
     }
 
@@ -214,19 +214,18 @@ impl TestFile {
         }
         Ok(())
     }
-    /// Check that the provided error matches the file contents. Writes to the corresponding file
+    /// Check that the provided string matches the file contents. Writes to the corresponding file
     /// if it is missing.
-    pub fn compare_ui(&self, err: impl Into<Error>) -> Result<()> {
-        let err = err.into();
+    pub fn compare_ui(&self, x: impl Display) -> Result<()> {
         if !self.path().is_file() {
-            return self.write_ui(err);
+            return self.write_ui(x);
         }
 
         let expected = read_to_string(self.path())?;
-        let msg = format!("{}\n", err);
+        let msg = format!("{}\n", x);
         if msg != expected {
             if Self::force_update() {
-                self.write_ui(err)?;
+                self.write_ui(x)?;
             } else {
                 assert_eq_pretty_str!(msg, expected);
             }
@@ -278,11 +277,12 @@ fn run_test(test: Test) -> Result<()> {
             let err = expr.parse().unwrap_err();
             expected.compare_ui(err)?;
         }
-        Printer(expr, _) => {
-            let expected = expr.parse()?;
+        Printer(expr, expected) => {
+            let parsed = expr.parse()?;
             // Round-trip pretty-printer
-            let expr = Parsed::parse_str(&expected.to_string())?;
-            assert_eq!(expr, expected);
+            let reparsed = Parsed::parse_str(&parsed.to_string())?;
+            assert_eq!(reparsed, parsed);
+            expected.compare_ui(parsed)?;
         }
         ImportSuccess(expr, expected) => {
             let expr = expr.normalize()?;
