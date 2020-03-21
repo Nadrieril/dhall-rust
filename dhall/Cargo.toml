@@ -26,6 +26,7 @@ url = "2.1"
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
+version-sync = "0.8"
 
 [build-dependencies]
 walkdir = "2"
