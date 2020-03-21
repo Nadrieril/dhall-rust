@@ -227,7 +227,7 @@ fn resolve_one_import(
         }
         ImportMode::Location => {
             let expr = location.into_location();
-            let hir = skip_resolve(&expr)?;
+            let hir = skip_resolve_expr(&expr)?;
             let ty = hir.typecheck_noenv()?.ty().clone();
             Ok((hir, ty))
         }
@@ -333,10 +333,16 @@ pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
     resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
-pub fn skip_resolve(expr: &Expr) -> Result<Hir, Error> {
+pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
     traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import| {
         Err(ImportError::UnexpectedImport(import).into())
     })
+}
+
+pub fn skip_resolve(parsed: Parsed) -> Result<Resolved, Error> {
+    let Parsed(expr, _) = parsed;
+    let resolved =skip_resolve_expr(&expr)?;
+    Ok(Resolved(resolved))
 }
 
 pub trait Canonicalize {

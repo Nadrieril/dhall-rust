@@ -964,7 +964,9 @@ version = "0.4.0"
 dependencies = [
  "dhall 0.4.0",
  "dhall_proc_macros 0.4.0",
+ "reqwest 0.10.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

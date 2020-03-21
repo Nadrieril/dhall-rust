@@ -169,6 +169,7 @@ same name as the corresponding test.
 
 #### [???]
 
+- Add `serde_dhall::options` for finer control over Dhall behavior
 - Breaking change: use `serde_dhall::simple::Type` type for type-checking instead of `serde_dhall::Value`
 
 #### [0.4.0]

@@ -169,6 +169,8 @@
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html
 
 mod error;
+/// Finer-grained control over deserializing Dhall
+pub mod options;
 mod serde;
 /// Serde-compatible values and their type
 pub mod simple;
@@ -198,14 +200,6 @@ pub trait Deserialize: sealed::Sealed + Sized {
     fn from_dhall(v: &Value) -> Result<Self>;
 }
 
-fn from_str_with_annot<T>(s: &str, ty: Option<&simple::Type>) -> Result<T>
-where
-    T: Deserialize,
-{
-    let val = Value::from_str_with_annot(s, ty)?;
-    T::from_dhall(&val)
-}
-
 /// Deserialize an instance of type `T` from a string of Dhall text.
 ///
 /// This will recursively resolve all imports in the expression, and
@@ -216,7 +210,7 @@ pub fn from_str<T>(s: &str) -> Result<T>
 where
     T: Deserialize,
 {
-    from_str_with_annot(s, None)
+    options::from_str(s).parse()
 }
 
 /// Deserialize an instance of type `T` from a string of Dhall text,
@@ -228,7 +222,7 @@ pub fn from_str_check_type<T>(s: &str, ty: &simple::Type) -> Result<T>
 where
     T: Deserialize,
 {
-    from_str_with_annot(s, Some(ty))
+    options::from_str(s).type_annotation(ty).parse()
 }
 
 /// Deserialize an instance of type `T` from a string of Dhall text,
@@ -241,5 +235,5 @@ pub fn from_str_auto_type<T>(s: &str) -> Result<T>
 where
     T: Deserialize + StaticType,
 {
-    from_str_check_type(s, &<T as StaticType>::static_type())
+    options::from_str(s).static_type_annotation().parse()
 }

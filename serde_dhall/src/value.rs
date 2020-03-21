@@ -1,9 +1,8 @@
 use dhall::semantics::{Hir, Nir};
 use dhall::syntax::Expr;
-use dhall::Parsed;
 
 use crate::simple::{Type as SimpleType, Value as SimpleValue};
-use crate::Error;
+use crate::{sealed::Sealed, Deserialize, Error};
 
 /// An arbitrary Dhall value.
 #[derive(Debug, Clone)]
@@ -17,31 +16,12 @@ pub struct Value {
 }
 
 impl Value {
-    /// Parse a string into a Value, and optionally ensure that the value matches the provided type
-    /// annotation.
-    pub fn from_str_with_annot(
-        s: &str,
-        ty: Option<&SimpleType>,
-    ) -> Result<Self, Error> {
-        Self::from_str_with_annot_dhall_error(s, ty).map_err(Error::Dhall)
-    }
-    fn from_nir(x: &Nir) -> Self {
+    pub(crate) fn from_nir(x: &Nir) -> Self {
         Value {
             hir: x.to_hir_noenv(),
             as_simple_val: SimpleValue::from_nir(x),
             as_simple_ty: SimpleType::from_nir(x),
         }
-    }
-    fn from_str_with_annot_dhall_error(
-        s: &str,
-        ty: Option<&SimpleType>,
-    ) -> Result<Self, dhall::error::Error> {
-        let resolved = Parsed::parse_str(s)?.resolve()?;
-        let typed = match ty {
-            None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(&ty.to_value().hir)?,
-        };
-        Ok(Self::from_nir(typed.normalize().as_nir()))
     }
 
     /// Converts a Value into a SimpleValue.
@@ -68,5 +48,13 @@ impl PartialEq for Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
+    }
+}
+
+impl Sealed for Value {}
+
+impl Deserialize for Value {
+    fn from_dhall(v: &Value) -> Result<Self, Error> {
+        Ok(v.clone())
     }
 }

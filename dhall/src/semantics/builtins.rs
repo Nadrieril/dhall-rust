@@ -1,5 +1,5 @@
 use crate::semantics::{
-    skip_resolve, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
+    skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
@@ -189,7 +189,7 @@ pub fn type_of_builtin(b: Builtin) -> Hir {
             forall (A: Type) -> Optional A
         ),
     };
-    skip_resolve(&expr).unwrap()
+    skip_resolve_expr(&expr).unwrap()
 }
 
 // Ad-hoc macro to help construct closures
@@ -254,7 +254,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         DoneAsIs,
     }
     let make_closure = |e| {
-        typecheck(&skip_resolve(&e).unwrap())
+        typecheck(&skip_resolve_expr(&e).unwrap())
             .unwrap()
             .eval(env.clone())
     };

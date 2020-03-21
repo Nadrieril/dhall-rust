@@ -13,3 +13,5 @@ edition = "2018"
 serde = { version = "1.0", features = ["derive"] }
 dhall = { version = "=0.4.0", path = "../dhall" }
 dhall_proc_macros = { version = "=0.4.0", path = "../dhall_proc_macros" }
+reqwest = { version = "0.10", features = ["blocking"] }
+url = "2.1"

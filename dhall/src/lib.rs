@@ -72,6 +72,9 @@ impl Parsed {
     pub fn resolve(self) -> Result<Resolved, Error> {
         resolve::resolve(self)
     }
+    pub fn skip_resolve(self) -> Result<Resolved, Error> {
+        resolve::skip_resolve(self)
+    }
 
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> Expr {
