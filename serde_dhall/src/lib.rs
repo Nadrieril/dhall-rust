@@ -168,6 +168,9 @@
 //! [serde]: https://docs.serde.rs/serde/
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html
 
+#[cfg(doctest)]
+doc_comment::doctest!("../../README.md");
+
 mod error;
 /// Finer-grained control over deserializing Dhall
 pub mod options;
