@@ -167,7 +167,7 @@ same name as the corresponding test.
 
 ## Changelog
 
-### [0.4.0]
+#### [0.4.0]
 
 - `dhall` now uses the stable Rust toolchain !
 - Implement record puns
@@ -178,7 +178,7 @@ same name as the corresponding test.
 - Implement projection by expression
 - Implement some normalization simplifications
 
-### [0.3.0]
+#### [0.3.0]
 
 - Update to supporting dhall v14.0.0
 - Add support for dotted field syntax
@@ -186,15 +186,15 @@ same name as the corresponding test.
 - Add support for duplicate record fields
 - Update to supporting dhall v13.0.0
 
-### [0.2.1]
+#### [0.2.1]
 
 - Improve documentation and deserialize many more types
 
-### [0.2.0]
+#### [0.2.0]
 
 - Update to supporting dhall v12.0.0
 
-### [0.1.0]
+#### [0.1.0]
 
 - Initial release
 
