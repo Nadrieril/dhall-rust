@@ -4,8 +4,8 @@ use dhall::syntax::Expr;
 use crate::simple::{SimpleType, SimpleValue};
 use crate::{Deserialize, Error, Sealed};
 
+#[doc(hidden)]
 /// An arbitrary Dhall value.
-/// TODO
 #[derive(Debug, Clone)]
 pub struct Value {
     /// Invariant: in normal form
@@ -29,9 +29,9 @@ impl Value {
     pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
         self.as_simple_val.clone()
     }
+
     /// Converts a Value into a SimpleType.
-    /// TODO
-    pub fn to_simple_type(&self) -> Option<SimpleType> {
+    pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
         self.as_simple_ty.clone()
     }
 

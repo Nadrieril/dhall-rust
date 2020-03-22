@@ -174,8 +174,6 @@ doc_comment::doctest!("../../README.md");
 
 /// Finer-grained control over deserializing Dhall values
 pub mod options;
-/// Arbitrary Dhall values
-pub mod value;
 
 mod deserialize;
 mod error;
@@ -184,6 +182,8 @@ mod shortcuts;
 /// Serde-compatible Dhall types
 mod simple;
 mod static_type;
+/// Dhall values
+mod value;
 
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
