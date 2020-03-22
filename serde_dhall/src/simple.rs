@@ -3,22 +3,17 @@ use std::collections::{BTreeMap, HashMap};
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 use dhall::syntax::{Builtin, ExprKind, NumKind, Span};
 
-use crate::{Deserialize, Error, Result, Sealed};
+use crate::{Deserialize, Error, Result, Sealed, Value};
 
-/// A simple value of the kind that can be encoded/decoded with serde
+/// A simple value of the kind that can be decoded with serde
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Value {
-    kind: Box<ValKind>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValKind {
+pub(crate) enum SimpleValue {
     Num(NumKind),
     Text(String),
-    Optional(Option<Value>),
-    List(Vec<Value>),
-    Record(BTreeMap<String, Value>),
-    Union(String, Option<Value>),
+    Optional(Option<Box<SimpleValue>>),
+    List(Vec<SimpleValue>),
+    Record(BTreeMap<String, SimpleValue>),
+    Union(String, Option<Box<SimpleValue>>),
 }
 
 /// The type of a value that can be decoded by Serde, like `{ x: Bool, y: List Natural }`.
@@ -91,48 +86,38 @@ pub enum SimpleType {
     Union(HashMap<String, Option<SimpleType>>),
 }
 
-impl Value {
-    pub(crate) fn new(kind: ValKind) -> Self {
-        Value {
-            kind: Box::new(kind),
-        }
-    }
+impl SimpleValue {
     pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
-        Some(Value::new(match nir.kind() {
-            NirKind::Num(lit) => ValKind::Num(lit.clone()),
-            NirKind::TextLit(x) => ValKind::Text(
+        Some(match nir.kind() {
+            NirKind::Num(lit) => SimpleValue::Num(lit.clone()),
+            NirKind::TextLit(x) => SimpleValue::Text(
                 x.as_text()
                     .expect("Normal form should ensure the text is a string"),
             ),
-            NirKind::EmptyOptionalLit(_) => ValKind::Optional(None),
+            NirKind::EmptyOptionalLit(_) => SimpleValue::Optional(None),
             NirKind::NEOptionalLit(x) => {
-                ValKind::Optional(Some(Self::from_nir(x)?))
+                SimpleValue::Optional(Some(Box::new(Self::from_nir(x)?)))
             }
-            NirKind::EmptyListLit(_) => ValKind::List(vec![]),
-            NirKind::NEListLit(xs) => ValKind::List(
-                xs.iter()
-                    .map(|v| Self::from_nir(v))
-                    .collect::<Option<_>>()?,
+            NirKind::EmptyListLit(_) => SimpleValue::List(vec![]),
+            NirKind::NEListLit(xs) => SimpleValue::List(
+                xs.iter().map(Self::from_nir).collect::<Option<_>>()?,
             ),
-            NirKind::RecordLit(kvs) => ValKind::Record(
+            NirKind::RecordLit(kvs) => SimpleValue::Record(
                 kvs.iter()
                     .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
                     .collect::<Option<_>>()?,
             ),
-            NirKind::UnionLit(field, x, _) => {
-                ValKind::Union(field.into(), Some(Self::from_nir(x)?))
-            }
+            NirKind::UnionLit(field, x, _) => SimpleValue::Union(
+                field.into(),
+                Some(Box::new(Self::from_nir(x)?)),
+            ),
             NirKind::UnionConstructor(field, ty)
                 if ty.get(field).map(|f| f.is_some()) == Some(false) =>
             {
-                ValKind::Union(field.into(), None)
+                SimpleValue::Union(field.into(), None)
             }
             _ => return None,
-        }))
-    }
-
-    pub fn kind(&self) -> &ValKind {
-        self.kind.as_ref()
+        })
     }
 }
 
@@ -174,8 +159,8 @@ impl SimpleType {
         })
     }
 
-    pub(crate) fn to_value(&self) -> crate::value::Value {
-        crate::value::Value {
+    pub(crate) fn to_value(&self) -> Value {
+        Value {
             hir: self.to_hir(),
             as_simple_val: None,
             as_simple_ty: Some(self.clone()),
@@ -212,10 +197,10 @@ impl SimpleType {
     }
 }
 
-impl Sealed for Value {}
+impl Sealed for SimpleValue {}
 
-impl Deserialize for Value {
-    fn from_dhall(v: &crate::value::Value) -> Result<Self> {
+impl Deserialize for SimpleValue {
+    fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_value().ok_or_else(|| {
             Error::Deserialize(format!(
                 "this cannot be deserialized into a simple type: {}",
@@ -228,7 +213,7 @@ impl Deserialize for Value {
 impl Sealed for SimpleType {}
 
 impl Deserialize for SimpleType {
-    fn from_dhall(v: &crate::value::Value) -> Result<Self> {
+    fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_type().ok_or_else(|| {
             Error::Deserialize(format!(
                 "this cannot be deserialized into a simple type: {}",

@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use dhall::syntax::NumKind;
 
-use crate::simple::{ValKind, Value as SimpleValue};
+use crate::simple::SimpleValue;
 use crate::{Error, Result, Value};
 
 pub trait Sealed {}
@@ -58,10 +58,10 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     {
         use std::convert::TryInto;
         use NumKind::*;
-        use ValKind::*;
+        use SimpleValue::*;
 
         let val = |x| Deserializer(Cow::Borrowed(x));
-        match self.0.kind() {
+        match self.0.as_ref() {
             Num(Bool(x)) => visitor.visit_bool(*x),
             Num(Natural(x)) => {
                 if let Ok(x64) = (*x).try_into() {
@@ -109,9 +109,9 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         V: serde::de::Visitor<'de>,
     {
         let val = |x| Deserializer(Cow::Borrowed(x));
-        match self.0.kind() {
+        match self.0.as_ref() {
             // Blindly takes keys in sorted order.
-            ValKind::Record(m) => visitor
+            SimpleValue::Record(m) => visitor
                 .visit_seq(SeqDeserializer::new(m.iter().map(|(_, v)| val(v)))),
             _ => self.deserialize_any(visitor),
         }
