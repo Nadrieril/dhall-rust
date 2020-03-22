@@ -7,6 +7,10 @@ x.({ a : Bool, b })
 x.({ a })
 x.{ a : Bool }
 s/QuotedVariable/VariableQuoted/
+From https://github.com/dhall-lang/dhall-lang/issues/280 :
+    "${ not_really_an_expression ;-) }"
+    ''${ not_an_expression ;-) }''
+    {- {- -} 1
 
 import:
 failure/

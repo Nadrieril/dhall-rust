@@ -1,4 +1,6 @@
 #![doc(html_root_url = "https://docs.rs/serde_dhall/0.4.0")]
+// #![warn(missing_docs)]
+// #![warn(missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!
@@ -107,7 +109,7 @@
 //! can let Rust infer it for you.
 //!
 //! To provide a type written in Dhall, first parse it into a [`simple::Type`](simple/struct.Type.html), then
-//! pass it to [`from_str_check_type`](fn.from_str_check_type.html).
+//! pass it to [`from_str_manual_type`](fn.from_str_manual_type.html).
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -124,7 +126,7 @@
 //! // Deserialize the data to a Rust type. This checks that
 //! // the data matches the provided type.
 //! let deserialized_map: HashMap<String, usize> =
-//!         serde_dhall::from_str_check_type(point_data, &point_type)?;
+//!         serde_dhall::from_str_manual_type(point_data, &point_type)?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -153,13 +155,13 @@
 //! let data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str_auto_type(data)?;
+//! let point: Point = serde_dhall::from_str_static_type(data)?;
 //! assert_eq!(point.x, 1);
 //! assert_eq!(point.y, 2);
 //!
 //! // Invalid data fails the type validation
 //! let invalid_data = "{ x = 1, z = 0.3 }";
-//! assert!(serde_dhall::from_str_auto_type::<Point>(invalid_data).is_err());
+//! assert!(serde_dhall::from_str_static_type::<Point>(invalid_data).is_err());
 //! # Ok(())
 //! # }
 //! ```
@@ -171,72 +173,26 @@
 #[cfg(doctest)]
 doc_comment::doctest!("../../README.md");
 
-mod error;
 /// Finer-grained control over deserializing Dhall
 pub mod options;
-mod serde;
-/// Serde-compatible values and their type
+/// Serde-compatible Dhall values and their type
 pub mod simple;
-mod static_type;
 /// Arbitrary Dhall values
 pub mod value;
 
-pub use crate::simple::{Type as SimpleType, Value as SimpleValue};
+mod deserialize;
+mod error;
+/// Common patterns made easier
+mod shortcuts;
+mod static_type;
+
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
+
+pub use deserialize::Deserialize;
+pub(crate) use deserialize::Sealed;
 pub use error::{Error, Result};
+pub use shortcuts::{from_str, from_str_manual_type, from_str_static_type};
+pub use simple::{Type as SimpleType, Value as SimpleValue};
 pub use static_type::StaticType;
 pub use value::Value;
-
-pub(crate) mod sealed {
-    pub trait Sealed {}
-}
-
-/// A data structure that can be deserialized from a Dhall expression
-///
-/// This is automatically implemented for any type that [serde][serde]
-/// can deserialize.
-///
-/// This trait cannot be implemented manually.
-pub trait Deserialize: sealed::Sealed + Sized {
-    /// See [serde_dhall::from_str][crate::from_str]
-    fn from_dhall(v: &Value) -> Result<Self>;
-}
-
-/// Deserialize an instance of type `T` from a string of Dhall text.
-///
-/// This will recursively resolve all imports in the expression, and
-/// typecheck it before deserialization. Relative imports will be resolved relative to the
-/// provided file. More control over this process is not yet available
-/// but will be in a coming version of this crate.
-pub fn from_str<T>(s: &str) -> Result<T>
-where
-    T: Deserialize,
-{
-    options::from_str(s).parse()
-}
-
-/// Deserialize an instance of type `T` from a string of Dhall text,
-/// additionally checking that it matches the supplied type.
-///
-/// Like [from_str], but this additionally checks that
-/// the type of the provided expression matches the supplied type.
-pub fn from_str_check_type<T>(s: &str, ty: &simple::Type) -> Result<T>
-where
-    T: Deserialize,
-{
-    options::from_str(s).type_annotation(ty).parse()
-}
-
-/// Deserialize an instance of type `T` from a string of Dhall text,
-/// additionally checking that it matches the type of `T`.
-///
-/// Like [from_str], but this additionally checks that
-/// the type of the provided expression matches the output type `T`. The [StaticType] trait
-/// captures Rust types that are valid Dhall types.
-pub fn from_str_auto_type<T>(s: &str) -> Result<T>
-where
-    T: Deserialize + StaticType,
-{
-    options::from_str(s).static_type_annotation().parse()
-}

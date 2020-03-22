@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 use dhall::syntax::{Builtin, ExprKind, NumKind, Span};
 
-use crate::{sealed::Sealed, Deserialize, Error, Result};
+use crate::{Deserialize, Error, Result, Sealed};
 
 /// A simple value of the kind that can be encoded/decoded with serde
 #[derive(Debug, Clone, PartialEq, Eq)]

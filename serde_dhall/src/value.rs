@@ -2,7 +2,7 @@ use dhall::semantics::{Hir, Nir};
 use dhall::syntax::Expr;
 
 use crate::simple::{Type as SimpleType, Value as SimpleValue};
-use crate::{sealed::Sealed, Deserialize, Error};
+use crate::{Deserialize, Error, Sealed};
 
 /// An arbitrary Dhall value.
 #[derive(Debug, Clone)]

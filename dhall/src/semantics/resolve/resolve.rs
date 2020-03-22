@@ -341,7 +341,7 @@ pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
 
 pub fn skip_resolve(parsed: Parsed) -> Result<Resolved, Error> {
     let Parsed(expr, _) = parsed;
-    let resolved =skip_resolve_expr(&expr)?;
+    let resolved = skip_resolve_expr(&expr)?;
     Ok(Resolved(resolved))
 }
 

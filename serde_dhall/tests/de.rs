@@ -1,10 +1,10 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, from_str_auto_type, StaticType};
+use serde_dhall::{from_str, from_str_static_type, StaticType};
 
 #[test]
 fn test_de_typed() {
     fn parse<T: serde_dhall::Deserialize + StaticType>(s: &str) -> T {
-        from_str_auto_type(s).unwrap()
+        from_str_static_type(s).unwrap()
     }
 
     assert_eq!(parse::<bool>("True"), true);
@@ -52,7 +52,7 @@ fn test_de_typed() {
     }
     assert_eq!(parse::<Baz>("< X | Y: Integer >.X"), Baz::X);
 
-    assert!(from_str_auto_type::<Baz>("< X | Y: Integer >.Y").is_err());
+    assert!(from_str_static_type::<Baz>("< X | Y: Integer >.Y").is_err());
 }
 
 #[test]

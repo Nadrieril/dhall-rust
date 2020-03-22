@@ -1,15 +1,28 @@
-use std::borrow::Cow;
-
 use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
+use std::borrow::Cow;
 
 use dhall::syntax::NumKind;
 
 use crate::simple::{ValKind, Value as SimpleValue};
-use crate::{Deserialize, Error, Result, Value};
+use crate::{Error, Result, Value};
 
-impl<'a, T> crate::sealed::Sealed for T where T: serde::Deserialize<'a> {}
+pub trait Sealed {}
+
+/// A data structure that can be deserialized from a Dhall expression
+///
+/// This is automatically implemented for any type that [serde][serde]
+/// can deserialize.
+///
+/// This trait cannot be implemented manually.
+pub trait Deserialize: Sealed + Sized {
+    #[doc(hidden)]
+    /// See [serde_dhall::from_str][crate::from_str]
+    fn from_dhall(v: &Value) -> Result<Self>;
+}
+
+impl<'a, T> Sealed for T where T: serde::Deserialize<'a> {}
 
 struct Deserializer<'a>(Cow<'a, SimpleValue>);
 
