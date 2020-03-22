@@ -16,9 +16,10 @@ pub trait Sealed {}
 /// can deserialize.
 ///
 /// This trait cannot be implemented manually.
+///
+/// TODO
 pub trait Deserialize: Sealed + Sized {
     #[doc(hidden)]
-    /// See [serde_dhall::from_str][crate::from_str]
     fn from_dhall(v: &Value) -> Result<Self>;
 }
 

@@ -48,6 +48,7 @@ enum Source<'a> {
 /// # Ok(())
 /// # }
 /// ```
+/// /// TODO
 #[derive(Debug, Clone)]
 pub struct Options<'a, T> {
     source: Source<'a>,
@@ -69,9 +70,11 @@ impl<'a, T> Options<'a, T> {
             target_type: std::marker::PhantomData,
         }
     }
+    /// TODO
     fn from_str(s: &'a str) -> Self {
         Self::default_with_source(Source::Str(s))
     }
+    /// TODO
     fn from_file<P: AsRef<Path>>(path: P) -> Self {
         Self::default_with_source(Source::File(path.as_ref().to_owned()))
     }
@@ -79,6 +82,7 @@ impl<'a, T> Options<'a, T> {
     //     Self::default_with_source(Source::Url(url))
     // }
 
+    /// TODO
     pub fn imports(&mut self, imports: bool) -> &mut Self {
         self.allow_imports = imports;
         self
@@ -90,10 +94,12 @@ impl<'a, T> Options<'a, T> {
     //     }
     //     self
     // }
+    // /// TODO
     pub fn type_annotation(&mut self, ty: &SimpleType) -> &mut Self {
         self.annot = Some(ty.clone());
         self
     }
+    /// TODO
     pub fn static_type_annotation(&mut self) -> &mut Self
     where
         T: StaticType,
@@ -118,6 +124,7 @@ impl<'a, T> Options<'a, T> {
         };
         Ok(Value::from_nir(typed.normalize().as_nir()))
     }
+    /// TODO
     pub fn parse(&self) -> Result<T>
     where
         T: Deserialize,
@@ -127,9 +134,11 @@ impl<'a, T> Options<'a, T> {
     }
 }
 
+/// TODO
 pub fn from_str<'a, T>(s: &'a str) -> Options<'a, T> {
     Options::from_str(s)
 }
+/// TODO
 pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Options<'a, T> {
     Options::from_file(path)
 }

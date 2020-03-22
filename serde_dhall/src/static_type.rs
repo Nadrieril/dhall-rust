@@ -11,6 +11,7 @@ use crate::simple::{TyKind, Type};
 /// For this reason, something like `HashMap<String, bool>` cannot implement
 /// [StaticType] because each different value would
 /// have a different Dhall record type.
+/// TODO
 pub trait StaticType {
     fn static_type() -> Type;
 }

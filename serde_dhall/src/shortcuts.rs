@@ -79,6 +79,8 @@ where
 /// # Ok(())
 /// # }
 /// ```
+///
+/// TODO
 pub fn from_str_manual_type<T>(s: &str, ty: &SimpleType) -> Result<T>
 where
     T: Deserialize,
@@ -92,6 +94,8 @@ where
 /// Like [from_str], but this additionally checks that
 /// the type of the provided expression matches the output type `T`. The [StaticType] trait
 /// captures Rust types that are valid Dhall types.
+///
+/// TODO
 pub fn from_str_static_type<T>(s: &str) -> Result<T>
 where
     T: Deserialize + StaticType,

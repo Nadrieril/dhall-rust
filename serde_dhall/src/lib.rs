@@ -1,6 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/serde_dhall/0.4.0")]
-// #![warn(missing_docs)]
-// #![warn(missing_doc_code_examples)]
+// TODO #![warn(missing_docs)] #![warn(missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!
@@ -173,7 +172,7 @@
 #[cfg(doctest)]
 doc_comment::doctest!("../../README.md");
 
-/// Finer-grained control over deserializing Dhall
+/// Finer-grained control over deserializing Dhall values
 pub mod options;
 /// Serde-compatible Dhall values and their type
 pub mod simple;

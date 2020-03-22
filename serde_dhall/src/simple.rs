@@ -6,6 +6,7 @@ use dhall::syntax::{Builtin, ExprKind, NumKind, Span};
 use crate::{Deserialize, Error, Result, Sealed};
 
 /// A simple value of the kind that can be encoded/decoded with serde
+/// TODO
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Value {
     kind: Box<ValKind>,
@@ -24,6 +25,7 @@ pub enum ValKind {
 }
 
 /// The type of a `simple::Value`.
+/// TODO
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
     kind: Box<TyKind>,

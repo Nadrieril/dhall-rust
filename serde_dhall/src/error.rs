@@ -1,9 +1,11 @@
 use dhall::error::Error as DhallError;
 
+/// TODO
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 #[non_exhaustive]
+/// TODO
 pub enum Error {
     Dhall(DhallError),
     Deserialize(String),
