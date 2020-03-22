@@ -1,7 +1,7 @@
 use dhall::semantics::{Hir, Nir};
 use dhall::syntax::Expr;
 
-use crate::simple::{Type as SimpleType, Value as SimpleValue};
+use crate::simple::{SimpleType, Value as SimpleValue};
 use crate::{Deserialize, Error, Sealed};
 
 /// An arbitrary Dhall value.

@@ -1,8 +1,4 @@
-use crate::error::Result;
-use crate::options;
-use crate::simple::Type as SimpleType;
-use crate::static_type::StaticType;
-use crate::Deserialize;
+use crate::{options, Deserialize, Result, SimpleType, StaticType};
 
 /// Deserialize an instance of type `T` from a string of Dhall text.
 ///
@@ -56,12 +52,12 @@ where
 ///
 /// ```rust
 /// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::simple::Type;
+/// use serde_dhall::SimpleType;
 /// use std::collections::HashMap;
 ///
 /// // Parse a Dhall type
 /// let point_type_str = "{ x: Natural, y: Natural }";
-/// let point_type: Type = serde_dhall::from_str(point_type_str)?;
+/// let point_type: SimpleType = serde_dhall::from_str(point_type_str)?;
 ///
 /// // Some Dhall data
 /// let point_data = "{ x = 1, y = 1 + 1 }";

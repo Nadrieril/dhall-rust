@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 use dhall::syntax::{Builtin, ExprKind, NumKind, Span};
@@ -13,33 +13,82 @@ pub(crate) struct Value {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValKind {
-    // TODO: redefine NumKind locally
     Num(NumKind),
     Text(String),
     Optional(Option<Value>),
     List(Vec<Value>),
-    // TODO: HashMap ?
     Record(BTreeMap<String, Value>),
     Union(String, Option<Value>),
 }
 
-/// The type of a value that can be decoded by Serde. For example, `{ x: Bool, y: List Natural }`.
+/// The type of a value that can be decoded by Serde, like `{ x: Bool, y: List Natural }`.
+///
+/// A `SimpleType` is used when deserializing values to ensure they are of the expected type.
+/// Rather than letting `serde` handle potential type mismatches, this uses the type-checking
+/// capabilities of Dhall to catch errors early and cleanly indicate in the user's code where the
+/// mismatch happened.
+///
+/// You would typically not manipulate `SimpleType`s by hand but rather let Rust infer it for your
+/// datatype using the [`StaticType`][TODO] trait, and methods that require it like
+/// [`from_file_static_type`][TODO] and [`Options::static_type_annotation`][TODO]. If you need to supply a
+/// `SimpleType` manually however, you can deserialize it like any other Dhall value using the
+/// functions provided by this crate.
+///
+/// # Examples
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::HashMap;
+/// use serde_dhall::SimpleType;
+///
+/// let ty: SimpleType =
+///     serde_dhall::from_str("{ x: Natural, y: Natural }")?;
+///
+/// let mut map = HashMap::new();
+/// map.insert("x".to_string(), SimpleType::Natural);
+/// map.insert("y".to_string(), SimpleType::Natural);
+/// assert_eq!(ty, SimpleType::Record(map));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde_dhall::{SimpleType, StaticType};
+///
+/// #[derive(StaticType)]
+/// struct Foo {
+///     x: bool,
+///     y: Vec<u64>,
+/// }
+///
+/// let ty: SimpleType =
+///     serde_dhall::from_str("{ x: Bool, y: List Natural }")?;
+///
+/// assert_eq!(ty, Foo::static_type());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type {
-    kind: Box<TyKind>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TyKind {
+pub enum SimpleType {
+    /// Corresponds to the Dhall type `Bool`
     Bool,
+    /// Corresponds to the Dhall type `Natural`
     Natural,
+    /// Corresponds to the Dhall type `Integer`
     Integer,
+    /// Corresponds to the Dhall type `Double`
     Double,
+    /// Corresponds to the Dhall type `Text`
     Text,
-    Optional(Type),
-    List(Type),
-    Record(BTreeMap<String, Type>),
-    Union(BTreeMap<String, Option<Type>>),
+    /// Corresponds to the Dhall type `Optional T`
+    Optional(Box<SimpleType>),
+    /// Corresponds to the Dhall type `List T`
+    List(Box<SimpleType>),
+    /// Corresponds to the Dhall type `{ x : T, y : U }`
+    Record(HashMap<String, SimpleType>),
+    /// Corresponds to the Dhall type `< x : T | y : U >`
+    Union(HashMap<String, Option<SimpleType>>),
 }
 
 impl Value {
@@ -87,30 +136,29 @@ impl Value {
     }
 }
 
-impl Type {
-    pub fn new(kind: TyKind) -> Self {
-        Type {
-            kind: Box::new(kind),
-        }
-    }
+impl SimpleType {
     pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
-        Some(Type::new(match nir.kind() {
+        Some(match nir.kind() {
             NirKind::BuiltinType(b) => match b {
-                Builtin::Bool => TyKind::Bool,
-                Builtin::Natural => TyKind::Natural,
-                Builtin::Integer => TyKind::Integer,
-                Builtin::Double => TyKind::Double,
-                Builtin::Text => TyKind::Text,
+                Builtin::Bool => SimpleType::Bool,
+                Builtin::Natural => SimpleType::Natural,
+                Builtin::Integer => SimpleType::Integer,
+                Builtin::Double => SimpleType::Double,
+                Builtin::Text => SimpleType::Text,
                 _ => unreachable!(),
             },
-            NirKind::OptionalType(t) => TyKind::Optional(Self::from_nir(t)?),
-            NirKind::ListType(t) => TyKind::List(Self::from_nir(t)?),
-            NirKind::RecordType(kts) => TyKind::Record(
+            NirKind::OptionalType(t) => {
+                SimpleType::Optional(Box::new(Self::from_nir(t)?))
+            }
+            NirKind::ListType(t) => {
+                SimpleType::List(Box::new(Self::from_nir(t)?))
+            }
+            NirKind::RecordType(kts) => SimpleType::Record(
                 kts.iter()
                     .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
                     .collect::<Option<_>>()?,
             ),
-            NirKind::UnionType(kts) => TyKind::Union(
+            NirKind::UnionType(kts) => SimpleType::Union(
                 kts.iter()
                     .map(|(k, v)| {
                         Some((
@@ -123,13 +171,10 @@ impl Type {
                     .collect::<Option<_>>()?,
             ),
             _ => return None,
-        }))
+        })
     }
 
-    pub fn kind(&self) -> &TyKind {
-        self.kind.as_ref()
-    }
-    pub fn to_value(&self) -> crate::value::Value {
+    pub(crate) fn to_value(&self) -> crate::value::Value {
         crate::value::Value {
             hir: self.to_hir(),
             as_simple_val: None,
@@ -138,25 +183,25 @@ impl Type {
     }
     pub(crate) fn to_hir(&self) -> Hir {
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
-        hir(match self.kind() {
-            TyKind::Bool => ExprKind::Builtin(Builtin::Bool),
-            TyKind::Natural => ExprKind::Builtin(Builtin::Natural),
-            TyKind::Integer => ExprKind::Builtin(Builtin::Integer),
-            TyKind::Double => ExprKind::Builtin(Builtin::Double),
-            TyKind::Text => ExprKind::Builtin(Builtin::Text),
-            TyKind::Optional(t) => ExprKind::App(
+        hir(match self {
+            SimpleType::Bool => ExprKind::Builtin(Builtin::Bool),
+            SimpleType::Natural => ExprKind::Builtin(Builtin::Natural),
+            SimpleType::Integer => ExprKind::Builtin(Builtin::Integer),
+            SimpleType::Double => ExprKind::Builtin(Builtin::Double),
+            SimpleType::Text => ExprKind::Builtin(Builtin::Text),
+            SimpleType::Optional(t) => ExprKind::App(
                 hir(ExprKind::Builtin(Builtin::Optional)),
                 t.to_hir(),
             ),
-            TyKind::List(t) => {
+            SimpleType::List(t) => {
                 ExprKind::App(hir(ExprKind::Builtin(Builtin::List)), t.to_hir())
             }
-            TyKind::Record(kts) => ExprKind::RecordType(
+            SimpleType::Record(kts) => ExprKind::RecordType(
                 kts.into_iter()
                     .map(|(k, t)| (k.as_str().into(), t.to_hir()))
                     .collect(),
             ),
-            TyKind::Union(kts) => ExprKind::UnionType(
+            SimpleType::Union(kts) => ExprKind::UnionType(
                 kts.into_iter()
                     .map(|(k, t)| {
                         (k.as_str().into(), t.as_ref().map(|t| t.to_hir()))
@@ -180,9 +225,9 @@ impl Deserialize for Value {
     }
 }
 
-impl Sealed for Type {}
+impl Sealed for SimpleType {}
 
-impl Deserialize for Type {
+impl Deserialize for SimpleType {
     fn from_dhall(v: &crate::value::Value) -> Result<Self> {
         v.to_simple_type().ok_or_else(|| {
             Error::Deserialize(format!(
@@ -190,11 +235,5 @@ impl Deserialize for Type {
                 v
             ))
         })
-    }
-}
-
-impl From<TyKind> for Type {
-    fn from(x: TyKind) -> Type {
-        Type::new(x)
     }
 }

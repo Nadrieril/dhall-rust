@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use dhall::Parsed;
 
-use crate::simple::Type as SimpleType;
+use crate::SimpleType;
 use crate::{Deserialize, Error, Result, StaticType, Value};
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,8 @@ impl<'a, T> Options<'a, T> {
     //     }
     //     self
     // }
-    // /// TODO
+    //
+    /// TODO
     pub fn type_annotation(&mut self, ty: &SimpleType) -> &mut Self {
         self.annot = Some(ty.clone());
         self

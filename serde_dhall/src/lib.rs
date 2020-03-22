@@ -107,17 +107,17 @@
 //! There are two ways to typecheck a Dhall value: you can provide the type as Dhall text or you
 //! can let Rust infer it for you.
 //!
-//! To provide a type written in Dhall, first parse it into a [`simple::Type`](simple/struct.Type.html), then
+//! To provide a type written in Dhall, first parse it into a [`SimpleType`](enum.SimpleType.html), then
 //! pass it to [`from_str_manual_type`](fn.from_str_manual_type.html).
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
-//! use serde_dhall::simple::Type;
+//! use serde_dhall::SimpleType;
 //! use std::collections::HashMap;
 //!
 //! // Parse a Dhall type
 //! let point_type_str = "{ x: Natural, y: Natural }";
-//! let point_type: Type = serde_dhall::from_str(point_type_str)?;
+//! let point_type: SimpleType = serde_dhall::from_str(point_type_str)?;
 //!
 //! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
@@ -174,8 +174,6 @@ doc_comment::doctest!("../../README.md");
 
 /// Finer-grained control over deserializing Dhall values
 pub mod options;
-/// Serde-compatible Dhall types
-pub mod simple;
 /// Arbitrary Dhall values
 pub mod value;
 
@@ -183,6 +181,8 @@ mod deserialize;
 mod error;
 /// Common patterns made easier
 mod shortcuts;
+/// Serde-compatible Dhall types
+mod simple;
 mod static_type;
 
 #[doc(hidden)]
@@ -192,6 +192,6 @@ pub use deserialize::Deserialize;
 pub(crate) use deserialize::Sealed;
 pub use error::{Error, Result};
 pub use shortcuts::{from_str, from_str_manual_type, from_str_static_type};
-pub use simple::{Type as SimpleType};
+pub use simple::SimpleType;
 pub use static_type::StaticType;
 pub use value::Value;

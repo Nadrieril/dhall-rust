@@ -1,4 +1,4 @@
-use crate::simple::{TyKind, Type};
+use crate::SimpleType;
 
 /// A Rust type that can be represented as a Dhall type.
 ///
@@ -13,14 +13,14 @@ use crate::simple::{TyKind, Type};
 /// have a different Dhall record type.
 /// TODO
 pub trait StaticType {
-    fn static_type() -> Type;
+    fn static_type() -> SimpleType;
 }
 
 macro_rules! derive_builtin {
     ($rust_ty:ty, $dhall_ty:ident) => {
         impl StaticType for $rust_ty {
-            fn static_type() -> Type {
-                Type::new(TyKind::$dhall_ty)
+            fn static_type() -> SimpleType {
+                SimpleType::$dhall_ty
             }
         }
     };
@@ -42,8 +42,8 @@ where
     A: StaticType,
     B: StaticType,
 {
-    fn static_type() -> Type {
-        TyKind::Record(
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
@@ -60,8 +60,8 @@ where
     T: StaticType,
     E: StaticType,
 {
-    fn static_type() -> Type {
-        TyKind::Union(
+    fn static_type() -> SimpleType {
+        SimpleType::Union(
             vec![
                 ("Ok".to_owned(), Some(T::static_type())),
                 ("Err".to_owned(), Some(E::static_type())),
@@ -77,8 +77,8 @@ impl<T> StaticType for Option<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Type {
-        TyKind::Optional(T::static_type()).into()
+    fn static_type() -> SimpleType {
+        SimpleType::Optional(Box::new(T::static_type())).into()
     }
 }
 
@@ -86,8 +86,8 @@ impl<T> StaticType for Vec<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Type {
-        TyKind::List(T::static_type()).into()
+    fn static_type() -> SimpleType {
+        SimpleType::List(Box::new(T::static_type())).into()
     }
 }
 
@@ -95,7 +95,7 @@ impl<'a, T> StaticType for &'a T
 where
     T: StaticType,
 {
-    fn static_type() -> Type {
+    fn static_type() -> SimpleType {
         T::static_type()
     }
 }

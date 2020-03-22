@@ -53,9 +53,9 @@ fn derive_for_struct(
         quote!( (#name.to_owned(), #ty) )
     });
     Ok(quote! {
-        ::serde_dhall::simple::TyKind::Record(
+        ::serde_dhall::SimpleType::Record(
             vec![ #(#entries),* ].into_iter().collect()
-        ).into()
+        )
     })
 }
 
@@ -92,9 +92,9 @@ fn derive_for_enum(
         .collect::<Result<_, Error>>()?;
 
     Ok(quote! {
-        ::serde_dhall::simple::TyKind::Union(
+        ::serde_dhall::SimpleType::Union(
             vec![ #(#entries),* ].into_iter().collect()
-        ).into()
+        )
     })
 }
 
@@ -168,7 +168,7 @@ pub fn derive_static_type_inner(
         impl #impl_generics ::serde_dhall::StaticType
                 for #ident #ty_generics
                 #where_clause {
-            fn static_type() -> ::serde_dhall::simple::Type {
+            fn static_type() -> ::serde_dhall::SimpleType {
                 #(#assertions)*
                 #get_type
             }
