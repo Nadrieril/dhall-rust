@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use dhall::syntax::NumKind;
 
-use crate::simple::SimpleValue;
+use crate::value::SimpleValue;
 use crate::{Error, Result, Value};
 
 pub trait Sealed {}

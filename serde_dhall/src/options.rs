@@ -121,7 +121,7 @@ impl<'a, T> Options<'a, T> {
         };
         let typed = match &self.annot {
             None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(&ty.to_value().hir)?,
+            Some(ty) => resolved.typecheck_with(ty.to_value().as_hir())?,
         };
         Ok(Value::from_nir(typed.normalize().as_nir()))
     }

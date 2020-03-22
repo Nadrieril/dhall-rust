@@ -179,8 +179,6 @@ mod deserialize;
 mod error;
 /// Common patterns made easier
 mod shortcuts;
-/// Serde-compatible Dhall types
-mod simple;
 mod static_type;
 /// Dhall values
 mod value;
@@ -192,6 +190,5 @@ pub use deserialize::Deserialize;
 pub(crate) use deserialize::Sealed;
 pub use error::{Error, Result};
 pub use shortcuts::{from_str, from_str_manual_type, from_str_static_type};
-pub use simple::SimpleType;
 pub use static_type::StaticType;
-pub use value::Value;
+pub use value::{SimpleType, Value};
