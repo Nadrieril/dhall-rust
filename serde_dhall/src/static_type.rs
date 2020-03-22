@@ -2,16 +2,33 @@ use crate::SimpleType;
 
 /// A Rust type that can be represented as a Dhall type.
 ///
-/// A typical example is `Option<bool>`,
-/// represented by the dhall expression `Optional Bool`.
+/// A typical example is `Option<bool>`, represented by the Dhall expression `Optional Bool`.
 ///
-/// This trait can and should be automatically derived.
+/// This trait can be automatically derived, and this is the recommended way of implementing it.
 ///
-/// The representation needs to be independent of the value.
-/// For this reason, something like `HashMap<String, bool>` cannot implement
-/// [StaticType] because each different value would
-/// have a different Dhall record type.
-/// TODO
+/// Some Rust types cannot implement this trait, because there isn't a single Dhall type that
+/// corresponds to them. For example, `HashMap<String, u64>` could correspond to multiple different
+/// Dhall types, e.g. `{ foo: Natural, bar: Natural }` and `{ baz: Natural }`.
+///
+/// # Example
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde_dhall::{SimpleType, StaticType};
+///
+/// #[derive(StaticType)]
+/// struct Foo {
+///     x: bool,
+///     y: Vec<u64>,
+/// }
+///
+/// let ty: SimpleType =
+///     serde_dhall::from_str("{ x: Bool, y: List Natural }")?;
+///
+/// assert_eq!(Foo::static_type(), ty);
+/// # Ok(())
+/// # }
+/// ```
 pub trait StaticType {
     fn static_type() -> SimpleType;
 }

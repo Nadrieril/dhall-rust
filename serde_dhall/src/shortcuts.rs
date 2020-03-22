@@ -4,11 +4,13 @@ use crate::{options, Deserialize, Result, SimpleType, StaticType};
 ///
 /// This will recursively resolve all imports in the expression, and typecheck it before
 /// deserialization. Relative imports will be resolved relative to the current directory.
-/// See [`options`][`options`] for more control over this process.
+/// See [`options`] for more control over this process.
 ///
-/// For additional type safety, prefer [`from_str_static_type`][`from_str_static_type`] or
-/// [`from_str_manual_type`][`from_str_manual_type`].
+/// For additional type safety, prefer [`from_str_static_type`] or [`from_str_manual_type`].
 ///
+/// [`options`]: options/index.html
+/// [`from_str_manual_type`]: fn.from_str_manual_type.html
+/// [`from_str_static_type`]: fn.from_str_static_type.html
 ///
 /// # Example
 ///
@@ -16,6 +18,7 @@ use crate::{options, Deserialize, Result, SimpleType, StaticType};
 /// # fn main() -> serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
+/// // We use serde's derive feature
 /// #[derive(Debug, Deserialize)]
 /// struct Point {
 ///     x: u64,
@@ -25,18 +28,15 @@ use crate::{options, Deserialize, Result, SimpleType, StaticType};
 /// // Some Dhall data
 /// let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 ///
-/// // Convert the Dhall string to a Point.
+/// // Parse the Dhall string as a Point.
 /// let point: Point = serde_dhall::from_str(data)?;
+///
 /// assert_eq!(point.x, 1);
 /// assert_eq!(point.y, 2);
 ///
 /// # Ok(())
 /// # }
 /// ```
-///
-/// [`options`]: options/index.html
-/// [`from_str_manual_type`]: fn.from_str_manual_type.html
-/// [`from_str_static_type`]: fn.from_str_static_type.html
 pub fn from_str<T>(s: &str) -> Result<T>
 where
     T: Deserialize,
@@ -47,8 +47,16 @@ where
 /// Deserialize an instance of type `T` from a string of Dhall text,
 /// additionally checking that it matches the supplied type.
 ///
-/// Like [`from_str`], but this additionally checks that
-/// the type of the provided expression matches the supplied type.
+/// This will recursively resolve all imports in the expression, and typecheck it against the
+/// supplied type before deserialization. Relative imports will be resolved relative to the current
+/// directory. See [`options`] for more control over this process.
+///
+/// See also [`from_str_static_type`].
+///
+/// [`options`]: options/index.html
+/// [`from_str_static_type`]: fn.from_str_static_type.html
+///
+/// # Example
 ///
 /// ```rust
 /// # fn main() -> serde_dhall::Result<()> {
@@ -75,8 +83,6 @@ where
 /// # Ok(())
 /// # }
 /// ```
-///
-/// TODO
 pub fn from_str_manual_type<T>(s: &str, ty: &SimpleType) -> Result<T>
 where
     T: Deserialize,
@@ -87,9 +93,14 @@ where
 /// Deserialize an instance of type `T` from a string of Dhall text,
 /// additionally checking that it matches the type of `T`.
 ///
-/// Like [from_str], but this additionally checks that
-/// the type of the provided expression matches the output type `T`. The [StaticType] trait
-/// captures Rust types that are valid Dhall types.
+/// `T` must implement the [`StaticType`] trait.
+///
+/// This will recursively resolve all imports in the expression, and typecheck it against the
+/// type of `T`. Relative imports will be resolved relative to the current
+/// directory. See [`options`] for more control over this process.
+///
+/// [`options`]: options/index.html
+/// [`StaticType`]: trait.StaticType.html
 ///
 /// TODO
 pub fn from_str_static_type<T>(s: &str) -> Result<T>

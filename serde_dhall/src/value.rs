@@ -36,10 +36,14 @@ pub(crate) enum SimpleValue {
 /// mismatch happened.
 ///
 /// You would typically not manipulate `SimpleType`s by hand but rather let Rust infer it for your
-/// datatype using the [`StaticType`][TODO] trait, and methods that require it like
-/// [`from_file_static_type`][TODO] and [`Options::static_type_annotation`][TODO]. If you need to supply a
+/// datatype using the [`StaticType`] trait, and methods that require it like
+/// [`from_file_static_type`] and [`Options::static_type_annotation`]. If you need to supply a
 /// `SimpleType` manually however, you can deserialize it like any other Dhall value using the
 /// functions provided by this crate.
+///
+/// [`StaticType`]: trait.StaticType.html
+/// [`from_file_static_type`]: fn.from_file_static_type.html
+/// [`Options::static_type_annotation`]: options/struct.Options.html#method.static_type_annotation
 ///
 /// # Examples
 ///
@@ -72,7 +76,7 @@ pub(crate) enum SimpleValue {
 /// let ty: SimpleType =
 ///     serde_dhall::from_str("{ x: Bool, y: List Natural }")?;
 ///
-/// assert_eq!(ty, Foo::static_type());
+/// assert_eq!(Foo::static_type(), ty);
 /// # Ok(())
 /// # }
 /// ```
