@@ -26,8 +26,7 @@ impl Value {
     }
 
     /// Converts a Value into a SimpleValue.
-    /// TODO
-    pub fn to_simple_value(&self) -> Option<SimpleValue> {
+    pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
         self.as_simple_val.clone()
     }
     /// Converts a Value into a SimpleType.

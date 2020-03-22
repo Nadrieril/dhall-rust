@@ -174,7 +174,7 @@ doc_comment::doctest!("../../README.md");
 
 /// Finer-grained control over deserializing Dhall values
 pub mod options;
-/// Serde-compatible Dhall values and their type
+/// Serde-compatible Dhall types
 pub mod simple;
 /// Arbitrary Dhall values
 pub mod value;
@@ -192,6 +192,6 @@ pub use deserialize::Deserialize;
 pub(crate) use deserialize::Sealed;
 pub use error::{Error, Result};
 pub use shortcuts::{from_str, from_str_manual_type, from_str_static_type};
-pub use simple::{Type as SimpleType, Value as SimpleValue};
+pub use simple::{Type as SimpleType};
 pub use static_type::StaticType;
 pub use value::Value;
