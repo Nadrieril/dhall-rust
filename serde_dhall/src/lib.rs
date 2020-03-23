@@ -189,6 +189,9 @@ pub use dhall_proc_macros::StaticType;
 pub use deserialize::Deserialize;
 pub(crate) use deserialize::Sealed;
 pub use error::{Error, Result};
-pub use shortcuts::{from_str, from_str_manual_type, from_str_static_type};
+pub use shortcuts::{
+    from_file, from_file_manual_type, from_file_static_type, from_str,
+    from_str_manual_type, from_str_static_type,
+};
 pub use static_type::StaticType;
 pub use value::{SimpleType, Value};

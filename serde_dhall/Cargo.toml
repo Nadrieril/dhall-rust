@@ -13,9 +13,9 @@ edition = "2018"
 serde = { version = "1.0", features = ["derive"] }
 dhall = { version = "=0.4.0", path = "../dhall" }
 dhall_proc_macros = { version = "=0.4.0", path = "../dhall_proc_macros" }
+doc-comment = "0.3"
 reqwest = { version = "0.10", features = ["blocking"] }
 url = "2.1"
 
 [dev-dependencies]
-doc-comment = "0.3"
 version-sync = "0.8"
