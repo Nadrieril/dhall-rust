@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use dhall::syntax::NumKind;
 
 use crate::value::SimpleValue;
-use crate::{Error, Result, Value};
+use crate::{Error, ErrorKind, Result, Value};
 
 pub trait Sealed {}
 
@@ -33,10 +33,10 @@ where
 {
     fn from_dhall(v: &Value) -> Result<Self> {
         let sval = v.to_simple_value().ok_or_else(|| {
-            Error::Deserialize(format!(
+            Error(ErrorKind::Deserialize(format!(
                 "this cannot be deserialized into the serde data model: {}",
                 v
-            ))
+            )))
         })?;
         T::deserialize(Deserializer(Cow::Owned(sval)))
     }

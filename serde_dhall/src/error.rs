@@ -1,21 +1,29 @@
 use dhall::error::Error as DhallError;
 
-/// TODO
+/// Alias for a `Result` with the error type `serde_dhall::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Errors that can occur when deserializing Dhall data.
 #[derive(Debug)]
-#[non_exhaustive]
-/// TODO
-pub enum Error {
+pub struct Error(pub(crate) ErrorKind);
+
+#[derive(Debug)]
+pub(crate) enum ErrorKind {
     Dhall(DhallError),
     Deserialize(String),
 }
 
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Error {
+        Error(kind)
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::Dhall(err) => write!(f, "{}", err),
-            Error::Deserialize(err) => write!(f, "{}", err),
+        match &self.0 {
+            ErrorKind::Dhall(err) => write!(f, "{}", err),
+            ErrorKind::Deserialize(err) => write!(f, "{}", err),
         }
     }
 }
@@ -27,6 +35,6 @@ impl serde::de::Error for Error {
     where
         T: std::fmt::Display,
     {
-        Error::Deserialize(msg.to_string())
+        ErrorKind::Deserialize(msg.to_string()).into()
     }
 }
