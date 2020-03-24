@@ -19,9 +19,12 @@ macro_rules! gen_doc {
     (@tck_info2, manual) => {" against the supplied type"};
     (@tck_info2, static) => {" against the type of `T`"};
 
-    (@tck_req, none) => {""};
-    (@tck_req, manual) => {""};
-    (@tck_req, static) => {"`T` must implement the [`StaticType`] trait.\n"};
+    (@tck_req, $src:tt, none) => {""};
+    (@tck_req, $src:tt, manual) => {""};
+    (@tck_req, $src:tt, static) => {
+        concat!("`T` must implement the [`StaticType`] trait. Use [`from_", stringify!($src),
+                "_manual_type`] to provide a type manually.\n")
+    };
 
     (@tck_comment, $src:tt, none) => {
         concat!("For additional type safety, prefer [`from_", stringify!($src), "_static_type`]
@@ -37,7 +40,7 @@ macro_rules! gen_doc {
     ($src:tt, $ty:tt) => {concat!("
 Deserialize an instance of type `T` from ", gen_doc!(@source_desc, $src), gen_doc!(@tck_info1, $ty),".
 
-", gen_doc!(@tck_req, $ty), "
+", gen_doc!(@tck_req, $src, $ty), "
 This will recursively resolve all imports in the expression, and typecheck it", gen_doc!(@tck_info2, $ty),"
 before deserialization. Relative imports will be resolved relative to the current directory.
 See [`options`] for more control over this process.
@@ -66,7 +69,7 @@ macro_rules! gen_example {
 use serde::Deserialize;
 
 // We use serde's derive feature
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct Point {
     x: u64,
     y: u64,
@@ -109,7 +112,7 @@ assert_eq!(deserialized_map, expected_map);
 use serde::Deserialize;
 use serde_dhall::StaticType;
 
-#[derive(Debug, Deserialize, StaticType)]
+#[derive(Deserialize, StaticType)]
 struct Point {
     x: u64,
     y: u64,
@@ -132,7 +135,7 @@ assert!(serde_dhall::from_str_static_type::<Point>(invalid_data).is_err());
 use serde::Deserialize;
 
 // We use serde's derive feature
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct Point {
     x: u64,
     y: u64,
@@ -160,7 +163,7 @@ let deserialized_map: HashMap<String, usize> =
 use serde::Deserialize;
 use serde_dhall::StaticType;
 
-#[derive(Debug, Deserialize, StaticType)]
+#[derive(Deserialize, StaticType)]
 struct Point {
     x: u64,
     y: u64,

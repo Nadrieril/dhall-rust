@@ -10,26 +10,44 @@ use crate::{Error, ErrorKind, Result, Value};
 
 pub trait Sealed {}
 
-/// A data structure that can be deserialized from a Dhall expression
+/// A data structure that can be deserialized from a Dhall expression.
 ///
-/// This is automatically implemented for any type that [serde][serde]
-/// can deserialize.
+/// This is automatically implemented for any type that [serde] can deserialize.
+/// In fact, this trait cannot be implemented manually. To implement it for your type,
+/// use serde's derive mechanism.
 ///
-/// This trait cannot be implemented manually.
+/// # Example
 ///
-/// TODO
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde::Deserialize;
+///
+/// // Use serde's derive
+/// #[derive(Deserialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+///
+/// // Convert a Dhall string to a Point.
+/// let point: Point = serde_dhall::from_str("{ x = 1, y = 1 + 1 }")?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [serde]: https://serde.rs
 pub trait Deserialize: Sealed + Sized {
     #[doc(hidden)]
     fn from_dhall(v: &Value) -> Result<Self>;
 }
 
-impl<'a, T> Sealed for T where T: serde::Deserialize<'a> {}
+impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 
 struct Deserializer<'a>(Cow<'a, SimpleValue>);
 
-impl<'a, T> Deserialize for T
+impl<T> Deserialize for T
 where
-    T: serde::Deserialize<'a>,
+    T: serde::de::DeserializeOwned,
 {
     fn from_dhall(v: &Value) -> Result<Self> {
         let sval = v.to_simple_value().ok_or_else(|| {

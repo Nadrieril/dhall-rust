@@ -1,5 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/serde_dhall/0.4.0")]
-// TODO #![warn(missing_docs)] #![warn(missing_doc_code_examples)]
+#![warn(missing_docs, missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
 //!
@@ -47,7 +47,7 @@
 //! # fn main() -> serde_dhall::Result<()> {
 //! use serde::Deserialize;
 //!
-//! #[derive(Debug, Deserialize)]
+//! #[derive(Deserialize)]
 //! struct Point {
 //!     x: u64,
 //!     y: u64,
@@ -65,28 +65,6 @@
 //! # }
 //! ```
 //!
-//! # Type correspondence
-//!
-//! The following Dhall types correspond to the following Rust types:
-//!
-//! Dhall  | Rust
-//! -------|------
-//! `Bool`  | `bool`
-//! `Natural`  | `u64`, `u32`, ...
-//! `Integer`  | `i64`, `i32`, ...
-//! `Double`  | `f64`, `f32`, ...
-//! `Text`  | `String`
-//! `List T`  | `Vec<T>`
-//! `Optional T`  | `Option<T>`
-//! `{ x: T, y: U }`  | structs
-//! `{ _1: T, _2: U }`  | `(T, U)`, structs
-//! `{ x: T, y: T }`  | `HashMap<String, T>`, structs
-//! `< x: T \| y: U >`  | enums
-//! `T -> U`  | unsupported
-//! `Prelude.JSON.Type`  | unsupported
-//! `Prelude.Map.Type T U`  | unsupported
-//!
-//!
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
@@ -99,16 +77,45 @@
 //! # Additional Dhall typechecking
 //!
 //! When deserializing, normal type checking is done to ensure that the returned value is a valid
-//! Dhall value, and that it can be deserialized into the required Rust type. However types are
-//! first-class in Dhall, and this library allows you to additionally check that some input data
+//! Dhall value. However types are
+//! first-class in Dhall, and this library allows you to additionally check that the input data
 //! matches a given Dhall type. That way, a type error will be caught on the Dhall side, and have
 //! pretty and explicit errors that point to the source file.
 //!
-//! There are two ways to typecheck a Dhall value: you can provide the type as Dhall text or you
-//! can let Rust infer it for you.
+//! There are two ways to typecheck a Dhall value in this way: you can provide the type manually or
+//! you can let Rust infer it for you.
 //!
-//! To provide a type written in Dhall, first parse it into a [`SimpleType`](enum.SimpleType.html), then
-//! pass it to [`from_str_manual_type`](fn.from_str_manual_type.html).
+//! To let Rust infer the appropriate Dhall type, use the [StaticType](trait.StaticType.html)
+//! trait.
+//!
+//! ```rust
+//! # fn main() -> serde_dhall::Result<()> {
+//! use serde::Deserialize;
+//! use serde_dhall::StaticType;
+//!
+//! #[derive(Deserialize, StaticType)]
+//! struct Point {
+//!     x: u64,
+//!     y: u64,
+//! }
+//!
+//! // Some Dhall data
+//! let data = "{ x = 1, y = 1 + 1 }";
+//!
+//! // Convert the Dhall string to a Point.
+//! let point: Point = serde_dhall::from_str_static_type(data)?;
+//! assert_eq!(point.x, 1);
+//! assert_eq!(point.y, 2);
+//!
+//! // Invalid data fails the type validation
+//! let invalid_data = "{ x = 1, z = 0.3 }";
+//! assert!(serde_dhall::from_str_static_type::<Point>(invalid_data).is_err());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! To provide a type manually, you need a [`SimpleType`](enum.SimpleType.html) value. You
+//! can parse it from some Dhall text like you would parse any other value.
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -136,41 +143,20 @@
 //! # }
 //! ```
 //!
-//! You can also let Rust infer the appropriate Dhall type, using the
-//! [StaticType](trait.StaticType.html) trait.
+//! # Controlling deserialization
 //!
-//! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
-//! use serde::Deserialize;
-//! use serde_dhall::StaticType;
+//! If you need more control over the process of reading Dhall values, e.g. disabling
+//! imports, see the [`options`] module.
 //!
-//! #[derive(Debug, Deserialize, StaticType)]
-//! struct Point {
-//!     x: u64,
-//!     y: u64,
-//! }
-//!
-//! // Some Dhall data
-//! let data = "{ x = 1, y = 1 + 1 }";
-//!
-//! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str_static_type(data)?;
-//! assert_eq!(point.x, 1);
-//! assert_eq!(point.y, 2);
-//!
-//! // Invalid data fails the type validation
-//! let invalid_data = "{ x = 1, z = 0.3 }";
-//! assert!(serde_dhall::from_str_static_type::<Point>(invalid_data).is_err());
-//! # Ok(())
-//! # }
-//! ```
-//!
+//! [`options`]: options/index.html
 //! [dhall]: https://dhall-lang.org/
 //! [serde]: https://docs.serde.rs/serde/
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html
 
 #[cfg(doctest)]
-doc_comment::doctest!("../../README.md");
+mod test_readme {
+    doc_comment::doctest!("../../README.md");
+}
 
 /// Finer-grained control over deserializing Dhall values
 pub mod options;

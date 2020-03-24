@@ -29,7 +29,54 @@ use crate::SimpleType;
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Type correspondence
+///
+/// The following Dhall types correspond to the following Rust types:
+///
+/// Dhall  | Rust
+/// -------|------
+/// `Bool`  | `bool`
+/// `Natural`  | `u64`, `u32`, ...
+/// `Integer`  | `i64`, `i32`, ...
+/// `Double`  | `f64`, `f32`, ...
+/// `Text`  | `String`
+/// `List T`  | `Vec<T>`
+/// `Optional T`  | `Option<T>`
+/// `{ x: T, y: U }`  | structs
+/// `{ _1: T, _2: U }`  | `(T, U)`, structs
+/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
+/// `< x: T \| y: U >`  | enums
+/// `T -> U`  | unsupported
+/// `Prelude.JSON.Type`  | unsupported
+/// `Prelude.Map.Type T U`  | unsupported
 pub trait StaticType {
+    /// Return the Dhall type that represents this type.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::{SimpleType, StaticType};
+    ///
+    /// // Using `derive(StaticType)` here would give it the type `{ _1: List Natural }`.
+    /// #[derive(Deserialize)]
+    /// #[serde(transparent)]
+    /// struct Foo(Vec<u64>);
+    ///
+    /// impl StaticType for Foo {
+    ///     fn static_type() -> SimpleType {
+    ///         SimpleType::List(Box::new(SimpleType::Natural))
+    ///     }
+    /// }
+    ///
+    /// let foo: Foo = serde_dhall::from_str_static_type("[ 1, 2 ]")?;
+    ///
+    /// assert_eq!(foo.0, vec![1, 2]);
+    /// # Ok(())
+    /// # }
+    /// ```
     fn static_type() -> SimpleType;
 }
 
