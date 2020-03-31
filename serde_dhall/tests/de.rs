@@ -82,4 +82,7 @@ fn test_de_untyped() {
         parse::<BTreeMap<String, usize>>("{ x = 1, y = 2 }"),
         expected_map
     );
+
+    // https://github.com/Nadrieril/dhall-rust/issues/155
+    assert!(from_str::<bool>("List/length [True, 42]").is_err());
 }

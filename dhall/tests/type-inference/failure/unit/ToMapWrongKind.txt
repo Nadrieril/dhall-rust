@@ -1,5 +1,5 @@
 Type error: error: `toMap` only accepts records of type `Type`
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | toMap { x = Bool }
   | ^^^^^^^^^^^^^^^^^^ `toMap` only accepts records of type `Type`

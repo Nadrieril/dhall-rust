@@ -1,5 +1,5 @@
 Type error: error: annot mismatch: { id : Optional Natural, name : Bool } != { id : Optional Natural, name : Text }
- --> <current file>:1:4
+ --> <current file>:1:5
   |
 ...
 6 | in  Example::{=}

@@ -1,5 +1,5 @@
 Type error: error: wrong type of function argument
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | Natural/subtract True True
   | ^^^^^^^^^^^^^^^^ this expects an argument of type: Natural

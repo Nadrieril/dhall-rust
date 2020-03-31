@@ -1,5 +1,5 @@
 Type error: error: MissingUnionField
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | < x : Bool >.y
   | ^^^^^^^^^^^^^^ MissingUnionField

@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "annotate-snippets"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -131,7 +131,7 @@ name = "dhall"
 version = "0.4.0"
 dependencies = [
  "abnf_to_pest 0.2.0",
- "annotate-snippets 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "annotate-snippets 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [metadata]
 "checksum abnf 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "47feb9fbcef700639ef28e04ca2a87eab8161a01a075ee227b15c90143805462"
-"checksum annotate-snippets 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "c7021ce4924a3f25f802b2cccd1af585e39ea1a363a1aa2e72afe54b67a3a7a7"
+"checksum annotate-snippets 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aba2d96b8c8b5e656ad7ffb0d09f57772f10a1db74c8d23fca0ec695b38a4047"
 "checksum ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
 "checksum arrayvec 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)" = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
 "checksum autocfg 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"

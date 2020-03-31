@@ -1,5 +1,5 @@
 Type error: error: MergeEmptyNeedsAnnotation
- --> <current file>:1:26
+ --> <current file>:1:27
   |
 1 | \(x: <>) -> let y: Bool = merge {=} x in 1
   |                           ^^^^^^^^^^^ MergeEmptyNeedsAnnotation

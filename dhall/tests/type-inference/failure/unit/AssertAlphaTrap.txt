@@ -1,5 +1,5 @@
 Type error: error: unbound variable ``_``
- --> <current file>:1:46
+ --> <current file>:1:47
   |
 1 | assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
   |                                               ^ not found in this scope

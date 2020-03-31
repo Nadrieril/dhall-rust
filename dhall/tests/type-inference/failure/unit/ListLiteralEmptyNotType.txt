@@ -1,5 +1,5 @@
 Type error: error: wrong type of function argument
- --> <current file>:1:5
+ --> <current file>:1:6
   |
 1 | [] : List Type
   |      ^^^^ this expects an argument of type: Type

@@ -1,5 +1,5 @@
 Type error: error: InvalidPredicate
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | if 1 then 1 else 1
   | ^^^^^^^^^^^^^^^^^^ InvalidPredicate

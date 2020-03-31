@@ -1,5 +1,5 @@
 Type error: error: annot mismatch: Bool != Natural
- --> <current file>:1:18
+ --> <current file>:1:19
   |
 1 | let x : Natural = True in True
   |                   ^^^^ annot mismatch: Bool != Natural

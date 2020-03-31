@@ -1,5 +1,5 @@
 Type error: error: Merge2ArgMustBeUnionOrOptional
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | merge { x = λ(_ : Bool) → _ } <> : Bool
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Merge2ArgMustBeUnionOrOptional

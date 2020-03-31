@@ -1,6 +1,5 @@
 use annotate_snippets::{
     display_list::DisplayList,
-    formatter::DisplayListFormatter,
     snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation},
 };
 
@@ -152,10 +151,9 @@ impl ErrorBuilder {
             title: Some(this.title.into_annotation()),
             slices,
             footer,
+            opt: Default::default(),
         };
-        let dl = DisplayList::from(snippet);
-        let dlf = DisplayListFormatter::new(true, false);
-        dlf.format(&dl)
+        DisplayList::from(snippet).to_string()
     }
 }
 

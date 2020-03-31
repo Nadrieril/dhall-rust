@@ -1,5 +1,5 @@
 Type error: error: wrong type of function argument
-  --> <current file>:6:15
+  --> <current file>:6:16
    |
  1 |     let bottom : Type = ∀(any : Type) → any
  2 | 

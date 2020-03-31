@@ -1,5 +1,5 @@
 Type error: error: annot mismatch: { x : Natural } != { y : Natural }
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | { x = 1 } : { y : Natural }
   | ^^^^^^^^^ annot mismatch: { x : Natural } != { y : Natural }

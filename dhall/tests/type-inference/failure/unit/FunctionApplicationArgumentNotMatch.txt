@@ -1,5 +1,5 @@
 Type error: error: wrong type of function argument
- --> <current file>:1:1
+ --> <current file>:1:2
   |
 1 | (λ(_ : Natural) → _) True
   |  ^^^^^^^^^^^^^^^^^^ this expects an argument of type: Natural

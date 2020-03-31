@@ -1,5 +1,5 @@
 Type error: error: MergeEmptyNeedsAnnotation
- --> <current file>:1:13
+ --> <current file>:1:14
   |
 1 | \(x: <>) -> (merge {=} x) : Bool
   |              ^^^^^^^^^^^ MergeEmptyNeedsAnnotation
