@@ -75,13 +75,15 @@ impl Span {
 }
 
 /// Convert a byte idx into a string into a char idx for consumption by annotate_snippets.
+/// The byte idx must be at a char boundary.
 fn char_idx_from_byte_idx(input: &str, idx: usize) -> usize {
+    use std::iter::once;
     input
         .char_indices()
+        .map(|(byte_i, _)| byte_i) // We don't care about the char
+        .chain(once(input.len())) // In case the idx points to the end of the string
         .enumerate()
-        .find(|(_, (i, _))| *i == idx)
-        .map(|(i, (_, _))| i)
-        // We should be able to unwrap() here, but somehow it panics on an example from
-        // serde_dhall/lib.rs...
-        .unwrap_or(0)
+        .find(|(_, byte_i)| *byte_i == idx)
+        .map(|(char_i, _)| char_i)
+        .unwrap()
 }
