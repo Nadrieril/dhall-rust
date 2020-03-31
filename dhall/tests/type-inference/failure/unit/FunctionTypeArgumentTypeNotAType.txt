@@ -1,5 +1,5 @@
 Type error: error: Expected a type, found: `2`
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | 2 → _
   | ^ this has type: `Natural`

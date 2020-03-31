@@ -1,5 +1,5 @@
 Type error: error: AssertMustTakeEquivalence
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | assert : Bool
   | ^^^^^^^^^^^^^ AssertMustTakeEquivalence

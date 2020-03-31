@@ -1,5 +1,5 @@
 Type error: error: Expected a type, found: `1`
- --> <current file>:1:8
+ --> <current file>:1:9
   |
 1 | Bool -> 1
   |         ^ this has type: `Natural`

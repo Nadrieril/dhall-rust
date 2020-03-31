@@ -1,5 +1,5 @@
 Type error: error: The argument to `toMap` must be a record
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | toMap "text"
   | ^^^^^^^^^^^^ The argument to `toMap` must be a record

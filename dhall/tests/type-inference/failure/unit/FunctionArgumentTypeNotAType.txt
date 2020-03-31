@@ -1,5 +1,5 @@
 Type error: error: Expected a type, found: `1`
- --> <current file>:1:6
+ --> <current file>:1:7
   |
 1 | λ(_ : 1) → _
   |       ^ this has type: `Natural`

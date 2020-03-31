@@ -1,5 +1,5 @@
 Type error: error: BinOpTypeMismatch
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | [ True ] # 1
   | ^^^^^^^^^^^^ BinOpTypeMismatch

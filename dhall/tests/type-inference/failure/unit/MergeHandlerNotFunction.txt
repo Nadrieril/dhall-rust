@@ -1,5 +1,5 @@
 Type error: error: merge handler is not a function
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | merge { x = True } (< x : Bool >.x True)
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this merge expression

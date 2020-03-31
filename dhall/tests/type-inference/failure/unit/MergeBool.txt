@@ -1,5 +1,5 @@
 Type error: error: Merge2ArgMustBeUnionOrOptional
- --> <current file>:1:43
+ --> <current file>:1:44
   |
 1 | \(x: { True: Natural, False: Natural }) -> merge x True
   |                                            ^^^^^^^^^^^^ Merge2ArgMustBeUnionOrOptional

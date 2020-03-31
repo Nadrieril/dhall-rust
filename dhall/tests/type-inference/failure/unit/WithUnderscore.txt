@@ -1,5 +1,5 @@
 Type error: error: unbound variable ``_``
- --> <current file>:1:23
+ --> <current file>:1:24
   |
 ...
 5 | { a.b = 1 } with a.c = _

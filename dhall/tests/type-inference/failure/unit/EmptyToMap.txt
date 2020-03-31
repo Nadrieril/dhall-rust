@@ -1,5 +1,5 @@
 Type error: error: `toMap` applied to an empty record requires a type annotation
- --> <current file>:1:0
+ --> <current file>:1:1
   |
 1 | toMap {=}
   | ^^^^^^^^^ `toMap` applied to an empty record requires a type annotation

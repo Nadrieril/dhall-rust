@@ -76,18 +76,12 @@ impl Span {
 
 /// Convert a byte idx into a string into a char idx for consumption by annotate_snippets.
 fn char_idx_from_byte_idx(input: &str, idx: usize) -> usize {
-    let char_idx = input
+    input
         .char_indices()
         .enumerate()
         .find(|(_, (i, _))| *i == idx)
         .map(|(i, (_, _))| i)
         // We should be able to unwrap() here, but somehow it panics on an example from
         // serde_dhall/lib.rs...
-        .unwrap_or(0);
-    // Unix-style newlines are counted as two chars (see
-    // https://github.com/rust-lang/annotate-snippets-rs/issues/24).
-    let nbr_newlines = input[..idx].chars().filter(|c| *c == '\n').count();
-    let nbr_carriage_returns =
-        input[..idx].chars().filter(|c| *c == '\r').count();
-    char_idx + nbr_newlines - nbr_carriage_returns
+        .unwrap_or(0)
 }

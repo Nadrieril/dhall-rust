@@ -1,5 +1,5 @@
 Type error: error: Sort does not have a type
- --> <current file>:1:8
+ --> <current file>:1:9
   |
 1 | let x = Sort in 0
   |         ^^^^ Sort does not have a type

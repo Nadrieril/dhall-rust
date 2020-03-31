@@ -1,5 +1,5 @@
 Type error: error: InvalidFieldType
- --> <current file>:1:15
+ --> <current file>:1:16
   |
 1 | { x = Bool } ⫽ { x = Kind }
   |                ^^^^^^^^^^^^ InvalidFieldType
