@@ -1,7 +1,10 @@
 #![doc(html_root_url = "https://docs.rs/dhall/0.4.0")]
 #![allow(
+    clippy::implicit_hasher,
     clippy::module_inception,
     clippy::needless_lifetimes,
+    clippy::new_ret_no_self,
+    clippy::new_without_default,
     clippy::useless_format
 )]
 

@@ -2,7 +2,7 @@ use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
 use crate::syntax::Label;
 
 /// Environment for indexing variables.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct VarEnv {
     size: usize,
 }
@@ -16,7 +16,7 @@ pub struct TyEnv {
 
 impl VarEnv {
     pub fn new() -> Self {
-        VarEnv { size: 0 }
+        VarEnv::default()
     }
     pub fn from_size(size: usize) -> Self {
         VarEnv { size }

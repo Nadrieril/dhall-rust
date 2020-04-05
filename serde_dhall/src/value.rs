@@ -226,12 +226,12 @@ impl SimpleType {
                 ExprKind::App(hir(ExprKind::Builtin(Builtin::List)), t.to_hir())
             }
             SimpleType::Record(kts) => ExprKind::RecordType(
-                kts.into_iter()
+                kts.iter()
                     .map(|(k, t)| (k.as_str().into(), t.to_hir()))
                     .collect(),
             ),
             SimpleType::Union(kts) => ExprKind::UnionType(
-                kts.into_iter()
+                kts.iter()
                     .map(|(k, t)| {
                         (k.as_str().into(), t.as_ref().map(|t| t.to_hir()))
                     })

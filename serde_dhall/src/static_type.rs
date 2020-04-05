@@ -117,7 +117,6 @@ where
             .into_iter()
             .collect(),
         )
-        .into()
     }
 }
 
@@ -135,7 +134,6 @@ where
             .into_iter()
             .collect(),
         )
-        .into()
     }
 }
 
@@ -144,7 +142,7 @@ where
     T: StaticType,
 {
     fn static_type() -> SimpleType {
-        SimpleType::Optional(Box::new(T::static_type())).into()
+        SimpleType::Optional(Box::new(T::static_type()))
     }
 }
 
@@ -153,7 +151,7 @@ where
     T: StaticType,
 {
     fn static_type() -> SimpleType {
-        SimpleType::List(Box::new(T::static_type())).into()
+        SimpleType::List(Box::new(T::static_type()))
     }
 }
 
