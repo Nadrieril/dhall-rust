@@ -1,0 +1,10 @@
+disable-push = true
+disable-publish = true
+no-dev-version = true
+pre-release-commit-message = "Release {{crate_name}} version {{version}}"
+
+[[pre-release-replacements]]
+file = "src/lib.rs"
+search = "\\[doc\\(html_root_url = .*\\)\\]"
+replace = "[doc(html_root_url = \"https://docs.rs/{{crate_name}}/{{version}}\")]"
+exactly = 1
