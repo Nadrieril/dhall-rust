@@ -10,7 +10,7 @@ use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
-    BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, ImportMode,
+    BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode,
     ImportTarget, Span, UnspannedExpr, URL,
 };
 use crate::{Parsed, Resolved};
@@ -208,6 +208,7 @@ fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
     location: &ImportLocation,
+    span: Span,
 ) -> Result<TypedHir, Error> {
     let do_sanity_check = import.mode != ImportMode::Location;
     let location = location.chain(&import.location, do_sanity_check)?;
@@ -215,7 +216,30 @@ fn resolve_one_import(
         ImportMode::Code => {
             let parsed = location.fetch_dhall()?;
             let typed = resolve_with_env(env, parsed)?.typecheck()?;
-            Ok((typed.normalize().to_hir(), typed.ty().clone()))
+            let hir = typed.normalize().to_hir();
+            let ty = typed.ty().clone();
+            match &import.hash {
+                Some(Hash::SHA256(hash)) => {
+                    let actual_hash = hir.to_expr_alpha().hash()?;
+                    if hash[..] != actual_hash[..] {
+                        mkerr(
+                            ErrorBuilder::new("hash mismatch")
+                                .span_err(span, "hash mismatch")
+                                .note(format!(
+                                    "Expected sha256:{}",
+                                    hex::encode(hash)
+                                ))
+                                .note(format!(
+                                    "Found    sha256:{}",
+                                    hex::encode(actual_hash)
+                                ))
+                                .format(),
+                        )?
+                    }
+                }
+                None => {}
+            }
+            Ok((hir, ty))
         }
         ImportMode::RawText => {
             let text = location.fetch_text()?;
@@ -268,7 +292,7 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
     expr: &Expr,
-    f: &mut impl FnMut(Import) -> Result<TypedHir, Error>,
+    f: &mut impl FnMut(Import, Span) -> Result<TypedHir, Error>,
 ) -> Result<Hir, Error> {
     let expr = desugar(expr);
     Ok(match expr.kind() {
@@ -307,7 +331,7 @@ fn traverse_resolve_expr(
                 ExprKind::Import(import) => {
                     // TODO: evaluate import headers
                     let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
-                    let imported = f(import)?;
+                    let imported = f(import, expr.span())?;
                     HirKind::Import(imported.0, imported.1)
                 }
                 kind => HirKind::Expr(kind),
@@ -322,10 +346,11 @@ fn resolve_with_env(
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
     let Parsed(expr, location) = parsed;
-    let resolved =
-        traverse_resolve_expr(&mut NameEnv::new(), &expr, &mut |import| {
-            resolve_one_import(env, &import, &location)
-        })?;
+    let resolved = traverse_resolve_expr(
+        &mut NameEnv::new(),
+        &expr,
+        &mut |import, span| resolve_one_import(env, &import, &location, span),
+    )?;
     Ok(Resolved(resolved))
 }
 
@@ -334,7 +359,7 @@ pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
 }
 
 pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
-    traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import| {
+    traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import, _span| {
         Err(ImportError::UnexpectedImport(import).into())
     })
 }

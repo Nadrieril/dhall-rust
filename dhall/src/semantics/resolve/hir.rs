@@ -59,6 +59,10 @@ impl Hir {
         let opts = ToExprOptions { alpha: false };
         self.to_expr(opts)
     }
+    pub fn to_expr_alpha(&self) -> Expr {
+        let opts = ToExprOptions { alpha: true };
+        self.to_expr(opts)
+    }
     pub fn to_expr_tyenv(&self, env: &TyEnv) -> Expr {
         let opts = ToExprOptions { alpha: false };
         let mut env = env.as_nameenv().clone();

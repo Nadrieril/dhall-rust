@@ -256,9 +256,7 @@ fn generate_tests() -> std::io::Result<()> {
             exclude_path: Rc::new(|path: &str| {
                 false
                     // TODO: import hash
-                    || path == "alternativeHashMismatch"
                     || path == "hashFromCache"
-                    || path == "unit/AlternativeHashMismatch"
                     // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
                     || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
@@ -275,8 +273,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "ImportFailure",
             exclude_path: Rc::new(|path: &str| {
                 false
-                    // TODO: import hash
-                    || path == "hashMismatch"
                     // TODO: import headers
                     || path == "customHeadersUsingBoundVariable"
             }),

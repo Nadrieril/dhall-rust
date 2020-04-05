@@ -304,12 +304,8 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare_ui(err)?;
         }
         SemanticHash(expr, expected) => {
-            use sha2::Digest;
             let expr = expr.normalize()?.to_expr_alpha();
-            dbg!(&expr);
-            let expr_data = binary::encode(&expr)?;
-            let hash = sha2::Sha256::digest(&expr_data);
-            let hash = hex::encode(hash);
+            let hash = hex::encode(expr.hash()?);
             expected.compare_ui(format!("sha256:{}", hash))?;
         }
         TypeInferenceSuccess(expr, expected) => {

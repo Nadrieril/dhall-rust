@@ -17,6 +17,8 @@ import:
 failure/
     don't recover cycle
     don't resolve symlinks in canonicalizing
+as Text hash
+as Location hash
 
 normalization:
 move builtins and operators in their own folder ?
