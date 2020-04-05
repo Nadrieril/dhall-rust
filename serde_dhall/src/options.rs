@@ -27,9 +27,9 @@ enum Source<'a> {
 ///
 /// ```no_run
 /// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::options;
+/// use serde_dhall::from_file;
 ///
-/// let data = options::from_file("foo.dhall").parse()?;
+/// let data = from_file("foo.dhall").parse()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -38,10 +38,10 @@ enum Source<'a> {
 ///
 /// ```no_run
 /// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::options;
+/// use serde_dhall::{from_file, from_str};
 ///
-/// let ty = options::from_str("{ x: Natural, y: Natural }").parse()?;
-/// let data = options::from_file("foo.dhall")
+/// let ty = from_str("{ x: Natural, y: Natural }").parse()?;
+/// let data = from_file("foo.dhall")
 ///             .type_annotation(&ty)
 ///             .parse()?;
 /// # Ok(())
@@ -91,7 +91,7 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// let data = "12 + ./other_file.dhall : Natural";
     /// assert!(
-    ///     serde_dhall::options::from_str::<u64>(data)
+    ///     serde_dhall::from_str::<u64>(data)
     ///         .imports(false)
     ///         .parse()
     ///         .is_err()
@@ -136,11 +136,11 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// // Parse a Dhall type
     /// let point_type_str = "{ x: Natural, y: Optional Natural }";
-    /// let point_type: SimpleType = serde_dhall::options::from_str(point_type_str).parse()?;
+    /// let point_type: SimpleType = serde_dhall::from_str(point_type_str).parse()?;
     ///
     /// // Parse some Dhall data to a Point.
     /// let data = "{ x = 1, y = Some (1 + 1) }";
-    /// let point: Point = serde_dhall::options::from_str(data)
+    /// let point: Point = serde_dhall::from_str(data)
     ///     .type_annotation(&point_type)
     ///     .parse()?;
     /// assert_eq!(point.x, 1);
@@ -149,7 +149,7 @@ impl<'a, T> Deserializer<'a, T> {
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
     /// let invalid_data = "{ x = 1 }";
     /// assert!(
-    ///     serde_dhall::options::from_str::<Point>(invalid_data)
+    ///     serde_dhall::from_str::<Point>(invalid_data)
     ///         .type_annotation(&point_type)
     ///         .parse()
     ///         .is_err()
@@ -187,7 +187,7 @@ impl<'a, T> Deserializer<'a, T> {
     /// let data = "{ x = 1, y = Some (1 + 1) }";
     ///
     /// // Convert the Dhall string to a Point.
-    /// let point: Point = serde_dhall::options::from_str(data)
+    /// let point: Point = serde_dhall::from_str(data)
     ///     .static_type_annotation()
     ///     .parse()?;
     /// assert_eq!(point.x, 1);
@@ -196,7 +196,7 @@ impl<'a, T> Deserializer<'a, T> {
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
     /// let invalid_data = "{ x = 1 }";
     /// assert!(
-    ///     serde_dhall::options::from_str::<Point>(invalid_data)
+    ///     serde_dhall::from_str::<Point>(invalid_data)
     ///         .static_type_annotation()
     ///         .parse()
     ///         .is_err()
@@ -240,8 +240,7 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// ```no_run
     /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::options;
-    /// let data = options::from_file("foo.dhall").parse()?;
+    /// let data = serde_dhall::from_file("foo.dhall").parse()?;
     /// # Ok(())
     /// # }
     /// ```
@@ -276,7 +275,7 @@ impl<'a, T> Deserializer<'a, T> {
 /// let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 ///
 /// // Parse the Dhall string as a Point.
-/// let point: Point = serde_dhall::options::from_str(data).parse()?;
+/// let point: Point = serde_dhall::from_str(data).parse()?;
 ///
 /// assert_eq!(point.x, 1);
 /// assert_eq!(point.y, 2);
@@ -309,7 +308,7 @@ pub fn from_str<T>(s: &str) -> Deserializer<'_, T> {
 /// }
 ///
 /// // Parse the Dhall file as a Point.
-/// let point: Point = serde_dhall::options::from_file("foo.dhall").parse()?;
+/// let point: Point = serde_dhall::from_file("foo.dhall").parse()?;
 /// # Ok(())
 /// # }
 /// ```

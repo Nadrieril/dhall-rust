@@ -30,7 +30,7 @@ pub trait Sealed {}
 /// }
 ///
 /// // Convert a Dhall string to a Point.
-/// let point: Point = serde_dhall::from_str("{ x = 1, y = 1 + 1 }")?;
+/// let point: Point = serde_dhall::from_str("{ x = 1, y = 1 + 1 }").parse()?;
 /// # Ok(())
 /// # }
 /// ```

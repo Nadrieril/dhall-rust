@@ -23,7 +23,7 @@ use crate::SimpleType;
 /// }
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Bool, y: List Natural }")?;
+///     serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
 ///
 /// assert_eq!(Foo::static_type(), ty);
 /// # Ok(())
@@ -71,7 +71,7 @@ pub trait StaticType {
     ///     }
     /// }
     ///
-    /// let foo: Foo = serde_dhall::from_str_static_type("[ 1, 2 ]")?;
+    /// let foo: Foo = serde_dhall::from_str("[ 1, 2 ]").static_type_annotation().parse()?;
     ///
     /// assert_eq!(foo.0, vec![1, 2]);
     /// # Ok(())

@@ -1,10 +1,10 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, from_str_static_type, FromDhall, StaticType};
+use serde_dhall::{from_str, FromDhall, StaticType};
 
 #[test]
 fn test_de_typed() {
     fn parse<T: FromDhall + StaticType>(s: &str) -> T {
-        from_str_static_type(s).unwrap()
+        from_str(s).static_type_annotation().parse().unwrap()
     }
 
     assert_eq!(parse::<bool>("True"), true);
@@ -52,13 +52,13 @@ fn test_de_typed() {
     }
     assert_eq!(parse::<Baz>("< X | Y: Integer >.X"), Baz::X);
 
-    assert!(from_str_static_type::<Baz>("< X | Y: Integer >.Y").is_err());
+    assert!(from_str::<Baz>("< X | Y: Integer >.Y").static_type_annotation().parse().is_err());
 }
 
 #[test]
 fn test_de_untyped() {
     fn parse<T: FromDhall>(s: &str) -> T {
-        from_str(s).unwrap()
+        from_str(s).parse().unwrap()
     }
 
     // Test tuples on record of wrong type
@@ -94,5 +94,5 @@ fn test_de_untyped() {
     assert_eq!(parse::<Foo>("{ x = 1 }"), Foo { x: 1, y: None });
 
     // https://github.com/Nadrieril/dhall-rust/issues/155
-    assert!(from_str::<bool>("List/length [True, 42]").is_err());
+    assert!(from_str::<bool>("List/length [True, 42]").parse().is_err());
 }

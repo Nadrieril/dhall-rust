@@ -30,7 +30,7 @@
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Deserialize it to a Rust type.
-//! let deserialized_map: HashMap<String, usize> = serde_dhall::from_str(data)?;
+//! let deserialized_map: HashMap<String, usize> = serde_dhall::from_str(data).parse()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -57,7 +57,7 @@
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str(data)?;
+//! let point: Point = serde_dhall::from_str(data).parse()?;
 //! assert_eq!(point.x, 1);
 //! assert_eq!(point.y, 2);
 //!
@@ -68,7 +68,7 @@
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
-//! [`serde_yaml::from_str`] with [`serde_dhall::from_str`](fn.from_str.html).
+//! [`serde_yaml::from_str`] with [`serde_dhall::from_str(…).parse()`](fn.from_str.html).
 //!
 //! [`serde_json::from_str`]: https://docs.serde.rs/serde_json/fn.from_str.html
 //! [`serde_yaml::from_str`]: https://docs.serde.rs/serde_yaml/fn.from_str.html
@@ -103,13 +103,13 @@
 //! let data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str_static_type(data)?;
+//! let point: Point = serde_dhall::from_str(data).static_type_annotation().parse()?;
 //! assert_eq!(point.x, 1);
 //! assert_eq!(point.y, 2);
 //!
 //! // Invalid data fails the type validation
 //! let invalid_data = "{ x = 1, z = 0.3 }";
-//! assert!(serde_dhall::from_str_static_type::<Point>(invalid_data).is_err());
+//! assert!(serde_dhall::from_str::<Point>(invalid_data).static_type_annotation().parse().is_err());
 //! # Ok(())
 //! # }
 //! ```
@@ -124,7 +124,7 @@
 //!
 //! // Parse a Dhall type
 //! let point_type_str = "{ x: Natural, y: Natural }";
-//! let point_type: SimpleType = serde_dhall::from_str(point_type_str)?;
+//! let point_type: SimpleType = serde_dhall::from_str(point_type_str).parse()?;
 //!
 //! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
@@ -132,7 +132,7 @@
 //! // Deserialize the data to a Rust type. This checks that
 //! // the data matches the provided type.
 //! let deserialized_map: HashMap<String, usize> =
-//!         serde_dhall::from_str_manual_type(point_data, &point_type)?;
+//!         serde_dhall::from_str(point_data).type_annotation(&point_type).parse()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -158,13 +158,9 @@ mod test_readme {
     doc_comment::doctest!("../../README.md");
 }
 
-/// Finer-grained control over deserializing Dhall values
-pub mod options;
-
+mod options;
 mod deserialize;
 mod error;
-/// Common patterns made easier
-mod shortcuts;
 mod static_type;
 /// Dhall values
 mod value;
@@ -176,9 +172,8 @@ pub use deserialize::FromDhall;
 pub(crate) use deserialize::Sealed;
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
-pub use shortcuts::{
-    from_file, from_file_manual_type, from_file_static_type, from_str,
-    from_str_manual_type, from_str_static_type,
+pub use options::{
+    from_file, from_str, Deserializer
 };
 pub use static_type::StaticType;
 pub use value::{SimpleType, Value};

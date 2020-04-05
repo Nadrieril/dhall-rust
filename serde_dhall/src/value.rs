@@ -28,7 +28,7 @@ pub(crate) enum SimpleValue {
     Union(String, Option<Box<SimpleValue>>),
 }
 
-/// The type of a value that can be decoded by Serde, like `{ x: Bool, y: List Natural }`.
+/// The type of a value that can be decoded by Serde, e.g. `{ x: Bool, y: List Natural }`.
 ///
 /// A `SimpleType` is used when deserializing values to ensure they are of the expected type.
 /// Rather than letting `serde` handle potential type mismatches, this uses the type-checking
@@ -53,7 +53,7 @@ pub(crate) enum SimpleValue {
 /// use serde_dhall::SimpleType;
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Natural, y: Natural }")?;
+///     serde_dhall::from_str("{ x: Natural, y: Natural }").parse()?;
 ///
 /// let mut map = HashMap::new();
 /// map.insert("x".to_string(), SimpleType::Natural);
@@ -74,7 +74,7 @@ pub(crate) enum SimpleValue {
 /// }
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Bool, y: List Natural }")?;
+///     serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
 ///
 /// assert_eq!(Foo::static_type(), ty);
 /// # Ok(())
