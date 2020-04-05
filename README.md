@@ -167,7 +167,7 @@ same name as the corresponding test.
 
 ## Changelog
 
-#### \[Unreleased\]
+#### [Unreleased]
 
 #### [0.5.0] - 2020-04-05
 
