@@ -63,6 +63,7 @@ enum Test {
     BinaryDecodingFailure(TestFile, TestFile),
     ImportSuccess(TestFile, TestFile),
     ImportFailure(TestFile, TestFile),
+    SemanticHash(TestFile, TestFile),
     TypeInferenceSuccess(TestFile, TestFile),
     TypeInferenceFailure(TestFile, TestFile),
     Normalization(TestFile, TestFile),
@@ -132,7 +133,7 @@ impl TestFile {
     fn write_ui(&self, x: impl Display) -> Result<()> {
         match self {
             TestFile::UI(_) => {}
-            _ => panic!("Can't write an error to a non-UI file"),
+            _ => panic!("Can't write a ui string to a dhall file"),
         }
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
@@ -301,6 +302,15 @@ fn run_test(test: Test) -> Result<()> {
         ImportFailure(expr, expected) => {
             let err = expr.resolve().unwrap_err();
             expected.compare_ui(err)?;
+        }
+        SemanticHash(expr, expected) => {
+            use sha2::Digest;
+            let expr = expr.normalize()?.to_expr_alpha();
+            dbg!(&expr);
+            let expr_data = binary::encode(&expr)?;
+            let hash = sha2::Sha256::digest(&expr_data);
+            let hash = hex::encode(hash);
+            expected.compare_ui(format!("sha256:{}", hash))?;
         }
         TypeInferenceSuccess(expr, expected) => {
             let ty = expr.typecheck()?.get_type()?;

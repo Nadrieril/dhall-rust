@@ -14,6 +14,8 @@ enum FileType {
     Text,
     /// Dhall binary file
     Binary,
+    /// Text file with hash
+    Hash,
     /// Text file with expected text output
     UI,
 }
@@ -23,6 +25,7 @@ impl FileType {
         match self {
             FileType::Text => "dhall",
             FileType::Binary => "dhallb",
+            FileType::Hash => "hash",
             FileType::UI => "txt",
         }
     }
@@ -30,6 +33,7 @@ impl FileType {
         match self {
             FileType::Text => "TestFile::Source",
             FileType::Binary => "TestFile::Binary",
+            FileType::Hash => "TestFile::Binary",
             FileType::UI => "TestFile::UI",
         }
     }
@@ -277,6 +281,22 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "customHeadersUsingBoundVariable"
             }),
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "semantic_hash",
+            directory: "semantic-hash/success/",
+            variant: "SemanticHash",
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "simple/integerToDouble"
+                    // See https://github.com/pyfisch/cbor/issues/109
+                    || path == "prelude/Integer/toDouble/0"
+                    || path == "prelude/Integer/toDouble/1"
+                    || path == "prelude/Natural/toDouble/0"
+            }),
+            output_type: Some(FileType::Hash),
             ..default_feature.clone()
         },
         TestFeature {
