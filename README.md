@@ -167,7 +167,7 @@ same name as the corresponding test.
 
 ## Changelog
 
-#### [???]
+#### [Unreleased]
 
 - Add `serde_dhall::from_file` to read a Dhall file directly.
 - BREAKING CHANGE: reworked most of the `serde_dhall` API
@@ -206,6 +206,9 @@ same name as the corresponding test.
 #### [0.1.0]
 
 - Initial release
+
+<!-- next-url -->
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.4.0...HEAD
 
 ## License
 
