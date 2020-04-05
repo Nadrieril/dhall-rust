@@ -1,15 +1,14 @@
 use crate::error::{ErrorBuilder, TypeError};
 use crate::semantics::{mkerr, Hir, Nir, NirKind, NzEnv, TyEnv, VarEnv};
-use crate::syntax::{Builtin, Const, Span};
-use crate::NormalizedExpr;
+use crate::syntax::{Builtin, Const, Expr, Span};
 
 /// The type of a type. 0 is `Type`, 1 is `Kind`, etc...
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub(crate) struct Universe(u8);
+pub struct Universe(u8);
 
 /// An expression representing a type
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Type {
+pub struct Type {
     val: Nir,
     univ: Universe,
 }
@@ -17,7 +16,7 @@ pub(crate) struct Type {
 /// A hir expression plus its inferred type.
 /// Stands for "Typed intermediate representation"
 #[derive(Debug, Clone)]
-pub(crate) struct Tir<'hir> {
+pub struct Tir<'hir> {
     hir: &'hir Hir,
     ty: Type,
 }
@@ -101,7 +100,7 @@ impl Type {
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
         self.val.to_hir(venv)
     }
-    pub fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
+    pub fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.val.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 }
@@ -124,7 +123,7 @@ impl<'hir> Tir<'hir> {
     pub fn as_hir(&self) -> &Hir {
         &self.hir
     }
-    pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
+    pub fn to_expr_tyenv(&self, env: &TyEnv) -> Expr {
         self.as_hir().to_expr_tyenv(env)
     }
 

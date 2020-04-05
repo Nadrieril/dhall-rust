@@ -1,7 +1,7 @@
 use crate::error::TypeError;
 use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv, Type};
 use crate::syntax::{Expr, ExprKind, Span, V};
-use crate::{NormalizedExpr, ToExprOptions};
+use crate::ToExprOptions;
 
 /// Stores an alpha-normalized variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -10,7 +10,7 @@ pub struct AlphaVar {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HirKind {
+pub enum HirKind {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
     /// Result of resolving an import.
@@ -21,16 +21,16 @@ pub(crate) enum HirKind {
 
 // An expression with resolved variables and imports.
 #[derive(Debug, Clone)]
-pub(crate) struct Hir {
+pub struct Hir {
     kind: Box<HirKind>,
     span: Span,
 }
 
 impl AlphaVar {
-    pub(crate) fn new(idx: usize) -> Self {
+    pub fn new(idx: usize) -> Self {
         AlphaVar { idx }
     }
-    pub(crate) fn idx(self) -> usize {
+    pub fn idx(self) -> usize {
         self.idx
     }
 }
@@ -51,15 +51,15 @@ impl Hir {
     }
 
     /// Converts a closed Hir expr back to the corresponding AST expression.
-    pub fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
+    pub fn to_expr(&self, opts: ToExprOptions) -> Expr {
         hir_to_expr(self, opts, &mut NameEnv::new())
     }
     /// Converts a closed Hir expr back to the corresponding AST expression.
-    pub fn to_expr_noopts(&self) -> NormalizedExpr {
+    pub fn to_expr_noopts(&self) -> Expr {
         let opts = ToExprOptions { alpha: false };
         self.to_expr(opts)
     }
-    pub fn to_expr_tyenv(&self, env: &TyEnv) -> NormalizedExpr {
+    pub fn to_expr_tyenv(&self, env: &TyEnv) -> Expr {
         let opts = ToExprOptions { alpha: false };
         let mut env = env.as_nameenv().clone();
         hir_to_expr(self, opts, &mut env)
@@ -85,19 +85,9 @@ impl Hir {
     pub fn eval_closed_expr(&self) -> Nir {
         self.eval(NzEnv::new())
     }
-    /// Eval a closed Hir fully and recursively;
-    pub fn rec_eval_closed_expr(&self) -> Nir {
-        let val = self.eval_closed_expr();
-        val.normalize();
-        val
-    }
 }
 
-fn hir_to_expr(
-    hir: &Hir,
-    opts: ToExprOptions,
-    env: &mut NameEnv,
-) -> NormalizedExpr {
+fn hir_to_expr(hir: &Hir, opts: ToExprOptions, env: &mut NameEnv) -> Expr {
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),

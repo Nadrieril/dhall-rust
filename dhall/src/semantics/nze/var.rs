@@ -8,10 +8,10 @@ pub struct Binder {
 }
 
 impl Binder {
-    pub(crate) fn new(name: Label) -> Self {
+    pub fn new(name: Label) -> Self {
         Binder { name }
     }
-    pub(crate) fn to_label(&self) -> Label {
+    pub fn to_label(&self) -> Label {
         self.clone().into()
     }
 }

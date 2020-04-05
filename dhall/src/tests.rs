@@ -10,8 +10,8 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::error::{ErrorKind, Result};
-use crate::syntax::binary;
-use crate::{Normalized, NormalizedExpr, Parsed, Resolved, Typed};
+use crate::syntax::{binary, Expr};
+use crate::{Normalized, Parsed, Resolved, Typed};
 
 macro_rules! assert_eq_display {
     ($left:expr, $right:expr) => {{
@@ -111,7 +111,7 @@ impl TestFile {
         env::var("UPDATE_TEST_FILES") == Ok("1".to_string())
     }
     /// Write the provided expression to the pointed file.
-    fn write_expr(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+    fn write_expr(&self, expr: impl Into<Expr>) -> Result<()> {
         let expr = expr.into();
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
@@ -142,7 +142,7 @@ impl TestFile {
     }
 
     /// Check that the provided expression matches the file contents.
-    pub fn compare(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+    pub fn compare(&self, expr: impl Into<Expr>) -> Result<()> {
         let expr = expr.into();
         if !self.path().is_file() {
             return self.write_expr(expr);
@@ -159,7 +159,7 @@ impl TestFile {
         Ok(())
     }
     /// Check that the provided expression matches the file contents.
-    pub fn compare_debug(&self, expr: impl Into<NormalizedExpr>) -> Result<()> {
+    pub fn compare_debug(&self, expr: impl Into<Expr>) -> Result<()> {
         let expr = expr.into();
         if !self.path().is_file() {
             return self.write_expr(expr);
@@ -176,10 +176,7 @@ impl TestFile {
         Ok(())
     }
     /// Check that the provided expression matches the file contents.
-    pub fn compare_binary(
-        &self,
-        expr: impl Into<NormalizedExpr>,
-    ) -> Result<()> {
+    pub fn compare_binary(&self, expr: impl Into<Expr>) -> Result<()> {
         let expr = expr.into();
         match self {
             TestFile::Binary(_) => {}
@@ -302,7 +299,7 @@ fn run_test(test: Test) -> Result<()> {
             expected.compare(expr)?;
         }
         ImportFailure(expr, expected) => {
-            let err = expr.parse()?.resolve().unwrap_err();
+            let err = expr.resolve().unwrap_err();
             expected.compare_ui(err)?;
         }
         TypeInferenceSuccess(expr, expected) => {

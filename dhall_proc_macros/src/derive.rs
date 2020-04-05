@@ -52,9 +52,11 @@ fn derive_for_struct(
         let ty = static_type(ty);
         quote!( (#name.to_owned(), #ty) )
     });
-    Ok(quote! { ::serde_dhall::value::Value::make_record_type(
-        vec![ #(#entries),* ].into_iter()
-    ) })
+    Ok(quote! {
+        ::serde_dhall::SimpleType::Record(
+            vec![ #(#entries),* ].into_iter().collect()
+        )
+    })
 }
 
 fn derive_for_enum(
@@ -89,9 +91,11 @@ fn derive_for_enum(
         })
         .collect::<Result<_, Error>>()?;
 
-    Ok(quote! { ::serde_dhall::value::Value::make_union_type(
-        vec![ #(#entries),* ].into_iter()
-    ) })
+    Ok(quote! {
+        ::serde_dhall::SimpleType::Union(
+            vec![ #(#entries),* ].into_iter().collect()
+        )
+    })
 }
 
 pub fn derive_static_type_inner(
@@ -164,8 +168,7 @@ pub fn derive_static_type_inner(
         impl #impl_generics ::serde_dhall::StaticType
                 for #ident #ty_generics
                 #where_clause {
-            fn static_type() ->
-                    ::serde_dhall::value::Value {
+            fn static_type() -> ::serde_dhall::SimpleType {
                 #(#assertions)*
                 #get_type
             }

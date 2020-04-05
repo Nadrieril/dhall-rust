@@ -51,7 +51,7 @@ where
         .collect()
 }
 
-pub(crate) fn visit_ref<'a, F, SE1, SE2, Err>(
+pub fn visit_ref<'a, F, SE1, SE2, Err>(
     input: &'a ExprKind<SE1>,
     mut f: F,
 ) -> Result<ExprKind<SE2>, Err>
@@ -91,7 +91,7 @@ where
         Annot(x, t) => Annot(expr!(x)?, expr!(t)?),
         Const(k) => Const(*k),
         Builtin(v) => Builtin(*v),
-        Lit(l) => Lit(l.clone()),
+        Num(n) => Num(n.clone()),
         TextLit(t) => TextLit(t.traverse_ref(|e| expr!(e))?),
         BinOp(o, x, y) => BinOp(*o, expr!(x)?, expr!(y)?),
         BoolIf(b, t, f) => BoolIf(expr!(b)?, expr!(t)?, expr!(f)?),

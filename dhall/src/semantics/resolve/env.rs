@@ -5,24 +5,24 @@ use crate::semantics::{AlphaVar, ImportLocation, TypedHir, VarEnv};
 use crate::syntax::{Label, V};
 
 /// Environment for resolving names.
-#[derive(Debug, Clone)]
-pub(crate) struct NameEnv {
+#[derive(Debug, Clone, Default)]
+pub struct NameEnv {
     names: Vec<Label>,
 }
 
-pub(crate) type ImportCache = HashMap<ImportLocation, TypedHir>;
-pub(crate) type ImportStack = Vec<ImportLocation>;
+pub type ImportCache = HashMap<ImportLocation, TypedHir>;
+pub type ImportStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
-#[derive(Debug, Clone)]
-pub(crate) struct ImportEnv {
+#[derive(Debug, Clone, Default)]
+pub struct ImportEnv {
     cache: ImportCache,
     stack: ImportStack,
 }
 
 impl NameEnv {
     pub fn new() -> Self {
-        NameEnv { names: Vec::new() }
+        NameEnv::default()
     }
     pub fn as_varenv(&self) -> VarEnv {
         VarEnv::from_size(self.names.len())
@@ -66,10 +66,7 @@ impl NameEnv {
 
 impl ImportEnv {
     pub fn new() -> Self {
-        ImportEnv {
-            cache: HashMap::new(),
-            stack: Vec::new(),
-        }
+        ImportEnv::default()
     }
 
     pub fn handle_import(

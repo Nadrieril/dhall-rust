@@ -1,27 +1,92 @@
-use dhall::syntax::Builtin;
-
-use crate::Value;
+use crate::SimpleType;
 
 /// A Rust type that can be represented as a Dhall type.
 ///
-/// A typical example is `Option<bool>`,
-/// represented by the dhall expression `Optional Bool`.
+/// A typical example is `Option<bool>`, represented by the Dhall expression `Optional Bool`.
 ///
-/// This trait can and should be automatically derived.
+/// This trait can be automatically derived, and this is the recommended way of implementing it.
 ///
-/// The representation needs to be independent of the value.
-/// For this reason, something like `HashMap<String, bool>` cannot implement
-/// [StaticType] because each different value would
-/// have a different Dhall record type.
+/// Some Rust types cannot implement this trait, because there isn't a single Dhall type that
+/// corresponds to them. For example, `HashMap<String, u64>` could correspond to multiple different
+/// Dhall types, e.g. `{ foo: Natural, bar: Natural }` and `{ baz: Natural }`.
+///
+/// # Example
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde_dhall::{SimpleType, StaticType};
+///
+/// #[derive(StaticType)]
+/// struct Foo {
+///     x: bool,
+///     y: Vec<u64>,
+/// }
+///
+/// let ty: SimpleType =
+///     serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
+///
+/// assert_eq!(Foo::static_type(), ty);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Type correspondence
+///
+/// The following Dhall types correspond to the following Rust types:
+///
+/// Dhall  | Rust
+/// -------|------
+/// `Bool`  | `bool`
+/// `Natural`  | `u64`, `u32`, ...
+/// `Integer`  | `i64`, `i32`, ...
+/// `Double`  | `f64`, `f32`, ...
+/// `Text`  | `String`
+/// `List T`  | `Vec<T>`
+/// `Optional T`  | `Option<T>`
+/// `{ x: T, y: U }`  | structs
+/// `{ _1: T, _2: U }`  | `(T, U)`, structs
+/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
+/// `< x: T \| y: U >`  | enums
+/// `T -> U`  | unsupported
+/// `Prelude.JSON.Type`  | unsupported
+/// `Prelude.Map.Type T U`  | unsupported
 pub trait StaticType {
-    fn static_type() -> Value;
+    /// Return the Dhall type that represents this type.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::{SimpleType, StaticType};
+    ///
+    /// // Using `derive(StaticType)` here would give it the type `{ _1: List Natural }`.
+    /// #[derive(Deserialize)]
+    /// #[serde(transparent)]
+    /// struct Foo(Vec<u64>);
+    ///
+    /// impl StaticType for Foo {
+    ///     fn static_type() -> SimpleType {
+    ///         SimpleType::List(Box::new(SimpleType::Natural))
+    ///     }
+    /// }
+    ///
+    /// let foo = serde_dhall::from_str("[ 1, 2 ]")
+    ///     .static_type_annotation()
+    ///     .parse::<Foo>()?;
+    ///
+    /// assert_eq!(foo.0, vec![1, 2]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn static_type() -> SimpleType;
 }
 
 macro_rules! derive_builtin {
-    ($ty:ty, $builtin:ident) => {
-        impl StaticType for $ty {
-            fn static_type() -> Value {
-                Value::make_builtin_type(Builtin::$builtin)
+    ($rust_ty:ty, $dhall_ty:ident) => {
+        impl StaticType for $rust_ty {
+            fn static_type() -> SimpleType {
+                SimpleType::$dhall_ty
             }
         }
     };
@@ -43,13 +108,14 @@ where
     A: StaticType,
     B: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_record_type(
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
             ]
-            .into_iter(),
+            .into_iter()
+            .collect(),
         )
     }
 }
@@ -59,13 +125,14 @@ where
     T: StaticType,
     E: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_union_type(
+    fn static_type() -> SimpleType {
+        SimpleType::Union(
             vec![
                 ("Ok".to_owned(), Some(T::static_type())),
                 ("Err".to_owned(), Some(E::static_type())),
             ]
-            .into_iter(),
+            .into_iter()
+            .collect(),
         )
     }
 }
@@ -74,8 +141,8 @@ impl<T> StaticType for Option<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_optional_type(T::static_type())
+    fn static_type() -> SimpleType {
+        SimpleType::Optional(Box::new(T::static_type()))
     }
 }
 
@@ -83,8 +150,8 @@ impl<T> StaticType for Vec<T>
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
-        Value::make_list_type(T::static_type())
+    fn static_type() -> SimpleType {
+        SimpleType::List(Box::new(T::static_type()))
     }
 }
 
@@ -92,7 +159,7 @@ impl<'a, T> StaticType for &'a T
 where
     T: StaticType,
 {
-    fn static_type() -> Value {
+    fn static_type() -> SimpleType {
         T::static_type()
     }
 }

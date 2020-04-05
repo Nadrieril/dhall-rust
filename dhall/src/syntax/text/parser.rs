@@ -9,7 +9,7 @@ use pest_consume::{match_nodes, Parser};
 
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::ExprKind::*;
-use crate::syntax::LitKind::*;
+use crate::syntax::NumKind::*;
 use crate::syntax::{
     Double, Expr, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Integer, InterpolatedText, InterpolatedTextContents, Label, NaiveDouble,
@@ -135,7 +135,7 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
             entry.insert(e);
         }
         Entry::Occupied(mut entry) => {
-            let dummy = Expr::new(Lit(Bool(false)), Span::Artificial);
+            let dummy = Expr::new(Num(Bool(false)), Span::Artificial);
             let other = entry.insert(dummy);
             entry.insert(Expr::new(
                 BinOp(RecursiveRecordMerge, other, e),
@@ -390,8 +390,8 @@ impl DhallParser {
         let e = match crate::syntax::Builtin::parse(s) {
             Some(b) => Builtin(b),
             None => match s {
-                "True" => Lit(Bool(true)),
-                "False" => Lit(Bool(false)),
+                "True" => Num(Bool(true)),
+                "False" => Num(Bool(false)),
                 "Type" => Const(crate::syntax::Const::Type),
                 "Kind" => Const(crate::syntax::Const::Kind),
                 "Sort" => Const(crate::syntax::Const::Sort),
@@ -924,9 +924,9 @@ impl DhallParser {
     #[alias(expression, shortcut = true)]
     fn primitive_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
-            [double_literal(n)] => spanned(input, Lit(Double(n))),
-            [natural_literal(n)] => spanned(input, Lit(Natural(n))),
-            [integer_literal(n)] => spanned(input, Lit(Integer(n))),
+            [double_literal(n)] => spanned(input, Num(Double(n))),
+            [natural_literal(n)] => spanned(input, Num(Natural(n))),
+            [integer_literal(n)] => spanned(input, Num(Integer(n))),
             [double_quote_literal(s)] => spanned(input, TextLit(s)),
             [single_quote_literal(s)] => spanned(input, TextLit(s)),
             [record_type_or_literal(e)] => spanned(input, e),

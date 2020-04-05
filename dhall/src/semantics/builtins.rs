@@ -1,47 +1,34 @@
 use crate::semantics::{
-    skip_resolve, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
+    skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, LitKind, NaiveDouble, Span, UnspannedExpr,
+    InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
     V,
 };
-use crate::Normalized;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
-pub(crate) struct BuiltinClosure<Nir> {
-    pub env: NzEnv,
-    pub b: Builtin,
+pub struct BuiltinClosure {
+    env: NzEnv,
+    b: Builtin,
     /// Arguments applied to the closure so far.
-    pub args: Vec<Nir>,
+    args: Vec<Nir>,
 }
 
-impl BuiltinClosure<Nir> {
-    pub fn new(b: Builtin, env: NzEnv) -> Self {
-        BuiltinClosure {
-            env,
-            b,
-            args: Vec::new(),
-        }
+impl BuiltinClosure {
+    pub fn new(b: Builtin, env: NzEnv) -> NirKind {
+        apply_builtin(b, Vec::new(), env)
     }
-
     pub fn apply(&self, a: Nir) -> NirKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a)).collect();
         apply_builtin(self.b, args, self.env.clone())
-    }
-    /// This doesn't break the invariant because we already checked that the appropriate arguments
-    /// did not normalize to something that allows evaluation to proceed.
-    pub fn normalize(&self) {
-        for x in self.args.iter() {
-            x.normalize();
-        }
     }
     pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
         HirKind::Expr(self.args.iter().fold(
@@ -56,7 +43,7 @@ impl BuiltinClosure<Nir> {
     }
 }
 
-pub(crate) fn rc(x: UnspannedExpr) -> Expr {
+pub fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Artificial)
 }
 
@@ -116,7 +103,7 @@ macro_rules! make_type {
     };
 }
 
-pub(crate) fn type_of_builtin(b: Builtin) -> Hir {
+pub fn type_of_builtin(b: Builtin) -> Hir {
     use Builtin::*;
     let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -202,7 +189,7 @@ pub(crate) fn type_of_builtin(b: Builtin) -> Hir {
             forall (A: Type) -> Optional A
         ),
     };
-    skip_resolve(&expr).unwrap()
+    skip_resolve_expr(&expr).unwrap()
 }
 
 // Ad-hoc macro to help construct closures
@@ -241,7 +228,7 @@ macro_rules! make_closure {
         rc(ExprKind::BinOp(
             BinOp::NaturalPlus,
             make_closure!($($v)*),
-            rc(ExprKind::Lit(LitKind::Natural(1)))
+            rc(ExprKind::Num(NumKind::Natural(1)))
         ))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
@@ -257,8 +244,8 @@ macro_rules! make_closure {
 
 #[allow(clippy::cognitive_complexity)]
 fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
-    use LitKind::{Bool, Double, Integer, Natural};
     use NirKind::*;
+    use NumKind::{Bool, Double, Integer, Natural};
 
     // Small helper enum
     enum Ret {
@@ -267,46 +254,54 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         DoneAsIs,
     }
     let make_closure = |e| {
-        typecheck(&skip_resolve(&e).unwrap())
+        typecheck(&skip_resolve_expr(&e).unwrap())
             .unwrap()
             .eval(env.clone())
     };
 
     let ret = match (b, args.as_slice()) {
+        (Builtin::Bool, [])
+        | (Builtin::Natural, [])
+        | (Builtin::Integer, [])
+        | (Builtin::Double, [])
+        | (Builtin::Text, []) => Ret::NirKind(BuiltinType(b)),
+        (Builtin::Optional, [t]) => Ret::NirKind(OptionalType(t.clone())),
+        (Builtin::List, [t]) => Ret::NirKind(ListType(t.clone())),
+
         (Builtin::OptionalNone, [t]) => {
             Ret::NirKind(EmptyOptionalLit(t.clone()))
         }
         (Builtin::NaturalIsZero, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n == 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalEven, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 == 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalOdd, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Bool(*n % 2 != 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 != 0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::NirKind(Lit(Integer(*n as isize))),
+            Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as isize))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalShow, [n]) => match &*n.kind() {
-            Lit(Natural(n)) => Ret::Nir(Nir::from_text(n)),
+            Num(Natural(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
-            (Lit(Natural(a)), Lit(Natural(b))) => {
-                Ret::NirKind(Lit(Natural(if b > a { b - a } else { 0 })))
+            (Num(Natural(a)), Num(Natural(b))) => {
+                Ret::NirKind(Num(Natural(if b > a { b - a } else { 0 })))
             }
-            (Lit(Natural(0)), _) => Ret::Nir(b.clone()),
-            (_, Lit(Natural(0))) => Ret::NirKind(Lit(Natural(0))),
-            _ if a == b => Ret::NirKind(Lit(Natural(0))),
+            (Num(Natural(0)), _) => Ret::Nir(b.clone()),
+            (_, Num(Natural(0))) => Ret::NirKind(Num(Natural(0))),
+            _ if a == b => Ret::NirKind(Num(Natural(0))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerShow, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
+            Num(Integer(n)) => {
                 let s = if *n < 0 {
                     n.to_string()
                 } else {
@@ -317,30 +312,30 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerToDouble, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
-                Ret::NirKind(Lit(Double(NaiveDouble::from(*n as f64))))
+            Num(Integer(n)) => {
+                Ret::NirKind(Num(Double(NaiveDouble::from(*n as f64))))
             }
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerNegate, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => Ret::NirKind(Lit(Integer(-n))),
+            Num(Integer(n)) => Ret::NirKind(Num(Integer(-n))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerClamp, [n]) => match &*n.kind() {
-            Lit(Integer(n)) => {
-                Ret::NirKind(Lit(Natural((*n).try_into().unwrap_or(0))))
+            Num(Integer(n)) => {
+                Ret::NirKind(Num(Natural((*n).try_into().unwrap_or(0))))
             }
             _ => Ret::DoneAsIs,
         },
         (Builtin::DoubleShow, [n]) => match &*n.kind() {
-            Lit(Double(n)) => Ret::Nir(Nir::from_text(n)),
+            Num(Double(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
         (Builtin::TextShow, [v]) => match &*v.kind() {
             TextLit(tlit) => {
                 if let Some(s) = tlit.as_text() {
                     // Printing InterpolatedText takes care of all the escaping
-                    let txt: InterpolatedText<Normalized> =
+                    let txt: InterpolatedText<Expr> =
                         std::iter::once(InterpolatedTextContents::Text(s))
                             .collect();
                     Ret::Nir(Nir::from_text(txt))
@@ -351,8 +346,8 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
-            EmptyListLit(_) => Ret::NirKind(Lit(Natural(0))),
-            NEListLit(xs) => Ret::NirKind(Lit(Natural(xs.len()))),
+            EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
+            NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len()))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListHead, [_, l]) => match &*l.kind() {
@@ -398,7 +393,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Nir::from_kind(Lit(Natural(i))),
+                                        Nir::from_kind(Num(Natural(i))),
                                     );
                                     kvs.insert("value".into(), e.clone());
                                     Nir::from_kind(RecordLit(kvs))
@@ -466,14 +461,14 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                     λ(x : Natural) ->
                     1 + var(x)
                 )))
-                .app(Lit(Natural(0)).into_nir()),
+                .app(Num(Natural(0)).into_nir()),
         ),
 
         (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
-            Lit(Natural(0)) => Ret::Nir(zero.clone()),
-            Lit(Natural(n)) => {
+            Num(Natural(0)) => Ret::Nir(zero.clone()),
+            Num(Natural(n)) => {
                 let fold = Nir::from_builtin(Builtin::NaturalFold)
-                    .app(Lit(Natural(n - 1)).into_nir())
+                    .app(Num(Natural(n - 1)).into_nir())
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());
@@ -490,9 +485,9 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
     }
 }
 
-impl<Nir: std::cmp::PartialEq> std::cmp::PartialEq for BuiltinClosure<Nir> {
+impl std::cmp::PartialEq for BuiltinClosure {
     fn eq(&self, other: &Self) -> bool {
         self.b == other.b && self.args == other.args
     }
 }
-impl<Nir: std::cmp::Eq> std::cmp::Eq for BuiltinClosure<Nir> {}
+impl std::cmp::Eq for BuiltinClosure {}

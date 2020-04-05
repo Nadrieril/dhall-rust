@@ -2,21 +2,21 @@ use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
 use crate::syntax::Label;
 
 /// Environment for indexing variables.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct VarEnv {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VarEnv {
     size: usize,
 }
 
 /// Environment for typing expressions.
 #[derive(Debug, Clone)]
-pub(crate) struct TyEnv {
+pub struct TyEnv {
     names: NameEnv,
     items: ValEnv<Type>,
 }
 
 impl VarEnv {
     pub fn new() -> Self {
-        VarEnv { size: 0 }
+        VarEnv::default()
     }
     pub fn from_size(size: usize) -> Self {
         VarEnv { size }

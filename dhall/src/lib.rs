@@ -1,7 +1,10 @@
 #![doc(html_root_url = "https://docs.rs/dhall/0.4.0")]
 #![allow(
+    clippy::implicit_hasher,
     clippy::module_inception,
     clippy::needless_lifetimes,
+    clippy::new_ret_no_self,
+    clippy::new_without_default,
     clippy::useless_format
 )]
 
@@ -15,23 +18,15 @@ use std::fmt::Display;
 use std::path::Path;
 use url::Url;
 
-use crate::error::{EncodeError, Error, TypeError};
+use crate::error::{Error, TypeError};
 use crate::semantics::parse;
 use crate::semantics::resolve;
 use crate::semantics::resolve::ImportLocation;
-use crate::semantics::{
-    typecheck, typecheck_with, Hir, Nir, NirKind, Tir, Type,
-};
-use crate::syntax::binary;
-use crate::syntax::{Builtin, Expr};
-
-pub type ParsedExpr = Expr;
-pub type DecodedExpr = Expr;
-pub type ResolvedExpr = Expr;
-pub type NormalizedExpr = Expr;
+use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
+use crate::syntax::Expr;
 
 #[derive(Debug, Clone)]
-pub struct Parsed(ParsedExpr, ImportLocation);
+pub struct Parsed(Expr, ImportLocation);
 
 /// An expression where all imports have been resolved
 ///
@@ -48,15 +43,15 @@ pub struct Typed {
 
 /// A normalized expression.
 ///
-/// Invariant: the contained expression must be in normal form,
+/// This is actually a lie, because the expression will only get normalized on demand.
 #[derive(Debug, Clone)]
 pub struct Normalized(Nir);
 
 /// Controls conversion from `Nir` to `Expr`
-#[derive(Copy, Clone)]
-pub(crate) struct ToExprOptions {
+#[derive(Copy, Clone, Default)]
+pub struct ToExprOptions {
     /// Whether to convert all variables to `_`
-    pub(crate) alpha: bool,
+    pub alpha: bool,
 }
 
 impl Parsed {
@@ -72,6 +67,7 @@ impl Parsed {
     pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_binary_file(f)
     }
+    #[allow(dead_code)]
     pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
         parse::parse_binary(data)
     }
@@ -80,15 +76,11 @@ impl Parsed {
         resolve::resolve(self)
     }
     pub fn skip_resolve(self) -> Result<Resolved, Error> {
-        Ok(Resolved(resolve::skip_resolve(&self.0)?))
-    }
-
-    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        binary::encode(&self.0)
+        resolve::skip_resolve(self)
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> ParsedExpr {
+    pub fn to_expr(&self) -> Expr {
         self.0.clone()
     }
 }
@@ -97,11 +89,11 @@ impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
         Ok(Typed::from_tir(typecheck(&self.0)?))
     }
-    pub fn typecheck_with(self, ty: &Normalized) -> Result<Typed, TypeError> {
-        Ok(Typed::from_tir(typecheck_with(&self.0, ty.to_hir())?))
+    pub fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
+        Ok(Typed::from_tir(typecheck_with(&self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> ResolvedExpr {
+    pub fn to_expr(&self) -> Expr {
         self.0.to_expr_noopts()
     }
 }
@@ -115,78 +107,37 @@ impl Typed {
     }
     /// Reduce an expression to its normal form, performing beta reduction
     pub fn normalize(&self) -> Normalized {
-        Normalized(self.hir.rec_eval_closed_expr())
+        Normalized(self.hir.eval_closed_expr())
     }
 
     /// Converts a value back to the corresponding AST expression.
-    fn to_expr(&self) -> ResolvedExpr {
+    fn to_expr(&self) -> Expr {
         self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
-    pub(crate) fn ty(&self) -> &Type {
+    pub fn ty(&self) -> &Type {
         &self.ty
     }
-    pub(crate) fn get_type(&self) -> Result<Normalized, TypeError> {
+    pub fn get_type(&self) -> Result<Normalized, TypeError> {
         Ok(Normalized(self.ty.clone().into_nir()))
     }
 }
 
 impl Normalized {
-    pub fn encode(&self) -> Result<Vec<u8>, EncodeError> {
-        binary::encode(&self.to_expr())
-    }
-
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> NormalizedExpr {
-        self.0.to_expr(ToExprOptions { alpha: false })
+    pub fn to_expr(&self) -> Expr {
+        self.0.to_expr(ToExprOptions::default())
     }
     /// Converts a value back to the corresponding Hir expression.
-    pub(crate) fn to_hir(&self) -> Hir {
+    pub fn to_hir(&self) -> Hir {
         self.0.to_hir_noenv()
     }
+    pub fn as_nir(&self) -> &Nir {
+        &self.0
+    }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
-    pub(crate) fn to_expr_alpha(&self) -> NormalizedExpr {
+    pub fn to_expr_alpha(&self) -> Expr {
         self.0.to_expr(ToExprOptions { alpha: true })
-    }
-    pub(crate) fn to_nir(&self) -> Nir {
-        self.0.clone()
-    }
-    pub(crate) fn into_nir(self) -> Nir {
-        self.0
-    }
-
-    pub(crate) fn from_kind(v: NirKind) -> Self {
-        Normalized(Nir::from_kind(v))
-    }
-    pub(crate) fn from_nir(th: Nir) -> Self {
-        Normalized(th)
-    }
-
-    pub fn make_builtin_type(b: Builtin) -> Self {
-        Normalized::from_nir(Nir::from_builtin(b))
-    }
-    pub fn make_optional_type(t: Normalized) -> Self {
-        Normalized::from_nir(
-            Nir::from_builtin(Builtin::Optional).app(t.to_nir()),
-        )
-    }
-    pub fn make_list_type(t: Normalized) -> Self {
-        Normalized::from_nir(Nir::from_builtin(Builtin::List).app(t.to_nir()))
-    }
-    pub fn make_record_type(
-        kts: impl Iterator<Item = (String, Normalized)>,
-    ) -> Self {
-        Normalized::from_kind(NirKind::RecordType(
-            kts.map(|(k, t)| (k.into(), t.into_nir())).collect(),
-        ))
-    }
-    pub fn make_union_type(
-        kts: impl Iterator<Item = (String, Option<Normalized>)>,
-    ) -> Self {
-        Normalized::from_kind(NirKind::UnionType(
-            kts.map(|(k, t)| (k.into(), t.map(|t| t.into_nir())))
-                .collect(),
-        ))
     }
 }
 
@@ -213,23 +164,12 @@ macro_rules! derive_traits_for_wrapper_struct {
 
 derive_traits_for_wrapper_struct!(Parsed);
 
-impl std::hash::Hash for Normalized {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        if let Ok(vec) = self.encode() {
-            vec.hash(state)
-        }
-    }
-}
-
-impl From<Parsed> for NormalizedExpr {
+impl From<Parsed> for Expr {
     fn from(other: Parsed) -> Self {
         other.to_expr()
     }
 }
-impl From<Normalized> for NormalizedExpr {
+impl From<Normalized> for Expr {
     fn from(other: Normalized) -> Self {
         other.to_expr()
     }

@@ -7,10 +7,10 @@ use crate::semantics::{
     BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, Label, LitKind,
-    Span,
+    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
+    NumKind, Span,
 };
-use crate::{NormalizedExpr, ToExprOptions};
+use crate::ToExprOptions;
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
 /// automatically. Uses a Rc<RefCell> to share computation.
@@ -19,7 +19,7 @@ use crate::{NormalizedExpr, ToExprOptions};
 /// normalize as needed.
 /// Stands for "Normalized intermediate representation"
 #[derive(Clone)]
-pub(crate) struct Nir(Rc<NirInternal>);
+pub struct Nir(Rc<NirInternal>);
 
 #[derive(Debug)]
 struct NirInternal {
@@ -28,7 +28,7 @@ struct NirInternal {
 
 /// An unevaluated subexpression
 #[derive(Debug, Clone)]
-pub(crate) enum Thunk {
+pub enum Thunk {
     /// A completely unnormalized expression.
     Thunk { env: NzEnv, body: Hir },
     /// A partially normalized expression that may need to go through `normalize_one_layer`.
@@ -37,7 +37,7 @@ pub(crate) enum Thunk {
 
 /// An unevaluated subexpression that takes an argument.
 #[derive(Debug, Clone)]
-pub(crate) enum Closure {
+pub enum Closure {
     /// Normal closure
     Closure { env: NzEnv, body: Hir },
     /// Closure that ignores the argument passed
@@ -48,7 +48,7 @@ pub(crate) enum Closure {
 // Invariant: this must not contain interpolations that are themselves TextLits, and contiguous
 // text values must be merged.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TextLit(Vec<InterpolatedTextContents<Nir>>);
+pub struct TextLit(Vec<InterpolatedTextContents<Nir>>);
 
 /// This represents a value in Weak Head Normal Form (WHNF). This means that the value is
 /// normalized up to the first constructor, but subexpressions may not be fully normalized.
@@ -58,7 +58,7 @@ pub(crate) struct TextLit(Vec<InterpolatedTextContents<Nir>>);
 /// In particular, this means that once we get a `NirKind`, it can be considered immutable, and
 /// we only need to recursively normalize its sub-`Nir`s to get to the NF.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NirKind {
+pub enum NirKind {
     /// Closures
     LamClosure {
         binder: Binder,
@@ -70,13 +70,17 @@ pub(crate) enum NirKind {
         annot: Nir,
         closure: Closure,
     },
-    AppliedBuiltin(BuiltinClosure<Nir>),
+    AppliedBuiltin(BuiltinClosure),
 
     Var(NzVar),
     Const(Const),
-    Lit(LitKind),
+    // Must be a number type, Bool or Text
+    BuiltinType(Builtin),
+    Num(NumKind),
+    OptionalType(Nir),
     EmptyOptionalLit(Nir),
     NEOptionalLit(Nir),
+    ListType(Nir),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Nir),
     NEListLit(Vec<Nir>),
@@ -93,34 +97,34 @@ pub(crate) enum NirKind {
 
 impl Nir {
     /// Construct a Nir from a completely unnormalized expression.
-    pub(crate) fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
+    pub fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
         NirInternal::from_thunk(Thunk::new(env, hir)).into_nir()
     }
     /// Construct a Nir from a partially normalized expression that's not in WHNF.
-    pub(crate) fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
+    pub fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
         // TODO: env
         let env = NzEnv::new();
         NirInternal::from_thunk(Thunk::from_partial_expr(env, e)).into_nir()
     }
     /// Make a Nir from a NirKind
-    pub(crate) fn from_kind(v: NirKind) -> Nir {
+    pub fn from_kind(v: NirKind) -> Nir {
         NirInternal::from_whnf(v).into_nir()
     }
-    pub(crate) fn from_const(c: Const) -> Self {
+    pub fn from_const(c: Const) -> Self {
         let v = NirKind::Const(c);
         NirInternal::from_whnf(v).into_nir()
     }
-    pub(crate) fn from_builtin(b: Builtin) -> Self {
+    pub fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
     }
-    pub(crate) fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
+    pub fn from_builtin_env(b: Builtin, env: &NzEnv) -> Self {
         Nir::from_kind(NirKind::from_builtin_env(b, env.clone()))
     }
-    pub(crate) fn from_text(txt: impl ToString) -> Self {
+    pub fn from_text(txt: impl ToString) -> Self {
         Nir::from_kind(NirKind::TextLit(TextLit::from_text(txt.to_string())))
     }
 
-    pub(crate) fn as_const(&self) -> Option<Const> {
+    pub fn as_const(&self) -> Option<Const> {
         match &*self.kind() {
             NirKind::Const(c) => Some(*c),
             _ => None,
@@ -128,26 +132,22 @@ impl Nir {
     }
 
     /// This is what you want if you want to pattern-match on the value.
-    pub(crate) fn kind(&self) -> &NirKind {
+    pub fn kind(&self) -> &NirKind {
         self.0.kind()
     }
 
-    pub(crate) fn to_type(&self, u: impl Into<Universe>) -> Type {
+    pub fn to_type(&self, u: impl Into<Universe>) -> Type {
         Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self, opts: ToExprOptions) -> NormalizedExpr {
+    pub fn to_expr(&self, opts: ToExprOptions) -> Expr {
         self.to_hir_noenv().to_expr(opts)
     }
-    pub(crate) fn to_expr_tyenv(&self, tyenv: &TyEnv) -> NormalizedExpr {
+    pub fn to_expr_tyenv(&self, tyenv: &TyEnv) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 
-    pub(crate) fn normalize(&self) {
-        self.0.normalize()
-    }
-
-    pub(crate) fn app(&self, v: Nir) -> Nir {
+    pub fn app(&self, v: Nir) -> Nir {
         Nir::from_kind(apply_any(self.clone(), v))
     }
 
@@ -188,12 +188,21 @@ impl Nir {
                     closure.to_hir(venv),
                 ),
                 NirKind::Const(c) => ExprKind::Const(*c),
-                NirKind::Lit(l) => ExprKind::Lit(l.clone()),
+                NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
+                NirKind::Num(l) => ExprKind::Num(l.clone()),
+                NirKind::OptionalType(t) => ExprKind::App(
+                    Nir::from_builtin(Builtin::Optional).to_hir(venv),
+                    t.to_hir(venv),
+                ),
                 NirKind::EmptyOptionalLit(n) => ExprKind::App(
                     Nir::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
                 ),
                 NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
+                NirKind::ListType(t) => ExprKind::App(
+                    Nir::from_builtin(Builtin::List).to_hir(venv),
+                    t.to_hir(venv),
+                ),
                 NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
                     HirKind::Expr(ExprKind::App(
                         Nir::from_builtin(Builtin::List).to_hir(venv),
@@ -274,75 +283,18 @@ impl NirInternal {
     fn kind(&self) -> &NirKind {
         &self.kind
     }
-    fn normalize(&self) {
-        self.kind().normalize();
-    }
 }
 
 impl NirKind {
-    pub(crate) fn into_nir(self) -> Nir {
+    pub fn into_nir(self) -> Nir {
         Nir::from_kind(self)
     }
 
-    pub(crate) fn normalize(&self) {
-        match self {
-            NirKind::Var(..) | NirKind::Const(_) | NirKind::Lit(_) => {}
-
-            NirKind::EmptyOptionalLit(tth) | NirKind::EmptyListLit(tth) => {
-                tth.normalize();
-            }
-
-            NirKind::NEOptionalLit(th) => {
-                th.normalize();
-            }
-            NirKind::LamClosure { annot, closure, .. }
-            | NirKind::PiClosure { annot, closure, .. } => {
-                annot.normalize();
-                closure.normalize();
-            }
-            NirKind::AppliedBuiltin(closure) => closure.normalize(),
-            NirKind::NEListLit(elts) => {
-                for x in elts.iter() {
-                    x.normalize();
-                }
-            }
-            NirKind::RecordLit(kvs) => {
-                for x in kvs.values() {
-                    x.normalize();
-                }
-            }
-            NirKind::RecordType(kvs) => {
-                for x in kvs.values() {
-                    x.normalize();
-                }
-            }
-            NirKind::UnionType(kts) | NirKind::UnionConstructor(_, kts) => {
-                for x in kts.values().flatten() {
-                    x.normalize();
-                }
-            }
-            NirKind::UnionLit(_, v, kts) => {
-                v.normalize();
-                for x in kts.values().flatten() {
-                    x.normalize();
-                }
-            }
-            NirKind::TextLit(tlit) => tlit.normalize(),
-            NirKind::Equivalence(x, y) => {
-                x.normalize();
-                y.normalize();
-            }
-            NirKind::PartialExpr(e) => {
-                e.map_ref(Nir::normalize);
-            }
-        }
-    }
-
-    pub(crate) fn from_builtin(b: Builtin) -> NirKind {
+    pub fn from_builtin(b: Builtin) -> NirKind {
         NirKind::from_builtin_env(b, NzEnv::new())
     }
-    pub(crate) fn from_builtin_env(b: Builtin, env: NzEnv) -> NirKind {
-        NirKind::AppliedBuiltin(BuiltinClosure::new(b, env))
+    pub fn from_builtin_env(b: Builtin, env: NzEnv) -> NirKind {
+        BuiltinClosure::new(b, env)
     }
 }
 
@@ -389,9 +341,6 @@ impl Closure {
             Closure::ConstantClosure { body, .. } => body.clone(),
         }
     }
-
-    // TODO: somehow normalize the body. Might require to pass an env.
-    pub fn normalize(&self) {}
 
     /// Convert this closure to a Hir expression
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
@@ -455,13 +404,6 @@ impl TextLit {
     }
     pub fn iter(&self) -> impl Iterator<Item = &InterpolatedTextContents<Nir>> {
         self.0.iter()
-    }
-    /// Normalize the contained values. This does not break the invariant because we have already
-    /// ensured that no contained values normalize to a TextLit.
-    pub fn normalize(&self) {
-        for x in self.0.iter() {
-            x.map_ref(Nir::normalize);
-        }
     }
 }
 

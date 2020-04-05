@@ -13,17 +13,17 @@ use crate::syntax::{
     BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, ImportMode,
     ImportTarget, Span, UnspannedExpr, URL,
 };
-use crate::{Parsed, ParsedExpr, Resolved};
+use crate::{Parsed, Resolved};
 
 // TODO: evaluate import headers
-pub(crate) type Import = syntax::Import<()>;
+pub type Import = syntax::Import<()>;
 
 /// Owned Hir with a type. Different from Tir because the Hir is owned.
-pub(crate) type TypedHir = (Hir, Type);
+pub type TypedHir = (Hir, Type);
 
 /// The location of some data, usually some dhall code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ImportLocation {
+pub enum ImportLocation {
     /// Local file
     Local(PathBuf),
     /// Remote file
@@ -227,7 +227,7 @@ fn resolve_one_import(
         }
         ImportMode::Location => {
             let expr = location.into_location();
-            let hir = skip_resolve(&expr)?;
+            let hir = skip_resolve_expr(&expr)?;
             let ty = hir.typecheck_noenv()?.ty().clone();
             Ok((hir, ty))
         }
@@ -329,14 +329,20 @@ fn resolve_with_env(
     Ok(Resolved(resolved))
 }
 
-pub(crate) fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
+pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
     resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
-pub(crate) fn skip_resolve(expr: &ParsedExpr) -> Result<Hir, Error> {
+pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
     traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import| {
         Err(ImportError::UnexpectedImport(import).into())
     })
+}
+
+pub fn skip_resolve(parsed: Parsed) -> Result<Resolved, Error> {
+    let Parsed(expr, _) = parsed;
+    let resolved = skip_resolve_expr(&expr)?;
+    Ok(Resolved(resolved))
 }
 
 pub trait Canonicalize {

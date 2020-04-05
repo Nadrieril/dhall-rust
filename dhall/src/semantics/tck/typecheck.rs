@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::semantics::merge_maps;
 use crate::semantics::{
-    type_of_builtin, Binder, BuiltinClosure, Closure, Hir, HirKind, Nir,
-    NirKind, Tir, TyEnv, Type,
+    type_of_builtin, Binder, Closure, Hir, HirKind, Nir, NirKind, Tir, TyEnv,
+    Type,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, LitKind, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
 };
 
 fn check_rectymerge(
@@ -53,14 +53,11 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-pub(crate) fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
+pub fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
     Err(TypeError::new(TypeMessage::Custom(msg.to_string())))
 }
 
-pub(crate) fn mk_span_err<T, S: ToString>(
-    span: Span,
-    msg: S,
-) -> Result<T, TypeError> {
+pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
     mkerr(
         ErrorBuilder::new(msg.to_string())
             .span_err(span, msg.to_string())
@@ -96,14 +93,14 @@ fn type_one_layer(
             let t_hir = type_of_builtin(*b);
             typecheck(&t_hir)?.eval_to_type(env)?
         }
-        ExprKind::Lit(LitKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
-        ExprKind::Lit(LitKind::Natural(_)) => {
+        ExprKind::Num(NumKind::Bool(_)) => Type::from_builtin(Builtin::Bool),
+        ExprKind::Num(NumKind::Natural(_)) => {
             Type::from_builtin(Builtin::Natural)
         }
-        ExprKind::Lit(LitKind::Integer(_)) => {
+        ExprKind::Num(NumKind::Integer(_)) => {
             Type::from_builtin(Builtin::Integer)
         }
-        ExprKind::Lit(LitKind::Double(_)) => {
+        ExprKind::Num(NumKind::Double(_)) => {
             Type::from_builtin(Builtin::Double)
         }
         ExprKind::TextLit(interpolated) => {
@@ -121,11 +118,7 @@ fn type_one_layer(
         ExprKind::EmptyListLit(t) => {
             let t = t.eval_to_type(env)?;
             match t.kind() {
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::List,
-                    args,
-                    ..
-                }) if args.len() == 1 => {}
+                NirKind::ListType(..) => {}
                 _ => return span_err("InvalidListType"),
             };
             t
@@ -376,10 +369,7 @@ fn type_one_layer(
         }
         ExprKind::BinOp(BinOp::ListAppend, l, r) => {
             match l.ty().kind() {
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::List,
-                    ..
-                }) => {}
+                NirKind::ListType(..) => {}
                 _ => return span_err("BinOpTypeMismatch"),
             }
 
@@ -435,12 +425,7 @@ fn type_one_layer(
             let union_type = union.ty();
             let variants = match union_type.kind() {
                 NirKind::UnionType(kts) => Cow::Borrowed(kts),
-                NirKind::AppliedBuiltin(BuiltinClosure {
-                    b: Builtin::Optional,
-                    args,
-                    ..
-                }) if args.len() == 1 => {
-                    let ty = &args[0];
+                NirKind::OptionalType(ty) => {
                     let mut kts = HashMap::new();
                     kts.insert("None".into(), None);
                     kts.insert("Some".into(), Some(ty.clone()));
@@ -595,11 +580,7 @@ fn type_one_layer(
                 let err_msg = "The type of `toMap x` must be of the form \
                                `List { mapKey : Text, mapValue : T }`";
                 let arg = match annot_val.kind() {
-                    NirKind::AppliedBuiltin(BuiltinClosure {
-                        b: Builtin::List,
-                        args,
-                        ..
-                    }) if args.len() == 1 => &args[0],
+                    NirKind::ListType(t) => t,
                     _ => return span_err(err_msg),
                 };
                 let kts = match arg.kind() {
@@ -704,7 +685,7 @@ fn type_one_layer(
 
 /// `type_with` typechecks an expression in the provided environment. Optionally pass an annotation
 /// to compare with.
-pub(crate) fn type_with<'hir>(
+pub fn type_with<'hir>(
     env: &TyEnv,
     hir: &'hir Hir,
     annot: Option<Type>,
@@ -801,15 +782,15 @@ pub(crate) fn type_with<'hir>(
 
 /// Typecheck an expression and return the expression annotated with types if type-checking
 /// succeeded, or an error if type-checking failed.
-pub(crate) fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
+pub fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
     type_with(&TyEnv::new(), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub(crate) fn typecheck_with<'hir>(
+pub fn typecheck_with<'hir>(
     hir: &'hir Hir,
-    ty: Hir,
+    ty: &Hir,
 ) -> Result<Tir<'hir>, TypeError> {
-    let ty = typecheck(&ty)?.eval_to_type(&TyEnv::new())?;
+    let ty = typecheck(ty)?.eval_to_type(&TyEnv::new())?;
     type_with(&TyEnv::new(), hir, Some(ty))
 }

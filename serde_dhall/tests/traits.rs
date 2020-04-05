@@ -1,9 +1,9 @@
-use serde_dhall::{from_str, StaticType, Value};
+use serde_dhall::{from_str, SimpleType, StaticType};
 
 #[test]
 fn test_static_type() {
-    fn parse(s: &str) -> Value {
-        from_str(s).unwrap()
+    fn parse(s: &str) -> SimpleType {
+        from_str(s).parse().unwrap()
     }
 
     assert_eq!(bool::static_type(), parse("Bool"));

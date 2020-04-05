@@ -1,10 +1,10 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, from_str_auto_type, StaticType};
+use serde_dhall::{from_str, FromDhall, StaticType};
 
 #[test]
 fn test_de_typed() {
-    fn parse<T: serde_dhall::de::Deserialize + StaticType>(s: &str) -> T {
-        from_str_auto_type(s).unwrap()
+    fn parse<T: FromDhall + StaticType>(s: &str) -> T {
+        from_str(s).static_type_annotation().parse().unwrap()
     }
 
     assert_eq!(parse::<bool>("True"), true);
@@ -51,12 +51,17 @@ fn test_de_typed() {
         Y(i64),
     }
     assert_eq!(parse::<Baz>("< X | Y: Integer >.X"), Baz::X);
+
+    assert!(from_str("< X | Y: Integer >.Y")
+        .static_type_annotation()
+        .parse::<Baz>()
+        .is_err());
 }
 
 #[test]
 fn test_de_untyped() {
-    fn parse<T: serde_dhall::de::Deserialize>(s: &str) -> T {
-        from_str(s).unwrap()
+    fn parse<T: FromDhall>(s: &str) -> T {
+        from_str(s).parse().unwrap()
     }
 
     // Test tuples on record of wrong type
@@ -83,6 +88,17 @@ fn test_de_untyped() {
         expected_map
     );
 
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct Foo {
+        x: u64,
+        y: Option<u64>,
+    }
+    // Omit optional field
+    assert_eq!(parse::<Foo>("{ x = 1 }"), Foo { x: 1, y: None });
+
     // https://github.com/Nadrieril/dhall-rust/issues/155
-    assert!(from_str::<bool>("List/length [True, 42]").is_err());
+    assert!(from_str("List/length [True, 42]").parse::<bool>().is_err());
 }
+
+// TODO: test various builder configurations
+// In particular test cloning and reusing builder

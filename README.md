@@ -58,7 +58,7 @@ use std::collections::BTreeMap;
 let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 
 // Deserialize it to a Rust type.
-let deserialized_map: BTreeMap<String, usize> = serde_dhall::from_str(data)?;
+let deserialized_map: BTreeMap<String, usize> = serde_dhall::from_str(data).parse().unwrap();
 
 let mut expected_map = BTreeMap::new();
 expected_map.insert("x".to_string(), 1);
@@ -166,6 +166,10 @@ for the tests coming from dhall-lang. They are stored in a `.txt` file with the
 same name as the corresponding test.
 
 ## Changelog
+
+#### [???]
+
+- Breaking change: reworked most of the `serde_dhall` api
 
 #### [0.4.0]
 

@@ -10,7 +10,7 @@ use crate::syntax::{
     Scheme, V,
 };
 
-pub(crate) fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
+pub fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
     serde_cbor::ser::to_vec(&Serialize::Expr(expr))
         .map_err(EncodeError::CBORError)
 }
@@ -48,7 +48,7 @@ where
     use std::iter::once;
     use syntax::Builtin;
     use syntax::ExprKind::*;
-    use syntax::LitKind::*;
+    use syntax::NumKind::*;
 
     use self::Serialize::{RecordDupMap, RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {
@@ -63,10 +63,10 @@ where
     match e.as_ref() {
         Const(c) => ser.serialize_str(&c.to_string()),
         Builtin(b) => ser.serialize_str(&b.to_string()),
-        Lit(Bool(b)) => ser.serialize_bool(*b),
-        Lit(Natural(n)) => ser_seq!(ser; tag(15), U64(*n as u64)),
-        Lit(Integer(n)) => ser_seq!(ser; tag(16), I64(*n as i64)),
-        Lit(Double(n)) => {
+        Num(Bool(b)) => ser.serialize_bool(*b),
+        Num(Natural(n)) => ser_seq!(ser; tag(15), U64(*n as u64)),
+        Num(Integer(n)) => ser_seq!(ser; tag(16), I64(*n as i64)),
+        Num(Double(n)) => {
             let n: f64 = (*n).into();
             ser.serialize_f64(n)
         }
