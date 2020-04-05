@@ -330,12 +330,7 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "type_inference_success",
             directory: "type-inference/success/",
             variant: "TypeInferenceSuccess",
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Too slow, but also not all features implemented
-                    // For now needs support for hashed imports
-                    || path == "prelude"
-            }),
+            too_slow_path: Rc::new(|path: &str| path == "prelude"),
             output_type: Some(FileType::Text),
             ..default_feature.clone()
         },
