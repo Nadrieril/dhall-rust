@@ -46,7 +46,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.4.0"
+serde_dhall = "0.5.0"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
@@ -167,7 +167,9 @@ same name as the corresponding test.
 
 ## Changelog
 
-#### [Unreleased]
+#### \[Unreleased\]
+
+#### [0.5.0] - 2020-04-05
 
 - Add `serde_dhall::from_file` to read a Dhall file directly.
 - BREAKING CHANGE: reworked most of the `serde_dhall` API
@@ -208,7 +210,8 @@ same name as the corresponding test.
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.4.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.0...HEAD
+[0.5.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.4.0...serde_dhall-v0.5.0
 
 ## License
 
