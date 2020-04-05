@@ -1,7 +1,7 @@
 use doc_comment::doc_comment;
 use std::path::Path;
 
-use crate::{options, Deserialize, Result, SimpleType, StaticType};
+use crate::{options, FromDhall, Result, SimpleType, StaticType};
 
 // Avoid copy-pasting documentation
 
@@ -252,7 +252,7 @@ macro_rules! generate_fn {
             gen_doc!($src, $ty),
             pub fn $name<T, $($ty_params)*> ($($input_args)*) -> Result<T>
             where
-                T: Deserialize $($extra_bounds)*,
+                T: FromDhall $($extra_bounds)*,
             {
                 $($create_options)* .parse()
             }

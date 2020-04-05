@@ -36,7 +36,7 @@ pub trait Sealed {}
 /// ```
 ///
 /// [serde]: https://serde.rs
-pub trait Deserialize: Sealed + Sized {
+pub trait FromDhall: Sealed + Sized {
     #[doc(hidden)]
     fn from_dhall(v: &Value) -> Result<Self>;
 }
@@ -45,7 +45,7 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 
 struct Deserializer<'a>(Cow<'a, SimpleValue>);
 
-impl<T> Deserialize for T
+impl<T> FromDhall for T
 where
     T: serde::de::DeserializeOwned,
 {

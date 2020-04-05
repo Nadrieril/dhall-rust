@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 use dhall::syntax::{Builtin, Expr, ExprKind, NumKind, Span};
 
-use crate::{Deserialize, Error, ErrorKind, Result, Sealed};
+use crate::{FromDhall, Error, ErrorKind, Result, Sealed};
 
 #[doc(hidden)]
 /// An arbitrary Dhall value.
@@ -246,12 +246,12 @@ impl Sealed for Value {}
 impl Sealed for SimpleValue {}
 impl Sealed for SimpleType {}
 
-impl Deserialize for Value {
+impl FromDhall for Value {
     fn from_dhall(v: &Value) -> Result<Self> {
         Ok(v.clone())
     }
 }
-impl Deserialize for SimpleValue {
+impl FromDhall for SimpleValue {
     fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_value().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(
@@ -261,7 +261,7 @@ impl Deserialize for SimpleValue {
         })
     }
 }
-impl Deserialize for SimpleType {
+impl FromDhall for SimpleType {
     fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_type().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(

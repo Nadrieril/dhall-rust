@@ -172,7 +172,7 @@ mod value;
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
 
-pub use deserialize::Deserialize;
+pub use deserialize::FromDhall;
 pub(crate) use deserialize::Sealed;
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};

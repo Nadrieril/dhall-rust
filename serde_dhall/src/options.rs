@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use dhall::Parsed;
 
 use crate::SimpleType;
-use crate::{Deserialize, Error, ErrorKind, Result, StaticType, Value};
+use crate::{FromDhall, Error, ErrorKind, Result, StaticType, Value};
 
 #[derive(Debug, Clone)]
 enum Source<'a> {
@@ -128,7 +128,7 @@ impl<'a, T> Deserializer<'a, T> {
     /// TODO
     pub fn parse(&self) -> Result<T>
     where
-        T: Deserialize,
+        T: FromDhall,
     {
         let val = self._parse().map_err(ErrorKind::Dhall).map_err(Error)?;
         T::from_dhall(&val)

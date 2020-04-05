@@ -1,9 +1,9 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, from_str_static_type, StaticType};
+use serde_dhall::{from_str, FromDhall, from_str_static_type, StaticType};
 
 #[test]
 fn test_de_typed() {
-    fn parse<T: serde_dhall::Deserialize + StaticType>(s: &str) -> T {
+    fn parse<T: FromDhall + StaticType>(s: &str) -> T {
         from_str_static_type(s).unwrap()
     }
 
@@ -57,7 +57,7 @@ fn test_de_typed() {
 
 #[test]
 fn test_de_untyped() {
-    fn parse<T: serde_dhall::Deserialize>(s: &str) -> T {
+    fn parse<T: FromDhall>(s: &str) -> T {
         from_str(s).unwrap()
     }
 
