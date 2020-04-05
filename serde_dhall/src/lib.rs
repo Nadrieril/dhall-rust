@@ -154,9 +154,9 @@
 //! # Controlling deserialization
 //!
 //! If you need more control over the process of reading Dhall values, e.g. disabling
-//! imports, see the [`options`] module.
+//! imports, see the [`Deserializer`] methods.
 //!
-//! [`options`]: options/index.html
+//! [`Deserializer`]: struct.Deserializer.html
 //! [dhall]: https://dhall-lang.org/
 //! [serde]: https://docs.serde.rs/serde/
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html

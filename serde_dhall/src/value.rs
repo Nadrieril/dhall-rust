@@ -28,7 +28,7 @@ pub(crate) enum SimpleValue {
     Union(String, Option<Box<SimpleValue>>),
 }
 
-/// The type of a value that can be decoded by Serde, e.g. `{ x: Bool, y: List Natural }`.
+/// The type of a value that can be decoded by `serde_dhall`, e.g. `{ x: Bool, y: List Natural }`.
 ///
 /// A `SimpleType` is used when deserializing values to ensure they are of the expected type.
 /// Rather than letting `serde` handle potential type mismatches, this uses the type-checking
@@ -36,32 +36,14 @@ pub(crate) enum SimpleValue {
 /// mismatch happened.
 ///
 /// You would typically not manipulate `SimpleType`s by hand but rather let Rust infer it for your
-/// datatype using the [`StaticType`] trait, and methods that require it like
-/// [`from_file_static_type`] and [`Options::static_type_annotation`]. If you need to supply a
-/// `SimpleType` manually however, you can deserialize it like any other Dhall value using the
-/// functions provided by this crate.
+/// datatype by deriving the [`StaticType`] trait, and using
+/// [`Deserializer::static_type_annotation`]. If you need to supply a `SimpleType` manually, you
+/// can either deserialize it like any other Dhall value, or construct it manually.
 ///
 /// [`StaticType`]: trait.StaticType.html
-/// [`from_file_static_type`]: fn.from_file_static_type.html
-/// [`Options::static_type_annotation`]: options/struct.Options.html#method.static_type_annotation
+/// [`Deserializer::static_type_annotation`]: options/struct.Deserializer.html#method.static_type_annotation
 ///
 /// # Examples
-///
-/// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use std::collections::HashMap;
-/// use serde_dhall::SimpleType;
-///
-/// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Natural, y: Natural }").parse()?;
-///
-/// let mut map = HashMap::new();
-/// map.insert("x".to_string(), SimpleType::Natural);
-/// map.insert("y".to_string(), SimpleType::Natural);
-/// assert_eq!(ty, SimpleType::Record(map));
-/// # Ok(())
-/// # }
-/// ```
 ///
 /// ```rust
 /// # fn main() -> serde_dhall::Result<()> {
@@ -80,6 +62,23 @@ pub(crate) enum SimpleValue {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::HashMap;
+/// use serde_dhall::SimpleType;
+///
+/// let ty: SimpleType =
+///     serde_dhall::from_str("{ x: Natural, y: Natural }").parse()?;
+///
+/// let mut map = HashMap::new();
+/// map.insert("x".to_string(), SimpleType::Natural);
+/// map.insert("y".to_string(), SimpleType::Natural);
+/// assert_eq!(ty, SimpleType::Record(map));
+/// # Ok(())
+/// # }
+/// ```
+///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleType {
     /// Corresponds to the Dhall type `Bool`

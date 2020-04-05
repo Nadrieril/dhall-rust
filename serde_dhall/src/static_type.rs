@@ -71,7 +71,9 @@ pub trait StaticType {
     ///     }
     /// }
     ///
-    /// let foo: Foo = serde_dhall::from_str("[ 1, 2 ]").static_type_annotation().parse()?;
+    /// let foo = serde_dhall::from_str("[ 1, 2 ]")
+    ///     .static_type_annotation()
+    ///     .parse::<Foo>()?;
     ///
     /// assert_eq!(foo.0, vec![1, 2]);
     /// # Ok(())

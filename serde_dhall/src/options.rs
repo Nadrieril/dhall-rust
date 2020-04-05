@@ -43,9 +43,15 @@ impl<T: StaticType> HasAnnot<StaticAnnot> for T {
 /// This builder exposes the ability to configure how a value is deserialized and what operations
 /// are permitted during evaluation.
 ///
-/// Generally speaking, when using `Deserializer`, you'll create it with `from_str` or `from_file`, then
-/// chain calls to methods to set each option, then call `parse`. This will give you a
-/// `serde_dhall::Result<T>` where `T` is a deserializable type of your choice.
+/// Generally speaking, when using [`Deserializer`], you'll create it with [`from_str`] or [`from_file`], then
+/// chain calls to methods to set each option, then call [`parse`]. This will give you a
+/// [`Result<T>`] where `T` is a deserializable type of your choice.
+///
+/// [`Deserializer`]: struct.Deserializer.html
+/// [`from_str`]: fn.from_str.html
+/// [`from_file`]: fn.from_file.html
+/// [`parse`]: struct.Deserializer.html#method.parse
+/// [`Result<T>`]: type.Result.html
 ///
 /// # Examples
 ///
@@ -106,39 +112,33 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// Ensures that the parsed value matches the provided type.
     ///
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
-    /// See the [`StaticType`] trait and the [`static_type_annotation`] method.
+    /// See the [`StaticType`] trait and the [`static_type_annotation`] method for that.
     ///
     /// # Example
     ///
     /// ```
     /// # fn main() -> serde_dhall::Result<()> {
+    /// use std::collections::HashMap;
     /// use serde::Deserialize;
-    /// use serde_dhall::SimpleType;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct Point {
-    ///     x: u64,
-    ///     y: Option<u64>,
-    /// }
+    /// use serde_dhall::{from_str, SimpleType};
     ///
     /// // Parse a Dhall type
-    /// let point_type_str = "{ x: Natural, y: Optional Natural }";
-    /// let point_type = serde_dhall::from_str(point_type_str).parse::<SimpleType>()?;
+    /// let type_str = "{ x: Natural, y: Natural }";
+    /// let ty = from_str(type_str).parse::<SimpleType>()?;
     ///
-    /// // Parse some Dhall data to a Point.
-    /// let data = "{ x = 1, y = Some (1 + 1) }";
-    /// let point = serde_dhall::from_str(data)
-    ///     .type_annotation(&point_type)
-    ///     .parse::<Point>()?;
-    /// assert_eq!(point.x, 1);
-    /// assert_eq!(point.y, Some(2));
+    /// // Parse some Dhall data.
+    /// let data = "{ x = 1, y = 1 + 1 }";
+    /// let point = from_str(data)
+    ///     .type_annotation(&ty)
+    ///     .parse::<HashMap<String, usize>>()?;
+    /// assert_eq!(point.get("y"), Some(&2));
     ///
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
-    /// let invalid_data = "{ x = 1 }";
+    /// let invalid_data = "{ x = 1, z = 3 }";
     /// assert!(
-    ///     serde_dhall::from_str(invalid_data)
-    ///         .type_annotation(&point_type)
-    ///         .parse::<Point>()
+    ///     from_str(invalid_data)
+    ///         .type_annotation(&ty)
+    ///         .parse::<HashMap<String, usize>>()
     ///         .is_err()
     /// );
     /// # Ok(())
@@ -272,7 +272,7 @@ impl<'a, A> Deserializer<'a, A> {
 
     /// Parses the chosen dhall value with the options provided.
     ///
-    /// If you enabled static annotations, `T` is additional required to implement [`StaticType`].
+    /// If you enabled static annotations, `T` is required to implement [`StaticType`].
     ///
     ///
     /// # Example
@@ -280,7 +280,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// ```
     /// # fn main() -> serde_dhall::Result<()> {
     /// let data = serde_dhall::from_str("6 * 7").parse::<u64>()?;
-    /// assert_eq!(data, 42)
+    /// assert_eq!(data, 42);
     /// # Ok(())
     /// # }
     /// ```
@@ -297,10 +297,10 @@ impl<'a, A> Deserializer<'a, A> {
     }
 }
 
-/// Deserialize an instance of type `T` from a string of Dhall text.
+/// Deserialize a value from a string of Dhall text.
 ///
-/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized value, or
-/// use other [`Deserializer`] methods to e.g. add type annotations beforehand.
+/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
+/// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
 /// # Example
 ///
@@ -333,10 +333,10 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_str(s)
 }
 
-/// Deserialize an instance of type `T` from a Dhall file.
+/// Deserialize a value from a Dhall file.
 ///
-/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized value, or
-/// use other [`Deserializer`] methods to e.g. add type annotations beforehand.
+/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
+/// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
 /// # Example
 ///
