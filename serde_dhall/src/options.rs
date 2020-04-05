@@ -302,6 +302,8 @@ impl<'a, A> Deserializer<'a, A> {
 /// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
 /// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
+/// Imports will be resolved relative to the current directory.
+///
 /// # Example
 ///
 /// ```rust
@@ -337,6 +339,8 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 ///
 /// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
 /// value, or use other [`Deserializer`] methods to control the deserialization process.
+///
+/// Imports will be resolved relative to the provided file's path.
 ///
 /// # Example
 ///
