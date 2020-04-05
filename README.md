@@ -169,7 +169,6 @@ same name as the corresponding test.
 
 #### [???]
 
-- Add `serde_dhall::options` for finer control over Dhall behavior
 - Breaking change: reworked most of the `serde_dhall` api
 
 #### [0.4.0]

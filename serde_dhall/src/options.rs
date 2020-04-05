@@ -12,11 +12,11 @@ enum Source<'a> {
     // Url(&'a str),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct NoAnnot;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ManualAnnot<'ty>(&'ty SimpleType);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct StaticAnnot;
 
 pub trait HasAnnot<A> {
@@ -108,7 +108,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
     /// See the [`StaticType`] trait and the [`static_type_annotation`] method.
     ///
-    /// # Examples
+    /// # Example
     ///
     /// ```
     /// # fn main() -> serde_dhall::Result<()> {
@@ -163,7 +163,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use [`type_annotation`]
     /// to provide a type manually.
     ///
-    /// # Examples
+    /// # Example
     ///
     /// ```
     /// # fn main() -> serde_dhall::Result<()> {
@@ -214,7 +214,7 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// By default, imports are enabled.
     ///
-    /// # Examples
+    /// # Example
     ///
     /// ```
     /// # fn main() -> serde_dhall::Result<()> {
@@ -272,16 +272,19 @@ impl<'a, A> Deserializer<'a, A> {
 
     /// Parses the chosen dhall value with the options provided.
     ///
-    /// # Examples
+    /// If you enabled static annotations, `T` is additional required to implement [`StaticType`].
     ///
-    /// Reading from a file:
     ///
-    /// ```no_run
+    /// # Example
+    ///
+    /// ```
     /// # fn main() -> serde_dhall::Result<()> {
-    /// let data = serde_dhall::from_file("foo.dhall").parse::<u64>()?;
+    /// let data = serde_dhall::from_str("6 * 7").parse::<u64>()?;
+    /// assert_eq!(data, 42)
     /// # Ok(())
     /// # }
     /// ```
+    /// [`StaticType`]: trait.StaticType.html
     pub fn parse<T>(&self) -> Result<T>
     where
         T: FromDhall + HasAnnot<A>,
