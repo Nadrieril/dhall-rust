@@ -85,6 +85,14 @@ fn test_de_untyped() {
         expected_map
     );
 
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct Foo {
+        x: u64,
+        y: Option<u64>,
+    }
+    // Omit optional field
+    assert_eq!(parse::<Foo>("{ x = 1 }"), Foo { x: 1, y: None });
+
     // https://github.com/Nadrieril/dhall-rust/issues/155
     assert!(from_str::<bool>("List/length [True, 42]").is_err());
 }
