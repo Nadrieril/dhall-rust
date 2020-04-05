@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "dhall"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "abnf_to_pest 0.5.0",
  "annotate-snippets 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1039,7 +1039,7 @@ dependencies = [
 name = "serde_dhall"
 version = "0.4.0"
 dependencies = [
- "dhall 0.4.0",
+ "dhall 0.5.0",
  "dhall_proc_macros 0.4.0",
  "doc-comment 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest 0.10.4 (registry+https://github.com/rust-lang/crates.io-index)",
