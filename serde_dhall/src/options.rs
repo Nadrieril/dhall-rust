@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use dhall::Parsed;
 
 use crate::SimpleType;
-use crate::{FromDhall, Error, ErrorKind, Result, StaticType, Value};
+use crate::{Error, ErrorKind, FromDhall, Result, StaticType, Value};
 
 #[derive(Debug, Clone)]
 enum Source<'a> {
@@ -15,12 +15,11 @@ enum Source<'a> {
 /// Controls how a dhall value is read.
 ///
 /// This builder exposes the ability to configure how a value is deserialized and what operations
-/// are permitted during evaluation. The functions in the crate root are aliases for
-/// commonly used options using this builder.
+/// are permitted during evaluation.
 ///
 /// Generally speaking, when using `Deserializer`, you'll create it with `from_str` or `from_file`, then
 /// chain calls to methods to set each option, then call `parse`. This will give you a
-/// `serde_dhall::Result<T>` where `T` a deserializable type of your choice.
+/// `serde_dhall::Result<T>` where `T` is a deserializable type of your choice.
 ///
 /// # Examples
 ///
@@ -48,8 +47,7 @@ enum Source<'a> {
 /// # Ok(())
 /// # }
 /// ```
-/// TODO
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Deserializer<'a, T> {
     source: Source<'a>,
     annot: Option<SimpleType>,
@@ -70,11 +68,9 @@ impl<'a, T> Deserializer<'a, T> {
             target_type: std::marker::PhantomData,
         }
     }
-    /// TODO
     fn from_str(s: &'a str) -> Self {
         Self::default_with_source(Source::Str(s))
     }
-    /// TODO
     fn from_file<P: AsRef<Path>>(path: P) -> Self {
         Self::default_with_source(Source::File(path.as_ref().to_owned()))
     }
@@ -82,11 +78,36 @@ impl<'a, T> Deserializer<'a, T> {
     //     Self::default_with_source(Source::Url(url))
     // }
 
-    /// TODO
+    /// Sets whether to enable imports.
+    ///
+    /// By default, imports are enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::SimpleType;
+    ///
+    /// let data = "12 + ./other_file.dhall : Natural";
+    /// assert!(
+    ///     serde_dhall::options::from_str::<u64>(data)
+    ///         .imports(false)
+    ///         .parse()
+    ///         .is_err()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
+    /// [`StaticType`]: trait.StaticType.html
     pub fn imports(&mut self, imports: bool) -> &mut Self {
         self.allow_imports = imports;
         self
     }
+
+    // /// TODO
     // pub fn remote_imports(&mut self, imports: bool) -> &mut Self {
     //     self.allow_remote_imports = imports;
     //     if imports {
@@ -94,13 +115,98 @@ impl<'a, T> Deserializer<'a, T> {
     //     }
     //     self
     // }
-    //
-    /// TODO
+
+    /// Ensures that the parsed value matches the provided type.
+    ///
+    /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
+    /// See the [`StaticType`] trait and the [`static_type_annotation`] method.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::SimpleType;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Point {
+    ///     x: u64,
+    ///     y: Option<u64>,
+    /// }
+    ///
+    /// // Parse a Dhall type
+    /// let point_type_str = "{ x: Natural, y: Optional Natural }";
+    /// let point_type: SimpleType = serde_dhall::options::from_str(point_type_str).parse()?;
+    ///
+    /// // Parse some Dhall data to a Point.
+    /// let data = "{ x = 1, y = Some (1 + 1) }";
+    /// let point: Point = serde_dhall::options::from_str(data)
+    ///     .type_annotation(&point_type)
+    ///     .parse()?;
+    /// assert_eq!(point.x, 1);
+    /// assert_eq!(point.y, Some(2));
+    ///
+    /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
+    /// let invalid_data = "{ x = 1 }";
+    /// assert!(
+    ///     serde_dhall::options::from_str::<Point>(invalid_data)
+    ///         .type_annotation(&point_type)
+    ///         .parse()
+    ///         .is_err()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
+    /// [`StaticType`]: trait.StaticType.html
     pub fn type_annotation(&mut self, ty: &SimpleType) -> &mut Self {
         self.annot = Some(ty.clone());
         self
     }
-    /// TODO
+
+    /// Ensures that the parsed value matches the type of `T`.
+    ///
+    /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use [`type_annotation`]
+    /// to provide a type manually.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::StaticType;
+    ///
+    /// #[derive(Deserialize, StaticType)]
+    /// struct Point {
+    ///     x: u64,
+    ///     y: Option<u64>,
+    /// }
+    ///
+    /// // Some Dhall data
+    /// let data = "{ x = 1, y = Some (1 + 1) }";
+    ///
+    /// // Convert the Dhall string to a Point.
+    /// let point: Point = serde_dhall::options::from_str(data)
+    ///     .static_type_annotation()
+    ///     .parse()?;
+    /// assert_eq!(point.x, 1);
+    /// assert_eq!(point.y, Some(2));
+    ///
+    /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
+    /// let invalid_data = "{ x = 1 }";
+    /// assert!(
+    ///     serde_dhall::options::from_str::<Point>(invalid_data)
+    ///         .static_type_annotation()
+    ///         .parse()
+    ///         .is_err()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`type_annotation`]: struct.Deserializer.html#method.type_annotation
+    /// [`StaticType`]: trait.StaticType.html
     pub fn static_type_annotation(&mut self) -> &mut Self
     where
         T: StaticType,
@@ -125,7 +231,20 @@ impl<'a, T> Deserializer<'a, T> {
         };
         Ok(Value::from_nir(typed.normalize().as_nir()))
     }
-    /// TODO
+
+    /// Parses the chosen dhall value with the options provided.
+    ///
+    /// # Examples
+    ///
+    /// Reading from a file:
+    ///
+    /// ```no_run
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde_dhall::options;
+    /// let data = options::from_file("foo.dhall").parse()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn parse(&self) -> Result<T>
     where
         T: FromDhall,
@@ -138,15 +257,65 @@ impl<'a, T> Deserializer<'a, T> {
 /// Deserialize an instance of type `T` from a string of Dhall text.
 ///
 /// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized value, or
-/// use other [`Deserializer`] methods to add type annotations or control import behavior beforehand.
+/// use other [`Deserializer`] methods to e.g. add type annotations beforehand.
+///
+/// # Example
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde::Deserialize;
+///
+/// // We use serde's derive feature
+/// #[derive(Deserialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+///
+/// // Some Dhall data
+/// let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
+///
+/// // Parse the Dhall string as a Point.
+/// let point: Point = serde_dhall::options::from_str(data).parse()?;
+///
+/// assert_eq!(point.x, 1);
+/// assert_eq!(point.y, 2);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// [`Deserializer`]: struct.Deserializer.html
 /// [`parse`]: struct.Deserializer.html#method.parse
-pub fn from_str<'a, T>(s: &'a str) -> Deserializer<'a, T> {
+pub fn from_str<T>(s: &str) -> Deserializer<'_, T> {
     Deserializer::from_str(s)
 }
 
-/// TODO
+/// Deserialize an instance of type `T` from a Dhall file.
+///
+/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized value, or
+/// use other [`Deserializer`] methods to e.g. add type annotations beforehand.
+///
+/// # Example
+///
+/// ```no_run
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde::Deserialize;
+///
+/// // We use serde's derive feature
+/// #[derive(Deserialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+///
+/// // Parse the Dhall file as a Point.
+/// let point: Point = serde_dhall::options::from_file("foo.dhall").parse()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [`Deserializer`]: struct.Deserializer.html
+/// [`parse`]: struct.Deserializer.html#method.parse
 pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Deserializer<'a, T> {
     Deserializer::from_file(path)
 }
@@ -154,3 +323,15 @@ pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Deserializer<'a, T> {
 // pub fn from_url<'a, T>(url: &'a str) -> Deserializer<'a, T> {
 //     Deserializer::from_url(url)
 // }
+
+// Custom impl to not get a Clone bound on T
+impl<'a, T> Clone for Deserializer<'a, T> {
+    fn clone(&self) -> Self {
+        Deserializer {
+            source: self.source.clone(),
+            annot: self.annot.clone(),
+            allow_imports: self.allow_imports.clone(),
+            target_type: std::marker::PhantomData,
+        }
+    }
+}

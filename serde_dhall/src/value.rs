@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 use dhall::syntax::{Builtin, Expr, ExprKind, NumKind, Span};
 
-use crate::{FromDhall, Error, ErrorKind, Result, Sealed};
+use crate::{Error, ErrorKind, FromDhall, Result, Sealed};
 
 #[doc(hidden)]
 /// An arbitrary Dhall value.

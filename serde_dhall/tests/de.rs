@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, FromDhall, from_str_static_type, StaticType};
+use serde_dhall::{from_str, from_str_static_type, FromDhall, StaticType};
 
 #[test]
 fn test_de_typed() {
