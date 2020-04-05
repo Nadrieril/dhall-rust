@@ -15,7 +15,7 @@ enum Source<'a> {
 #[derive(Debug, Clone)]
 pub struct NoAnnot;
 #[derive(Debug, Clone)]
-pub struct ManualAnnot(SimpleType);
+pub struct ManualAnnot<'ty>(&'ty SimpleType);
 #[derive(Debug, Clone)]
 pub struct StaticAnnot;
 
@@ -27,8 +27,8 @@ impl<T> HasAnnot<NoAnnot> for T {
         None
     }
 }
-impl<T> HasAnnot<ManualAnnot> for T {
-    fn get_annot(a: &ManualAnnot) -> Option<SimpleType> {
+impl<'ty, T> HasAnnot<ManualAnnot<'ty>> for T {
+    fn get_annot(a: &ManualAnnot<'ty>) -> Option<SimpleType> {
         Some(a.0.clone())
     }
 }
@@ -38,7 +38,7 @@ impl<T: StaticType> HasAnnot<StaticAnnot> for T {
     }
 }
 
-/// Controls how a dhall value is read.
+/// Controls how a Dhall value is read.
 ///
 /// This builder exposes the ability to configure how a value is deserialized and what operations
 /// are permitted during evaluation.
@@ -102,9 +102,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     // fn from_url(url: &'a str) -> Self {
     //     Self::default_with_source(Source::Url(url))
     // }
-}
 
-impl<'a> Deserializer<'a, NoAnnot> {
     /// Ensures that the parsed value matches the provided type.
     ///
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
@@ -149,12 +147,12 @@ impl<'a> Deserializer<'a, NoAnnot> {
     ///
     /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
     /// [`StaticType`]: trait.StaticType.html
-    pub fn type_annotation(
+    pub fn type_annotation<'ty>(
         self,
-        ty: &SimpleType,
-    ) -> Deserializer<'a, ManualAnnot> {
+        ty: &'ty SimpleType,
+    ) -> Deserializer<'a, ManualAnnot<'ty>> {
         Deserializer {
-            annot: ManualAnnot(ty.clone()),
+            annot: ManualAnnot(ty),
             source: self.source,
             allow_imports: self.allow_imports,
         }
