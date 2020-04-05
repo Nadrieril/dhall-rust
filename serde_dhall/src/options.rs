@@ -12,13 +12,13 @@ enum Source<'a> {
     // Url(&'a str),
 }
 
-/// Options and flags which can be used to configure how a dhall value is read.
+/// Controls how a dhall value is read.
 ///
 /// This builder exposes the ability to configure how a value is deserialized and what operations
 /// are permitted during evaluation. The functions in the crate root are aliases for
 /// commonly used options using this builder.
 ///
-/// Generally speaking, when using `Options`, you'll create it with `from_str` or `from_file`, then
+/// Generally speaking, when using `Deserializer`, you'll create it with `from_str` or `from_file`, then
 /// chain calls to methods to set each option, then call `parse`. This will give you a
 /// `serde_dhall::Result<T>` where `T` a deserializable type of your choice.
 ///
@@ -48,9 +48,9 @@ enum Source<'a> {
 /// # Ok(())
 /// # }
 /// ```
-/// /// TODO
+/// TODO
 #[derive(Debug, Clone)]
-pub struct Options<'a, T> {
+pub struct Deserializer<'a, T> {
     source: Source<'a>,
     annot: Option<SimpleType>,
     allow_imports: bool,
@@ -59,9 +59,9 @@ pub struct Options<'a, T> {
     target_type: std::marker::PhantomData<T>,
 }
 
-impl<'a, T> Options<'a, T> {
+impl<'a, T> Deserializer<'a, T> {
     fn default_with_source(source: Source<'a>) -> Self {
-        Options {
+        Deserializer {
             source,
             annot: None,
             allow_imports: true,
@@ -135,14 +135,22 @@ impl<'a, T> Options<'a, T> {
     }
 }
 
-/// TODO
-pub fn from_str<'a, T>(s: &'a str) -> Options<'a, T> {
-    Options::from_str(s)
+/// Deserialize an instance of type `T` from a string of Dhall text.
+///
+/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized value, or
+/// use other [`Deserializer`] methods to add type annotations or control import behavior beforehand.
+///
+/// [`Deserializer`]: struct.Deserializer.html
+/// [`parse`]: struct.Deserializer.html#method.parse
+pub fn from_str<'a, T>(s: &'a str) -> Deserializer<'a, T> {
+    Deserializer::from_str(s)
 }
+
 /// TODO
-pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Options<'a, T> {
-    Options::from_file(path)
+pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Deserializer<'a, T> {
+    Deserializer::from_file(path)
 }
-// pub fn from_url<'a, T>(url: &'a str) -> Options<'a, T> {
-//     Options::from_url(url)
+
+// pub fn from_url<'a, T>(url: &'a str) -> Deserializer<'a, T> {
+//     Deserializer::from_url(url)
 // }
