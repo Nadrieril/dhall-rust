@@ -103,13 +103,20 @@
 //! let data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str(data).static_type_annotation().parse()?;
+//! let point = serde_dhall::from_str(data)
+//!     .static_type_annotation()
+//!     .parse::<Point>()?;
 //! assert_eq!(point.x, 1);
 //! assert_eq!(point.y, 2);
 //!
 //! // Invalid data fails the type validation
 //! let invalid_data = "{ x = 1, z = 0.3 }";
-//! assert!(serde_dhall::from_str::<Point>(invalid_data).static_type_annotation().parse().is_err());
+//! assert!(
+//!     serde_dhall::from_str(invalid_data)
+//!         .static_type_annotation()
+//!         .parse::<Point>()
+//!         .is_err()
+//! );
 //! # Ok(())
 //! # }
 //! ```
@@ -124,15 +131,16 @@
 //!
 //! // Parse a Dhall type
 //! let point_type_str = "{ x: Natural, y: Natural }";
-//! let point_type: SimpleType = serde_dhall::from_str(point_type_str).parse()?;
+//! let point_type = serde_dhall::from_str(point_type_str).parse::<SimpleType>()?;
 //!
 //! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Deserialize the data to a Rust type. This checks that
 //! // the data matches the provided type.
-//! let deserialized_map: HashMap<String, usize> =
-//!         serde_dhall::from_str(point_data).type_annotation(&point_type).parse()?;
+//! let deserialized_map = serde_dhall::from_str(point_data)
+//!     .type_annotation(&point_type)
+//!     .parse::<HashMap<String, usize>>()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -158,9 +166,9 @@ mod test_readme {
     doc_comment::doctest!("../../README.md");
 }
 
-mod options;
 mod deserialize;
 mod error;
+mod options;
 mod static_type;
 /// Dhall values
 mod value;
@@ -172,8 +180,6 @@ pub use deserialize::FromDhall;
 pub(crate) use deserialize::Sealed;
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
-pub use options::{
-    from_file, from_str, Deserializer
-};
+pub use options::{from_file, from_str, Deserializer};
 pub use static_type::StaticType;
 pub use value::{SimpleType, Value};

@@ -52,7 +52,10 @@ fn test_de_typed() {
     }
     assert_eq!(parse::<Baz>("< X | Y: Integer >.X"), Baz::X);
 
-    assert!(from_str::<Baz>("< X | Y: Integer >.Y").static_type_annotation().parse().is_err());
+    assert!(from_str("< X | Y: Integer >.Y")
+        .static_type_annotation()
+        .parse::<Baz>()
+        .is_err());
 }
 
 #[test]
@@ -94,5 +97,8 @@ fn test_de_untyped() {
     assert_eq!(parse::<Foo>("{ x = 1 }"), Foo { x: 1, y: None });
 
     // https://github.com/Nadrieril/dhall-rust/issues/155
-    assert!(from_str::<bool>("List/length [True, 42]").parse().is_err());
+    assert!(from_str("List/length [True, 42]").parse::<bool>().is_err());
 }
+
+// TODO: test various builder configurations
+// In particular test cloning and reusing builder

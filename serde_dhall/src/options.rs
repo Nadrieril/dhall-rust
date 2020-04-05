@@ -12,6 +12,32 @@ enum Source<'a> {
     // Url(&'a str),
 }
 
+#[derive(Debug, Clone)]
+pub struct NoAnnot;
+#[derive(Debug, Clone)]
+pub struct ManualAnnot(SimpleType);
+#[derive(Debug, Clone)]
+pub struct StaticAnnot;
+
+pub trait HasAnnot<A> {
+    fn get_annot(a: &A) -> Option<SimpleType>;
+}
+impl<T> HasAnnot<NoAnnot> for T {
+    fn get_annot(_: &NoAnnot) -> Option<SimpleType> {
+        None
+    }
+}
+impl<T> HasAnnot<ManualAnnot> for T {
+    fn get_annot(a: &ManualAnnot) -> Option<SimpleType> {
+        Some(a.0.clone())
+    }
+}
+impl<T: StaticType> HasAnnot<StaticAnnot> for T {
+    fn get_annot(_: &StaticAnnot) -> Option<SimpleType> {
+        Some(T::static_type())
+    }
+}
+
 /// Controls how a dhall value is read.
 ///
 /// This builder exposes the ability to configure how a value is deserialized and what operations
@@ -29,7 +55,7 @@ enum Source<'a> {
 /// # fn main() -> serde_dhall::Result<()> {
 /// use serde_dhall::from_file;
 ///
-/// let data = from_file("foo.dhall").parse()?;
+/// let data = from_file("foo.dhall").parse::<u64>()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -38,34 +64,33 @@ enum Source<'a> {
 ///
 /// ```no_run
 /// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::HashMap;
 /// use serde_dhall::{from_file, from_str};
 ///
 /// let ty = from_str("{ x: Natural, y: Natural }").parse()?;
 /// let data = from_file("foo.dhall")
 ///             .type_annotation(&ty)
-///             .parse()?;
+///             .parse::<HashMap<String, usize>>()?;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug)]
-pub struct Deserializer<'a, T> {
+#[derive(Debug, Clone)]
+pub struct Deserializer<'a, A> {
     source: Source<'a>,
-    annot: Option<SimpleType>,
+    annot: A,
     allow_imports: bool,
     // allow_remote_imports: bool,
     // use_cache: bool,
-    target_type: std::marker::PhantomData<T>,
 }
 
-impl<'a, T> Deserializer<'a, T> {
+impl<'a> Deserializer<'a, NoAnnot> {
     fn default_with_source(source: Source<'a>) -> Self {
         Deserializer {
             source,
-            annot: None,
+            annot: NoAnnot,
             allow_imports: true,
             // allow_remote_imports: true,
             // use_cache: true,
-            target_type: std::marker::PhantomData,
         }
     }
     fn from_str(s: &'a str) -> Self {
@@ -77,45 +102,9 @@ impl<'a, T> Deserializer<'a, T> {
     // fn from_url(url: &'a str) -> Self {
     //     Self::default_with_source(Source::Url(url))
     // }
+}
 
-    /// Sets whether to enable imports.
-    ///
-    /// By default, imports are enabled.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde::Deserialize;
-    /// use serde_dhall::SimpleType;
-    ///
-    /// let data = "12 + ./other_file.dhall : Natural";
-    /// assert!(
-    ///     serde_dhall::from_str::<u64>(data)
-    ///         .imports(false)
-    ///         .parse()
-    ///         .is_err()
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
-    /// [`StaticType`]: trait.StaticType.html
-    pub fn imports(&mut self, imports: bool) -> &mut Self {
-        self.allow_imports = imports;
-        self
-    }
-
-    // /// TODO
-    // pub fn remote_imports(&mut self, imports: bool) -> &mut Self {
-    //     self.allow_remote_imports = imports;
-    //     if imports {
-    //         self.allow_imports = true;
-    //     }
-    //     self
-    // }
-
+impl<'a> Deserializer<'a, NoAnnot> {
     /// Ensures that the parsed value matches the provided type.
     ///
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
@@ -136,22 +125,22 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// // Parse a Dhall type
     /// let point_type_str = "{ x: Natural, y: Optional Natural }";
-    /// let point_type: SimpleType = serde_dhall::from_str(point_type_str).parse()?;
+    /// let point_type = serde_dhall::from_str(point_type_str).parse::<SimpleType>()?;
     ///
     /// // Parse some Dhall data to a Point.
     /// let data = "{ x = 1, y = Some (1 + 1) }";
-    /// let point: Point = serde_dhall::from_str(data)
+    /// let point = serde_dhall::from_str(data)
     ///     .type_annotation(&point_type)
-    ///     .parse()?;
+    ///     .parse::<Point>()?;
     /// assert_eq!(point.x, 1);
     /// assert_eq!(point.y, Some(2));
     ///
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
     /// let invalid_data = "{ x = 1 }";
     /// assert!(
-    ///     serde_dhall::from_str::<Point>(invalid_data)
+    ///     serde_dhall::from_str(invalid_data)
     ///         .type_annotation(&point_type)
-    ///         .parse()
+    ///         .parse::<Point>()
     ///         .is_err()
     /// );
     /// # Ok(())
@@ -160,9 +149,15 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
     /// [`StaticType`]: trait.StaticType.html
-    pub fn type_annotation(&mut self, ty: &SimpleType) -> &mut Self {
-        self.annot = Some(ty.clone());
-        self
+    pub fn type_annotation(
+        self,
+        ty: &SimpleType,
+    ) -> Deserializer<'a, ManualAnnot> {
+        Deserializer {
+            annot: ManualAnnot(ty.clone()),
+            source: self.source,
+            allow_imports: self.allow_imports,
+        }
     }
 
     /// Ensures that the parsed value matches the type of `T`.
@@ -187,18 +182,18 @@ impl<'a, T> Deserializer<'a, T> {
     /// let data = "{ x = 1, y = Some (1 + 1) }";
     ///
     /// // Convert the Dhall string to a Point.
-    /// let point: Point = serde_dhall::from_str(data)
+    /// let point = serde_dhall::from_str(data)
     ///     .static_type_annotation()
-    ///     .parse()?;
+    ///     .parse::<Point>()?;
     /// assert_eq!(point.x, 1);
     /// assert_eq!(point.y, Some(2));
     ///
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
     /// let invalid_data = "{ x = 1 }";
     /// assert!(
-    ///     serde_dhall::from_str::<Point>(invalid_data)
+    ///     serde_dhall::from_str(invalid_data)
     ///         .static_type_annotation()
-    ///         .parse()
+    ///         .parse::<Point>()
     ///         .is_err()
     /// );
     /// # Ok(())
@@ -207,15 +202,60 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// [`type_annotation`]: struct.Deserializer.html#method.type_annotation
     /// [`StaticType`]: trait.StaticType.html
-    pub fn static_type_annotation(&mut self) -> &mut Self
-    where
-        T: StaticType,
-    {
-        self.annot = Some(T::static_type());
-        self
+    pub fn static_type_annotation(self) -> Deserializer<'a, StaticAnnot> {
+        Deserializer {
+            annot: StaticAnnot,
+            source: self.source,
+            allow_imports: self.allow_imports,
+        }
+    }
+}
+
+impl<'a, A> Deserializer<'a, A> {
+    /// Sets whether to enable imports.
+    ///
+    /// By default, imports are enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// use serde::Deserialize;
+    /// use serde_dhall::SimpleType;
+    ///
+    /// let data = "12 + ./other_file.dhall : Natural";
+    /// assert!(
+    ///     serde_dhall::from_str(data)
+    ///         .imports(false)
+    ///         .parse::<u64>()
+    ///         .is_err()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
+    /// [`StaticType`]: trait.StaticType.html
+    pub fn imports(self, imports: bool) -> Self {
+        Deserializer {
+            allow_imports: imports,
+            ..self
+        }
     }
 
-    fn _parse(&self) -> dhall::error::Result<Value> {
+    // /// TODO
+    // pub fn remote_imports(&mut self, imports: bool) -> &mut Self {
+    //     self.allow_remote_imports = imports;
+    //     if imports {
+    //         self.allow_imports = true;
+    //     }
+    //     self
+    // }
+
+    fn _parse<T>(&self) -> dhall::error::Result<Value>
+    where
+        T: HasAnnot<A>,
+    {
         let parsed = match &self.source {
             Source::Str(s) => Parsed::parse_str(s)?,
             Source::File(p) => Parsed::parse_file(p.as_ref())?,
@@ -225,7 +265,7 @@ impl<'a, T> Deserializer<'a, T> {
         } else {
             parsed.skip_resolve()?
         };
-        let typed = match &self.annot {
+        let typed = match &T::get_annot(&self.annot) {
             None => resolved.typecheck()?,
             Some(ty) => resolved.typecheck_with(ty.to_value().as_hir())?,
         };
@@ -240,15 +280,18 @@ impl<'a, T> Deserializer<'a, T> {
     ///
     /// ```no_run
     /// # fn main() -> serde_dhall::Result<()> {
-    /// let data = serde_dhall::from_file("foo.dhall").parse()?;
+    /// let data = serde_dhall::from_file("foo.dhall").parse::<u64>()?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn parse(&self) -> Result<T>
+    pub fn parse<T>(&self) -> Result<T>
     where
-        T: FromDhall,
+        T: FromDhall + HasAnnot<A>,
     {
-        let val = self._parse().map_err(ErrorKind::Dhall).map_err(Error)?;
+        let val = self
+            ._parse::<T>()
+            .map_err(ErrorKind::Dhall)
+            .map_err(Error)?;
         T::from_dhall(&val)
     }
 }
@@ -285,7 +328,7 @@ impl<'a, T> Deserializer<'a, T> {
 ///
 /// [`Deserializer`]: struct.Deserializer.html
 /// [`parse`]: struct.Deserializer.html#method.parse
-pub fn from_str<T>(s: &str) -> Deserializer<'_, T> {
+pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_str(s)
 }
 
@@ -315,22 +358,10 @@ pub fn from_str<T>(s: &str) -> Deserializer<'_, T> {
 ///
 /// [`Deserializer`]: struct.Deserializer.html
 /// [`parse`]: struct.Deserializer.html#method.parse
-pub fn from_file<'a, T, P: AsRef<Path>>(path: P) -> Deserializer<'a, T> {
+pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
     Deserializer::from_file(path)
 }
 
-// pub fn from_url<'a, T>(url: &'a str) -> Deserializer<'a, T> {
+// pub fn from_url(url: &str) -> Deserializer<'_, NoAnnot> {
 //     Deserializer::from_url(url)
 // }
-
-// Custom impl to not get a Clone bound on T
-impl<'a, T> Clone for Deserializer<'a, T> {
-    fn clone(&self) -> Self {
-        Deserializer {
-            source: self.source.clone(),
-            annot: self.annot.clone(),
-            allow_imports: self.allow_imports.clone(),
-            target_type: std::marker::PhantomData,
-        }
-    }
-}
