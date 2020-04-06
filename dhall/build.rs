@@ -14,6 +14,8 @@ enum FileType {
     Text,
     /// Dhall binary file
     Binary,
+    /// Text file with hash
+    Hash,
     /// Text file with expected text output
     UI,
 }
@@ -23,6 +25,7 @@ impl FileType {
         match self {
             FileType::Text => "dhall",
             FileType::Binary => "dhallb",
+            FileType::Hash => "hash",
             FileType::UI => "txt",
         }
     }
@@ -30,6 +33,7 @@ impl FileType {
         match self {
             FileType::Text => "TestFile::Source",
             FileType::Binary => "TestFile::Binary",
+            FileType::Hash => "TestFile::Binary",
             FileType::UI => "TestFile::UI",
         }
     }
@@ -252,9 +256,7 @@ fn generate_tests() -> std::io::Result<()> {
             exclude_path: Rc::new(|path: &str| {
                 false
                     // TODO: import hash
-                    || path == "alternativeHashMismatch"
                     || path == "hashFromCache"
-                    || path == "unit/AlternativeHashMismatch"
                     // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
                     || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
@@ -271,12 +273,26 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "ImportFailure",
             exclude_path: Rc::new(|path: &str| {
                 false
-                    // TODO: import hash
-                    || path == "hashMismatch"
                     // TODO: import headers
                     || path == "customHeadersUsingBoundVariable"
             }),
             output_type: Some(FileType::UI),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "semantic_hash",
+            directory: "semantic-hash/success/",
+            variant: "SemanticHash",
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "simple/integerToDouble"
+                    // See https://github.com/pyfisch/cbor/issues/109
+                    || path == "prelude/Integer/toDouble/0"
+                    || path == "prelude/Integer/toDouble/1"
+                    || path == "prelude/Natural/toDouble/0"
+            }),
+            output_type: Some(FileType::Hash),
             ..default_feature.clone()
         },
         TestFeature {
@@ -314,12 +330,7 @@ fn generate_tests() -> std::io::Result<()> {
             module_name: "type_inference_success",
             directory: "type-inference/success/",
             variant: "TypeInferenceSuccess",
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Too slow, but also not all features implemented
-                    // For now needs support for hashed imports
-                    || path == "prelude"
-            }),
+            too_slow_path: Rc::new(|path: &str| path == "prelude"),
             output_type: Some(FileType::Text),
             ..default_feature.clone()
         },

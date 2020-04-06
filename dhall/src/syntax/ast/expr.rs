@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::error::Error;
 use crate::semantics::Universe;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor;
@@ -254,6 +255,13 @@ impl Expr {
             kind: Box::new(kind),
             span,
         }
+    }
+
+    // Compute the sha256 hash of the binary form of the expression.
+    pub fn hash(&self) -> Result<Box<[u8]>, Error> {
+        use sha2::Digest;
+        let data = binary::encode(self)?;
+        Ok(sha2::Sha256::digest(&data).as_slice().into())
     }
 }
 

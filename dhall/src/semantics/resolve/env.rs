@@ -71,7 +71,7 @@ impl ImportEnv {
 
     pub fn handle_import(
         &mut self,
-        location: ImportLocation,
+        mut location: ImportLocation,
         do_resolve: impl FnOnce(&mut Self) -> Result<TypedHir, Error>,
     ) -> Result<TypedHir, Error> {
         if self.stack.contains(&location) {
@@ -82,14 +82,16 @@ impl ImportEnv {
         Ok(match self.cache.get(&location) {
             Some(expr) => expr.clone(),
             None => {
-                // Push the current location on the stack
-                self.stack.push(location);
-
-                // Resolve the import recursively
-                let expr = do_resolve(self)?;
-
-                // Remove location from the stack.
-                let location = self.stack.pop().unwrap();
+                let expr = {
+                    // Push the current location on the stack
+                    self.stack.push(location);
+                    // Resolve the import recursively
+                    // WARNING: do not propagate errors here or the stack will get messed up.
+                    let result = do_resolve(self);
+                    // Remove location from the stack.
+                    location = self.stack.pop().unwrap();
+                    result
+                }?;
 
                 // Add the resolved import to the cache
                 self.cache.insert(location, expr.clone());
