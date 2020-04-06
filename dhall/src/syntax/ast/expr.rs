@@ -161,10 +161,10 @@ pub enum ExprKind<SubExpr> {
     Num(NumKind),
     /// Built-in functions and types
     Builtin(Builtin),
-    ///  `Some e`
-    SomeLit(SubExpr),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
+    ///  `Some e`
+    SomeLit(SubExpr),
     ///  `[] : t`
     EmptyListLit(SubExpr),
     ///  `[x, y, z]`
