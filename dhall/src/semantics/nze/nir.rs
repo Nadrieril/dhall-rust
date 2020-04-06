@@ -111,8 +111,7 @@ impl Nir {
         NirInternal::from_whnf(v).into_nir()
     }
     pub fn from_const(c: Const) -> Self {
-        let v = NirKind::Const(c);
-        NirInternal::from_whnf(v).into_nir()
+        Self::from_kind(NirKind::Const(c))
     }
     pub fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
@@ -148,7 +147,10 @@ impl Nir {
     }
 
     pub fn app(&self, v: Nir) -> Nir {
-        Nir::from_kind(apply_any(self.clone(), v))
+        Nir::from_kind(self.app_to_kind(v))
+    }
+    pub fn app_to_kind(&self, v: Nir) -> NirKind {
+        apply_any(self, v)
     }
 
     pub fn to_hir(&self, venv: VarEnv) -> Hir {

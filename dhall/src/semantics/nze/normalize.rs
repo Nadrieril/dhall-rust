@@ -7,14 +7,14 @@ use crate::syntax::{
     BinOp, ExprKind, InterpolatedTextContents, Label, NumKind, OpKind,
 };
 
-pub fn apply_any(f: Nir, a: Nir) -> NirKind {
+pub fn apply_any(f: &Nir, a: Nir) -> NirKind {
     match f.kind() {
         NirKind::LamClosure { closure, .. } => closure.apply(a).kind().clone(),
         NirKind::AppliedBuiltin(closure) => closure.apply(a),
         NirKind::UnionConstructor(l, kts) => {
             NirKind::UnionLit(l.clone(), a, kts.clone())
         }
-        _ => NirKind::PartialExpr(ExprKind::Op(OpKind::App(f, a))),
+        _ => NirKind::PartialExpr(ExprKind::Op(OpKind::App(f.clone(), a))),
     }
 }
 
@@ -219,7 +219,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
 
     Some(match v.kind() {
         RecordLit(kvs) => match kvs.get(field) {
-            Some(r) => ret_nir(r.clone()),
+            Some(r) => ret_ref(r),
             None => return None,
         },
         UnionType(kts) => {
@@ -229,7 +229,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
         PartialExpr(Op(BinOp(RightBiasedRecordMerge, x, y))) => {
             match (x.kind(), y.kind()) {
                 (_, RecordLit(kvs)) => match kvs.get(field) {
-                    Some(r) => ret_nir(r.clone()),
+                    Some(r) => ret_ref(r),
                     None => return normalize_field(x, field),
                 },
                 (RecordLit(kvs), _) => match kvs.get(field) {
@@ -299,7 +299,7 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
     use OpKind::*;
 
     Some(match opkind {
-        App(v, a) => ret_nir(v.app(a.clone())),
+        App(v, a) => ret_kind(v.app_to_kind(a.clone())),
         BinOp(o, x, y) => return normalize_binop(*o, x, y),
         BoolIf(b, e1, e2) => {
             match b.kind() {
@@ -318,19 +318,19 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
         Merge(handlers, variant, _) => match handlers.kind() {
             RecordLit(kvs) => match variant.kind() {
                 UnionConstructor(l, _) => match kvs.get(l) {
-                    Some(h) => ret_nir(h.clone()),
+                    Some(h) => ret_ref(h),
                     None => return None,
                 },
                 UnionLit(l, v, _) => match kvs.get(l) {
-                    Some(h) => ret_nir(h.app(v.clone())),
+                    Some(h) => ret_kind(h.app_to_kind(v.clone())),
                     None => return None,
                 },
                 EmptyOptionalLit(_) => match kvs.get(&"None".into()) {
-                    Some(h) => ret_nir(h.clone()),
+                    Some(h) => ret_ref(h),
                     None => return None,
                 },
                 NEOptionalLit(v) => match kvs.get(&"Some".into()) {
-                    Some(h) => ret_nir(h.app(v.clone())),
+                    Some(h) => ret_kind(h.app_to_kind(v.clone())),
                     None => return None,
                 },
                 _ => return None,
@@ -391,7 +391,7 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
 
 pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
     use NirKind::{
-        NEListLit, NEOptionalLit, Num, RecordLit, RecordType, UnionType,
+        Const, NEListLit, NEOptionalLit, Num, RecordLit, RecordType, UnionType,
     };
 
     match expr {
@@ -402,14 +402,16 @@ pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
             unreachable!("This case should have been handled in normalize_hir")
         }
 
-        ExprKind::Const(c) => ret_nir(Nir::from_const(c)),
+        ExprKind::Const(c) => ret_kind(Const(c)),
         ExprKind::Num(l) => ret_kind(Num(l)),
-        ExprKind::Builtin(b) => ret_nir(Nir::from_builtin_env(b, env)),
+        ExprKind::Builtin(b) => {
+            ret_kind(NirKind::from_builtin_env(b, env.clone()))
+        }
         ExprKind::TextLit(elts) => {
             let tlit = TextLit::new(elts.into_iter());
             // Simplify bare interpolation
             if let Some(v) = tlit.as_single_expr() {
-                ret_nir(v.clone())
+                ret_ref(v)
             } else {
                 ret_kind(NirKind::TextLit(tlit))
             }
