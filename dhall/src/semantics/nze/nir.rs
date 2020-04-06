@@ -74,25 +74,27 @@ pub enum NirKind {
 
     Var(NzVar),
     Const(Const),
+    Num(NumKind),
     // Must be a number type, Bool or Text
     BuiltinType(Builtin),
-    Num(NumKind),
-    OptionalType(Nir),
+    TextLit(TextLit),
     EmptyOptionalLit(Nir),
     NEOptionalLit(Nir),
-    ListType(Nir),
+    OptionalType(Nir),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Nir),
     NEListLit(Vec<Nir>),
-    RecordType(HashMap<Label, Nir>),
+    ListType(Nir),
     RecordLit(HashMap<Label, Nir>),
-    UnionType(HashMap<Label, Option<Nir>>),
+    RecordType(HashMap<Label, Nir>),
     UnionConstructor(Label, HashMap<Label, Option<Nir>>),
     UnionLit(Label, Nir, HashMap<Label, Option<Nir>>),
-    TextLit(TextLit),
+    UnionType(HashMap<Label, Option<Nir>>),
     Equivalence(Nir, Nir),
-    /// Invariant: evaluation must not be able to progress with `normalize_one_layer`.
-    PartialExpr(ExprKind<Nir>),
+    Assert(Nir),
+    /// Invariant: evaluation must not be able to progress with `normalize_operation`.
+    /// This is used when an operation couldn't proceed further, for example because of variables.
+    Op(OpKind<Nir>),
 }
 
 impl Nir {
@@ -258,7 +260,8 @@ impl Nir {
                     x.to_hir(venv),
                     y.to_hir(venv),
                 )),
-                NirKind::PartialExpr(e) => e.map_ref(|v| v.to_hir(venv)),
+                NirKind::Assert(x) => ExprKind::Assert(x.to_hir(venv)),
+                NirKind::Op(e) => ExprKind::Op(e.map_ref(|v| v.to_hir(venv))),
             }),
         };
 
