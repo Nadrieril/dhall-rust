@@ -97,13 +97,16 @@ fn ret_ref(x: &Nir) -> Ret {
 fn ret_expr(x: ExprKind<Nir>) -> Ret {
     NirKind::PartialExpr(x)
 }
+fn ret_op(x: OpKind<Nir>) -> Ret {
+    ret_expr(ExprKind::Op(x))
+}
 
-fn normalize_binop(o: BinOp, x: &Nir, y: &Nir) -> Option<Ret> {
+fn normalize_binop(o: BinOp, x: &Nir, y: &Nir) -> Ret {
     use BinOp::*;
     use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
     use NumKind::{Bool, Natural};
 
-    Some(match (o, x.kind(), y.kind()) {
+    match (o, x.kind(), y.kind()) {
         (BoolAnd, Num(Bool(true)), _) => ret_ref(y),
         (BoolAnd, _, Num(Bool(true))) => ret_ref(x),
         (BoolAnd, Num(Bool(false)), _) => ret_kind(Num(Bool(false))),
@@ -207,33 +210,34 @@ fn normalize_binop(o: BinOp, x: &Nir, y: &Nir) -> Option<Ret> {
             ret_kind(NirKind::Equivalence(x.clone(), y.clone()))
         }
 
-        _ => return None,
-    })
+        _ => ret_op(OpKind::BinOp(o, x.clone(), y.clone())),
+    }
 }
 
-fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
+fn normalize_field(v: &Nir, field: &Label) -> Ret {
     use self::BinOp::{RecursiveRecordMerge, RightBiasedRecordMerge};
     use ExprKind::Op;
     use NirKind::{PartialExpr, RecordLit, UnionConstructor, UnionType};
     use OpKind::{BinOp, Field, Projection};
+    let nothing_to_do = || ret_op(Field(v.clone(), field.clone()));
 
-    Some(match v.kind() {
+    match v.kind() {
         RecordLit(kvs) => match kvs.get(field) {
             Some(r) => ret_ref(r),
-            None => return None,
+            None => nothing_to_do(),
         },
         UnionType(kts) => {
             ret_kind(UnionConstructor(field.clone(), kts.clone()))
         }
-        PartialExpr(Op(Projection(x, _))) => return normalize_field(x, field),
+        PartialExpr(Op(Projection(x, _))) => normalize_field(x, field),
         PartialExpr(Op(BinOp(RightBiasedRecordMerge, x, y))) => {
             match (x.kind(), y.kind()) {
                 (_, RecordLit(kvs)) => match kvs.get(field) {
                     Some(r) => ret_ref(r),
-                    None => return normalize_field(x, field),
+                    None => normalize_field(x, field),
                 },
                 (RecordLit(kvs), _) => match kvs.get(field) {
-                    Some(r) => ret_expr(Op(Field(
+                    Some(r) => ret_op(Field(
                         Nir::from_kind(PartialExpr(Op(BinOp(
                             RightBiasedRecordMerge,
                             Nir::from_kind(RecordLit(
@@ -244,16 +248,16 @@ fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
                             y.clone(),
                         )))),
                         field.clone(),
-                    ))),
-                    None => return normalize_field(y, field),
+                    )),
+                    None => normalize_field(y, field),
                 },
-                _ => return None,
+                _ => nothing_to_do(),
             }
         }
         PartialExpr(Op(BinOp(RecursiveRecordMerge, x, y))) => {
             match (x.kind(), y.kind()) {
                 (RecordLit(kvs), _) => match kvs.get(field) {
-                    Some(r) => ret_expr(Op(Field(
+                    Some(r) => ret_op(Field(
                         Nir::from_kind(PartialExpr(Op(BinOp(
                             RecursiveRecordMerge,
                             Nir::from_kind(RecordLit(
@@ -264,11 +268,11 @@ fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
                             y.clone(),
                         )))),
                         field.clone(),
-                    ))),
-                    None => return normalize_field(y, field),
+                    )),
+                    None => normalize_field(y, field),
                 },
                 (_, RecordLit(kvs)) => match kvs.get(field) {
-                    Some(r) => ret_expr(Op(Field(
+                    Some(r) => ret_op(Field(
                         Nir::from_kind(PartialExpr(Op(BinOp(
                             RecursiveRecordMerge,
                             x.clone(),
@@ -279,17 +283,17 @@ fn normalize_field(v: &Nir, field: &Label) -> Option<Ret> {
                             )),
                         )))),
                         field.clone(),
-                    ))),
-                    None => return normalize_field(x, field),
+                    )),
+                    None => normalize_field(x, field),
                 },
-                _ => return None,
+                _ => nothing_to_do(),
             }
         }
-        _ => return None,
-    })
+        _ => nothing_to_do(),
+    }
 }
 
-fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
+fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
     use ExprKind::Op;
     use NirKind::{
         EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num,
@@ -297,10 +301,11 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
     };
     use NumKind::Bool;
     use OpKind::*;
+    let nothing_to_do = || ret_op(opkind.clone());
 
-    Some(match opkind {
+    match opkind {
         App(v, a) => ret_kind(v.app_to_kind(a.clone())),
-        BinOp(o, x, y) => return normalize_binop(*o, x, y),
+        BinOp(o, x, y) => normalize_binop(*o, x, y),
         BoolIf(b, e1, e2) => {
             match b.kind() {
                 Num(Bool(true)) => ret_ref(e1),
@@ -310,7 +315,7 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
                         // Simplify `if b then True else False`
                         (Num(Bool(true)), Num(Bool(false))) => ret_ref(b),
                         _ if e1 == e2 => ret_ref(e1),
-                        _ => return None,
+                        _ => nothing_to_do(),
                     }
                 }
             }
@@ -319,23 +324,23 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
             RecordLit(kvs) => match variant.kind() {
                 UnionConstructor(l, _) => match kvs.get(l) {
                     Some(h) => ret_ref(h),
-                    None => return None,
+                    None => nothing_to_do(),
                 },
                 UnionLit(l, v, _) => match kvs.get(l) {
                     Some(h) => ret_kind(h.app_to_kind(v.clone())),
-                    None => return None,
+                    None => nothing_to_do(),
                 },
                 EmptyOptionalLit(_) => match kvs.get(&"None".into()) {
                     Some(h) => ret_ref(h),
-                    None => return None,
+                    None => nothing_to_do(),
                 },
                 NEOptionalLit(v) => match kvs.get(&"Some".into()) {
                     Some(h) => ret_kind(h.app_to_kind(v.clone())),
-                    None => return None,
+                    None => nothing_to_do(),
                 },
-                _ => return None,
+                _ => nothing_to_do(),
             },
-            _ => return None,
+            _ => nothing_to_do(),
         },
         ToMap(v, annot) => match v.kind() {
             RecordLit(kvs) if kvs.is_empty() => {
@@ -343,7 +348,7 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
                     Some(NirKind::ListType(t)) => {
                         ret_kind(EmptyListLit(t.clone()))
                     }
-                    _ => return None,
+                    _ => nothing_to_do(),
                 }
             }
             RecordLit(kvs) => ret_kind(NEListLit(
@@ -357,9 +362,9 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
                     })
                     .collect(),
             )),
-            _ => return None,
+            _ => nothing_to_do(),
         },
-        Field(v, field) => return normalize_field(v, field),
+        Field(v, field) => normalize_field(v, field),
         Projection(_, ls) if ls.is_empty() => {
             ret_kind(RecordLit(HashMap::new()))
         }
@@ -370,23 +375,21 @@ fn normalize_operation(opkind: &OpKind<Nir>) -> Option<Ret> {
                     .collect(),
             )),
             PartialExpr(Op(Projection(v2, _))) => {
-                return normalize_operation(&Projection(v2.clone(), ls.clone()))
+                normalize_operation(&Projection(v2.clone(), ls.clone()))
             }
-            _ => return None,
+            _ => nothing_to_do(),
         },
         ProjectionByExpr(v, t) => match t.kind() {
-            RecordType(kts) => {
-                return normalize_operation(&Projection(
-                    v.clone(),
-                    kts.keys().cloned().collect(),
-                ))
-            }
-            _ => return None,
+            RecordType(kts) => normalize_operation(&Projection(
+                v.clone(),
+                kts.keys().cloned().collect(),
+            )),
+            _ => nothing_to_do(),
         },
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
-    })
+    }
 }
 
 pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
@@ -436,10 +439,7 @@ pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::UnionType(kvs) => {
             ret_kind(UnionType(kvs.into_iter().collect()))
         }
-        ExprKind::Op(ref op) => match normalize_operation(op) {
-            Some(ret) => ret,
-            None => ret_expr(expr),
-        },
+        ExprKind::Op(ref op) => normalize_operation(op),
         ExprKind::Annot(x, _) => ret_nir(x),
         ExprKind::Assert(_) => ret_expr(expr),
         ExprKind::Import(..) => {
