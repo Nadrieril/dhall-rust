@@ -181,7 +181,7 @@ fn type_of_merge(
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use NirKind::{OptionalType, PiClosure, RecordType, UnionType};
 
-    let record_type = scrut.ty();
+    let record_type = record.ty();
     let handlers = match record_type.kind() {
         RecordType(kts) => kts,
         _ => return span_err("Merge1ArgMustBeRecord"),
