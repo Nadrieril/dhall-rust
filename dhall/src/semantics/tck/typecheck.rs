@@ -1,11 +1,10 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
+use crate::builtins::type_of_builtin;
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
-use crate::semantics::{
-    type_of_builtin, Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type,
-};
+use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
 use crate::syntax::{
     Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
 };

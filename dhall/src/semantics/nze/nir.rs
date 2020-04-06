@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::builtins::BuiltinClosure;
 use crate::operations::OpKind;
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_hir, normalize_one_layer, squash_textlit, Binder,
-    BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
+    apply_any, normalize_hir, normalize_one_layer, squash_textlit, Binder, Hir,
+    HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,

@@ -10,6 +10,7 @@
 
 mod tests;
 
+pub mod builtins;
 pub mod error;
 pub mod operations;
 pub mod semantics;
