@@ -1,3 +1,4 @@
+use crate::operations::OpKind;
 use crate::semantics::{
     skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
@@ -5,8 +6,8 @@ use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, NaiveDouble, NumKind, OpKind, Span,
-    UnspannedExpr, V,
+    InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
+    V,
 };
 use std::collections::HashMap;
 use std::convert::TryInto;

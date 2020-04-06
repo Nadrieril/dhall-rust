@@ -3,10 +3,11 @@ use serde_cbor::value::value as cbor;
 use std::iter::FromIterator;
 
 use crate::error::DecodeError;
+use crate::operations::OpKind;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
-    Integer, InterpolatedText, Label, Natural, NumKind, OpKind, Scheme, Span,
+    Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span,
     UnspannedExpr, URL, V,
 };
 type DecodedExpr = Expr;

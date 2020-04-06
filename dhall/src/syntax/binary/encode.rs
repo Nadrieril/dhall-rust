@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use std::vec;
 
 use crate::error::EncodeError;
+use crate::operations::OpKind;
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     Expr, ExprKind, FilePrefix, Hash, Import, ImportMode, ImportTarget, Label,
-    OpKind, Scheme, V,
+    Scheme, V,
 };
 
 pub fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
@@ -49,7 +50,7 @@ where
     use syntax::Builtin;
     use syntax::ExprKind::*;
     use syntax::NumKind::*;
-    use syntax::OpKind::*;
+    use OpKind::*;
 
     use self::Serialize::{RecordDupMap, RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {

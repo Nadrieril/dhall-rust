@@ -1,3 +1,4 @@
+use crate::operations::OpKind;
 use crate::syntax::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
@@ -37,8 +38,8 @@ impl<'a> PhasedExpr<'a> {
 impl UnspannedExpr {
     // Annotate subexpressions with the appropriate phase, defaulting to Base
     fn annotate_with_phases(&self) -> ExprKind<PhasedExpr<'_>> {
-        use crate::syntax::ExprKind::*;
-        use crate::syntax::OpKind::*;
+        use ExprKind::*;
+        use OpKind::*;
         use PrintPhase::*;
         let with_base = self.map_ref(|e| PhasedExpr(e, Base));
         match with_base {
@@ -89,8 +90,8 @@ impl UnspannedExpr {
         f: &mut fmt::Formatter,
         phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
-        use crate::syntax::ExprKind::*;
-        use crate::syntax::OpKind::*;
+        use ExprKind::*;
+        use OpKind::*;
 
         let needs_paren = match self {
             Lam(_, _, _)
@@ -212,7 +213,7 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
 /// Generic instance that delegates to subexpressions
 impl<SE: Display + Clone> Display for OpKind<SE> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::syntax::OpKind::*;
+        use OpKind::*;
         match self {
             App(a, b) => {
                 write!(f, "{} {}", a, b)?;

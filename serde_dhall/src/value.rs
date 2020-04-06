@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
+use dhall::operations::OpKind;
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
-use dhall::syntax::{Builtin, Expr, ExprKind, NumKind, OpKind, Span};
+use dhall::syntax::{Builtin, Expr, ExprKind, NumKind, Span};
 
 use crate::{Error, ErrorKind, FromDhall, Result, Sealed};
 

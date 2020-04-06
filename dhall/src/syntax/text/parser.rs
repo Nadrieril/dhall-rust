@@ -7,10 +7,10 @@ use std::rc::Rc;
 
 use pest_consume::{match_nodes, Parser};
 
+use crate::operations::OpKind::*;
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::ExprKind::*;
 use crate::syntax::NumKind::*;
-use crate::syntax::OpKind::*;
 use crate::syntax::{
     Double, Expr, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Integer, InterpolatedText, InterpolatedTextContents, Label, NaiveDouble,

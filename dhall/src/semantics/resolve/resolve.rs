@@ -6,12 +6,13 @@ use url::Url;
 
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
+use crate::operations::OpKind;
 use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode,
-    ImportTarget, OpKind, Span, UnspannedExpr, URL,
+    ImportTarget, Span, UnspannedExpr, URL,
 };
 use crate::{Parsed, Resolved};
 
