@@ -5,8 +5,8 @@ use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
-    V,
+    InterpolatedTextContents, Label, NaiveDouble, NumKind, OpKind, Span,
+    UnspannedExpr, V,
 };
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -34,10 +34,10 @@ impl BuiltinClosure {
         HirKind::Expr(self.args.iter().fold(
             ExprKind::Builtin(self.b),
             |acc, v| {
-                ExprKind::App(
+                ExprKind::Op(OpKind::App(
                     Hir::new(HirKind::Expr(acc), Span::Artificial),
                     v.to_hir(venv),
-                )
+                ))
             },
         ))
     }
@@ -59,16 +59,16 @@ macro_rules! make_type {
         rc(ExprKind::Var(V(stringify!($var).into(), 0)))
     };
     (Optional $ty:ident) => {
-        rc(ExprKind::App(
+        rc(ExprKind::Op(OpKind::App(
             rc(ExprKind::Builtin(Builtin::Optional)),
             make_type!($ty)
-        ))
+        )))
     };
     (List $($rest:tt)*) => {
-        rc(ExprKind::App(
+        rc(ExprKind::Op(OpKind::App(
             rc(ExprKind::Builtin(Builtin::List)),
             make_type!($($rest)*)
-        ))
+        )))
     };
     ({ $($label:ident : $ty:ident),* }) => {{
         let mut kts = DupTreeMap::new();
@@ -214,10 +214,10 @@ macro_rules! make_closure {
     };
     (List $($ty:tt)*) => {{
         let ty = make_closure!($($ty)*);
-        rc(ExprKind::App(
+        rc(ExprKind::Op(OpKind::App(
             rc(ExprKind::Builtin(Builtin::List)),
             ty
-        ))
+        )))
     }};
     (Some($($v:tt)*)) => {
         rc(ExprKind::SomeLit(
@@ -225,20 +225,20 @@ macro_rules! make_closure {
         ))
     };
     (1 + $($v:tt)*) => {
-        rc(ExprKind::BinOp(
+        rc(ExprKind::Op(OpKind::BinOp(
             BinOp::NaturalPlus,
             make_closure!($($v)*),
             rc(ExprKind::Num(NumKind::Natural(1)))
-        ))
+        )))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
         let head = make_closure!($($head)*);
         let tail = make_closure!($($tail)*);
-        rc(ExprKind::BinOp(
+        rc(ExprKind::Op(OpKind::BinOp(
             BinOp::ListAppend,
             rc(ExprKind::NEListLit(vec![head])),
             tail,
-        ))
+        )))
     }};
 }
 

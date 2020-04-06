@@ -6,7 +6,7 @@ use crate::error::DecodeError;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
-    Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span,
+    Integer, InterpolatedText, Label, Natural, NumKind, OpKind, Scheme, Span,
     UnspannedExpr, URL, V,
 };
 type DecodedExpr = Expr;
@@ -27,6 +27,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
     use cbor::Value::*;
     use syntax::{BinOp, Builtin, Const};
     use ExprKind::*;
+    use OpKind::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
             Some(b) => ExprKind::Builtin(b),
@@ -66,7 +67,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let mut f = cbor_value_to_dhall(&f)?;
                 for a in args {
                     let a = cbor_value_to_dhall(&a)?;
-                    f = rc(App(f, a))
+                    f = rc(Op(App(f, a)))
                 }
                 return Ok(f);
             }
@@ -105,7 +106,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             [U64(3), U64(13), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
-                Completion(x, y)
+                Op(Completion(x, y))
             }
             [U64(3), U64(n), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
@@ -131,11 +132,14 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                         ))
                     }
                 };
-                BinOp(op, x, y)
+                Op(BinOp(op, x, y))
             }
             [U64(4), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                EmptyListLit(rc(App(rc(ExprKind::Builtin(Builtin::List)), t)))
+                EmptyListLit(rc(Op(App(
+                    rc(ExprKind::Builtin(Builtin::List)),
+                    t,
+                ))))
             }
             [U64(4), Null, rest @ ..] => {
                 let rest = rest
@@ -151,26 +155,26 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             // Old-style optional literals
             [U64(5), t] => {
                 let t = cbor_value_to_dhall(&t)?;
-                App(rc(ExprKind::Builtin(Builtin::OptionalNone)), t)
+                Op(App(rc(ExprKind::Builtin(Builtin::OptionalNone)), t))
             }
             [U64(5), t, x] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let t = cbor_value_to_dhall(&t)?;
                 Annot(
                     rc(SomeLit(x)),
-                    rc(App(rc(ExprKind::Builtin(Builtin::Optional)), t)),
+                    rc(Op(App(rc(ExprKind::Builtin(Builtin::Optional)), t))),
                 )
             }
             [U64(6), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
-                Merge(x, y, None)
+                Op(Merge(x, y, None))
             }
             [U64(6), x, y, z] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let z = cbor_value_to_dhall(&z)?;
-                Merge(x, y, Some(z))
+                Op(Merge(x, y, Some(z)))
             }
             [U64(7), Object(map)] => {
                 let map = cbor_map_to_dhall_map(map)?;
@@ -183,13 +187,13 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             [U64(9), x, String(l)] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let l = Label::from(l.as_str());
-                Field(x, l)
+                Op(Field(x, l))
             }
             [U64(10), x, Array(arr)] => {
                 let x = cbor_value_to_dhall(&x)?;
                 if let [y] = arr.as_slice() {
                     let y = cbor_value_to_dhall(&y)?;
-                    ProjectionByExpr(x, y)
+                    Op(ProjectionByExpr(x, y))
                 } else {
                     return Err(DecodeError::WrongFormatError(
                         "projection-by-expr".to_owned(),
@@ -207,7 +211,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                         )),
                     })
                     .collect::<Result<_, _>>()?;
-                Projection(x, labels)
+                Op(Projection(x, labels))
             }
             [U64(11), Object(map)] => {
                 let map = cbor_map_to_dhall_opt_map(map)?;
@@ -222,7 +226,7 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
                 let z = cbor_value_to_dhall(&z)?;
-                BoolIf(x, y, z)
+                Op(BoolIf(x, y, z))
             }
             [U64(15), U64(x)] => Num(NumKind::Natural(*x as Natural)),
             [U64(16), U64(x)] => Num(NumKind::Integer(*x as Integer)),
@@ -416,12 +420,12 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
             }
             [U64(27), x] => {
                 let x = cbor_value_to_dhall(&x)?;
-                ToMap(x, None)
+                Op(ToMap(x, None))
             }
             [U64(27), x, y] => {
                 let x = cbor_value_to_dhall(&x)?;
                 let y = cbor_value_to_dhall(&y)?;
-                ToMap(x, Some(y))
+                Op(ToMap(x, Some(y)))
             }
             [U64(28), x] => {
                 let x = cbor_value_to_dhall(&x)?;

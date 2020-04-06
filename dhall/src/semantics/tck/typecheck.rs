@@ -9,7 +9,8 @@ use crate::semantics::{
     Type,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
+    BinOp, Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, OpKind,
+    Span,
 };
 
 fn check_rectymerge(
@@ -75,7 +76,7 @@ fn type_one_layer(
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
     let ty = match &ekind {
-        ExprKind::Import(..) | ExprKind::Completion(..) => {
+        ExprKind::Import(..) | ExprKind::Op(OpKind::Completion(..)) => {
             unreachable!("This case should have been handled in resolution")
         }
         ExprKind::Var(..)
@@ -222,7 +223,7 @@ fn type_one_layer(
 
             Type::from_const(k)
         }
-        ExprKind::Field(scrut, x) => {
+        ExprKind::Op(OpKind::Field(scrut, x)) => {
             match scrut.ty().kind() {
                 NirKind::RecordType(kts) => match kts.get(&x) {
                     Some(val) => Type::new_infer_universe(env, val.clone())?,
@@ -261,7 +262,7 @@ fn type_one_layer(
             }
             t
         }
-        ExprKind::App(f, arg) => {
+        ExprKind::Op(OpKind::App(f, arg)) => {
             match f.ty().kind() {
                 // TODO: store Type in closure
                 NirKind::PiClosure { annot, closure, .. } => {
@@ -309,7 +310,7 @@ fn type_one_layer(
                 ),
             }
         }
-        ExprKind::BoolIf(x, y, z) => {
+        ExprKind::Op(OpKind::BoolIf(x, y, z)) => {
             if *x.ty().kind() != NirKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
@@ -322,7 +323,7 @@ fn type_one_layer(
 
             y.ty().clone()
         }
-        ExprKind::BinOp(BinOp::RightBiasedRecordMerge, x, y) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::RightBiasedRecordMerge, x, y)) => {
             let x_type = x.ty();
             let y_type = y.ty();
 
@@ -344,22 +345,22 @@ fn type_one_layer(
             let u = max(x.ty().ty(), y.ty().ty());
             Nir::from_kind(NirKind::RecordType(kts)).to_type(u)
         }
-        ExprKind::BinOp(BinOp::RecursiveRecordMerge, x, y) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::RecursiveRecordMerge, x, y)) => {
             check_rectymerge(&span, env, x.ty().to_nir(), y.ty().to_nir())?;
 
             let hir = Hir::new(
-                HirKind::Expr(ExprKind::BinOp(
+                HirKind::Expr(ExprKind::Op(OpKind::BinOp(
                     BinOp::RecursiveRecordTypeMerge,
                     x.ty().to_hir(env.as_varenv()),
                     y.ty().to_hir(env.as_varenv()),
-                )),
+                ))),
                 span.clone(),
             );
             let x_u = x.ty().ty();
             let y_u = y.ty().ty();
             Type::new(hir.eval(env), max(x_u, y_u))
         }
-        ExprKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::RecursiveRecordTypeMerge, x, y)) => {
             check_rectymerge(&span, env, x.eval(env), y.eval(env))?;
 
             // A RecordType's type is always a const
@@ -367,7 +368,7 @@ fn type_one_layer(
             let yk = y.ty().as_const().unwrap();
             Type::from_const(max(xk, yk))
         }
-        ExprKind::BinOp(BinOp::ListAppend, l, r) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::ListAppend, l, r)) => {
             match l.ty().kind() {
                 NirKind::ListType(..) => {}
                 _ => return span_err("BinOpTypeMismatch"),
@@ -379,7 +380,7 @@ fn type_one_layer(
 
             l.ty().clone()
         }
-        ExprKind::BinOp(BinOp::Equivalence, l, r) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::Equivalence, l, r)) => {
             if l.ty() != r.ty() {
                 return span_err("EquivalenceTypeMismatch");
             }
@@ -389,7 +390,7 @@ fn type_one_layer(
 
             Type::from_const(Const::Type)
         }
-        ExprKind::BinOp(o, l, r) => {
+        ExprKind::Op(OpKind::BinOp(o, l, r)) => {
             let t = Type::from_builtin(match o {
                 BinOp::BoolAnd
                 | BinOp::BoolOr
@@ -415,7 +416,7 @@ fn type_one_layer(
 
             t
         }
-        ExprKind::Merge(record, union, type_annot) => {
+        ExprKind::Op(OpKind::Merge(record, union, type_annot)) => {
             let record_type = record.ty();
             let handlers = match record_type.kind() {
                 NirKind::RecordType(kts) => kts,
@@ -554,7 +555,7 @@ fn type_one_layer(
                 (None, None) => return span_err("MergeEmptyNeedsAnnotation"),
             }
         }
-        ExprKind::ToMap(record, annot) => {
+        ExprKind::Op(OpKind::ToMap(record, annot)) => {
             if record.ty().ty().as_const() != Some(Const::Type) {
                 return span_err("`toMap` only accepts records of type `Type`");
             }
@@ -624,7 +625,7 @@ fn type_one_layer(
                 output_type
             }
         }
-        ExprKind::Projection(record, labels) => {
+        ExprKind::Op(OpKind::Projection(record, labels)) => {
             let record_type = record.ty();
             let kts = match record_type.kind() {
                 NirKind::RecordType(kts) => kts,
@@ -652,7 +653,7 @@ fn type_one_layer(
                 Nir::from_kind(NirKind::RecordType(new_kts)),
             )?
         }
-        ExprKind::ProjectionByExpr(record, selection) => {
+        ExprKind::Op(OpKind::ProjectionByExpr(record, selection)) => {
             let record_type = record.ty();
             let rec_kts = match record_type.kind() {
                 NirKind::RecordType(kts) => kts,

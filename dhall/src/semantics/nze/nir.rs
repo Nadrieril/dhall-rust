@@ -8,7 +8,7 @@ use crate::semantics::{
 };
 use crate::syntax::{
     BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
-    NumKind, Span,
+    NumKind, OpKind, Span,
 };
 use crate::ToExprOptions;
 
@@ -190,24 +190,24 @@ impl Nir {
                 NirKind::Const(c) => ExprKind::Const(*c),
                 NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
                 NirKind::Num(l) => ExprKind::Num(l.clone()),
-                NirKind::OptionalType(t) => ExprKind::App(
+                NirKind::OptionalType(t) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::Optional).to_hir(venv),
                     t.to_hir(venv),
-                ),
-                NirKind::EmptyOptionalLit(n) => ExprKind::App(
+                )),
+                NirKind::EmptyOptionalLit(n) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
-                ),
+                )),
                 NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
-                NirKind::ListType(t) => ExprKind::App(
+                NirKind::ListType(t) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::List).to_hir(venv),
                     t.to_hir(venv),
-                ),
+                )),
                 NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
-                    HirKind::Expr(ExprKind::App(
+                    HirKind::Expr(ExprKind::Op(OpKind::App(
                         Nir::from_builtin(Builtin::List).to_hir(venv),
                         n.to_hir(venv),
-                    )),
+                    ))),
                     Span::Artificial,
                 )),
                 NirKind::NEListLit(elts) => ExprKind::NEListLit(
@@ -229,31 +229,33 @@ impl Nir {
                         .collect(),
                 ),
                 NirKind::UnionType(kts) => map_uniontype(kts),
-                NirKind::UnionConstructor(l, kts) => ExprKind::Field(
+                NirKind::UnionConstructor(l, kts) => {
+                    ExprKind::Op(OpKind::Field(
+                        Hir::new(
+                            HirKind::Expr(map_uniontype(kts)),
+                            Span::Artificial,
+                        ),
+                        l.clone(),
+                    ))
+                }
+                NirKind::UnionLit(l, v, kts) => ExprKind::Op(OpKind::App(
                     Hir::new(
-                        HirKind::Expr(map_uniontype(kts)),
-                        Span::Artificial,
-                    ),
-                    l.clone(),
-                ),
-                NirKind::UnionLit(l, v, kts) => ExprKind::App(
-                    Hir::new(
-                        HirKind::Expr(ExprKind::Field(
+                        HirKind::Expr(ExprKind::Op(OpKind::Field(
                             Hir::new(
                                 HirKind::Expr(map_uniontype(kts)),
                                 Span::Artificial,
                             ),
                             l.clone(),
-                        )),
+                        ))),
                         Span::Artificial,
                     ),
                     v.to_hir(venv),
-                ),
-                NirKind::Equivalence(x, y) => ExprKind::BinOp(
+                )),
+                NirKind::Equivalence(x, y) => ExprKind::Op(OpKind::BinOp(
                     BinOp::Equivalence,
                     x.to_hir(venv),
                     y.to_hir(venv),
-                ),
+                )),
                 NirKind::PartialExpr(e) => e.map_ref(|v| v.to_hir(venv)),
             }),
         };

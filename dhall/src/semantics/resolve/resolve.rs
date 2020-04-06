@@ -11,7 +11,7 @@ use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode,
-    ImportTarget, Span, UnspannedExpr, URL,
+    ImportTarget, OpKind, Span, UnspannedExpr, URL,
 };
 use crate::{Parsed, Resolved};
 
@@ -179,12 +179,13 @@ impl ImportLocation {
         };
 
         let asloc_ty = make_aslocation_uniontype();
-        let expr = mkexpr(ExprKind::Field(asloc_ty, field_name.into()));
+        let expr =
+            mkexpr(ExprKind::Op(OpKind::Field(asloc_ty, field_name.into())));
         match arg {
-            Some(arg) => mkexpr(ExprKind::App(
+            Some(arg) => mkexpr(ExprKind::Op(OpKind::App(
                 expr,
                 mkexpr(ExprKind::TextLit(arg.into())),
-            )),
+            ))),
             None => expr,
         }
     }
@@ -261,21 +262,21 @@ fn resolve_one_import(
 /// Desugar the first level of the expression.
 fn desugar(expr: &Expr) -> Cow<'_, Expr> {
     match expr.kind() {
-        ExprKind::Completion(ty, compl) => {
+        ExprKind::Op(OpKind::Completion(ty, compl)) => {
             let ty_field_default = Expr::new(
-                ExprKind::Field(ty.clone(), "default".into()),
+                ExprKind::Op(OpKind::Field(ty.clone(), "default".into())),
                 expr.span(),
             );
             let merged = Expr::new(
-                ExprKind::BinOp(
+                ExprKind::Op(OpKind::BinOp(
                     BinOp::RightBiasedRecordMerge,
                     ty_field_default,
                     compl.clone(),
-                ),
+                )),
                 expr.span(),
             );
             let ty_field_type = Expr::new(
-                ExprKind::Field(ty.clone(), "Type".into()),
+                ExprKind::Op(OpKind::Field(ty.clone(), "Type".into())),
                 expr.span(),
             );
             Cow::Owned(Expr::new(
@@ -304,7 +305,7 @@ fn traverse_resolve_expr(
                     .format(),
             )?,
         },
-        ExprKind::BinOp(BinOp::ImportAlt, l, r) => {
+        ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
             match traverse_resolve_expr(name_env, l, f) {
                 Ok(l) => l,
                 Err(_) => {

@@ -5,14 +5,15 @@ use std::fmt::{self, Display};
 // There is a one-to-one correspondence between the formatter and the grammar. Each phase is
 // named after a corresponding grammar group, and the structure of the formatter reflects
 // the relationship between the corresponding grammar rules. This leads to the nice property
-// of automatically getting all the parentheses and precedences right.
+// of automatically getting all the parentheses and precedences right (in a manner dual do Pratt
+// parsing).
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum PrintPhase {
     // `expression`
     Base,
     // `operator-expression`
     Operator,
-    // All the operator `*-expression`s
+    // All the `<operator>-expression`s
     BinOp(ast::BinOp),
     // `application-expression`
     App,
@@ -37,6 +38,7 @@ impl UnspannedExpr {
     // Annotate subexpressions with the appropriate phase, defaulting to Base
     fn annotate_with_phases(&self) -> ExprKind<PhasedExpr<'_>> {
         use crate::syntax::ExprKind::*;
+        use crate::syntax::OpKind::*;
         use PrintPhase::*;
         let with_base = self.map_ref(|e| PhasedExpr(e, Base));
         match with_base {
@@ -47,31 +49,33 @@ impl UnspannedExpr {
                     Pi(a, b, c)
                 }
             }
-            Merge(a, b, c) => Merge(
+            Op(Merge(a, b, c)) => Op(Merge(
                 a.phase(PrintPhase::Import),
                 b.phase(PrintPhase::Import),
                 c.map(|x| x.phase(PrintPhase::App)),
-            ),
-            ToMap(a, b) => ToMap(
+            )),
+            Op(ToMap(a, b)) => Op(ToMap(
                 a.phase(PrintPhase::Import),
                 b.map(|x| x.phase(PrintPhase::App)),
-            ),
+            )),
             Annot(a, b) => Annot(a.phase(Operator), b),
-            ExprKind::BinOp(op, a, b) => ExprKind::BinOp(
+            Op(OpKind::BinOp(op, a, b)) => Op(OpKind::BinOp(
                 op,
                 a.phase(PrintPhase::BinOp(op)),
                 b.phase(PrintPhase::BinOp(op)),
-            ),
+            )),
             SomeLit(e) => SomeLit(e.phase(PrintPhase::Import)),
-            ExprKind::App(f, a) => ExprKind::App(
+            Op(OpKind::App(f, a)) => Op(OpKind::App(
                 f.phase(PrintPhase::App),
                 a.phase(PrintPhase::Import),
-            ),
-            Field(a, b) => Field(a.phase(Primitive), b),
-            Projection(e, ls) => Projection(e.phase(Primitive), ls),
-            ProjectionByExpr(a, b) => ProjectionByExpr(a.phase(Primitive), b),
-            Completion(a, b) => {
-                Completion(a.phase(Primitive), b.phase(Primitive))
+            )),
+            Op(Field(a, b)) => Op(Field(a.phase(Primitive), b)),
+            Op(Projection(e, ls)) => Op(Projection(e.phase(Primitive), ls)),
+            Op(ProjectionByExpr(a, b)) => {
+                Op(ProjectionByExpr(a.phase(Primitive), b))
+            }
+            Op(Completion(a, b)) => {
+                Op(Completion(a.phase(Primitive), b.phase(Primitive)))
             }
             ExprKind::Import(a) => {
                 ExprKind::Import(a.map_ref(|x| x.phase(PrintPhase::Import)))
@@ -86,21 +90,23 @@ impl UnspannedExpr {
         phase: PrintPhase,
     ) -> Result<(), fmt::Error> {
         use crate::syntax::ExprKind::*;
+        use crate::syntax::OpKind::*;
 
         let needs_paren = match self {
             Lam(_, _, _)
-            | BoolIf(_, _, _)
             | Pi(_, _, _)
             | Let(_, _, _, _)
-            | EmptyListLit(_)
             | SomeLit(_)
-            | Merge(_, _, _)
-            | ToMap(_, _)
+            | EmptyListLit(_)
+            | Op(BoolIf(_, _, _))
+            | Op(Merge(_, _, _))
+            | Op(ToMap(_, _))
             | Annot(_, _) => phase > PrintPhase::Base,
-            // Precedence is magically handled by the ordering of BinOps.
-            ExprKind::BinOp(op, _, _) => phase > PrintPhase::BinOp(*op),
-            ExprKind::App(_, _) => phase > PrintPhase::App,
-            Completion(_, _) => phase > PrintPhase::Import,
+            // Precedence is magically handled by the ordering of BinOps. This is reverse Pratt
+            // parsing.
+            Op(BinOp(op, _, _)) => phase > PrintPhase::BinOp(*op),
+            Op(App(_, _)) => phase > PrintPhase::App,
+            Op(Completion(_, _)) => phase > PrintPhase::Import,
             _ => false,
         };
 
@@ -143,11 +149,9 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use crate::syntax::ExprKind::*;
         match self {
+            Var(a) => a.fmt(f)?,
             Lam(a, b, c) => {
                 write!(f, "λ({} : {}) → {}", a, b, c)?;
-            }
-            BoolIf(a, b, c) => {
-                write!(f, "if {} then {} else {}", a, b, c)?;
             }
             Pi(a, b, c) if &String::from(a) == "_" => {
                 write!(f, "{} → {}", b, c)?;
@@ -162,14 +166,62 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
                 }
                 write!(f, " = {} in {}", c, d)?;
             }
+            Const(k) => k.fmt(f)?,
+            Builtin(v) => v.fmt(f)?,
+            Num(a) => a.fmt(f)?,
+            TextLit(a) => a.fmt(f)?,
+            SomeLit(e) => {
+                write!(f, "Some {}", e)?;
+            }
             EmptyListLit(t) => {
                 write!(f, "[] : {}", t)?;
             }
             NEListLit(es) => {
                 fmt_list("[", ", ", "]", es, f, Display::fmt)?;
             }
-            SomeLit(e) => {
-                write!(f, "Some {}", e)?;
+            RecordLit(a) if a.is_empty() => f.write_str("{=}")?,
+            RecordLit(a) => fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
+                write!(f, "{} = {}", k, v)
+            })?,
+            RecordType(a) if a.is_empty() => f.write_str("{}")?,
+            RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
+                write!(f, "{} : {}", k, t)
+            })?,
+            UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
+                write!(f, "{}", k)?;
+                if let Some(v) = v {
+                    write!(f, ": {}", v)?;
+                }
+                Ok(())
+            })?,
+            Op(op) => {
+                op.fmt(f)?;
+            }
+            Annot(a, b) => {
+                write!(f, "{} : {}", a, b)?;
+            }
+            Assert(a) => {
+                write!(f, "assert : {}", a)?;
+            }
+            Import(a) => a.fmt(f)?,
+        }
+        Ok(())
+    }
+}
+
+/// Generic instance that delegates to subexpressions
+impl<SE: Display + Clone> Display for OpKind<SE> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use crate::syntax::OpKind::*;
+        match self {
+            App(a, b) => {
+                write!(f, "{} {}", a, b)?;
+            }
+            BinOp(op, a, b) => {
+                write!(f, "{} {} {}", a, op, b)?;
+            }
+            BoolIf(a, b, c) => {
+                write!(f, "if {} then {} else {}", a, b, c)?;
             }
             Merge(a, b, c) => {
                 write!(f, "merge {} {}", a, b)?;
@@ -183,41 +235,9 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
                     write!(f, " : {}", b)?;
                 }
             }
-            Annot(a, b) => {
-                write!(f, "{} : {}", a, b)?;
-            }
-            Assert(a) => {
-                write!(f, "assert : {}", a)?;
-            }
-            ExprKind::BinOp(op, a, b) => {
-                write!(f, "{} {} {}", a, op, b)?;
-            }
-            ExprKind::App(a, b) => {
-                write!(f, "{} {}", a, b)?;
-            }
             Field(a, b) => {
                 write!(f, "{}.{}", a, b)?;
             }
-            Var(a) => a.fmt(f)?,
-            Const(k) => k.fmt(f)?,
-            Builtin(v) => v.fmt(f)?,
-            Num(a) => a.fmt(f)?,
-            TextLit(a) => a.fmt(f)?,
-            RecordType(a) if a.is_empty() => f.write_str("{}")?,
-            RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
-                write!(f, "{} : {}", k, t)
-            })?,
-            RecordLit(a) if a.is_empty() => f.write_str("{=}")?,
-            RecordLit(a) => fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
-                write!(f, "{} = {}", k, v)
-            })?,
-            UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
-                write!(f, "{}", k)?;
-                if let Some(v) = v {
-                    write!(f, ": {}", v)?;
-                }
-                Ok(())
-            })?,
             Projection(e, ls) => {
                 write!(f, "{}.", e)?;
                 fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
@@ -228,7 +248,6 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             Completion(a, b) => {
                 write!(f, "{}::{}", a, b)?;
             }
-            Import(a) => a.fmt(f)?,
         }
         Ok(())
     }

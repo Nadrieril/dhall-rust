@@ -10,6 +10,7 @@ use pest_consume::{match_nodes, Parser};
 use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::ExprKind::*;
 use crate::syntax::NumKind::*;
+use crate::syntax::OpKind::*;
 use crate::syntax::{
     Double, Expr, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Integer, InterpolatedText, InterpolatedTextContents, Label, NaiveDouble,
@@ -138,7 +139,7 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
             let dummy = Expr::new(Num(Bool(false)), Span::Artificial);
             let other = entry.insert(dummy);
             entry.insert(Expr::new(
-                BinOp(RecursiveRecordMerge, other, e),
+                Op(BinOp(RecursiveRecordMerge, other, e)),
                 Span::DuplicateRecordFieldsSugar,
             ));
         }
@@ -151,13 +152,16 @@ fn desugar_with_expr(x: Expr, labels: &[Label], y: Expr) -> Expr {
     match labels {
         [] => y,
         [l, rest @ ..] => {
-            let res =
-                desugar_with_expr(expr(Field(x.clone(), l.clone())), rest, y);
-            expr(BinOp(
+            let res = desugar_with_expr(
+                expr(Op(Field(x.clone(), l.clone()))),
+                rest,
+                y,
+            );
+            expr(Op(BinOp(
                 RightBiasedRecordMerge,
                 x,
                 expr(RecordLit(once((l.clone(), res)).collect())),
-            ))
+            )))
         }
     }
 }
@@ -725,7 +729,7 @@ impl DhallParser {
             },
             [if_(()), expression(cond), expression(left),
                     expression(right)] => {
-                spanned(input, BoolIf(cond, left, right))
+                spanned(input, Op(BoolIf(cond, left, right)))
             },
             [let_binding(bindings).., expression(final_expr)] => {
                 bindings.rev().fold(
@@ -747,13 +751,13 @@ impl DhallParser {
                 spanned(input, Pi("_".into(), typ, body))
             },
             [merge(()), expression(x), expression(y), expression(z)] => {
-                spanned(input, Merge(x, y, Some(z)))
+                spanned(input, Op(Merge(x, y, Some(z))))
             },
             [assert(()), expression(x)] => {
                 spanned(input, Assert(x))
             },
             [toMap(()), expression(x), expression(y)] => {
-                spanned(input, ToMap(x, Some(y)))
+                spanned(input, Op(ToMap(x, Some(y))))
             },
             [expression(e), expression(annot)] => {
                 spanned(input, Annot(e, annot))
@@ -801,7 +805,7 @@ impl DhallParser {
             }
         };
 
-        Ok(spanned_union(l.span(), r.span(), BinOp(op, l, r)))
+        Ok(spanned_union(l.span(), r.span(), Op(BinOp(op, l, r))))
     }
 
     fn Some_(_input: ParseInput) -> ParseResult<()> {
@@ -840,7 +844,7 @@ impl DhallParser {
                         spanned_union(
                             acc.span(),
                             e.span(),
-                            App(acc, e)
+                            Op(App(acc, e))
                         )
                     }
                 )
@@ -855,10 +859,10 @@ impl DhallParser {
                 spanned(input, SomeLit(e))
             },
             [merge(()), expression(x), expression(y)] => {
-                spanned(input, Merge(x, y, None))
+                spanned(input, Op(Merge(x, y, None)))
             },
             [toMap(()), expression(x)] => {
-                spanned(input, ToMap(x, None))
+                spanned(input, Op(ToMap(x, None)))
             },
             [expression(e)] => e,
         ))
@@ -875,7 +879,7 @@ impl DhallParser {
                         spanned_union(
                             acc.span(),
                             e.span(),
-                            Completion(acc, e),
+                            Op(Completion(acc, e)),
                         )
                     }
                 )
@@ -895,9 +899,9 @@ impl DhallParser {
                             acc.span(),
                             e.1,
                             match e.0 {
-                                Selector::Field(l) => Field(acc, l),
-                                Selector::Projection(ls) => Projection(acc, ls),
-                                Selector::ProjectionByExpr(e) => ProjectionByExpr(acc, e)
+                                Selector::Field(l) => Op(Field(acc, l)),
+                                Selector::Projection(ls) => Op(Projection(acc, ls)),
+                                Selector::ProjectionByExpr(e) => Op(ProjectionByExpr(acc, e))
                             }
                         )
                     }
