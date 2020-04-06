@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit, Binder,
+    apply_any, normalize_hir, normalize_one_layer, squash_textlit, Binder,
     BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
@@ -309,7 +309,7 @@ impl Thunk {
     }
     fn eval(self) -> NirKind {
         match self {
-            Thunk::Thunk { env, body } => normalize_hir_whnf(&env, &body),
+            Thunk::Thunk { env, body } => normalize_hir(&env, &body),
             Thunk::PartialExpr { env, expr } => normalize_one_layer(expr, &env),
         }
     }
