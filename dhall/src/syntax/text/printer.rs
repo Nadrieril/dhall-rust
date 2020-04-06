@@ -1,4 +1,5 @@
-use crate::operations::OpKind;
+use crate::builtins::Builtin;
+use crate::operations::{BinOp, OpKind};
 use crate::syntax::*;
 use itertools::Itertools;
 use std::fmt::{self, Display};
@@ -15,7 +16,7 @@ enum PrintPhase {
     // `operator-expression`
     Operator,
     // All the `<operator>-expression`s
-    BinOp(ast::BinOp),
+    BinOp(self::BinOp),
     // `application-expression`
     App,
     // `import-expression`
@@ -335,7 +336,7 @@ impl Display for Const {
 
 impl Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::syntax::BinOp::*;
+        use BinOp::*;
         f.write_str(match self {
             BoolOr => "||",
             TextAppend => "++",
@@ -383,7 +384,7 @@ impl Display for Label {
         let is_reserved = match s.as_str() {
             "let" | "in" | "if" | "then" | "else" | "Type" | "Kind"
             | "Sort" | "True" | "False" | "Some" => true,
-            _ => crate::syntax::Builtin::parse(&s).is_some(),
+            _ => Builtin::parse(&s).is_some(),
         };
         if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
             write!(f, "{}", s)
@@ -478,45 +479,6 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
             Location => write!(f, " as Location")?,
         }
         Ok(())
-    }
-}
-
-impl Display for Builtin {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use crate::syntax::Builtin::*;
-        f.write_str(match *self {
-            Bool => "Bool",
-            Natural => "Natural",
-            Integer => "Integer",
-            Double => "Double",
-            Text => "Text",
-            List => "List",
-            Optional => "Optional",
-            OptionalNone => "None",
-            NaturalBuild => "Natural/build",
-            NaturalFold => "Natural/fold",
-            NaturalIsZero => "Natural/isZero",
-            NaturalEven => "Natural/even",
-            NaturalOdd => "Natural/odd",
-            NaturalToInteger => "Natural/toInteger",
-            NaturalShow => "Natural/show",
-            NaturalSubtract => "Natural/subtract",
-            IntegerToDouble => "Integer/toDouble",
-            IntegerNegate => "Integer/negate",
-            IntegerClamp => "Integer/clamp",
-            IntegerShow => "Integer/show",
-            DoubleShow => "Double/show",
-            ListBuild => "List/build",
-            ListFold => "List/fold",
-            ListLength => "List/length",
-            ListHead => "List/head",
-            ListLast => "List/last",
-            ListIndexed => "List/indexed",
-            ListReverse => "List/reverse",
-            OptionalFold => "Optional/fold",
-            OptionalBuild => "Optional/build",
-            TextShow => "Text/show",
-        })
     }
 }
 

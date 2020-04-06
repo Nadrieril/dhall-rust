@@ -2,8 +2,9 @@ use serde_cbor::value::value as cbor;
 use std::collections::BTreeMap;
 use std::vec;
 
+use crate::builtins::Builtin;
 use crate::error::EncodeError;
-use crate::operations::OpKind;
+use crate::operations::{BinOp, OpKind};
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
@@ -47,7 +48,6 @@ where
 {
     use cbor::Value::{String, I64, U64};
     use std::iter::once;
-    use syntax::Builtin;
     use syntax::ExprKind::*;
     use syntax::NumKind::*;
     use OpKind::*;
@@ -116,7 +116,7 @@ where
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
         EmptyListLit(x) => match x.as_ref() {
             Op(App(f, a)) => match f.as_ref() {
-                ExprKind::Builtin(Builtin::List) => {
+                ExprKind::Builtin(self::Builtin::List) => {
                     ser_seq!(ser; tag(4), expr(a))
                 }
                 _ => ser_seq!(ser; tag(28), expr(x)),
@@ -138,7 +138,7 @@ where
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
         Op(Field(x, l)) => ser_seq!(ser; tag(9), expr(x), label(l)),
         Op(BinOp(op, x, y)) => {
-            use syntax::BinOp::*;
+            use self::BinOp::*;
             let op = match op {
                 BoolOr => 0,
                 BoolAnd => 1,

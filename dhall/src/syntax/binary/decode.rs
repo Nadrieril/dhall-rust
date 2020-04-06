@@ -25,8 +25,10 @@ fn rc(x: UnspannedExpr) -> Expr {
 }
 
 fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
+    use crate::builtins::Builtin;
+    use crate::operations::BinOp;
     use cbor::Value::*;
-    use syntax::{BinOp, Builtin, Const};
+    use syntax::Const;
     use ExprKind::*;
     use OpKind::*;
     Ok(rc(match data {

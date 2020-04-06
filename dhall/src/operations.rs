@@ -3,15 +3,46 @@ use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::HashMap;
 
+use crate::builtins::Builtin;
 use crate::error::{ErrorBuilder, TypeError};
 use crate::semantics::{
     merge_maps, mk_span_err, mkerr, ret_kind, ret_op, ret_ref, Binder, Closure,
     Hir, HirKind, Nir, NirKind, Ret, TextLit, Tir, TyEnv, Type,
 };
 use crate::syntax::map::DupTreeSet;
-use crate::syntax::{
-    trivial_result, BinOp, Builtin, Const, ExprKind, Label, NumKind, Span,
-};
+use crate::syntax::{trivial_result, Const, ExprKind, Label, NumKind, Span};
+
+// Definition order must match precedence order for
+// pretty-printing to work correctly
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BinOp {
+    /// `x ? y`
+    ImportAlt,
+    /// `x || y`
+    BoolOr,
+    /// `x + y`
+    NaturalPlus,
+    /// `x ++ y`
+    TextAppend,
+    /// `x # y`
+    ListAppend,
+    /// `x && y`
+    BoolAnd,
+    /// `x ∧ y`
+    RecursiveRecordMerge,
+    /// `x ⫽ y`
+    RightBiasedRecordMerge,
+    /// `x ⩓ y`
+    RecursiveRecordTypeMerge,
+    /// `x * y`
+    NaturalTimes,
+    /// `x == y`
+    BoolEQ,
+    /// `x != y`
+    BoolNE,
+    /// x === y
+    Equivalence,
+}
 
 /// Operations
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

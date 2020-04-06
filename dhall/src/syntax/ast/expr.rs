@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::builtins::Builtin;
 use crate::error::Error;
 use crate::operations::OpKind;
 use crate::semantics::Universe;
@@ -36,74 +37,6 @@ impl Const {
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V(pub Label, pub usize);
-
-// Definition order must match precedence order for
-// pretty-printing to work correctly
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BinOp {
-    /// `x ? y`
-    ImportAlt,
-    /// `x || y`
-    BoolOr,
-    /// `x + y`
-    NaturalPlus,
-    /// `x ++ y`
-    TextAppend,
-    /// `x # y`
-    ListAppend,
-    /// `x && y`
-    BoolAnd,
-    /// `x ∧ y`
-    RecursiveRecordMerge,
-    /// `x ⫽ y`
-    RightBiasedRecordMerge,
-    /// `x ⩓ y`
-    RecursiveRecordTypeMerge,
-    /// `x * y`
-    NaturalTimes,
-    /// `x == y`
-    BoolEQ,
-    /// `x != y`
-    BoolNE,
-    /// x === y
-    Equivalence,
-}
-
-/// Built-ins
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Builtin {
-    Bool,
-    Natural,
-    Integer,
-    Double,
-    Text,
-    List,
-    Optional,
-    OptionalNone,
-    NaturalBuild,
-    NaturalFold,
-    NaturalIsZero,
-    NaturalEven,
-    NaturalOdd,
-    NaturalToInteger,
-    NaturalShow,
-    NaturalSubtract,
-    IntegerToDouble,
-    IntegerShow,
-    IntegerNegate,
-    IntegerClamp,
-    DoubleShow,
-    ListBuild,
-    ListFold,
-    ListLength,
-    ListHead,
-    ListLast,
-    ListIndexed,
-    ListReverse,
-    OptionalFold,
-    OptionalBuild,
-    TextShow,
-}
 
 // Each node carries an annotation.
 #[derive(Debug, Clone)]

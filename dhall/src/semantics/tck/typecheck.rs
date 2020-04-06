@@ -1,13 +1,11 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use crate::builtins::type_of_builtin;
+use crate::builtins::{type_of_builtin, Builtin};
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
 use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
-use crate::syntax::{
-    Builtin, Const, ExprKind, InterpolatedTextContents, NumKind, Span,
-};
+use crate::syntax::{Const, ExprKind, InterpolatedTextContents, NumKind, Span};
 
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {

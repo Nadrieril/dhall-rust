@@ -4,15 +4,16 @@ use std::env;
 use std::path::PathBuf;
 use url::Url;
 
+use crate::builtins::Builtin;
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
-use crate::operations::OpKind;
+use crate::operations::{BinOp, OpKind};
 use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
-    BinOp, Builtin, Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode,
-    ImportTarget, Span, UnspannedExpr, URL,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
+    UnspannedExpr, URL,
 };
 use crate::{Parsed, Resolved};
 

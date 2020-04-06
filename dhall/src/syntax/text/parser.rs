@@ -36,46 +36,6 @@ enum Selector {
     ProjectionByExpr(Expr),
 }
 
-impl crate::syntax::Builtin {
-    pub fn parse(s: &str) -> Option<Self> {
-        use crate::syntax::Builtin::*;
-        match s {
-            "Bool" => Some(Bool),
-            "Natural" => Some(Natural),
-            "Integer" => Some(Integer),
-            "Double" => Some(Double),
-            "Text" => Some(Text),
-            "List" => Some(List),
-            "Optional" => Some(Optional),
-            "None" => Some(OptionalNone),
-            "Natural/build" => Some(NaturalBuild),
-            "Natural/fold" => Some(NaturalFold),
-            "Natural/isZero" => Some(NaturalIsZero),
-            "Natural/even" => Some(NaturalEven),
-            "Natural/odd" => Some(NaturalOdd),
-            "Natural/toInteger" => Some(NaturalToInteger),
-            "Natural/show" => Some(NaturalShow),
-            "Natural/subtract" => Some(NaturalSubtract),
-            "Integer/toDouble" => Some(IntegerToDouble),
-            "Integer/show" => Some(IntegerShow),
-            "Integer/negate" => Some(IntegerNegate),
-            "Integer/clamp" => Some(IntegerClamp),
-            "Double/show" => Some(DoubleShow),
-            "List/build" => Some(ListBuild),
-            "List/fold" => Some(ListFold),
-            "List/length" => Some(ListLength),
-            "List/head" => Some(ListHead),
-            "List/last" => Some(ListLast),
-            "List/indexed" => Some(ListIndexed),
-            "List/reverse" => Some(ListReverse),
-            "Optional/fold" => Some(OptionalFold),
-            "Optional/build" => Some(OptionalBuild),
-            "Text/show" => Some(TextShow),
-            _ => None,
-        }
-    }
-}
-
 fn input_to_span(input: ParseInput) -> Span {
     Span::make(input.user_data().clone(), input.as_pair().as_span())
 }
@@ -129,7 +89,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
 
 /// Insert the expr into the map; in case of collision, create a RecursiveRecordMerge node.
 fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
-    use crate::syntax::BinOp::RecursiveRecordMerge;
+    use crate::operations::BinOp::RecursiveRecordMerge;
     use std::collections::btree_map::Entry;
     match map.entry(l) {
         Entry::Vacant(entry) => {
@@ -147,7 +107,7 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
 }
 
 fn desugar_with_expr(x: Expr, labels: &[Label], y: Expr) -> Expr {
-    use crate::syntax::BinOp::RightBiasedRecordMerge;
+    use crate::operations::BinOp::RightBiasedRecordMerge;
     let expr = |k| Expr::new(k, Span::WithSugar);
     match labels {
         [] => y,
@@ -391,7 +351,7 @@ impl DhallParser {
     #[alias(expression)]
     fn builtin(input: ParseInput) -> ParseResult<Expr> {
         let s = input.as_str();
-        let e = match crate::syntax::Builtin::parse(s) {
+        let e = match crate::builtins::Builtin::parse(s) {
             Some(b) => Builtin(b),
             None => match s {
                 "True" => Num(Bool(true)),
@@ -784,7 +744,7 @@ impl DhallParser {
         op: ParseInput,
         r: Expr,
     ) -> ParseResult<Expr> {
-        use crate::syntax::BinOp::*;
+        use crate::operations::BinOp::*;
         use Rule::*;
         let op = match op.as_rule() {
             import_alt => ImportAlt,

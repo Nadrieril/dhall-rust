@@ -1,16 +1,91 @@
-use crate::operations::OpKind;
+use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
     skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
 use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
-    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedText,
-    InterpolatedTextContents, Label, NaiveDouble, NumKind, Span, UnspannedExpr,
-    V,
+    Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,
+    NaiveDouble, NumKind, Span, UnspannedExpr, V,
 };
 use std::collections::HashMap;
 use std::convert::TryInto;
+
+/// Built-ins
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Builtin {
+    Bool,
+    Natural,
+    Integer,
+    Double,
+    Text,
+    List,
+    Optional,
+    OptionalNone,
+    NaturalBuild,
+    NaturalFold,
+    NaturalIsZero,
+    NaturalEven,
+    NaturalOdd,
+    NaturalToInteger,
+    NaturalShow,
+    NaturalSubtract,
+    IntegerToDouble,
+    IntegerShow,
+    IntegerNegate,
+    IntegerClamp,
+    DoubleShow,
+    ListBuild,
+    ListFold,
+    ListLength,
+    ListHead,
+    ListLast,
+    ListIndexed,
+    ListReverse,
+    OptionalFold,
+    OptionalBuild,
+    TextShow,
+}
+
+impl Builtin {
+    pub fn parse(s: &str) -> Option<Self> {
+        use Builtin::*;
+        match s {
+            "Bool" => Some(Bool),
+            "Natural" => Some(Natural),
+            "Integer" => Some(Integer),
+            "Double" => Some(Double),
+            "Text" => Some(Text),
+            "List" => Some(List),
+            "Optional" => Some(Optional),
+            "None" => Some(OptionalNone),
+            "Natural/build" => Some(NaturalBuild),
+            "Natural/fold" => Some(NaturalFold),
+            "Natural/isZero" => Some(NaturalIsZero),
+            "Natural/even" => Some(NaturalEven),
+            "Natural/odd" => Some(NaturalOdd),
+            "Natural/toInteger" => Some(NaturalToInteger),
+            "Natural/show" => Some(NaturalShow),
+            "Natural/subtract" => Some(NaturalSubtract),
+            "Integer/toDouble" => Some(IntegerToDouble),
+            "Integer/show" => Some(IntegerShow),
+            "Integer/negate" => Some(IntegerNegate),
+            "Integer/clamp" => Some(IntegerClamp),
+            "Double/show" => Some(DoubleShow),
+            "List/build" => Some(ListBuild),
+            "List/fold" => Some(ListFold),
+            "List/length" => Some(ListLength),
+            "List/head" => Some(ListHead),
+            "List/last" => Some(ListLast),
+            "List/indexed" => Some(ListIndexed),
+            "List/reverse" => Some(ListReverse),
+            "Optional/fold" => Some(OptionalFold),
+            "Optional/build" => Some(OptionalBuild),
+            "Text/show" => Some(TextShow),
+            _ => None,
+        }
+    }
+}
 
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
@@ -492,3 +567,42 @@ impl std::cmp::PartialEq for BuiltinClosure {
     }
 }
 impl std::cmp::Eq for BuiltinClosure {}
+
+impl std::fmt::Display for Builtin {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use Builtin::*;
+        f.write_str(match *self {
+            Bool => "Bool",
+            Natural => "Natural",
+            Integer => "Integer",
+            Double => "Double",
+            Text => "Text",
+            List => "List",
+            Optional => "Optional",
+            OptionalNone => "None",
+            NaturalBuild => "Natural/build",
+            NaturalFold => "Natural/fold",
+            NaturalIsZero => "Natural/isZero",
+            NaturalEven => "Natural/even",
+            NaturalOdd => "Natural/odd",
+            NaturalToInteger => "Natural/toInteger",
+            NaturalShow => "Natural/show",
+            NaturalSubtract => "Natural/subtract",
+            IntegerToDouble => "Integer/toDouble",
+            IntegerNegate => "Integer/negate",
+            IntegerClamp => "Integer/clamp",
+            IntegerShow => "Integer/show",
+            DoubleShow => "Double/show",
+            ListBuild => "List/build",
+            ListFold => "List/fold",
+            ListLength => "List/length",
+            ListHead => "List/head",
+            ListLast => "List/last",
+            ListIndexed => "List/indexed",
+            ListReverse => "List/reverse",
+            OptionalFold => "Optional/fold",
+            OptionalBuild => "Optional/build",
+            TextShow => "Text/show",
+        })
+    }
+}
