@@ -2,6 +2,7 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::cmp::max;
 use std::collections::{BTreeSet, HashMap};
+use std::iter::once;
 
 use crate::builtins::Builtin;
 use crate::error::{ErrorBuilder, TypeError};
@@ -741,9 +742,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Ret {
                     Nir::from_kind(Op(BinOp(
                         RightBiasedRecordMerge,
                         Nir::from_kind(RecordLit(
-                            Some((field.clone(), r.clone()))
-                                .into_iter()
-                                .collect(),
+                            once((field.clone(), r.clone())).collect(),
                         )),
                         y.clone(),
                     ))),
@@ -759,9 +758,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Ret {
                     Nir::from_kind(Op(BinOp(
                         RecursiveRecordMerge,
                         Nir::from_kind(RecordLit(
-                            Some((field.clone(), r.clone()))
-                                .into_iter()
-                                .collect(),
+                            once((field.clone(), r.clone())).collect(),
                         )),
                         y.clone(),
                     ))),
@@ -775,9 +772,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Ret {
                         RecursiveRecordMerge,
                         x.clone(),
                         Nir::from_kind(RecordLit(
-                            Some((field.clone(), r.clone()))
-                                .into_iter()
-                                .collect(),
+                            once((field.clone(), r.clone())).collect(),
                         )),
                     ))),
                     field.clone(),
@@ -791,6 +786,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Ret {
 }
 
 pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
+    use self::BinOp::RightBiasedRecordMerge;
     use NirKind::{
         EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num, Op,
         RecordLit, RecordType, UnionConstructor, UnionLit,
@@ -873,6 +869,23 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             Op(Projection(v2, _)) => {
                 normalize_operation(&Projection(v2.clone(), ls.clone()))
             }
+            Op(BinOp(RightBiasedRecordMerge, l, r)) => match r.kind() {
+                RecordLit(kvs) => {
+                    let r_keys = kvs.keys().cloned().collect();
+                    normalize_operation(&BinOp(
+                        RightBiasedRecordMerge,
+                        Nir::from_partial_expr(ExprKind::Op(Projection(
+                            l.clone(),
+                            ls.difference(&r_keys).cloned().collect(),
+                        ))),
+                        Nir::from_partial_expr(ExprKind::Op(Projection(
+                            r.clone(),
+                            ls.intersection(&r_keys).cloned().collect(),
+                        ))),
+                    ))
+                }
+                _ => nothing_to_do(),
+            },
             _ => nothing_to_do(),
         },
         ProjectionByExpr(v, t) => match t.kind() {

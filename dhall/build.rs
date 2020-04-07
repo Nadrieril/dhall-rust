@@ -308,9 +308,6 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "simple/integerToDouble"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
-                    // TODO: Further record simplifications
-                    || path == "simplifications/issue661"
-                    || path == "unit/RightBiasedRecordMergeWithinRecordProjection"
             }),
             output_type: Some(FileType::Text),
             ..default_feature.clone()
