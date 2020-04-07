@@ -108,7 +108,7 @@ fn type_one_layer(
         ExprKind::RecordLit(kvs) => {
             // An empty record type has type Type
             let mut k = Const::Type;
-            for (_, v) in kvs {
+            for v in kvs.values() {
                 // Check that the fields have a valid kind
                 match v.ty().ty().as_const() {
                     Some(c) => k = max(k, c),
@@ -126,7 +126,7 @@ fn type_one_layer(
         ExprKind::RecordType(kts) => {
             // An empty record type has type Type
             let mut k = Const::Type;
-            for (_, t) in kts {
+            for t in kts.values() {
                 // Check the type is a Const and compute final type
                 match t.ty().as_const() {
                     Some(c) => k = max(k, c),
@@ -139,7 +139,7 @@ fn type_one_layer(
         ExprKind::UnionType(kts) => {
             // Check that all types are the same const
             let mut k = None;
-            for (_, t) in kts {
+            for t in kts.values() {
                 if let Some(t) = t {
                     let c = match t.ty().as_const() {
                         Some(c) => c,
