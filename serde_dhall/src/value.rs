@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 
+use dhall::builtins::Builtin;
+use dhall::operations::OpKind;
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
-use dhall::syntax::{Builtin, Expr, ExprKind, NumKind, Span};
+use dhall::syntax::{Expr, ExprKind, NumKind, Span};
 
 use crate::{Error, ErrorKind, FromDhall, Result, Sealed};
 
@@ -218,13 +220,14 @@ impl SimpleType {
             SimpleType::Integer => ExprKind::Builtin(Builtin::Integer),
             SimpleType::Double => ExprKind::Builtin(Builtin::Double),
             SimpleType::Text => ExprKind::Builtin(Builtin::Text),
-            SimpleType::Optional(t) => ExprKind::App(
+            SimpleType::Optional(t) => ExprKind::Op(OpKind::App(
                 hir(ExprKind::Builtin(Builtin::Optional)),
                 t.to_hir(),
-            ),
-            SimpleType::List(t) => {
-                ExprKind::App(hir(ExprKind::Builtin(Builtin::List)), t.to_hir())
-            }
+            )),
+            SimpleType::List(t) => ExprKind::Op(OpKind::App(
+                hir(ExprKind::Builtin(Builtin::List)),
+                t.to_hir(),
+            )),
             SimpleType::Record(kts) => ExprKind::RecordType(
                 kts.iter()
                     .map(|(k, t)| (k.as_str().into(), t.to_hir()))

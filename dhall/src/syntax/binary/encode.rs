@@ -2,9 +2,10 @@ use serde_cbor::value::value as cbor;
 use std::collections::BTreeMap;
 use std::vec;
 
+use crate::builtins::Builtin;
 use crate::error::EncodeError;
+use crate::operations::{BinOp, OpKind};
 use crate::syntax;
-use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     Expr, ExprKind, FilePrefix, Hash, Import, ImportMode, ImportTarget, Label,
     Scheme, V,
@@ -19,8 +20,7 @@ enum Serialize<'a> {
     Expr(&'a Expr),
     CBOR(cbor::Value),
     RecordMap(&'a BTreeMap<Label, Expr>),
-    RecordDupMap(&'a DupTreeMap<Label, Expr>),
-    UnionMap(&'a DupTreeMap<Label, Option<Expr>>),
+    UnionMap(&'a BTreeMap<Label, Option<Expr>>),
 }
 
 macro_rules! count {
@@ -46,11 +46,11 @@ where
 {
     use cbor::Value::{String, I64, U64};
     use std::iter::once;
-    use syntax::Builtin;
     use syntax::ExprKind::*;
     use syntax::NumKind::*;
+    use OpKind::*;
 
-    use self::Serialize::{RecordDupMap, RecordMap, UnionMap};
+    use self::Serialize::{RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {
         self::Serialize::Expr(x)
     }
@@ -70,7 +70,9 @@ where
             let n: f64 = (*n).into();
             ser.serialize_f64(n)
         }
-        BoolIf(x, y, z) => ser_seq!(ser; tag(14), expr(x), expr(y), expr(z)),
+        Op(BoolIf(x, y, z)) => {
+            ser_seq!(ser; tag(14), expr(x), expr(y), expr(z))
+        }
         Var(V(l, n)) if l == &"_".into() => ser.serialize_u64(*n as u64),
         Var(V(l, n)) => ser_seq!(ser; label(l), U64(*n as u64)),
         Lam(l, x, y) if l == &"_".into() => {
@@ -99,7 +101,7 @@ where
             ser_seq.serialize_element(&expr(bound_e))?;
             ser_seq.end()
         }
-        App(_, _) => {
+        Op(App(_, _)) => {
             let (f, args) = collect_nested_applications(e);
             ser.collect_seq(
                 once(tag(0))
@@ -111,8 +113,8 @@ where
         Assert(x) => ser_seq!(ser; tag(19), expr(x)),
         SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
         EmptyListLit(x) => match x.as_ref() {
-            App(f, a) => match f.as_ref() {
-                ExprKind::Builtin(Builtin::List) => {
+            Op(App(f, a)) => match f.as_ref() {
+                ExprKind::Builtin(self::Builtin::List) => {
                     ser_seq!(ser; tag(4), expr(a))
                 }
                 _ => ser_seq!(ser; tag(28), expr(x)),
@@ -129,12 +131,12 @@ where
                 Text(x) => cbor(String(x)),
             })))
         }
-        RecordType(map) => ser_seq!(ser; tag(7), RecordDupMap(map)),
+        RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
         RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
-        Field(x, l) => ser_seq!(ser; tag(9), expr(x), label(l)),
-        BinOp(op, x, y) => {
-            use syntax::BinOp::*;
+        Op(Field(x, l)) => ser_seq!(ser; tag(9), expr(x), label(l)),
+        Op(BinOp(op, x, y)) => {
+            use self::BinOp::*;
             let op = match op {
                 BoolOr => 0,
                 BoolAnd => 1,
@@ -152,21 +154,23 @@ where
             };
             ser_seq!(ser; tag(3), U64(op), expr(x), expr(y))
         }
-        Merge(x, y, None) => ser_seq!(ser; tag(6), expr(x), expr(y)),
-        Merge(x, y, Some(z)) => {
+        Op(Merge(x, y, None)) => ser_seq!(ser; tag(6), expr(x), expr(y)),
+        Op(Merge(x, y, Some(z))) => {
             ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
         }
-        ToMap(x, None) => ser_seq!(ser; tag(27), expr(x)),
-        ToMap(x, Some(y)) => ser_seq!(ser; tag(27), expr(x), expr(y)),
-        Projection(x, ls) => ser.collect_seq(
+        Op(ToMap(x, None)) => ser_seq!(ser; tag(27), expr(x)),
+        Op(ToMap(x, Some(y))) => ser_seq!(ser; tag(27), expr(x), expr(y)),
+        Op(Projection(x, ls)) => ser.collect_seq(
             once(tag(10))
                 .chain(once(expr(x)))
                 .chain(ls.iter().map(label)),
         ),
-        ProjectionByExpr(x, y) => {
+        Op(ProjectionByExpr(x, y)) => {
             ser_seq!(ser; tag(10), expr(x), vec![expr(y)])
         }
-        Completion(x, y) => ser_seq!(ser; tag(3), tag(13), expr(x), expr(y)),
+        Op(Completion(x, y)) => {
+            ser_seq!(ser; tag(3), tag(13), expr(x), expr(y))
+        }
         Import(import) => serialize_import(ser, import),
     }
 }
@@ -260,11 +264,6 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
         match self {
             Serialize::Expr(e) => serialize_subexpr(ser, e),
             Serialize::CBOR(v) => v.serialize(ser),
-            Serialize::RecordDupMap(map) => {
-                ser.collect_map(map.iter().map(|(k, v)| {
-                    (cbor::Value::String(k.into()), Serialize::Expr(v))
-                }))
-            }
             Serialize::RecordMap(map) => {
                 ser.collect_map(map.iter().map(|(k, v)| {
                     (cbor::Value::String(k.into()), Serialize::Expr(v))
@@ -286,7 +285,7 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
 fn collect_nested_applications<'a>(e: &'a Expr) -> (&'a Expr, Vec<&'a Expr>) {
     fn go<'a>(e: &'a Expr, vec: &mut Vec<&'a Expr>) -> &'a Expr {
         match e.as_ref() {
-            ExprKind::App(f, a) => {
+            ExprKind::Op(OpKind::App(f, a)) => {
                 vec.push(a);
                 go(f, vec)
             }

@@ -1,6 +1,6 @@
-Type error: error: UnionTypeDuplicateField
- --> <current file>:1:1
+ --> 1:2
   |
-1 | <x | x: Natural>
-  | ^^^^^^^^^^^^^^^^ UnionTypeDuplicateField
+1 | <x | x: Natural>␊
+  |  ^------------^
   |
+  = Duplicate variant in union type

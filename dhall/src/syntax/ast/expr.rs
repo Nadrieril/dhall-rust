@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use crate::builtins::Builtin;
 use crate::error::Error;
+use crate::operations::OpKind;
 use crate::semantics::Universe;
-use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::visitor;
 use crate::syntax::*;
 
@@ -36,74 +37,6 @@ impl Const {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V(pub Label, pub usize);
 
-// Definition order must match precedence order for
-// pretty-printing to work correctly
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BinOp {
-    /// `x ? y`
-    ImportAlt,
-    /// `x || y`
-    BoolOr,
-    /// `x + y`
-    NaturalPlus,
-    /// `x ++ y`
-    TextAppend,
-    /// `x # y`
-    ListAppend,
-    /// `x && y`
-    BoolAnd,
-    /// `x ∧ y`
-    RecursiveRecordMerge,
-    /// `x ⫽ y`
-    RightBiasedRecordMerge,
-    /// `x ⩓ y`
-    RecursiveRecordTypeMerge,
-    /// `x * y`
-    NaturalTimes,
-    /// `x == y`
-    BoolEQ,
-    /// `x != y`
-    BoolNE,
-    /// x === y
-    Equivalence,
-}
-
-/// Built-ins
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Builtin {
-    Bool,
-    Natural,
-    Integer,
-    Double,
-    Text,
-    List,
-    Optional,
-    OptionalNone,
-    NaturalBuild,
-    NaturalFold,
-    NaturalIsZero,
-    NaturalEven,
-    NaturalOdd,
-    NaturalToInteger,
-    NaturalShow,
-    NaturalSubtract,
-    IntegerToDouble,
-    IntegerShow,
-    IntegerNegate,
-    IntegerClamp,
-    DoubleShow,
-    ListBuild,
-    ListFold,
-    ListLength,
-    ListHead,
-    ListLast,
-    ListIndexed,
-    ListReverse,
-    OptionalFold,
-    OptionalBuild,
-    TextShow,
-}
-
 // Each node carries an annotation.
 #[derive(Debug, Clone)]
 pub struct Expr {
@@ -132,57 +65,44 @@ pub enum NumKind {
 // smart pointers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind<SubExpr> {
+    /// `Type`, `Kind` and `Sort`
     Const(Const),
+    /// Numbers and booleans
     Num(NumKind),
-    ///  `x`
-    ///  `x@n`
-    Var(V),
-    ///  `λ(x : A) -> b`
-    Lam(Label, SubExpr, SubExpr),
-    ///  `A -> B`
-    ///  `∀(x : A) -> B`
-    Pi(Label, SubExpr, SubExpr),
-    ///  `f a`
-    App(SubExpr, SubExpr),
-    ///  `let x     = r in e`
-    ///  `let x : t = r in e`
-    Let(Label, Option<SubExpr>, SubExpr, SubExpr),
-    ///  `x : t`
-    Annot(SubExpr, SubExpr),
-    ///  `assert : t`
-    Assert(SubExpr),
-    /// Built-in values
+    /// Built-in functions and types
     Builtin(Builtin),
-    // Binary operations
-    BinOp(BinOp, SubExpr, SubExpr),
-    ///  `if x then y else z`
-    BoolIf(SubExpr, SubExpr, SubExpr),
     ///  `"Some ${interpolated} text"`
     TextLit(InterpolatedText<SubExpr>),
+    ///  `Some e`
+    SomeLit(SubExpr),
     ///  `[] : t`
     EmptyListLit(SubExpr),
     ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),
-    ///  `Some e`
-    SomeLit(SubExpr),
     ///  `{ k1 : t1, k2 : t1 }`
-    RecordType(DupTreeMap<Label, SubExpr>),
+    RecordType(BTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
     RecordLit(BTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
-    UnionType(DupTreeMap<Label, Option<SubExpr>>),
-    ///  `merge x y : t`
-    Merge(SubExpr, SubExpr, Option<SubExpr>),
-    ///  `toMap x : t`
-    ToMap(SubExpr, Option<SubExpr>),
-    ///  `e.x`
-    Field(SubExpr, Label),
-    ///  `e.{ x, y, z }`
-    Projection(SubExpr, DupTreeSet<Label>),
-    ///  `e.(t)`
-    ProjectionByExpr(SubExpr, SubExpr),
-    ///  `x::y`
-    Completion(SubExpr, SubExpr),
+    UnionType(BTreeMap<Label, Option<SubExpr>>),
+
+    ///  `x`, `x@n`
+    Var(V),
+    ///  `λ(x : A) -> b`
+    Lam(Label, SubExpr, SubExpr),
+    ///  `A -> B`, `∀(x : A) -> B`
+    Pi(Label, SubExpr, SubExpr),
+    ///  `let x : t = r in e`
+    Let(Label, Option<SubExpr>, SubExpr, SubExpr),
+
+    /// Operations
+    Op(OpKind<SubExpr>),
+
+    ///  `x : t`
+    Annot(SubExpr, SubExpr),
+    ///  `assert : t`
+    Assert(SubExpr),
+
     /// `./some/path`
     Import(Import<SubExpr>),
 }

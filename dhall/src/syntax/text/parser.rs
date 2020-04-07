@@ -1,13 +1,13 @@
 use itertools::Itertools;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::rc::Rc;
 
 use pest_consume::{match_nodes, Parser};
 
-use crate::syntax::map::{DupTreeMap, DupTreeSet};
+use crate::operations::OpKind::*;
 use crate::syntax::ExprKind::*;
 use crate::syntax::NumKind::*;
 use crate::syntax::{
@@ -31,48 +31,8 @@ pub type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug)]
 enum Selector {
     Field(Label),
-    Projection(DupTreeSet<Label>),
+    Projection(BTreeSet<Label>),
     ProjectionByExpr(Expr),
-}
-
-impl crate::syntax::Builtin {
-    pub fn parse(s: &str) -> Option<Self> {
-        use crate::syntax::Builtin::*;
-        match s {
-            "Bool" => Some(Bool),
-            "Natural" => Some(Natural),
-            "Integer" => Some(Integer),
-            "Double" => Some(Double),
-            "Text" => Some(Text),
-            "List" => Some(List),
-            "Optional" => Some(Optional),
-            "None" => Some(OptionalNone),
-            "Natural/build" => Some(NaturalBuild),
-            "Natural/fold" => Some(NaturalFold),
-            "Natural/isZero" => Some(NaturalIsZero),
-            "Natural/even" => Some(NaturalEven),
-            "Natural/odd" => Some(NaturalOdd),
-            "Natural/toInteger" => Some(NaturalToInteger),
-            "Natural/show" => Some(NaturalShow),
-            "Natural/subtract" => Some(NaturalSubtract),
-            "Integer/toDouble" => Some(IntegerToDouble),
-            "Integer/show" => Some(IntegerShow),
-            "Integer/negate" => Some(IntegerNegate),
-            "Integer/clamp" => Some(IntegerClamp),
-            "Double/show" => Some(DoubleShow),
-            "List/build" => Some(ListBuild),
-            "List/fold" => Some(ListFold),
-            "List/length" => Some(ListLength),
-            "List/head" => Some(ListHead),
-            "List/last" => Some(ListLast),
-            "List/indexed" => Some(ListIndexed),
-            "List/reverse" => Some(ListReverse),
-            "Optional/fold" => Some(OptionalFold),
-            "Optional/build" => Some(OptionalBuild),
-            "Text/show" => Some(TextShow),
-            _ => None,
-        }
-    }
 }
 
 fn input_to_span(input: ParseInput) -> Span {
@@ -128,7 +88,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
 
 /// Insert the expr into the map; in case of collision, create a RecursiveRecordMerge node.
 fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
-    use crate::syntax::BinOp::RecursiveRecordMerge;
+    use crate::operations::BinOp::RecursiveRecordMerge;
     use std::collections::btree_map::Entry;
     match map.entry(l) {
         Entry::Vacant(entry) => {
@@ -138,7 +98,7 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
             let dummy = Expr::new(Num(Bool(false)), Span::Artificial);
             let other = entry.insert(dummy);
             entry.insert(Expr::new(
-                BinOp(RecursiveRecordMerge, other, e),
+                Op(BinOp(RecursiveRecordMerge, other, e)),
                 Span::DuplicateRecordFieldsSugar,
             ));
         }
@@ -146,18 +106,21 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
 }
 
 fn desugar_with_expr(x: Expr, labels: &[Label], y: Expr) -> Expr {
-    use crate::syntax::BinOp::RightBiasedRecordMerge;
+    use crate::operations::BinOp::RightBiasedRecordMerge;
     let expr = |k| Expr::new(k, Span::WithSugar);
     match labels {
         [] => y,
         [l, rest @ ..] => {
-            let res =
-                desugar_with_expr(expr(Field(x.clone(), l.clone())), rest, y);
-            expr(BinOp(
+            let res = desugar_with_expr(
+                expr(Op(Field(x.clone(), l.clone()))),
+                rest,
+                y,
+            );
+            expr(Op(BinOp(
                 RightBiasedRecordMerge,
                 x,
                 expr(RecordLit(once((l.clone(), res)).collect())),
-            ))
+            )))
         }
     }
 }
@@ -387,7 +350,7 @@ impl DhallParser {
     #[alias(expression)]
     fn builtin(input: ParseInput) -> ParseResult<Expr> {
         let s = input.as_str();
-        let e = match crate::syntax::Builtin::parse(s) {
+        let e = match crate::builtins::Builtin::parse(s) {
             Some(b) => Builtin(b),
             None => match s {
                 "True" => Num(Bool(true)),
@@ -725,7 +688,7 @@ impl DhallParser {
             },
             [if_(()), expression(cond), expression(left),
                     expression(right)] => {
-                spanned(input, BoolIf(cond, left, right))
+                spanned(input, Op(BoolIf(cond, left, right)))
             },
             [let_binding(bindings).., expression(final_expr)] => {
                 bindings.rev().fold(
@@ -747,13 +710,13 @@ impl DhallParser {
                 spanned(input, Pi("_".into(), typ, body))
             },
             [merge(()), expression(x), expression(y), expression(z)] => {
-                spanned(input, Merge(x, y, Some(z)))
+                spanned(input, Op(Merge(x, y, Some(z))))
             },
             [assert(()), expression(x)] => {
                 spanned(input, Assert(x))
             },
             [toMap(()), expression(x), expression(y)] => {
-                spanned(input, ToMap(x, Some(y)))
+                spanned(input, Op(ToMap(x, Some(y))))
             },
             [expression(e), expression(annot)] => {
                 spanned(input, Annot(e, annot))
@@ -780,7 +743,7 @@ impl DhallParser {
         op: ParseInput,
         r: Expr,
     ) -> ParseResult<Expr> {
-        use crate::syntax::BinOp::*;
+        use crate::operations::BinOp::*;
         use Rule::*;
         let op = match op.as_rule() {
             import_alt => ImportAlt,
@@ -801,7 +764,7 @@ impl DhallParser {
             }
         };
 
-        Ok(spanned_union(l.span(), r.span(), BinOp(op, l, r)))
+        Ok(spanned_union(l.span(), r.span(), Op(BinOp(op, l, r))))
     }
 
     fn Some_(_input: ParseInput) -> ParseResult<()> {
@@ -840,7 +803,7 @@ impl DhallParser {
                         spanned_union(
                             acc.span(),
                             e.span(),
-                            App(acc, e)
+                            Op(App(acc, e))
                         )
                     }
                 )
@@ -855,10 +818,10 @@ impl DhallParser {
                 spanned(input, SomeLit(e))
             },
             [merge(()), expression(x), expression(y)] => {
-                spanned(input, Merge(x, y, None))
+                spanned(input, Op(Merge(x, y, None)))
             },
             [toMap(()), expression(x)] => {
-                spanned(input, ToMap(x, None))
+                spanned(input, Op(ToMap(x, None)))
             },
             [expression(e)] => e,
         ))
@@ -875,7 +838,7 @@ impl DhallParser {
                         spanned_union(
                             acc.span(),
                             e.span(),
-                            Completion(acc, e),
+                            Op(Completion(acc, e)),
                         )
                     }
                 )
@@ -895,9 +858,9 @@ impl DhallParser {
                             acc.span(),
                             e.1,
                             match e.0 {
-                                Selector::Field(l) => Field(acc, l),
-                                Selector::Projection(ls) => Projection(acc, ls),
-                                Selector::ProjectionByExpr(e) => ProjectionByExpr(acc, e)
+                                Selector::Field(l) => Op(Field(acc, l)),
+                                Selector::Projection(ls) => Op(Projection(acc, ls)),
+                                Selector::ProjectionByExpr(e) => Op(ProjectionByExpr(acc, e))
                             }
                         )
                     }
@@ -915,9 +878,20 @@ impl DhallParser {
         Ok((stor, input_to_span(input)))
     }
 
-    fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {
-        Ok(match_nodes!(input.into_children();
-            [label(ls)..] => ls.collect(),
+    fn labels(input: ParseInput) -> ParseResult<BTreeSet<Label>> {
+        Ok(match_nodes!(input.children();
+            [label(ls)..] => {
+                let mut set = BTreeSet::default();
+                for l in ls {
+                    if set.contains(&l) {
+                        return Err(
+                            input.error(format!("Duplicate field in projection"))
+                        )
+                    }
+                    set.insert(l);
+                }
+                set
+            },
         ))
     }
 
@@ -957,9 +931,26 @@ impl DhallParser {
 
     fn non_empty_record_type(
         input: ParseInput,
-    ) -> ParseResult<DupTreeMap<Label, Expr>> {
-        Ok(match_nodes!(input.into_children();
-            [record_type_entry(entries)..] => entries.collect()
+    ) -> ParseResult<BTreeMap<Label, Expr>> {
+        Ok(match_nodes!(input.children();
+            [record_type_entry(entries)..] => {
+                let mut map = BTreeMap::default();
+                for (l, t) in entries {
+                    use std::collections::btree_map::Entry;
+                    match map.entry(l) {
+                        Entry::Occupied(_) => {
+                            return Err(input.error(
+                                "Duplicate field in record type"
+                                    .to_string(),
+                            ));
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(t);
+                        }
+                    }
+                }
+                map
+            },
         ))
     }
 
@@ -1008,7 +999,24 @@ impl DhallParser {
     fn union_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
         let map = match_nodes!(input.children();
             [empty_union_type(_)] => Default::default(),
-            [union_type_entry(entries)..] => entries.collect(),
+            [union_type_entry(entries)..] => {
+                let mut map = BTreeMap::default();
+                for (l, t) in entries {
+                    use std::collections::btree_map::Entry;
+                    match map.entry(l) {
+                        Entry::Occupied(_) => {
+                            return Err(input.error(
+                                "Duplicate variant in union type"
+                                    .to_string(),
+                            ));
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(t);
+                        }
+                    }
+                }
+                map
+            },
         );
         Ok(UnionType(map))
     }

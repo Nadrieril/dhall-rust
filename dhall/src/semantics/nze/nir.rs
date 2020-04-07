@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::builtins::{Builtin, BuiltinClosure};
+use crate::operations::{BinOp, OpKind};
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_hir_whnf, normalize_one_layer, squash_textlit, Binder,
-    BuiltinClosure, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
+    apply_any, normalize_hir, normalize_one_layer, squash_textlit, Binder, Hir,
+    HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
 };
 use crate::syntax::{
-    BinOp, Builtin, Const, Expr, ExprKind, InterpolatedTextContents, Label,
-    NumKind, Span,
+    Const, Expr, ExprKind, InterpolatedTextContents, Label, NumKind, Span,
 };
 use crate::ToExprOptions;
 
@@ -74,25 +75,27 @@ pub enum NirKind {
 
     Var(NzVar),
     Const(Const),
+    Num(NumKind),
     // Must be a number type, Bool or Text
     BuiltinType(Builtin),
-    Num(NumKind),
-    OptionalType(Nir),
+    TextLit(TextLit),
     EmptyOptionalLit(Nir),
     NEOptionalLit(Nir),
-    ListType(Nir),
+    OptionalType(Nir),
     // EmptyListLit(t) means `[] : List t`, not `[] : t`
     EmptyListLit(Nir),
     NEListLit(Vec<Nir>),
-    RecordType(HashMap<Label, Nir>),
+    ListType(Nir),
     RecordLit(HashMap<Label, Nir>),
-    UnionType(HashMap<Label, Option<Nir>>),
+    RecordType(HashMap<Label, Nir>),
     UnionConstructor(Label, HashMap<Label, Option<Nir>>),
     UnionLit(Label, Nir, HashMap<Label, Option<Nir>>),
-    TextLit(TextLit),
+    UnionType(HashMap<Label, Option<Nir>>),
     Equivalence(Nir, Nir),
-    /// Invariant: evaluation must not be able to progress with `normalize_one_layer`.
-    PartialExpr(ExprKind<Nir>),
+    Assert(Nir),
+    /// Invariant: evaluation must not be able to progress with `normalize_operation`.
+    /// This is used when an operation couldn't proceed further, for example because of variables.
+    Op(OpKind<Nir>),
 }
 
 impl Nir {
@@ -111,8 +114,7 @@ impl Nir {
         NirInternal::from_whnf(v).into_nir()
     }
     pub fn from_const(c: Const) -> Self {
-        let v = NirKind::Const(c);
-        NirInternal::from_whnf(v).into_nir()
+        Self::from_kind(NirKind::Const(c))
     }
     pub fn from_builtin(b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new())
@@ -148,7 +150,10 @@ impl Nir {
     }
 
     pub fn app(&self, v: Nir) -> Nir {
-        Nir::from_kind(apply_any(self.clone(), v))
+        Nir::from_kind(self.app_to_kind(v))
+    }
+    pub fn app_to_kind(&self, v: Nir) -> NirKind {
+        apply_any(self, v)
     }
 
     pub fn to_hir(&self, venv: VarEnv) -> Hir {
@@ -190,24 +195,24 @@ impl Nir {
                 NirKind::Const(c) => ExprKind::Const(*c),
                 NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
                 NirKind::Num(l) => ExprKind::Num(l.clone()),
-                NirKind::OptionalType(t) => ExprKind::App(
+                NirKind::OptionalType(t) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::Optional).to_hir(venv),
                     t.to_hir(venv),
-                ),
-                NirKind::EmptyOptionalLit(n) => ExprKind::App(
+                )),
+                NirKind::EmptyOptionalLit(n) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::OptionalNone).to_hir(venv),
                     n.to_hir(venv),
-                ),
+                )),
                 NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
-                NirKind::ListType(t) => ExprKind::App(
+                NirKind::ListType(t) => ExprKind::Op(OpKind::App(
                     Nir::from_builtin(Builtin::List).to_hir(venv),
                     t.to_hir(venv),
-                ),
+                )),
                 NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
-                    HirKind::Expr(ExprKind::App(
+                    HirKind::Expr(ExprKind::Op(OpKind::App(
                         Nir::from_builtin(Builtin::List).to_hir(venv),
                         n.to_hir(venv),
-                    )),
+                    ))),
                     Span::Artificial,
                 )),
                 NirKind::NEListLit(elts) => ExprKind::NEListLit(
@@ -229,32 +234,35 @@ impl Nir {
                         .collect(),
                 ),
                 NirKind::UnionType(kts) => map_uniontype(kts),
-                NirKind::UnionConstructor(l, kts) => ExprKind::Field(
+                NirKind::UnionConstructor(l, kts) => {
+                    ExprKind::Op(OpKind::Field(
+                        Hir::new(
+                            HirKind::Expr(map_uniontype(kts)),
+                            Span::Artificial,
+                        ),
+                        l.clone(),
+                    ))
+                }
+                NirKind::UnionLit(l, v, kts) => ExprKind::Op(OpKind::App(
                     Hir::new(
-                        HirKind::Expr(map_uniontype(kts)),
-                        Span::Artificial,
-                    ),
-                    l.clone(),
-                ),
-                NirKind::UnionLit(l, v, kts) => ExprKind::App(
-                    Hir::new(
-                        HirKind::Expr(ExprKind::Field(
+                        HirKind::Expr(ExprKind::Op(OpKind::Field(
                             Hir::new(
                                 HirKind::Expr(map_uniontype(kts)),
                                 Span::Artificial,
                             ),
                             l.clone(),
-                        )),
+                        ))),
                         Span::Artificial,
                     ),
                     v.to_hir(venv),
-                ),
-                NirKind::Equivalence(x, y) => ExprKind::BinOp(
+                )),
+                NirKind::Equivalence(x, y) => ExprKind::Op(OpKind::BinOp(
                     BinOp::Equivalence,
                     x.to_hir(venv),
                     y.to_hir(venv),
-                ),
-                NirKind::PartialExpr(e) => e.map_ref(|v| v.to_hir(venv)),
+                )),
+                NirKind::Assert(x) => ExprKind::Assert(x.to_hir(venv)),
+                NirKind::Op(e) => ExprKind::Op(e.map_ref(|v| v.to_hir(venv))),
             }),
         };
 
@@ -307,7 +315,7 @@ impl Thunk {
     }
     fn eval(self) -> NirKind {
         match self {
-            Thunk::Thunk { env, body } => normalize_hir_whnf(&env, &body),
+            Thunk::Thunk { env, body } => normalize_hir(&env, &body),
             Thunk::PartialExpr { env, expr } => normalize_one_layer(expr, &env),
         }
     }
