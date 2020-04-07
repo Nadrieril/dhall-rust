@@ -1,6 +1,6 @@
 Type error: error: InvalidFieldType
- --> <current file>:1:1
+ --> <current file>:1:17
   |
 1 | { x = Type, y = Kind }
-  | ^^^^^^^^^^^^^^^^^^^^^^ InvalidFieldType
+  |                 ^^^^ InvalidFieldType
   |

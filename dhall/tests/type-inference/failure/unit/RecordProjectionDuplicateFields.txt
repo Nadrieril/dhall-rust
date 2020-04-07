@@ -1,6 +1,6 @@
-Type error: error: ProjectionDuplicateField
- --> <current file>:1:1
+ --> 1:11
   |
-1 | { x = 1 }.{ x, x }
-  | ^^^^^^^^^^^^^^^^^^ ProjectionDuplicateField
+1 | { x = 1 }.{ x, x }␊
+  |           ^------^
   |
+  = Duplicate field in projection

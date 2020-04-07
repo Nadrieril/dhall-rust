@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::env;
 use std::path::PathBuf;
 use url::Url;
@@ -10,7 +11,6 @@ use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
-use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
     UnspannedExpr, URL,
@@ -199,7 +199,7 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
 
 fn make_aslocation_uniontype() -> Expr {
     let text_type = mkexpr(ExprKind::Builtin(Builtin::Text));
-    let mut union = DupTreeMap::default();
+    let mut union = BTreeMap::default();
     union.insert("Local".into(), Some(text_type.clone()));
     union.insert("Remote".into(), Some(text_type.clone()));
     union.insert("Environment".into(), Some(text_type));

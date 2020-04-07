@@ -6,7 +6,6 @@ use crate::builtins::Builtin;
 use crate::error::EncodeError;
 use crate::operations::{BinOp, OpKind};
 use crate::syntax;
-use crate::syntax::map::DupTreeMap;
 use crate::syntax::{
     Expr, ExprKind, FilePrefix, Hash, Import, ImportMode, ImportTarget, Label,
     Scheme, V,
@@ -21,8 +20,7 @@ enum Serialize<'a> {
     Expr(&'a Expr),
     CBOR(cbor::Value),
     RecordMap(&'a BTreeMap<Label, Expr>),
-    RecordDupMap(&'a DupTreeMap<Label, Expr>),
-    UnionMap(&'a DupTreeMap<Label, Option<Expr>>),
+    UnionMap(&'a BTreeMap<Label, Option<Expr>>),
 }
 
 macro_rules! count {
@@ -52,7 +50,7 @@ where
     use syntax::NumKind::*;
     use OpKind::*;
 
-    use self::Serialize::{RecordDupMap, RecordMap, UnionMap};
+    use self::Serialize::{RecordMap, UnionMap};
     fn expr(x: &Expr) -> self::Serialize<'_> {
         self::Serialize::Expr(x)
     }
@@ -133,7 +131,7 @@ where
                 Text(x) => cbor(String(x)),
             })))
         }
-        RecordType(map) => ser_seq!(ser; tag(7), RecordDupMap(map)),
+        RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
         RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
         UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
         Op(Field(x, l)) => ser_seq!(ser; tag(9), expr(x), label(l)),
@@ -266,11 +264,6 @@ impl<'a> serde::ser::Serialize for Serialize<'a> {
         match self {
             Serialize::Expr(e) => serialize_subexpr(ser, e),
             Serialize::CBOR(v) => v.serialize(ser),
-            Serialize::RecordDupMap(map) => {
-                ser.collect_map(map.iter().map(|(k, v)| {
-                    (cbor::Value::String(k.into()), Serialize::Expr(v))
-                }))
-            }
             Serialize::RecordMap(map) => {
                 ser.collect_map(map.iter().map(|(k, v)| {
                     (cbor::Value::String(k.into()), Serialize::Expr(v))

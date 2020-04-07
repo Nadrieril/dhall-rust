@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::borrow::Cow;
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::builtins::Builtin;
 use crate::error::{ErrorBuilder, TypeError};
@@ -9,7 +9,6 @@ use crate::semantics::{
     merge_maps, mk_span_err, mkerr, ret_kind, ret_op, ret_ref, Binder, Closure,
     Hir, HirKind, Nir, NirKind, Ret, TextLit, Tir, TyEnv, Type,
 };
-use crate::syntax::map::DupTreeSet;
 use crate::syntax::{trivial_result, Const, ExprKind, Label, NumKind, Span};
 
 // Definition order must match precedence order for
@@ -60,7 +59,7 @@ pub enum OpKind<SubExpr> {
     ///  `e.x`
     Field(SubExpr, Label),
     ///  `e.{ x, y, z }`
-    Projection(SubExpr, DupTreeSet<Label>),
+    Projection(SubExpr, BTreeSet<Label>),
     ///  `e.(t)`
     ProjectionByExpr(SubExpr, SubExpr),
     ///  `x::y`
@@ -565,13 +564,7 @@ pub fn typecheck_operation(
                 match kts.get(l) {
                     None => return span_err("ProjectionMissingEntry"),
                     Some(t) => {
-                        use std::collections::hash_map::Entry;
-                        match new_kts.entry(l.clone()) {
-                            Entry::Occupied(_) => {
-                                return span_err("ProjectionDuplicateField")
-                            }
-                            Entry::Vacant(e) => e.insert(t.clone()),
-                        }
+                        new_kts.insert(l.clone(), t.clone());
                     }
                 };
             }

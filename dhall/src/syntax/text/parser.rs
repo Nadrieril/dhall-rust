@@ -1,14 +1,13 @@
 use itertools::Itertools;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::rc::Rc;
 
 use pest_consume::{match_nodes, Parser};
 
 use crate::operations::OpKind::*;
-use crate::syntax::map::{DupTreeMap, DupTreeSet};
 use crate::syntax::ExprKind::*;
 use crate::syntax::NumKind::*;
 use crate::syntax::{
@@ -32,7 +31,7 @@ pub type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug)]
 enum Selector {
     Field(Label),
-    Projection(DupTreeSet<Label>),
+    Projection(BTreeSet<Label>),
     ProjectionByExpr(Expr),
 }
 
@@ -879,9 +878,20 @@ impl DhallParser {
         Ok((stor, input_to_span(input)))
     }
 
-    fn labels(input: ParseInput) -> ParseResult<DupTreeSet<Label>> {
-        Ok(match_nodes!(input.into_children();
-            [label(ls)..] => ls.collect(),
+    fn labels(input: ParseInput) -> ParseResult<BTreeSet<Label>> {
+        Ok(match_nodes!(input.children();
+            [label(ls)..] => {
+                let mut set = BTreeSet::default();
+                for l in ls {
+                    if set.contains(&l) {
+                        return Err(
+                            input.error(format!("Duplicate field in projection"))
+                        )
+                    }
+                    set.insert(l);
+                }
+                set
+            },
         ))
     }
 
@@ -921,9 +931,26 @@ impl DhallParser {
 
     fn non_empty_record_type(
         input: ParseInput,
-    ) -> ParseResult<DupTreeMap<Label, Expr>> {
-        Ok(match_nodes!(input.into_children();
-            [record_type_entry(entries)..] => entries.collect()
+    ) -> ParseResult<BTreeMap<Label, Expr>> {
+        Ok(match_nodes!(input.children();
+            [record_type_entry(entries)..] => {
+                let mut map = BTreeMap::default();
+                for (l, t) in entries {
+                    use std::collections::btree_map::Entry;
+                    match map.entry(l) {
+                        Entry::Occupied(_) => {
+                            return Err(input.error(
+                                "Duplicate field in record type"
+                                    .to_string(),
+                            ));
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(t);
+                        }
+                    }
+                }
+                map
+            },
         ))
     }
 
@@ -972,7 +999,24 @@ impl DhallParser {
     fn union_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
         let map = match_nodes!(input.children();
             [empty_union_type(_)] => Default::default(),
-            [union_type_entry(entries)..] => entries.collect(),
+            [union_type_entry(entries)..] => {
+                let mut map = BTreeMap::default();
+                for (l, t) in entries {
+                    use std::collections::btree_map::Entry;
+                    match map.entry(l) {
+                        Entry::Occupied(_) => {
+                            return Err(input.error(
+                                "Duplicate variant in union type"
+                                    .to_string(),
+                            ));
+                        }
+                        Entry::Vacant(e) => {
+                            e.insert(t);
+                        }
+                    }
+                }
+                map
+            },
         );
         Ok(UnionType(map))
     }

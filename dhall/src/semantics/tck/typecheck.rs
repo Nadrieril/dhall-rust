@@ -1,5 +1,4 @@
 use std::cmp::max;
-use std::collections::HashMap;
 
 use crate::builtins::{type_of_builtin, Builtin};
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
@@ -107,71 +106,55 @@ fn type_one_layer(
             Nir::from_builtin(Builtin::List).app(t).to_type(Const::Type)
         }
         ExprKind::RecordLit(kvs) => {
-            use std::collections::hash_map::Entry;
-            let mut kts = HashMap::new();
             // An empty record type has type Type
             let mut k = Const::Type;
-            for (x, v) in kvs {
-                // Check for duplicated entries
-                match kts.entry(x.clone()) {
-                    Entry::Occupied(_) => {
-                        return span_err("RecordTypeDuplicateField")
-                    }
-                    Entry::Vacant(e) => e.insert(v.ty().to_nir()),
-                };
-
+            for (_, v) in kvs {
                 // Check that the fields have a valid kind
                 match v.ty().ty().as_const() {
                     Some(c) => k = max(k, c),
-                    None => return span_err("InvalidFieldType"),
+                    None => return mk_span_err(v.span(), "InvalidFieldType"),
                 }
             }
+
+            let kts = kvs
+                .iter()
+                .map(|(x, v)| (x.clone(), v.ty().to_nir()))
+                .collect();
 
             Nir::from_kind(NirKind::RecordType(kts)).to_type(k)
         }
         ExprKind::RecordType(kts) => {
-            use std::collections::hash_map::Entry;
-            let mut seen_fields = HashMap::new();
             // An empty record type has type Type
             let mut k = Const::Type;
-
-            for (x, t) in kts {
-                // Check for duplicated entries
-                match seen_fields.entry(x.clone()) {
-                    Entry::Occupied(_) => {
-                        return span_err("RecordTypeDuplicateField")
-                    }
-                    Entry::Vacant(e) => e.insert(()),
-                };
-
+            for (_, t) in kts {
                 // Check the type is a Const and compute final type
                 match t.ty().as_const() {
                     Some(c) => k = max(k, c),
-                    None => return span_err("InvalidFieldType"),
+                    None => return mk_span_err(t.span(), "InvalidFieldType"),
                 }
             }
 
             Type::from_const(k)
         }
         ExprKind::UnionType(kts) => {
-            use std::collections::hash_map::Entry;
-            let mut seen_fields = HashMap::new();
             // Check that all types are the same const
             let mut k = None;
-            for (x, t) in kts {
+            for (_, t) in kts {
                 if let Some(t) = t {
-                    match (k, t.ty().as_const()) {
-                        (None, Some(k2)) => k = Some(k2),
-                        (Some(k1), Some(k2)) if k1 == k2 => {}
-                        _ => return span_err("InvalidFieldType"),
+                    let c = match t.ty().as_const() {
+                        Some(c) => c,
+                        None => {
+                            return mk_span_err(t.span(), "InvalidVariantType")
+                        }
+                    };
+                    match k {
+                        None => k = Some(c),
+                        Some(k) if k == c => {}
+                        _ => {
+                            return mk_span_err(t.span(), "InvalidVariantType")
+                        }
                     }
                 }
-                match seen_fields.entry(x) {
-                    Entry::Occupied(_) => {
-                        return span_err("UnionTypeDuplicateField")
-                    }
-                    Entry::Vacant(e) => e.insert(()),
-                };
             }
 
             // An empty union type has type Type;

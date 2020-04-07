@@ -1,6 +1,6 @@
-Type error: error: RecordTypeDuplicateField
- --> <current file>:1:1
+ --> 1:3
   |
-1 | { x: Natural, x: Natural }
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^ RecordTypeDuplicateField
+1 | { x: Natural, x: Natural }␊
+  |   ^--------------------^
   |
+  = Duplicate field in record type

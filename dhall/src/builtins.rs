@@ -1,15 +1,15 @@
+use std::collections::{BTreeMap, HashMap};
+use std::convert::TryInto;
+
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
     skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
 };
-use crate::syntax::map::DupTreeMap;
 use crate::syntax::Const::Type;
 use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble, NumKind, Span, UnspannedExpr, V,
 };
-use std::collections::HashMap;
-use std::convert::TryInto;
 
 /// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -147,7 +147,7 @@ macro_rules! make_type {
         )))
     };
     ({ $($label:ident : $ty:ident),* }) => {{
-        let mut kts = DupTreeMap::new();
+        let mut kts = BTreeMap::new();
         $(
             kts.insert(
                 Label::from(stringify!($label)),

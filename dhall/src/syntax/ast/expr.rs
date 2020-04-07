@@ -4,7 +4,6 @@ use crate::builtins::Builtin;
 use crate::error::Error;
 use crate::operations::OpKind;
 use crate::semantics::Universe;
-use crate::syntax::map::DupTreeMap;
 use crate::syntax::visitor;
 use crate::syntax::*;
 
@@ -81,11 +80,11 @@ pub enum ExprKind<SubExpr> {
     ///  `[x, y, z]`
     NEListLit(Vec<SubExpr>),
     ///  `{ k1 : t1, k2 : t1 }`
-    RecordType(DupTreeMap<Label, SubExpr>),
+    RecordType(BTreeMap<Label, SubExpr>),
     ///  `{ k1 = v1, k2 = v2 }`
     RecordLit(BTreeMap<Label, SubExpr>),
     ///  `< k1 : t1, k2 >`
-    UnionType(DupTreeMap<Label, Option<SubExpr>>),
+    UnionType(BTreeMap<Label, Option<SubExpr>>),
 
     ///  `x`, `x@n`
     Var(V),
