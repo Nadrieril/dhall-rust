@@ -225,7 +225,7 @@ impl TestFile {
             if Self::force_update() {
                 self.write_ui(x)?;
             } else {
-                assert_eq_pretty_str!(msg, expected);
+                assert_eq_pretty_str!(expected, msg);
             }
         }
         Ok(())
