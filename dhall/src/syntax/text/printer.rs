@@ -146,6 +146,21 @@ where
     f.write_str(close)
 }
 
+fn fmt_label(label: &Label, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    // TODO: distinguish between reserved and nonreserved locations for quoting builtins
+    let s = String::from(label);
+    let is_reserved = match s.as_str() {
+        "let" | "in" | "if" | "then" | "else" | "Type" | "Kind" | "Sort"
+        | "True" | "False" | "Some" => true,
+        _ => Builtin::parse(&s).is_some(),
+    };
+    if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
+        write!(f, "{}", s)
+    } else {
+        write!(f, "`{}`", s)
+    }
+}
+
 /// Generic instance that delegates to subexpressions
 impl<SE: Display + Clone> Display for ExprKind<SE> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -153,16 +168,21 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
         match self {
             Var(a) => a.fmt(f)?,
             Lam(a, b, c) => {
-                write!(f, "λ({} : {}) → {}", a, b, c)?;
+                write!(f, "λ(")?;
+                fmt_label(a, f)?;
+                write!(f, " : {}) → {}", b, c)?;
             }
             Pi(a, b, c) if &String::from(a) == "_" => {
                 write!(f, "{} → {}", b, c)?;
             }
             Pi(a, b, c) => {
-                write!(f, "∀({} : {}) → {}", a, b, c)?;
+                write!(f, "∀(")?;
+                fmt_label(a, f)?;
+                write!(f, " : {}) → {}", b, c)?;
             }
             Let(a, b, c, d) => {
-                write!(f, "let {}", a)?;
+                write!(f, "let ")?;
+                fmt_label(a, f)?;
                 if let Some(b) = b {
                     write!(f, " : {}", b)?;
                 }
@@ -183,14 +203,16 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             }
             RecordLit(a) if a.is_empty() => f.write_str("{=}")?,
             RecordLit(a) => fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
-                write!(f, "{} = {}", k, v)
+                fmt_label(k, f)?;
+                write!(f, " = {}", v)
             })?,
             RecordType(a) if a.is_empty() => f.write_str("{}")?,
             RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
-                write!(f, "{} : {}", k, t)
+                fmt_label(k, f)?;
+                write!(f, " : {}", t)
             })?,
             UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
-                write!(f, "{}", k)?;
+                fmt_label(k, f)?;
                 if let Some(v) = v {
                     write!(f, ": {}", v)?;
                 }
@@ -238,11 +260,12 @@ impl<SE: Display + Clone> Display for OpKind<SE> {
                 }
             }
             Field(a, b) => {
-                write!(f, "{}.{}", a, b)?;
+                write!(f, "{}.", a)?;
+                fmt_label(b, f)?;
             }
             Projection(e, ls) => {
                 write!(f, "{}.", e)?;
-                fmt_list("{ ", ", ", " }", ls, f, Display::fmt)?;
+                fmt_list("{ ", ", ", " }", ls, f, fmt_label)?;
             }
             ProjectionByExpr(a, b) => {
                 write!(f, "{}.({})", a, b)?;
@@ -379,18 +402,7 @@ impl Display for NaiveDouble {
 
 impl Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        // TODO: distinguish between reserved and nonreserved locations for quoting builtins
-        let s = String::from(self);
-        let is_reserved = match s.as_str() {
-            "let" | "in" | "if" | "then" | "else" | "Type" | "Kind"
-            | "Sort" | "True" | "False" | "Some" => true,
-            _ => Builtin::parse(&s).is_some(),
-        };
-        if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
-            write!(f, "{}", s)
-        } else {
-            write!(f, "`{}`", s)
-        }
+        write!(f, "{}", String::from(self))
     }
 }
 
@@ -495,7 +507,7 @@ impl Display for Scheme {
 impl Display for V {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let V(x, n) = self;
-        x.fmt(f)?;
+        fmt_label(x, f)?;
         if *n != 0 {
             write!(f, "@{}", n)?;
         }

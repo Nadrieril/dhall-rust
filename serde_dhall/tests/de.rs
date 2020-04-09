@@ -60,6 +60,9 @@ fn test_de_typed() {
 
 #[test]
 fn test_de_untyped() {
+    use std::collections::BTreeMap;
+    use std::collections::HashMap;
+
     fn parse<T: FromDhall>(s: &str) -> T {
         from_str(s).parse().unwrap()
     }
@@ -70,7 +73,6 @@ fn test_de_untyped() {
         (1, "foo".to_owned(), 42)
     );
 
-    use std::collections::HashMap;
     let mut expected_map = HashMap::new();
     expected_map.insert("x".to_string(), 1);
     expected_map.insert("y".to_string(), 2);
@@ -79,7 +81,17 @@ fn test_de_untyped() {
         expected_map
     );
 
-    use std::collections::BTreeMap;
+    let mut expected_map = HashMap::new();
+    expected_map.insert("if".to_string(), 1);
+    expected_map.insert("FOO_BAR".to_string(), 2);
+    expected_map.insert("baz-kux".to_string(), 3);
+    assert_eq!(
+        parse::<HashMap<String, usize>>(
+            "{ `if` = 1, FOO_BAR = 2, baz-kux = 3 }"
+        ),
+        expected_map
+    );
+
     let mut expected_map = BTreeMap::new();
     expected_map.insert("x".to_string(), 1);
     expected_map.insert("y".to_string(), 2);
