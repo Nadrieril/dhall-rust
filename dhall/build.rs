@@ -157,12 +157,7 @@ fn make_test_module(
 }
 
 fn generate_tests() -> std::io::Result<()> {
-    // Tries to detect when the submodule gets updated.
-    // To force regeneration of the test list, just `touch dhall-lang/.git`
-    println!("cargo:rerun-if-changed=../dhall-lang/.git");
-    println!(
-        "cargo:rerun-if-changed=../.git/modules/dhall-lang/refs/heads/master"
-    );
+    // To force regeneration of the test list, `touch dhall-lang/standard/dhall.abnf`
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
