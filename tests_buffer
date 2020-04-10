@@ -24,6 +24,7 @@ normalization:
 move builtins and operators in their own folder ?
 RecordSortFields { b = 1, a = 0 }
 RecordTypeSortFields { b : Bool, a : Natural }
+\(foo: { x: Bool, y: Bool }) -> \(bar: { x: Bool }) -> (foo.{x, y} // bar).{ x }
 
 type-inference:
 something that involves destructuring a recordtype after merge

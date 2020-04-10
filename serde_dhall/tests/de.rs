@@ -80,6 +80,10 @@ fn test_de_untyped() {
         parse::<HashMap<String, usize>>("{ x = 1, y = 2 }"),
         expected_map
     );
+    assert_eq!(
+        parse::<HashMap<String, usize>>("toMap { x = 1, y = 2 }"),
+        expected_map
+    );
 
     let mut expected_map = HashMap::new();
     expected_map.insert("if".to_string(), 1);
