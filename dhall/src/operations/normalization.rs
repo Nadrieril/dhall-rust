@@ -226,11 +226,11 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
                     Some(h) => ret_kind(h.app_to_kind(v.clone())),
                     None => nothing_to_do(),
                 },
-                EmptyOptionalLit(_) => match kvs.get(&"None".into()) {
+                EmptyOptionalLit(_) => match kvs.get("None") {
                     Some(h) => ret_ref(h),
                     None => nothing_to_do(),
                 },
-                NEOptionalLit(v) => match kvs.get(&"Some".into()) {
+                NEOptionalLit(v) => match kvs.get("Some") {
                     Some(h) => ret_kind(h.app_to_kind(v.clone())),
                     None => nothing_to_do(),
                 },

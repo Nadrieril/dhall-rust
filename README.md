@@ -169,7 +169,11 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+- Deserialize `Prelude.Map` and `toMap` to a map instead of a list.
+
 #### [0.5.1] - 2020-04-09
+
+- Small fixes
 
 #### [0.5.0] - 2020-04-05
 

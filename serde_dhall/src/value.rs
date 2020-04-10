@@ -144,13 +144,61 @@ impl SimpleValue {
             NirKind::NEOptionalLit(x) => {
                 SimpleValue::Optional(Some(Box::new(Self::from_nir(x)?)))
             }
-            NirKind::EmptyListLit(_) => SimpleValue::List(vec![]),
-            NirKind::NEListLit(xs) => SimpleValue::List(
-                xs.iter().map(Self::from_nir).collect::<Option<_>>()?,
-            ),
+            NirKind::EmptyListLit(t) => {
+                // Detect and handle the special records that make assoc maps
+                if let NirKind::RecordType(kts) = t.kind() {
+                    if kts.len() == 2
+                        && kts.contains_key("mapKey")
+                        && kts.contains_key("mapValue")
+                    {
+                        return Some(SimpleValue::Record(Default::default()));
+                    }
+                }
+                SimpleValue::List(vec![])
+            }
+            NirKind::NEListLit(xs) => {
+                // Detect and handle the special records that make assoc maps
+                if let NirKind::RecordLit(kvs) = xs[0].kind() {
+                    if kvs.len() == 2
+                        && kvs.contains_key("mapKey")
+                        && kvs.contains_key("mapValue")
+                    {
+                        let convert_entry = |x: &Nir| match x.kind() {
+                            NirKind::RecordLit(kvs) => {
+                                let k = match kvs.get("mapKey").unwrap().kind()
+                                {
+                                    NirKind::TextLit(t)
+                                        if t.as_text().is_some() =>
+                                    {
+                                        t.as_text().unwrap()
+                                    }
+                                    // TODO
+                                    _ => panic!(
+                                        "Expected `mapKey` to be a text \
+                                         literal"
+                                    ),
+                                };
+                                let v = Self::from_nir(
+                                    kvs.get("mapValue").unwrap(),
+                                )?;
+                                Some((k, v))
+                            }
+                            _ => unreachable!("Internal type error"),
+                        };
+                        return Some(SimpleValue::Record(
+                            xs.iter()
+                                .map(convert_entry)
+                                .collect::<Option<_>>()?,
+                        ));
+                    }
+                }
+                SimpleValue::List(
+                    xs.iter().map(Self::from_nir).collect::<Option<_>>()?,
+                )
+            }
             NirKind::RecordLit(kvs) => SimpleValue::Record(
                 kvs.iter()
-                    .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
+                    .map(|(k, v)| Some((k.to_string(), Self::from_nir(v)?)))
                     .collect::<Option<_>>()?,
             ),
             NirKind::UnionLit(field, x, _) => SimpleValue::Union(

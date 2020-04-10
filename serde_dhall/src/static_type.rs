@@ -47,6 +47,7 @@ use crate::SimpleType;
 /// `{ _1: T, _2: U }`  | `(T, U)`, structs
 /// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
 /// `< x: T \| y: U >`  | enums
+/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
 /// `T -> U`  | unsupported
 /// `Prelude.JSON.Type`  | unsupported
 /// `Prelude.Map.Type T U`  | unsupported

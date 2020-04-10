@@ -24,6 +24,12 @@ impl From<&Label> for String {
     }
 }
 
+impl std::borrow::Borrow<str> for Label {
+    fn borrow(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 impl Label {
     pub fn from_str(s: &str) -> Label {
         Label(s.into())

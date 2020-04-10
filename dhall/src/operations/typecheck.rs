@@ -398,11 +398,11 @@ pub fn typecheck_operation(
                 if kts.len() != 2 {
                     return span_err(err_msg);
                 }
-                match kts.get(&"mapKey".into()) {
+                match kts.get("mapKey") {
                     Some(t) if *t == Nir::from_builtin(Builtin::Text) => {}
                     _ => return span_err(err_msg),
                 }
-                match kts.get(&"mapValue".into()) {
+                match kts.get("mapValue") {
                     Some(_) => {}
                     None => return span_err(err_msg),
                 }
@@ -434,7 +434,7 @@ pub fn typecheck_operation(
         }
         Field(scrut, x) => {
             match scrut.ty().kind() {
-                RecordType(kts) => match kts.get(&x) {
+                RecordType(kts) => match kts.get(x) {
                     Some(val) => Type::new_infer_universe(env, val.clone())?,
                     None => return span_err("MissingRecordField"),
                 },
