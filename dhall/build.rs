@@ -95,7 +95,7 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
             bool_or |
             import_alt
         }}
-        operator_expression = {{ with_expression ~ (whsp ~ operator ~ whsp ~ with_expression)* }}
+        operator_expression = {{ application_expression ~ (whsp ~ operator ~ whsp ~ application_expression)* }}
     "##
     )?;
 

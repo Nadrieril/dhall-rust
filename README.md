@@ -169,7 +169,7 @@ same name as the corresponding test.
 
 I try to keep commit messages somewhat in the style of [Conventional
 Commits](https://www.conventionalcommits.org/en/v1.0.0). That means the commit
-message should start with `feat:`, `test:`, `doc:`, `fix:`, `style:`,
+message should start with `feat:`, `test:`, `spec:`, `doc:`, `fix:`, `style:`,
 `refactor:`, `chore:`, `perf:` or similar prefixes.
 
 A breaking change should be indicated with `!` before the `:`.

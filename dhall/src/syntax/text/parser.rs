@@ -130,6 +130,7 @@ lazy_static::lazy_static! {
         use Rule::*;
         // In order of precedence
         let operators = vec![
+            equivalent,
             import_alt,
             bool_or,
             natural_plus,
@@ -142,7 +143,6 @@ lazy_static::lazy_static! {
             natural_times,
             bool_eq,
             bool_ne,
-            equivalent,
         ];
         PrecClimber::new(
             operators

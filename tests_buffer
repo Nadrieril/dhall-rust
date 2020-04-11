@@ -11,7 +11,6 @@ From https://github.com/dhall-lang/dhall-lang/issues/280 :
     "${ not_really_an_expression ;-) }"
     ''${ not_an_expression ;-) }''
     {- {- -} 1
-{ x = 0 } with x = 1 + 1
 
 import:
 failure/

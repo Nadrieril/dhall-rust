@@ -66,6 +66,12 @@ impl Span {
                     end: max(x.end, y.end),
                 })
             }
+            (Parsed(_), Parsed(_)) => panic!(
+                "Tried to union incompatible spans: {:?} and {:?}",
+                self, other
+            ),
+            (Parsed(x), _) => Parsed(x.clone()),
+            (_, Parsed(x)) => Parsed(x.clone()),
             _ => panic!(
                 "Tried to union incompatible spans: {:?} and {:?}",
                 self, other
