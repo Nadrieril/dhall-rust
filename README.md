@@ -72,7 +72,7 @@ assert_eq!(deserialized_map, expected_map);
 ## Standard-compliance
 
 This implementation currently supports most of the [Dhall
-standard](https://github.com/dhall-lang/dhall-lang) version `14.0.0`.
+standard](https://github.com/dhall-lang/dhall-lang) version `15.0.0`.
 
 The main missing features are import caching and import headers. See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
@@ -169,6 +169,7 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+- Update to supporting dhall v15.0.0
 - Deserialize `Prelude.Map` and `toMap` to a map instead of a list.
 
 #### [0.5.1] - 2020-04-09
