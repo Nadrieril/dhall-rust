@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- Update encoding of floating point values to RFC7049bis
 - Allow unions with mixed kinds
 - Adjust precedence of `===` and `with`
 - Fix running tests on Windows. Developing on this lib should now be possible on Windows.

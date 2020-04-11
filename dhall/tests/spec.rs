@@ -51,7 +51,7 @@ impl FileType {
         match self {
             FileType::Text => TestFile::Source(file),
             FileType::Binary => TestFile::Binary(file),
-            FileType::Hash => TestFile::Binary(file),
+            FileType::Hash => TestFile::UI(file),
             FileType::UI => TestFile::UI(file),
         }
     }
@@ -449,10 +449,6 @@ fn define_features() -> Vec<TestFeature> {
                 false
                     // Pretty sure the test is incorrect
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "double"
-                    || path == "unit/DoubleLitExponentNoDot"
-                    || path == "unit/DoubleLitSecretelyInt"
             }),
             output_type: FileType::Binary,
             ..default_feature.clone()
@@ -518,13 +514,8 @@ fn define_features() -> Vec<TestFeature> {
             directory: "semantic-hash/success/",
             variant: SpecTestKind::SemanticHash,
             exclude_path: Rc::new(|path: &str| {
-                false
-                    // We don't support bignums
-                    || path == "simple/integerToDouble"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "prelude/Integer/toDouble/0"
-                    || path == "prelude/Integer/toDouble/1"
-                    || path == "prelude/Natural/toDouble/0"
+                // We don't support bignums
+                path == "simple/integerToDouble"
             }),
             output_type: FileType::Hash,
             ..default_feature.clone()
