@@ -35,6 +35,5 @@ failure/
     merge { x = True, y = 1 } < x | y >.x
     merge {x=...,y=...} <x>.x
     merge {x=...,y=...} <x:T>.x
-fix unit_RightBiasedRecordMergeMixedKinds3 & 2 & unit_RecordMixedKinds3
 
 equivalence:
