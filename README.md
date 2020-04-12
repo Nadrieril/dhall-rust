@@ -169,6 +169,7 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+- Fix #162
 - Update to supporting dhall v15.0.0
 - Deserialize `Prelude.Map` and `toMap` to a map instead of a list.
 
