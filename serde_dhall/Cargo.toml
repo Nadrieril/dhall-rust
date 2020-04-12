@@ -12,7 +12,7 @@ edition = "2018"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-dhall = { version = "= 0.5.1", path = "../dhall" }
+dhall = { version = "= 0.5.2", path = "../dhall" }
 dhall_proc_macros = { version = "= 0.5.0", path = "../dhall_proc_macros" }
 doc-comment = "0.3"
 reqwest = { version = "0.10", features = ["blocking"] }
