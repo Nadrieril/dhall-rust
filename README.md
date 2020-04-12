@@ -46,7 +46,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.5.1"
+serde_dhall = "0.5.2"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
@@ -169,6 +169,8 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+#### [0.5.2] - 2020-04-12
+
 - Fix #162
 - Update to supporting dhall v15.0.0
 - Deserialize `Prelude.Map` and `toMap` to a map instead of a list.
@@ -218,7 +220,8 @@ same name as the corresponding test.
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.1...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.2...HEAD
+[0.5.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.1...serde_dhall-v0.5.2
 [0.5.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.0...serde_dhall-v0.5.1
 [0.5.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.4.0...serde_dhall-v0.5.0
 
