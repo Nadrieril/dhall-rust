@@ -129,7 +129,7 @@ $ cargo build
 ```
 
 ```bash
-$ cargo test
+$ cargo test -- -q
 ```
 
 You can also run tests individually by their name:
