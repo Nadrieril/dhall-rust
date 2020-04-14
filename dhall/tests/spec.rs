@@ -1,62 +1,19 @@
+use anyhow::Result;
 use std::env;
 use std::ffi::OsString;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-#[cfg(not(test))]
-use assert_eq as assert_eq_pretty;
-#[cfg(test)]
-use pretty_assertions::assert_eq as assert_eq_pretty;
-
-use libtest_mimic::{run_tests, Arguments, Outcome, Test};
+use libtest_mimic::{Arguments, Outcome, Test};
 use walkdir::WalkDir;
 
-use dhall::error::{ErrorKind, Result};
+use dhall::error::Error as DhallError;
+use dhall::error::ErrorKind;
 use dhall::syntax::{binary, Expr};
 use dhall::{Normalized, Parsed, Resolved, Typed};
-
-macro_rules! assert_eq_display {
-    ($left:expr, $right:expr) => {{
-        match (&$left, &$right) {
-            (left_val, right_val) => {
-                if !(*left_val == *right_val) {
-                    panic!(
-                        r#"assertion failed: `(left == right)`
- left: `{}`,
-right: `{}`"#,
-                        left_val, right_val
-                    )
-                }
-            }
-        }
-    }};
-}
-
-/// Wrapper around string slice that makes debug output `{:?}` to print string same way as `{}`.
-/// Used in different `assert*!` macros in combination with `pretty_assertions` crate to make
-/// test failures to show nice diffs.
-#[derive(PartialEq, Eq)]
-#[doc(hidden)]
-pub struct PrettyString(String);
-
-/// Make diff to display string as multi-line string
-impl std::fmt::Debug for PrettyString {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-macro_rules! assert_eq_pretty_str {
-    ($left:expr, $right:expr) => {
-        assert_eq_pretty!(
-            PrettyString($left.to_string()),
-            PrettyString($right.to_string())
-        );
-    };
-}
 
 static LOCAL_TEST_PATH: &str = "tests/";
 static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
@@ -100,6 +57,38 @@ impl FileType {
     }
 }
 
+// Custom assert_eq macro that returns an Error and prints pretty diffs.
+macro_rules! assert_eq {
+    (@@make_str, debug, $x:expr) => {
+        format!("{:#?}", $x)
+    };
+    (@@make_str, display, $x:expr) => {
+        $x.to_string()
+    };
+
+    (@$style:ident, $left:expr, $right:expr) => {
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if *left_val != *right_val {
+                    let left_val = assert_eq!(@@make_str, $style, left_val);
+                    let right_val = assert_eq!(@@make_str, $style, right_val);
+                    let msg = format!(
+                        "assertion failed: `(left == right)`\n\n{}\n",
+                        colored_diff::PrettyDifference {
+                            expected: &left_val,
+                            actual: &right_val
+                        }
+                    );
+                    return Err(TestError(msg).into());
+                }
+            }
+        }
+    };
+    ($left:expr, $right:expr) => {
+        assert_eq!(@debug, $left, $right)
+    };
+}
+
 impl TestFile {
     pub fn path(&self) -> PathBuf {
         match self {
@@ -111,11 +100,13 @@ impl TestFile {
 
     /// Parse the target file
     pub fn parse(&self) -> Result<Parsed> {
-        match self {
-            TestFile::Source(_) => Parsed::parse_file(&self.path()),
-            TestFile::Binary(_) => Parsed::parse_binary_file(&self.path()),
-            TestFile::UI(_) => panic!("Can't parse a UI test file"),
-        }
+        Ok(match self {
+            TestFile::Source(_) => Parsed::parse_file(&self.path())?,
+            TestFile::Binary(_) => Parsed::parse_binary_file(&self.path())?,
+            TestFile::UI(_) => {
+                Err(TestError(format!("Can't parse a UI test file")))?
+            }
+        })
     }
     /// Parse and resolve the target file
     pub fn resolve(&self) -> Result<Resolved> {
@@ -148,7 +139,9 @@ impl TestFile {
                 let expr_data = binary::encode(&expr)?;
                 file.write_all(&expr_data)?;
             }
-            TestFile::UI(_) => panic!("Can't write an expression to a UI file"),
+            TestFile::UI(_) => Err(TestError(format!(
+                "Can't write an expression to a UI file"
+            )))?,
         }
         Ok(())
     }
@@ -156,7 +149,9 @@ impl TestFile {
     fn write_ui(&self, x: impl Display) -> Result<()> {
         match self {
             TestFile::UI(_) => {}
-            _ => panic!("Can't write a ui string to a dhall file"),
+            _ => Err(TestError(format!(
+                "Can't write a ui string to a dhall file"
+            )))?,
         }
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
@@ -177,7 +172,7 @@ impl TestFile {
             if Self::force_update() {
                 self.write_expr(expr)?;
             } else {
-                assert_eq_display!(expr, expected);
+                assert_eq!(@display, expr, expected);
             }
         }
         Ok(())
@@ -194,7 +189,7 @@ impl TestFile {
             if Self::force_update() {
                 self.write_expr(expr)?;
             } else {
-                assert_eq_pretty!(expr, expected);
+                assert_eq!(expr, expected);
             }
         }
         Ok(())
@@ -204,7 +199,7 @@ impl TestFile {
         let expr = expr.into();
         match self {
             TestFile::Binary(_) => {}
-            _ => panic!("This is not a binary file"),
+            _ => Err(TestError(format!("This is not a binary file")))?,
         }
         if !self.path().is_file() {
             return self.write_expr(expr);
@@ -225,7 +220,7 @@ impl TestFile {
                 use serde_cbor::de::from_slice;
                 use serde_cbor::value::Value;
                 // Pretty-print difference
-                assert_eq_pretty!(
+                assert_eq!(
                     from_slice::<Value>(&expr_data).unwrap(),
                     from_slice::<Value>(&expected_data).unwrap()
                 );
@@ -248,7 +243,7 @@ impl TestFile {
             if Self::force_update() {
                 self.write_ui(x)?;
             } else {
-                assert_eq_pretty_str!(expected, msg);
+                assert_eq!(@display, expected, msg);
             }
         }
         Ok(())
@@ -296,6 +291,16 @@ struct SpecTest {
     input: TestFile,
     output: TestFile,
 }
+
+#[derive(Debug, Clone)]
+struct TestError(String);
+
+impl std::fmt::Display for TestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+impl std::error::Error for TestError {}
 
 fn dhall_files_in_dir<'a>(
     dir: &'a Path,
@@ -555,7 +560,7 @@ fn define_features() -> Vec<TestFeature> {
     ]
 }
 
-fn run_test_or_panic(test: &SpecTest) {
+fn run_test_stringy_error(test: &SpecTest) -> std::result::Result<(), String> {
     let res = if env::var("CI_GRCOV").is_ok() {
         let test: SpecTest = test.clone();
         // Augment stack size when running with 0 inlining to avoid overflows
@@ -568,10 +573,7 @@ fn run_test_or_panic(test: &SpecTest) {
     } else {
         run_test(test)
     };
-    match res {
-        Ok(_) => {}
-        Err(e) => panic!(e.to_string()),
-    }
+    res.map_err(|e| e.to_string())
 }
 
 fn run_test(test: &SpecTest) -> Result<()> {
@@ -599,10 +601,17 @@ fn run_test(test: &SpecTest) -> Result<()> {
         ParserFailure => {
             use std::io;
             let err = expr.parse().unwrap_err();
-            match err.kind() {
-                ErrorKind::Parse(_) => {}
-                ErrorKind::IO(e) if e.kind() == io::ErrorKind::InvalidData => {}
-                e => panic!("Expected parse error, got: {:?}", e),
+            match err.downcast_ref::<DhallError>() {
+                Some(err) => match err.kind() {
+                    ErrorKind::Parse(_) => {}
+                    ErrorKind::IO(e)
+                        if e.kind() == io::ErrorKind::InvalidData => {}
+                    e => Err(TestError(format!(
+                        "Expected parse error, got: {:?}",
+                        e
+                    )))?,
+                },
+                None => {}
             }
             expected.compare_ui(err)?;
         }
@@ -675,10 +684,11 @@ fn main() {
         .flat_map(discover_tests_for_feature)
         .collect();
 
-    let args = Arguments::from_args();
-    run_tests(&args, tests, |test| {
-        run_test_or_panic(&test.data);
-        Outcome::Passed
+    libtest_mimic::run_tests(&Arguments::from_args(), tests, |test| {
+        match run_test_stringy_error(&test.data) {
+            Ok(_) => Outcome::Passed,
+            Err(e) => Outcome::Failed { msg: Some(e) },
+        }
     })
     .exit();
 }
