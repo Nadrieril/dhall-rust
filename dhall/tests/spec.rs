@@ -1,17 +1,18 @@
 use std::env;
 use std::ffi::OsString;
+use std::fmt::Display;
 use std::fs::{create_dir_all, read_to_string, File};
-use std::io::{Read, BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::fmt::Display;
 
-use walkdir::WalkDir;
-use libtest_mimic::{Arguments, Outcome, Test, run_tests};
 #[cfg(not(test))]
 use assert_eq as assert_eq_pretty;
 #[cfg(test)]
 use pretty_assertions::assert_eq as assert_eq_pretty;
+
+use libtest_mimic::{run_tests, Arguments, Outcome, Test};
+use walkdir::WalkDir;
 
 use dhall::error::{ErrorKind, Result};
 use dhall::syntax::{binary, Expr};
@@ -57,6 +58,9 @@ macro_rules! assert_eq_pretty_str {
     };
 }
 
+static LOCAL_TEST_PATH: &str = "tests/";
+static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileType {
     /// Dhall source file
@@ -85,20 +89,13 @@ impl FileType {
             FileType::UI => "txt",
         }
     }
-    fn constructor(self) -> &'static str {
-        match self {
-            FileType::Text => "TestFile::Source",
-            FileType::Binary => "TestFile::Binary",
-            FileType::Hash => "TestFile::Binary",
-            FileType::UI => "TestFile::UI",
-        }
-    }
     fn construct(self, path: &str) -> TestFile {
+        let file = format!("{}.{}", path, self.to_ext());
         match self {
-            FileType::Text => TestFile::Source(format!("{}.{}", path, self.to_ext())),
-            FileType::Binary => TestFile::Binary(format!("{}.{}", path, self.to_ext())),
-            FileType::Hash => TestFile::Binary(format!("{}.{}", path, self.to_ext())),
-            FileType::UI => TestFile::UI(format!("{}.{}", path, self.to_ext())),
+            FileType::Text => TestFile::Source(file),
+            FileType::Binary => TestFile::Binary(file),
+            FileType::Hash => TestFile::Binary(file),
+            FileType::UI => TestFile::UI(file),
         }
     }
 }
@@ -264,308 +261,40 @@ struct TestFeature {
     module_name: &'static str,
     /// Directory containing the tests files, relative to the base tests directory
     directory: &'static str,
-    /// Relevant variant of `dhall::tests::Test`
-    variant: Rc<dyn Fn(TestFile, TestFile) -> SpecTest>,
+    /// Relevant variant of `dhall::tests::SpecTestKind`
+    variant: SpecTestKind,
     /// Given a file name, whether to only include it in release tests
     too_slow_path: Rc<dyn Fn(&str) -> bool>,
     /// Given a file name, whether to exclude it
     exclude_path: Rc<dyn Fn(&str) -> bool>,
     /// Type of the input file
     input_type: FileType,
-    /// Type of the output file, if any
-    output_type: Option<FileType>,
+    /// Type of the output file
+    output_type: FileType,
+}
+
+#[derive(Clone, Copy)]
+enum SpecTestKind {
+    ParserSuccess,
+    ParserFailure,
+    Printer,
+    BinaryEncoding,
+    BinaryDecodingSuccess,
+    BinaryDecodingFailure,
+    ImportSuccess,
+    ImportFailure,
+    SemanticHash,
+    TypeInferenceSuccess,
+    TypeInferenceFailure,
+    Normalization,
+    AlphaNormalization,
 }
 
 #[derive(Clone)]
-enum SpecTest {
-    ParserSuccess(TestFile, TestFile),
-    ParserFailure(TestFile, TestFile),
-    Printer(TestFile, TestFile),
-    BinaryEncoding(TestFile, TestFile),
-    BinaryDecodingSuccess(TestFile, TestFile),
-    BinaryDecodingFailure(TestFile, TestFile),
-    ImportSuccess(TestFile, TestFile),
-    ImportFailure(TestFile, TestFile),
-    SemanticHash(TestFile, TestFile),
-    TypeInferenceSuccess(TestFile, TestFile),
-    TypeInferenceFailure(TestFile, TestFile),
-    Normalization(TestFile, TestFile),
-    AlphaNormalization(TestFile, TestFile),
-}
-
-fn define_features() -> Vec<TestFeature> {
-    let default_feature = TestFeature {
-        module_name: "",
-        directory: "",
-        variant: Rc::new(|_, _| panic!()),
-        too_slow_path: Rc::new(|_path: &str| false),
-        exclude_path: Rc::new(|_path: &str| false),
-        input_type: FileType::Text,
-        output_type: None,
-    };
-
-    #[allow(clippy::nonminimal_bool)]
-    vec![
-        TestFeature {
-            module_name: "parser_success",
-            directory: "parser/success/",
-            variant: Rc::new(SpecTest::ParserSuccess),
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-            }),
-            output_type: Some(FileType::Binary),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "parser_failure",
-            directory: "parser/failure/",
-            variant: Rc::new(SpecTest::ParserFailure),
-            output_type: Some(FileType::UI),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "printer",
-            directory: "parser/success/",
-            variant: Rc::new(SpecTest::Printer),
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            output_type: Some(FileType::UI),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_encoding",
-            directory: "parser/success/",
-            variant: Rc::new(SpecTest::BinaryEncoding),
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "double"
-                    || path == "unit/DoubleLitExponentNoDot"
-                    || path == "unit/DoubleLitSecretelyInt"
-            }),
-            output_type: Some(FileType::Binary),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_decoding_success",
-            directory: "binary-decode/success/",
-            variant: Rc::new(SpecTest::BinaryDecodingSuccess),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // We don't support bignums
-                    || path == "unit/IntegerBigNegative"
-                    || path == "unit/IntegerBigPositive"
-                    || path == "unit/NaturalBig"
-            }),
-            input_type: FileType::Binary,
-            output_type: Some(FileType::Text),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_decoding_failure",
-            directory: "binary-decode/failure/",
-            variant: Rc::new(SpecTest::BinaryDecodingFailure),
-            input_type: FileType::Binary,
-            output_type: Some(FileType::UI),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "import_success",
-            directory: "import/success/",
-            variant: Rc::new(SpecTest::ImportSuccess),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: import hash
-                    || path == "hashFromCache"
-                    // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
-                    || path == "unit/asLocation/RemoteCanonicalize4"
-                    // TODO: import headers
-                    || path == "customHeaders"
-                    || path == "headerForwarding"
-                    || path == "noHeaderForwarding"
-            }),
-            output_type: Some(FileType::Text),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "import_failure",
-            directory: "import/failure/",
-            variant: Rc::new(SpecTest::ImportFailure),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: import headers
-                    || path == "customHeadersUsingBoundVariable"
-            }),
-            output_type: Some(FileType::UI),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "semantic_hash",
-            directory: "semantic-hash/success/",
-            variant: Rc::new(SpecTest::SemanticHash),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // We don't support bignums
-                    || path == "simple/integerToDouble"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "prelude/Integer/toDouble/0"
-                    || path == "prelude/Integer/toDouble/1"
-                    || path == "prelude/Natural/toDouble/0"
-            }),
-            output_type: Some(FileType::Hash),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "beta_normalize",
-            directory: "normalization/success/",
-            variant: Rc::new(SpecTest::Normalization),
-            too_slow_path: Rc::new(|path: &str| path == "remoteSystems"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Cannot typecheck
-                    || path == "unit/Sort"
-                    // We don't support bignums
-                    || path == "simple/integerToDouble"
-                    // TODO: fix Double/show
-                    || path == "prelude/JSON/number/1"
-            }),
-            output_type: Some(FileType::Text),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "alpha_normalize",
-            directory: "alpha-normalization/success/",
-            variant: Rc::new(SpecTest::AlphaNormalization),
-            exclude_path: Rc::new(|path: &str| {
-                // This test is designed to not typecheck
-                path == "unit/FunctionNestedBindingXXFree"
-            }),
-            output_type: Some(FileType::Text),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "type_inference_success",
-            directory: "type-inference/success/",
-            variant: Rc::new(SpecTest::TypeInferenceSuccess),
-            too_slow_path: Rc::new(|path: &str| path == "prelude"),
-            output_type: Some(FileType::Text),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "type_inference_failure",
-            directory: "type-inference/failure/",
-            variant: Rc::new(SpecTest::TypeInferenceFailure),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: enable free variable checking
-                    || path == "unit/MergeHandlerFreeVar"
-            }),
-            output_type: Some(FileType::UI),
-            ..default_feature
-        },
-    ]
-}
-
-fn run_test_or_panic(test: &SpecTest) {
-    let res = if env::var("CI_GRCOV").is_ok() {
-        let test: SpecTest = test.clone();
-        // Augment stack size when running with 0 inlining to avoid overflows
-        std::thread::Builder::new()
-            .stack_size(128 * 1024 * 1024)
-            .spawn(move || run_test(&test))
-            .unwrap()
-            .join()
-            .unwrap()
-    } else {
-        run_test(test)
-    };
-    match res {
-        Ok(_) => {}
-        Err(e) => panic!(e.to_string()),
-    }
-}
-
-fn run_test(test: &SpecTest) -> Result<()> {
-    use self::SpecTest::*;
-    // Setup current directory to the root of the repository. Important for `as Location` tests.
-    env::set_current_dir(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap(),
-    )?;
-    // Set environment variable for import tests.
-    env::set_var("DHALL_TEST_VAR", "6 * 7");
-
-    match test {
-        ParserSuccess(expr, expected) => {
-            let expr = expr.parse()?;
-            // This exercices both parsing and binary decoding
-            expected.compare_debug(expr)?;
-        }
-        ParserFailure(expr, expected) => {
-            use std::io;
-            let err = expr.parse().unwrap_err();
-            match err.kind() {
-                ErrorKind::Parse(_) => {}
-                ErrorKind::IO(e) if e.kind() == io::ErrorKind::InvalidData => {}
-                e => panic!("Expected parse error, got: {:?}", e),
-            }
-            expected.compare_ui(err)?;
-        }
-        BinaryEncoding(expr, expected) => {
-            let expr = expr.parse()?;
-            expected.compare_binary(expr)?;
-        }
-        BinaryDecodingSuccess(expr, expected) => {
-            let expr = expr.parse()?;
-            expected.compare_debug(expr)?;
-        }
-        BinaryDecodingFailure(expr, expected) => {
-            let err = expr.parse().unwrap_err();
-            expected.compare_ui(err)?;
-        }
-        Printer(expr, expected) => {
-            let parsed = expr.parse()?;
-            // Round-trip pretty-printer
-            let reparsed = Parsed::parse_str(&parsed.to_string())?;
-            assert_eq!(reparsed, parsed);
-            expected.compare_ui(parsed)?;
-        }
-        ImportSuccess(expr, expected) => {
-            let expr = expr.normalize()?;
-            expected.compare(expr)?;
-        }
-        ImportFailure(expr, expected) => {
-            let err = expr.resolve().unwrap_err();
-            expected.compare_ui(err)?;
-        }
-        SemanticHash(expr, expected) => {
-            let expr = expr.normalize()?.to_expr_alpha();
-            let hash = hex::encode(expr.hash()?);
-            expected.compare_ui(format!("sha256:{}", hash))?;
-        }
-        TypeInferenceSuccess(expr, expected) => {
-            let ty = expr.typecheck()?.get_type()?;
-            expected.compare(ty)?;
-        }
-        TypeInferenceFailure(expr, expected) => {
-            let err = expr.typecheck().unwrap_err();
-            expected.compare_ui(err)?;
-        }
-        Normalization(expr, expected) => {
-            let expr = expr.normalize()?;
-            expected.compare(expr)?;
-        }
-        AlphaNormalization(expr, expected) => {
-            let expr = expr.normalize()?.to_expr_alpha();
-            expected.compare(expr)?;
-        }
-    }
-
-    Ok(())
+struct SpecTest {
+    kind: SpecTestKind,
+    input: TestFile,
+    output: TestFile,
 }
 
 fn dhall_files_in_dir<'a>(
@@ -597,18 +326,15 @@ fn dhall_files_in_dir<'a>(
         })
 }
 
-fn make_test_module(
-    tests: &mut Vec<Test<SpecTest>>,
-    base_paths: &[&Path],
-    feature: TestFeature,
-) -> std::io::Result<()> {
-    let take_ab_suffix = feature.output_type.is_some()
-        && (feature.output_type != Some(FileType::UI)
-            || feature.module_name == "printer");
+fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
+    let take_ab_suffix =
+        feature.output_type != FileType::UI || feature.module_name == "printer";
     let input_suffix = if take_ab_suffix { "A" } else { "" };
     let output_suffix = if take_ab_suffix { "B" } else { "" };
 
-    for base_path in base_paths {
+    let mut tests = Vec::new();
+    for base_path in TEST_PATHS {
+        let base_path = Path::new(base_path);
         let tests_dir = base_path.join(feature.directory);
         for (name, path) in
             dhall_files_in_dir(&tests_dir, take_ab_suffix, feature.input_type)
@@ -616,71 +342,333 @@ fn make_test_module(
             if (feature.exclude_path)(&path) {
                 continue;
             }
-            if (feature.too_slow_path)(&path) {
-                #[cfg(debug_assertions)]
+            if (feature.too_slow_path)(&path) && cfg!(debug_assertions) {
                 continue;
             }
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
 
-            let input = feature
-                .input_type
-                .construct(&format!("{}{}", path, input_suffix));
-            let output = match feature.output_type {
-                None => None,
-                Some(output_type @ FileType::UI) => {
-                    // All ui outputs are in the local `tests/` directory.
-                    let path = PathBuf::from("tests/").join(
+            let output_path = match feature.output_type {
+                FileType::UI => {
+                    // All ui outputs are in the local tests directory.
+                    let path = PathBuf::from(LOCAL_TEST_PATH).join(
                         PathBuf::from(path.as_ref())
                             .strip_prefix(base_path)
                             .unwrap(),
                     );
-                    let path = path.to_str().unwrap();
-                    let output = output_type
-                        .construct(&format!("{}{}", path, output_suffix));
-                    Some(output)
+                    path.to_str().unwrap().to_owned()
                 }
-                Some(output_type) => {
-                    let output = output_type
-                        .construct(&format!("{}{}", path, output_suffix));
-                    Some(output)
-                }
+                _ => path.as_ref().to_owned(),
             };
 
-            let test = match output {
-                None => panic!(),
-                Some(output) => {
-                    (feature.variant)(input, output)
-                }
-            };
+            let input = feature
+                .input_type
+                .construct(&format!("{}{}", path, input_suffix));
+            let output = feature
+                .output_type
+                .construct(&format!("{}{}", output_path, output_suffix));
+
             tests.push(Test {
                 name: format!("{}::{}", feature.module_name, name),
                 kind: "".into(),
                 is_ignored: false,
                 is_bench: false,
-                data: test,
+                data: SpecTest {
+                    input,
+                    output,
+                    kind: feature.variant,
+                },
             });
         }
-    }
-    Ok(())
-}
-
-fn generate_tests() -> Vec<Test<SpecTest>> {
-    let spec_tests_dirs =
-        vec![Path::new("../dhall-lang/tests/"), Path::new("tests/")];
-
-    let features = define_features();
-
-    let mut tests = Vec::new();
-    for feature in features {
-        make_test_module(&mut tests, &spec_tests_dirs, feature).unwrap();
     }
     tests
 }
 
+fn define_features() -> Vec<TestFeature> {
+    let default_feature = TestFeature {
+        module_name: "",
+        directory: "",
+        variant: SpecTestKind::ParserSuccess, // Dummy
+        too_slow_path: Rc::new(|_path: &str| false),
+        exclude_path: Rc::new(|_path: &str| false),
+        input_type: FileType::Text,
+        output_type: FileType::Text,
+    };
+
+    #[allow(clippy::nonminimal_bool)]
+    vec![
+        TestFeature {
+            module_name: "parser_success",
+            directory: "parser/success/",
+            variant: SpecTestKind::ParserSuccess,
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // Pretty sure the test is incorrect
+                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
+            }),
+            output_type: FileType::Binary,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "parser_failure",
+            directory: "parser/failure/",
+            variant: SpecTestKind::ParserFailure,
+            output_type: FileType::UI,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "printer",
+            directory: "parser/success/",
+            variant: SpecTestKind::Printer,
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
+            output_type: FileType::UI,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "binary_encoding",
+            directory: "parser/success/",
+            variant: SpecTestKind::BinaryEncoding,
+            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // Pretty sure the test is incorrect
+                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
+                    // See https://github.com/pyfisch/cbor/issues/109
+                    || path == "double"
+                    || path == "unit/DoubleLitExponentNoDot"
+                    || path == "unit/DoubleLitSecretelyInt"
+            }),
+            output_type: FileType::Binary,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "binary_decoding_success",
+            directory: "binary-decode/success/",
+            variant: SpecTestKind::BinaryDecodingSuccess,
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "unit/IntegerBigNegative"
+                    || path == "unit/IntegerBigPositive"
+                    || path == "unit/NaturalBig"
+            }),
+            input_type: FileType::Binary,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "binary_decoding_failure",
+            directory: "binary-decode/failure/",
+            variant: SpecTestKind::BinaryDecodingFailure,
+            input_type: FileType::Binary,
+            output_type: FileType::UI,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "import_success",
+            directory: "import/success/",
+            variant: SpecTestKind::ImportSuccess,
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // TODO: import hash
+                    || path == "hashFromCache"
+                    // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
+                    || path == "unit/asLocation/RemoteCanonicalize4"
+                    // TODO: import headers
+                    || path == "customHeaders"
+                    || path == "headerForwarding"
+                    || path == "noHeaderForwarding"
+            }),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "import_failure",
+            directory: "import/failure/",
+            variant: SpecTestKind::ImportFailure,
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // TODO: import headers
+                    || path == "customHeadersUsingBoundVariable"
+            }),
+            output_type: FileType::UI,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "semantic_hash",
+            directory: "semantic-hash/success/",
+            variant: SpecTestKind::SemanticHash,
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // We don't support bignums
+                    || path == "simple/integerToDouble"
+                    // See https://github.com/pyfisch/cbor/issues/109
+                    || path == "prelude/Integer/toDouble/0"
+                    || path == "prelude/Integer/toDouble/1"
+                    || path == "prelude/Natural/toDouble/0"
+            }),
+            output_type: FileType::Hash,
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "beta_normalize",
+            directory: "normalization/success/",
+            variant: SpecTestKind::Normalization,
+            too_slow_path: Rc::new(|path: &str| path == "remoteSystems"),
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // Cannot typecheck
+                    || path == "unit/Sort"
+                    // We don't support bignums
+                    || path == "simple/integerToDouble"
+                    // TODO: fix Double/show
+                    || path == "prelude/JSON/number/1"
+            }),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "alpha_normalize",
+            directory: "alpha-normalization/success/",
+            variant: SpecTestKind::AlphaNormalization,
+            exclude_path: Rc::new(|path: &str| {
+                // This test is designed to not typecheck
+                path == "unit/FunctionNestedBindingXXFree"
+            }),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "type_inference_success",
+            directory: "type-inference/success/",
+            variant: SpecTestKind::TypeInferenceSuccess,
+            too_slow_path: Rc::new(|path: &str| path == "prelude"),
+            ..default_feature.clone()
+        },
+        TestFeature {
+            module_name: "type_inference_failure",
+            directory: "type-inference/failure/",
+            variant: SpecTestKind::TypeInferenceFailure,
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    // TODO: enable free variable checking
+                    || path == "unit/MergeHandlerFreeVar"
+            }),
+            output_type: FileType::UI,
+            ..default_feature
+        },
+    ]
+}
+
+fn run_test_or_panic(test: &SpecTest) {
+    let res = if env::var("CI_GRCOV").is_ok() {
+        let test: SpecTest = test.clone();
+        // Augment stack size when running with 0 inlining to avoid overflows
+        std::thread::Builder::new()
+            .stack_size(128 * 1024 * 1024)
+            .spawn(move || run_test(&test))
+            .unwrap()
+            .join()
+            .unwrap()
+    } else {
+        run_test(test)
+    };
+    match res {
+        Ok(_) => {}
+        Err(e) => panic!(e.to_string()),
+    }
+}
+
+fn run_test(test: &SpecTest) -> Result<()> {
+    use self::SpecTestKind::*;
+    // Setup current directory to the root of the repository. Important for `as Location` tests.
+    env::set_current_dir(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap(),
+    )?;
+    // Set environment variable for import tests.
+    env::set_var("DHALL_TEST_VAR", "6 * 7");
+
+    let SpecTest {
+        input: expr,
+        output: expected,
+        ..
+    } = test;
+    match test.kind {
+        ParserSuccess => {
+            let expr = expr.parse()?;
+            // This exercices both parsing and binary decoding
+            expected.compare_debug(expr)?;
+        }
+        ParserFailure => {
+            use std::io;
+            let err = expr.parse().unwrap_err();
+            match err.kind() {
+                ErrorKind::Parse(_) => {}
+                ErrorKind::IO(e) if e.kind() == io::ErrorKind::InvalidData => {}
+                e => panic!("Expected parse error, got: {:?}", e),
+            }
+            expected.compare_ui(err)?;
+        }
+        BinaryEncoding => {
+            let expr = expr.parse()?;
+            expected.compare_binary(expr)?;
+        }
+        BinaryDecodingSuccess => {
+            let expr = expr.parse()?;
+            expected.compare_debug(expr)?;
+        }
+        BinaryDecodingFailure => {
+            let err = expr.parse().unwrap_err();
+            expected.compare_ui(err)?;
+        }
+        Printer => {
+            let parsed = expr.parse()?;
+            // Round-trip pretty-printer
+            let reparsed = Parsed::parse_str(&parsed.to_string())?;
+            assert_eq!(reparsed, parsed);
+            expected.compare_ui(parsed)?;
+        }
+        ImportSuccess => {
+            let expr = expr.normalize()?;
+            expected.compare(expr)?;
+        }
+        ImportFailure => {
+            let err = expr.resolve().unwrap_err();
+            expected.compare_ui(err)?;
+        }
+        SemanticHash => {
+            let expr = expr.normalize()?.to_expr_alpha();
+            let hash = hex::encode(expr.hash()?);
+            expected.compare_ui(format!("sha256:{}", hash))?;
+        }
+        TypeInferenceSuccess => {
+            let ty = expr.typecheck()?.get_type()?;
+            expected.compare(ty)?;
+        }
+        TypeInferenceFailure => {
+            let err = expr.typecheck().unwrap_err();
+            expected.compare_ui(err)?;
+        }
+        Normalization => {
+            let expr = expr.normalize()?;
+            expected.compare(expr)?;
+        }
+        AlphaNormalization => {
+            let expr = expr.normalize()?.to_expr_alpha();
+            expected.compare(expr)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn main() {
-    let tests = generate_tests();
+    let tests = define_features()
+        .into_iter()
+        .flat_map(discover_tests_for_feature)
+        .collect();
 
     let args = Arguments::from_args();
-    run_tests(&args, tests, |test| { run_test_or_panic(&test.data); Outcome::Passed }).exit();
+    run_tests(&args, tests, |test| {
+        run_test_or_panic(&test.data);
+        Outcome::Passed
+    })
+    .exit();
 }
