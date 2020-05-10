@@ -348,7 +348,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
-            Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as isize))),
+            Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as i64))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalShow, [n]) => match &*n.kind() {
@@ -449,7 +449,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         }
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
             EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
-            NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len()))),
+            NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len() as u64))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListHead, [_, l]) => match &*l.kind() {
@@ -495,7 +495,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Nir::from_kind(Num(Natural(i))),
+                                        Nir::from_kind(Num(Natural(i as u64))),
                                     );
                                     kvs.insert("value".into(), e.clone());
                                     Nir::from_kind(RecordLit(kvs))

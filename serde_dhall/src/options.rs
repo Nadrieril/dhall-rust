@@ -76,7 +76,7 @@ impl<T: StaticType> HasAnnot<StaticAnnot> for T {
 /// let ty = from_str("{ x: Natural, y: Natural }").parse()?;
 /// let data = from_file("foo.dhall")
 ///             .type_annotation(&ty)
-///             .parse::<HashMap<String, usize>>()?;
+///             .parse::<HashMap<String, u64>>()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -130,7 +130,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// let data = "{ x = 1, y = 1 + 1 }";
     /// let point = from_str(data)
     ///     .type_annotation(&ty)
-    ///     .parse::<HashMap<String, usize>>()?;
+    ///     .parse::<HashMap<String, u64>>()?;
     /// assert_eq!(point.get("y"), Some(&2));
     ///
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
@@ -138,7 +138,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// assert!(
     ///     from_str(invalid_data)
     ///         .type_annotation(&ty)
-    ///         .parse::<HashMap<String, usize>>()
+    ///         .parse::<HashMap<String, u64>>()
     ///         .is_err()
     /// );
     /// # Ok(())

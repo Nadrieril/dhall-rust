@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::convert::TryInto as _;
 use std::fmt;
 
 use serde::de::value::{
@@ -124,31 +123,14 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     where
         V: serde::de::Visitor<'de>,
     {
-        use std::convert::TryInto;
         use NumKind::*;
         use SimpleValue::*;
 
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.as_ref() {
             Num(Bool(x)) => visitor.visit_bool(*x),
-            Num(Natural(x)) => {
-                if let Ok(x64) = (*x).try_into() {
-                    visitor.visit_u64(x64)
-                } else if let Ok(x32) = (*x).try_into() {
-                    visitor.visit_u32(x32)
-                } else {
-                    unimplemented!()
-                }
-            }
-            Num(Integer(x)) => {
-                if let Ok(x64) = (*x).try_into() {
-                    visitor.visit_i64(x64)
-                } else if let Ok(x32) = (*x).try_into() {
-                    visitor.visit_i32(x32)
-                } else {
-                    unimplemented!()
-                }
-            }
+            Num(Natural(x)) => visitor.visit_u64(*x),
+            Num(Integer(x)) => visitor.visit_i64(*x),
             Num(Double(x)) => visitor.visit_f64((*x).into()),
             Text(x) => visitor.visit_str(x),
             List(xs) => {
@@ -210,17 +192,11 @@ impl<'de> serde::de::Visitor<'de> for SimpleValueVisitor {
     }
 
     fn visit_i64<E>(self, value: i64) -> Result<SimpleValue, E> {
-        // TODO: use `i64` instead of `isize` in `NumKind`.
-        Ok(SimpleValue::Num(NumKind::Integer(
-            value.try_into().unwrap(),
-        )))
+        Ok(SimpleValue::Num(NumKind::Integer(value)))
     }
 
     fn visit_u64<E>(self, value: u64) -> Result<SimpleValue, E> {
-        // TODO: use `u64` instead of `usize` in `NumKind`.
-        Ok(SimpleValue::Num(NumKind::Natural(
-            value.try_into().unwrap(),
-        )))
+        Ok(SimpleValue::Num(NumKind::Natural(value)))
     }
 
     fn visit_f64<E>(self, value: f64) -> Result<SimpleValue, E> {
