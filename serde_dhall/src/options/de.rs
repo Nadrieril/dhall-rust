@@ -19,20 +19,20 @@ pub struct ManualAnnot<'ty>(&'ty SimpleType);
 #[derive(Debug, Clone, Copy)]
 pub struct StaticAnnot;
 
-pub trait HasAnnot<A> {
+pub trait OptionalAnnot<A> {
     fn get_annot(a: &A) -> Option<SimpleType>;
 }
-impl<T> HasAnnot<NoAnnot> for T {
+impl<T> OptionalAnnot<NoAnnot> for T {
     fn get_annot(_: &NoAnnot) -> Option<SimpleType> {
         None
     }
 }
-impl<'ty, T> HasAnnot<ManualAnnot<'ty>> for T {
+impl<'ty, T> OptionalAnnot<ManualAnnot<'ty>> for T {
     fn get_annot(a: &ManualAnnot<'ty>) -> Option<SimpleType> {
         Some(a.0.clone())
     }
 }
-impl<T: StaticType> HasAnnot<StaticAnnot> for T {
+impl<T: StaticType> OptionalAnnot<StaticAnnot> for T {
     fn get_annot(_: &StaticAnnot) -> Option<SimpleType> {
         Some(T::static_type())
     }
@@ -252,7 +252,7 @@ impl<'a, A> Deserializer<'a, A> {
 
     fn _parse<T>(&self) -> dhall::error::Result<Value>
     where
-        T: HasAnnot<A>,
+        T: OptionalAnnot<A>,
     {
         let parsed = match &self.source {
             Source::Str(s) => Parsed::parse_str(s)?,
@@ -287,7 +287,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// [`StaticType`]: trait.StaticType.html
     pub fn parse<T>(&self) -> Result<T>
     where
-        T: FromDhall + HasAnnot<A>,
+        T: FromDhall + OptionalAnnot<A>,
     {
         let val = self
             ._parse::<T>()

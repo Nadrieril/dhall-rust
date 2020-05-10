@@ -169,6 +169,7 @@ mod test_readme {
 mod deserialize;
 mod error;
 mod options;
+mod serialize;
 mod static_type;
 /// Dhall values
 mod value;
@@ -176,10 +177,11 @@ mod value;
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
 
-pub(crate) use deserialize::Sealed;
 pub use deserialize::{from_simple_value, FromDhall};
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
-pub use options::{from_file, from_str, Deserializer};
+pub use options::de::{from_file, from_str, Deserializer};
+pub use options::ser::{serialize, Serializer};
+pub use serialize::ToDhall;
 pub use static_type::StaticType;
 pub use value::{NumKind, SimpleType, SimpleValue, Value};

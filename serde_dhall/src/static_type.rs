@@ -103,6 +103,26 @@ derive_builtin!(i32, Integer);
 derive_builtin!(f64, Double);
 derive_builtin!(f32, Double);
 derive_builtin!(String, Text);
+derive_builtin!(&str, Text);
+
+impl StaticType for () {
+    fn static_type() -> SimpleType {
+        SimpleType::Record(vec![].into_iter().collect())
+    }
+}
+
+impl<A> StaticType for (A,)
+where
+    A: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![("_1".to_owned(), A::static_type())]
+                .into_iter()
+                .collect(),
+        )
+    }
+}
 
 impl<A, B> StaticType for (A, B)
 where
@@ -114,6 +134,46 @@ where
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    }
+}
+
+impl<A, B, C> StaticType for (A, B, C)
+where
+    A: StaticType,
+    B: StaticType,
+    C: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![
+                ("_1".to_owned(), A::static_type()),
+                ("_2".to_owned(), B::static_type()),
+                ("_3".to_owned(), C::static_type()),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    }
+}
+
+impl<A, B, C, D> StaticType for (A, B, C, D)
+where
+    A: StaticType,
+    B: StaticType,
+    C: StaticType,
+    D: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![
+                ("_1".to_owned(), A::static_type()),
+                ("_2".to_owned(), B::static_type()),
+                ("_3".to_owned(), C::static_type()),
+                ("_4".to_owned(), D::static_type()),
             ]
             .into_iter()
             .collect(),
