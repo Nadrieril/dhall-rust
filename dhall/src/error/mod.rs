@@ -22,6 +22,7 @@ pub enum ErrorKind {
     Encode(EncodeError),
     Resolve(ImportError),
     Typecheck(TypeError),
+    Cache(CacheError),
 }
 
 #[derive(Debug)]
@@ -55,6 +56,13 @@ pub struct TypeError {
 #[derive(Debug)]
 pub enum TypeMessage {
     Custom(String),
+}
+
+#[derive(Debug)]
+pub enum CacheError {
+    MissingConfiguration,
+    InitialisationError { cause: IOError },
+    CacheHashInvalid
 }
 
 impl Error {
@@ -93,6 +101,7 @@ impl std::fmt::Display for Error {
             ErrorKind::Encode(err) => write!(f, "{:?}", err),
             ErrorKind::Resolve(err) => write!(f, "{:?}", err),
             ErrorKind::Typecheck(err) => write!(f, "{}", err),
+            ErrorKind::Cache(err) => write!(f, "{:?}", err),
         }
     }
 }
@@ -136,5 +145,10 @@ impl From<ImportError> for Error {
 impl From<TypeError> for Error {
     fn from(err: TypeError) -> Error {
         ErrorKind::Typecheck(err).into()
+    }
+}
+impl From<CacheError> for Error {
+    fn from(err: CacheError) -> Error {
+        ErrorKind::Cache(err).into()
     }
 }

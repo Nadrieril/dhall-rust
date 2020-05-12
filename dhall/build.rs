@@ -250,8 +250,6 @@ fn generate_tests() -> std::io::Result<()> {
             variant: "ImportSuccess",
             exclude_path: Rc::new(|path: &str| {
                 false
-                    // TODO: import hash
-                    || path == "hashFromCache"
                     // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
                     || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
