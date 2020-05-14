@@ -1,6 +1,6 @@
 use std::env;
 use std::io::Write;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
 use crate::error::{CacheError, Error, ErrorKind};
 use crate::parse::parse_binary_file;
@@ -56,8 +56,11 @@ impl Cache {
 
 impl Cache {
     fn cache_file(&self, import: &Import) -> Option<PathBuf> {
-        self.cache_dir.as_ref()
-            .and_then(|cache_dir| import.hash.as_ref().map(|hash| (cache_dir, hash)))
+        self.cache_dir
+            .as_ref()
+            .and_then(|cache_dir| {
+                import.hash.as_ref().map(|hash| (cache_dir, hash))
+            })
             .map(|(cache_dir, hash)| cache_dir.join(cache_filename(hash)))
     }
 
@@ -80,22 +83,29 @@ impl Cache {
     // Side effect since we don't use the result
     fn save_expr(&self, import: &Import, expr: &Expr) {
         self.cache_file(import)
-            .map(|cache_file| {
-                save_expr(cache_file.as_path(), expr)
-            });
+            .map(|cache_file| save_expr(cache_file.as_path(), expr));
     }
 
-    pub fn caching_import<F, R>(&self, import: &Import, fetcher: F, mut resolver: R) -> Result<TypedHir, Error>
-        where F: FnOnce() -> Result<Parsed, Error>,
-              R: FnMut(Parsed) -> Result<TypedHir, Error> {
+    pub fn caching_import<F, R>(
+        &self,
+        import: &Import,
+        fetcher: F,
+        mut resolver: R,
+    ) -> Result<TypedHir, Error>
+    where
+        F: FnOnce() -> Result<Parsed, Error>,
+        R: FnMut(Parsed) -> Result<TypedHir, Error>,
+    {
         // Lookup the cache
         self.search_cache(import)
             // On cache found
             .and_then(|cache_result| {
                 // Try to resolve the cache imported content
-                match cache_result.and_then(|parsed| resolver(parsed))
-                    .and_then(|typed_hir| check_hash(import.hash.as_ref().unwrap(), typed_hir))
-                {
+                match cache_result.and_then(|parsed| resolver(parsed)).and_then(
+                    |typed_hir| {
+                        check_hash(import.hash.as_ref().unwrap(), typed_hir)
+                    },
+                ) {
                     // Cache content is invalid (can't be parsed / can't be resolved / content sha invalid )
                     Err(_) => {
                         // Delete cache file since it's invalid
@@ -104,23 +114,23 @@ impl Cache {
                         None
                     }
                     // Cache valid
-                    r => {
-                        Some(r)
-                    }
+                    r => Some(r),
                 }
-            }).unwrap_or_else(|| {
-            // Fetch and resolve as provided
-            let imported = fetcher().and_then(resolver);
-            // Save in cache the result if ok
-            let _ = imported.as_ref().map(|(hir, _)| self.save_expr(import, &hir.to_expr_noopts()));
-            imported
-        })
+            })
+            .unwrap_or_else(|| {
+                // Fetch and resolve as provided
+                let imported = fetcher().and_then(resolver);
+                // Save in cache the result if ok
+                let _ = imported.as_ref().map(|(hir, _)| {
+                    self.save_expr(import, &hir.to_expr_noopts())
+                });
+                imported
+            })
     }
 }
 
 fn save_expr(file_path: &Path, expr: &Expr) -> Result<(), Error> {
-    File::create(file_path)?
-        .write_all(binary::encode(expr)?.as_slice())?;
+    File::create(file_path)?.write_all(binary::encode(expr)?.as_slice())?;
     Ok(())
 }
 

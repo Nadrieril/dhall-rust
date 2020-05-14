@@ -218,37 +218,38 @@ fn resolve_one_import(
     let location = location.chain(&import.location, do_sanity_check)?;
     env.handle_import(location.clone(), |env| match import.mode {
         ImportMode::Code => {
-                let (hir, ty) = cache.caching_import(
-                    import,
-                    || location.fetch_dhall(),
-                    |parsed| {
-                        let typed = resolve_with_env(env, cache, parsed)?.typecheck()?;
-                        let hir = typed.normalize().to_hir();
-                        Ok((hir, typed.ty))
+            let (hir, ty) = cache.caching_import(
+                import,
+                || location.fetch_dhall(),
+                |parsed| {
+                    let typed =
+                        resolve_with_env(env, cache, parsed)?.typecheck()?;
+                    let hir = typed.normalize().to_hir();
+                    Ok((hir, typed.ty))
+                },
+            )?;
+            match &import.hash {
+                Some(Hash::SHA256(hash)) => {
+                    let actual_hash = hir.to_expr_alpha().hash()?;
+                    if hash[..] != actual_hash[..] {
+                        mkerr(
+                            ErrorBuilder::new("hash mismatch")
+                                .span_err(span, "hash mismatch")
+                                .note(format!(
+                                    "Expected sha256:{}",
+                                    hex::encode(hash)
+                                ))
+                                .note(format!(
+                                    "Found    sha256:{}",
+                                    hex::encode(actual_hash)
+                                ))
+                                .format(),
+                        )?
                     }
-                )?;
-                match &import.hash {
-                    Some(Hash::SHA256(hash)) => {
-                        let actual_hash = hir.to_expr_alpha().hash()?;
-                        if hash[..] != actual_hash[..] {
-                            mkerr(
-                                ErrorBuilder::new("hash mismatch")
-                                    .span_err(span, "hash mismatch")
-                                    .note(format!(
-                                        "Expected sha256:{}",
-                                        hex::encode(hash)
-                                    ))
-                                    .note(format!(
-                                        "Found    sha256:{}",
-                                        hex::encode(actual_hash)
-                                    ))
-                                    .format(),
-                            )?
-                        }
-                    }
-                    None => {}
                 }
-                Ok((hir, ty))
+                None => {}
+            }
+            Ok((hir, ty))
         }
         ImportMode::RawText => {
             let text = location.fetch_text()?;
@@ -359,7 +360,9 @@ fn resolve_with_env(
     let resolved = traverse_resolve_expr(
         &mut NameEnv::new(),
         &expr,
-        &mut |import, span| resolve_one_import(env, cache, &import, &location, span),
+        &mut |import, span| {
+            resolve_one_import(env, cache, &import, &location, span)
+        },
     )?;
     Ok(Resolved(resolved))
 }

@@ -62,7 +62,7 @@ pub enum TypeMessage {
 pub enum CacheError {
     MissingConfiguration,
     InitialisationError { cause: IOError },
-    CacheHashInvalid
+    CacheHashInvalid,
 }
 
 impl Error {
