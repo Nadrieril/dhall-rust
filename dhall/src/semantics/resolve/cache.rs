@@ -176,6 +176,10 @@ impl AsRef<[u8]> for Hash {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::semantics::parse::parse_str;
+    use crate::syntax::{
+        parse_expr, ExprKind, ImportMode, ImportTarget, NumKind, Span,
+    };
     use rand::distributions::Alphanumeric;
     use rand::Rng;
     use std::env::temp_dir;
@@ -285,5 +289,399 @@ mod test {
             }
         );
         std::fs::remove_dir_all(dir.as_path()).unwrap();
+    }
+
+    #[test]
+    fn caching_import_should_load_cache() -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+
+        // Create cache file
+        let expr =
+            Expr::new(ExprKind::Num(NumKind::Natural(1)), Span::Artificial);
+        File::create(dir.join("dhall").join("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15"))?
+            .write_all(binary::encode(&expr)?.as_ref())?;
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || panic!("Should not fetch import"),
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(resolve_counter, 1);
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_skip_cache_if_missing_cache_folder(
+    ) -> Result<(), Error> {
+        let cache = Cache::new_with_provider(|_| Err(VarError::NotPresent));
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut resolve_counter = 0;
+        let mut fetcher_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(resolve_counter, 1);
+        assert_eq!(fetcher_counter, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_skip_cache_on_no_hash_import() -> Result<(), Error>
+    {
+        let cache = Cache::new_with_provider(|_| Err(VarError::NotPresent));
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: None,
+        };
+
+        let mut resolve_counter = 0;
+        let mut fetcher_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(resolve_counter, 1);
+        assert_eq!(fetcher_counter, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_fetch_import_if_no_cache() -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut fetcher_counter = 0;
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(resolve_counter, 1);
+        assert_eq!(fetcher_counter, 1);
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_fetch_import_on_cache_parsed_error(
+    ) -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+
+        File::create(dir.join("dhall").join("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15"))?
+            .write_all("Invalid content".as_bytes())?;
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut fetcher_counter = 0;
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(fetcher_counter, 1, "Should fetch since cache is invalid");
+        assert_eq!(
+            resolve_counter, 1,
+            "Should resolve only 1 time because cache can't be parsed"
+        );
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_fetch_import_on_cache_resolve_error(
+    ) -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+
+        let expr =
+            Expr::new(ExprKind::Num(NumKind::Natural(2)), Span::Artificial);
+        File::create(dir.join("dhall").join("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15"))?
+            .write_all(binary::encode(&expr)?.as_slice())?;
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut fetcher_counter = 0;
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                match resolve_counter {
+                    1 => Err(Error::new(ErrorKind::Cache(
+                        CacheError::CacheHashInvalid,
+                    ))),
+                    _ => {
+                        let result = parsed.resolve()?.typecheck()?;
+                        Ok((result.normalize().to_hir(), result.ty))
+                    }
+                }
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(fetcher_counter, 1, "Should fetch since cache is invalid");
+        assert_eq!(
+            resolve_counter, 2,
+            "Should resolve 2 time (one for cache that fail, one for fetch)"
+        );
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_fetch_import_on_invalid_hash_cache_content(
+    ) -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+
+        let expr =
+            Expr::new(ExprKind::Num(NumKind::Natural(2)), Span::Artificial);
+        File::create(dir.join("dhall").join("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15"))?
+            .write_all(binary::encode(&expr)?.as_slice())?;
+
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut fetcher_counter = 0;
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(fetcher_counter, 1, "Should fetch since cache is invalid");
+        assert_eq!(
+            resolve_counter, 2,
+            "Should resolve 2 time (one for cache, one for fetch)"
+        );
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn caching_import_should_save_import_if_missing() -> Result<(), Error> {
+        let test_id = rand::thread_rng()
+            .sample_iter(Alphanumeric)
+            .take(36)
+            .collect::<String>();
+        let dir = temp_dir().join(test_id);
+
+        std::fs::create_dir_all(dir.as_path())?;
+
+        let cache = Cache::new_with_provider(|_| {
+            Ok(dir.clone().to_str().map(String::from).unwrap())
+        });
+        let import = Import {
+            mode: ImportMode::Code,
+            location: ImportTarget::Missing,
+            hash: Some(Hash::SHA256(hex::decode("d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15").unwrap())),
+        };
+
+        let mut fetcher_counter = 0;
+        let mut resolve_counter = 0;
+
+        let result = cache.caching_import(
+            &import,
+            || {
+                fetcher_counter += 1;
+                parse_str("1")
+            },
+            |parsed| {
+                resolve_counter += 1;
+                let result = parsed.resolve()?.typecheck()?;
+                Ok((result.normalize().to_hir(), result.ty))
+            },
+        );
+
+        assert!(result.is_ok(), "caching_import Should be valid");
+        assert_eq!(fetcher_counter, 1, "Should fetch since cache is mising");
+        assert_eq!(resolve_counter, 1, "Should resolve 1 time");
+
+        let cache_file = dir.join("dhall").join("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15");
+        assert!(cache_file.exists());
+
+        std::fs::remove_dir_all(dir.as_path()).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn cache_filename_should_result_for_hash() {
+        let hash =
+            Hash::SHA256(parse_expr("1").unwrap().hash().unwrap().into_vec());
+        assert_eq!("1220d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe15".to_string(), cache_filename(hash));
+    }
+
+    #[test]
+    fn check_hash_should_be_ok_for_same_hash() -> Result<(), Error> {
+        let typed = parse_str("1")?.resolve()?.typecheck()?;
+        let hash = Hash::SHA256(parse_expr("1")?.hash()?.into_vec());
+
+        let expected = (typed.normalize().to_hir(), typed.ty);
+        let actual = check_hash(&hash, expected.clone());
+        assert_eq!(actual.unwrap(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn check_hash_should_be_ok_for_unmatching_hash() -> Result<(), Error> {
+        let typed = parse_str("1")?.resolve()?.typecheck()?;
+        let hash = Hash::SHA256(parse_expr("2")?.hash()?.into_vec());
+
+        let expected = (typed.normalize().to_hir(), typed.ty);
+        let actual = check_hash(&hash, expected);
+        assert!(actual.is_err());
+        Ok(())
     }
 }
