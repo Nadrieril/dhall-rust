@@ -9,7 +9,7 @@ use crate::builtins::Builtin;
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
+use crate::semantics::{mkerr, Cache, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
@@ -209,6 +209,7 @@ fn make_aslocation_uniontype() -> Expr {
 
 fn resolve_one_import(
     env: &mut ImportEnv,
+    cache: &Cache,
     import: &Import,
     location: &ImportLocation,
     span: Span,
@@ -217,10 +218,16 @@ fn resolve_one_import(
     let location = location.chain(&import.location, do_sanity_check)?;
     env.handle_import(location.clone(), |env| match import.mode {
         ImportMode::Code => {
-            let parsed = location.fetch_dhall()?;
-            let typed = resolve_with_env(env, parsed)?.typecheck()?;
-            let hir = typed.normalize().to_hir();
-            let ty = typed.ty().clone();
+            let (hir, ty) = cache.caching_import(
+                import,
+                || location.fetch_dhall(),
+                |parsed| {
+                    let typed =
+                        resolve_with_env(env, cache, parsed)?.typecheck()?;
+                    let hir = typed.normalize().to_hir();
+                    Ok((hir, typed.ty))
+                },
+            )?;
             match &import.hash {
                 Some(Hash::SHA256(hash)) => {
                     let actual_hash = hir.to_expr_alpha().hash()?;
@@ -346,19 +353,23 @@ fn traverse_resolve_expr(
 
 fn resolve_with_env(
     env: &mut ImportEnv,
+    cache: &Cache,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
     let Parsed(expr, location) = parsed;
     let resolved = traverse_resolve_expr(
         &mut NameEnv::new(),
         &expr,
-        &mut |import, span| resolve_one_import(env, &import, &location, span),
+        &mut |import, span| {
+            resolve_one_import(env, cache, &import, &location, span)
+        },
     )?;
     Ok(Resolved(resolved))
 }
 
 pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    resolve_with_env(&mut ImportEnv::new(), parsed)
+    let cache = Cache::new();
+    resolve_with_env(&mut ImportEnv::new(), &cache, parsed)
 }
 
 pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
@@ -387,7 +398,6 @@ impl Canonicalize for FilePath {
                 // ───────────────────────────────────────
                 // canonicalize(directory₀/.) = directory₁
                 "." => continue,
-
                 ".." => match file_path.last() {
                     // canonicalize(directory₀) = ε
                     // ────────────────────────────
