@@ -17,5 +17,8 @@ dhall_proc_macros = { version = "= 0.5.0", path = "../dhall_proc_macros" }
 doc-comment = "0.3"
 url = "2.1"
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.2"
+
 [dev-dependencies]
 version-sync = "0.8"
