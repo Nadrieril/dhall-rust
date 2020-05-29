@@ -4,7 +4,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::error::Error;
-use crate::semantics::resolve::ImportLocation;
+use crate::semantics::resolve::{download_http_text, ImportLocation};
 use crate::syntax::binary;
 use crate::syntax::parse_expr;
 use crate::Parsed;
@@ -17,7 +17,7 @@ pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
 }
 
 pub fn parse_remote(url: Url) -> Result<Parsed, Error> {
-    let body = reqwest::blocking::get(url.clone()).unwrap().text().unwrap();
+    let body = download_http_text(url.clone())?;
     let expr = parse_expr(&body)?;
     let root = ImportLocation::Remote(url);
     Ok(Parsed(expr, root))
