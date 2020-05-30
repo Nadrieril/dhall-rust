@@ -169,6 +169,8 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+- Support building to wasm
+
 #### [0.5.2] - 2020-04-12
 
 - Fix #162
