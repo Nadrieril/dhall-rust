@@ -1063,3 +1063,32 @@ pub fn parse_expr(input_str: &str) -> ParseResult<Expr> {
         [expression(e)] => e,
     ))
 }
+
+#[test]
+// Check that the local copy of the grammar file is in sync with the one from dhall-lang.
+fn test_grammar_files_in_sync() {
+    use std::process::Command;
+
+    let spec_abnf_path = "../dhall-lang/standard/dhall.abnf";
+    let local_abnf_path = "src/syntax/text/dhall.abnf";
+
+    let out = Command::new("git")
+        .arg("diff")
+        .arg("--no-index")
+        .arg("--ignore-space-change")
+        .arg("--color")
+        .arg("--")
+        .arg(spec_abnf_path)
+        .arg(local_abnf_path)
+        .output()
+        .expect("failed to run `git diff` command");
+
+    if !out.status.success() {
+        let output = String::from_utf8_lossy(&out.stdout);
+        panic!(
+            "The local dhall.abnf file differs from the one from \
+             dhall-lang!\n{}",
+            output
+        );
+    }
+}

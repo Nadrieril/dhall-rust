@@ -348,7 +348,7 @@ fn generate_tests() -> std::io::Result<()> {
 
 fn convert_abnf_to_pest() -> std::io::Result<()> {
     let out_dir = env::var("OUT_DIR").unwrap();
-    let abnf_path = "../dhall-lang/standard/dhall.abnf";
+    let abnf_path = "src/syntax/text/dhall.abnf";
     let visibility_path = "src/syntax/text/dhall.pest.visibility";
     let grammar_path = Path::new(&out_dir).join("dhall.pest");
     println!("cargo:rerun-if-changed={}", abnf_path);
