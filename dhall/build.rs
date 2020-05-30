@@ -157,7 +157,7 @@ fn make_test_module(
 }
 
 fn generate_tests() -> std::io::Result<()> {
-    // To force regeneration of the test list, `touch dhall-lang/standard/dhall.abnf`
+    // To force regeneration of the test list, `touch dhall/build.rs`
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let parser_tests_path = Path::new(&out_dir).join("spec_tests.rs");
@@ -348,7 +348,7 @@ fn generate_tests() -> std::io::Result<()> {
 
 fn convert_abnf_to_pest() -> std::io::Result<()> {
     let out_dir = env::var("OUT_DIR").unwrap();
-    let abnf_path = "src/syntax/text/dhall.abnf";
+    let abnf_path = "../dhall-lang/standard/dhall.abnf";
     let visibility_path = "src/syntax/text/dhall.pest.visibility";
     let grammar_path = Path::new(&out_dir).join("dhall.pest");
     println!("cargo:rerun-if-changed={}", abnf_path);

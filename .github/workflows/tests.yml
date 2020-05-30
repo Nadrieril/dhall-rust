@@ -78,3 +78,33 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Run tests
         run: wasm-pack test serde_dhall --node
+
+  # Tests don't work because of path escaping shenanigans. I have a branch that
+  # will fix that but depends on https://github.com/LukasKalbertodt/libtest-mimic/pull/4
+  test_windows:
+    name: Build on windows
+    # name: Run tests on windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+      # - name: Run tests
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: test
