@@ -18,6 +18,7 @@ const ALTERNATE_ENV_VAR: &str = "HOME";
 #[cfg(windows)]
 const ALTERNATE_ENV_VAR: &str = "LOCALAPPDATA";
 
+#[cfg(any(unix, windows))]
 fn alternate_env_var_cache_dir(
     provider: impl Fn(&str) -> Result<String, VarError>,
 ) -> Option<PathBuf> {
@@ -25,6 +26,12 @@ fn alternate_env_var_cache_dir(
         .map(PathBuf::from)
         .map(|env_dir| env_dir.join(".cache").join("dhall"))
         .ok()
+}
+#[cfg(not(any(unix, windows)))]
+fn alternate_env_var_cache_dir(
+    _provider: impl Fn(&str) -> Result<String, VarError>,
+) -> Option<PathBuf> {
+    None
 }
 
 fn env_var_cache_dir(
