@@ -12,43 +12,32 @@ use std::env::VarError;
 use std::ffi::OsStr;
 use std::fs::File;
 
+#[cfg(any(unix, windows))]
+const CACHE_ENV_VAR: &str = "XDG_CACHE_HOME";
 #[cfg(unix)]
-const ALTERNATE_ENV_VAR: &str = "HOME";
-
+const ALTERNATE_CACHE_ENV_VAR: &str = "HOME";
 #[cfg(windows)]
-const ALTERNATE_ENV_VAR: &str = "LOCALAPPDATA";
+const ALTERNATE_CACHE_ENV_VAR: &str = "LOCALAPPDATA";
 
 #[cfg(any(unix, windows))]
-fn alternate_env_var_cache_dir(
-    provider: impl Fn(&str) -> Result<String, VarError>,
-) -> Option<PathBuf> {
-    provider(ALTERNATE_ENV_VAR)
-        .map(PathBuf::from)
-        .map(|env_dir| env_dir.join(".cache").join("dhall"))
-        .ok()
+fn load_cache_dir(
+    env_provider: impl Fn(&str) -> Result<String, VarError> + Copy,
+) -> Result<PathBuf, CacheError> {
+    let env_provider = |s| {
+        env_provider(s)
+            .map(PathBuf::from)
+            .map_err(|_| CacheError::MissingConfiguration)
+    };
+    let cache_base_path = env_provider(CACHE_ENV_VAR).or_else(|_| {
+        env_provider(ALTERNATE_CACHE_ENV_VAR).map(|path| path.join(".cache"))
+    })?;
+    Ok(cache_base_path.join("dhall"))
 }
 #[cfg(not(any(unix, windows)))]
-fn alternate_env_var_cache_dir(
-    _provider: impl Fn(&str) -> Result<String, VarError>,
-) -> Option<PathBuf> {
-    None
-}
-
-fn env_var_cache_dir(
-    provider: impl Fn(&str) -> Result<String, VarError>,
-) -> Option<PathBuf> {
-    provider("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .map(|cache_home| cache_home.join("dhall"))
-        .ok()
-}
-
 fn load_cache_dir(
-    provider: impl Fn(&str) -> Result<String, VarError> + Copy,
+    _provider: impl Fn(&str) -> Result<String, VarError> + Copy,
 ) -> Result<PathBuf, CacheError> {
-    env_var_cache_dir(provider)
-        .or_else(|| alternate_env_var_cache_dir(provider))
-        .ok_or(CacheError::MissingConfiguration)
+    Err(CacheError::MissingConfiguration)
 }
 
 #[derive(Debug, PartialEq)]
@@ -191,41 +180,11 @@ mod test {
     use rand::Rng;
     use std::env::temp_dir;
 
-    #[cfg(unix)]
-    #[test]
-    fn alternate_env_var_cache_dir_should_result_unix_folder_path() {
-        let actual =
-            alternate_env_var_cache_dir(|_| Ok("/home/user".to_string()));
-        assert_eq!(actual, Some(PathBuf::from("/home/user/.cache/dhall")));
-    }
-
-    #[test]
-    fn alternate_env_var_cache_dir_should_result_none_on_missing_var() {
-        let actual = alternate_env_var_cache_dir(|_| Err(VarError::NotPresent));
-        assert_eq!(actual, None);
-    }
-
-    #[test]
-    fn env_var_cache_dir_should_result_xdg_cache_home() {
-        let actual = env_var_cache_dir(|_| {
-            Ok("/home/user/custom/path/for/cache".to_string())
-        });
-        assert_eq!(
-            actual,
-            Some(PathBuf::from("/home/user/custom/path/for/cache/dhall"))
-        );
-    }
-
-    #[test]
-    fn env_var_cache_dir_should_result_none_on_missing_var() {
-        let actual = env_var_cache_dir(|_| Err(VarError::NotPresent));
-        assert_eq!(actual, None);
-    }
-
+    #[cfg(any(unix, windows))]
     #[test]
     fn load_cache_dir_should_result_xdg_cache_first() {
         let actual = load_cache_dir(|var| match var {
-            "XDG_CACHE_HOME" => Ok("/home/user/custom".to_string()),
+            CACHE_ENV_VAR => Ok("/home/user/custom".to_string()),
             _ => Err(VarError::NotPresent),
         });
         assert_eq!(actual.unwrap(), PathBuf::from("/home/user/custom/dhall"));
@@ -235,7 +194,7 @@ mod test {
     #[test]
     fn load_cache_dir_should_result_alternate() {
         let actual = load_cache_dir(|var| match var {
-            ALTERNATE_ENV_VAR => Ok("/home/user".to_string()),
+            ALTERNATE_CACHE_ENV_VAR => Ok("/home/user".to_string()),
             _ => Err(VarError::NotPresent),
         });
         assert_eq!(actual.unwrap(), PathBuf::from("/home/user/.cache/dhall"));
