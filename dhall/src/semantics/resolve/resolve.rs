@@ -159,9 +159,7 @@ impl ImportLocation {
     fn fetch_text(self) -> Result<String, Error> {
         Ok(match self {
             ImportLocation::Local(path) => std::fs::read_to_string(&path)?,
-            ImportLocation::Remote(url) => {
-                reqwest::blocking::get(url).unwrap().text().unwrap()
-            }
+            ImportLocation::Remote(url) => download_http_text(url)?,
             ImportLocation::Env(var_name) => match env::var(var_name) {
                 Ok(val) => val,
                 Err(_) => return Err(ImportError::MissingEnvVar.into()),
@@ -195,6 +193,18 @@ impl ImportLocation {
 
 fn mkexpr(kind: UnspannedExpr) -> Expr {
     Expr::new(kind, Span::Artificial)
+}
+
+// TODO: error handling
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
+    Ok(reqwest::blocking::get(url).unwrap().text().unwrap())
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
+    blocking::block_on(async {
+        Ok(reqwest::get(url).await.unwrap().text().await.unwrap())
+    })
 }
 
 fn make_aslocation_uniontype() -> Expr {

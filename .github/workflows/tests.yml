@@ -56,3 +56,25 @@ jobs:
         with:
           command: test
 
+  test_wasm:
+    name: Run wasm tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@master
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Run tests
+        run: wasm-pack test serde_dhall --node

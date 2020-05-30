@@ -21,7 +21,7 @@ fn test_de_typed() {
     assert_eq!(parse::<f32>("1.0"), 1.0);
 
     assert_eq!(parse::<String>(r#""foo""#), "foo".to_owned());
-    assert_eq!(parse::<Vec<u64>>("[] : List Natural"), vec![]);
+    assert_eq!(parse::<Vec<u64>>("[] : List Natural"), <Vec<u64>>::new());
     assert_eq!(parse::<Vec<u64>>("[1, 2]"), vec![1, 2]);
     assert_eq!(parse::<Option<u64>>("None Natural"), None);
     assert_eq!(parse::<Option<u64>>("Some 1"), Some(1));
