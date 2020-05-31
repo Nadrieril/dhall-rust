@@ -1,4 +1,11 @@
 {
+    "dhall": {
+        "sha256": "0jv2s3rjk4ha5vq0z4x5w9q3x01kxvwdadcj1a9x1qyx29xxi9qp",
+        "type": "tarball",
+        "url": "https://github.com/dhall-lang/dhall-haskell/releases/download/1.32.0/dhall-1.32.0-x86_64-linux.tar.bz2",
+        "url_template": "https://github.com/dhall-lang/dhall-haskell/releases/download/<version>/dhall-<version>-x86_64-linux.tar.bz2",
+        "version": "1.32.0"
+    },
     "nixpkgs": {
         "branch": "nixos-20.03",
         "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
