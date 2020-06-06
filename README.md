@@ -172,7 +172,7 @@ same name as the corresponding test.
 #### [0.5.3] - 2020-05-30
 
 - Support building on Windows
-- Support building to wasm
+- Support building to wasm (but imports don't work)
 
 #### [0.5.2] - 2020-04-12
 
