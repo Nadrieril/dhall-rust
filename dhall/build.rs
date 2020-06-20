@@ -187,7 +187,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/import/urls/quotedPathFakeUrlEncode"
             }),
             output_type: Some(FileType::Binary),
-            ..default_feature.clone()
+            ..default_feature
         },
         TestFeature {
             module_name: "parser_failure",
@@ -219,7 +219,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "unit/DoubleLitSecretelyInt"
             }),
             output_type: Some(FileType::Binary),
-            ..default_feature.clone()
+            ..default_feature
         },
         TestFeature {
             module_name: "binary_decoding_success",
@@ -303,7 +303,7 @@ fn generate_tests() -> std::io::Result<()> {
                     || path == "prelude/JSON/number/1"
             }),
             output_type: Some(FileType::Text),
-            ..default_feature.clone()
+            ..default_feature
         },
         TestFeature {
             module_name: "alpha_normalize",
