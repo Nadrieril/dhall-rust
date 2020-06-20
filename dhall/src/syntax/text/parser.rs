@@ -1065,6 +1065,7 @@ pub fn parse_expr(input_str: &str) -> ParseResult<Expr> {
 }
 
 #[test]
+#[ignore]
 // Check that the local copy of the grammar file is in sync with the one from dhall-lang.
 fn test_grammar_files_in_sync() {
     use std::process::Command;
