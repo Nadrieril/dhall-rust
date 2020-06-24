@@ -470,8 +470,6 @@ fn define_features() -> Vec<TestFeature> {
             variant: SpecTestKind::ImportSuccess,
             exclude_path: Rc::new(|path: &str| {
                 false
-                    // TODO: import hash
-                    || path == "hashFromCache"
                     // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
                     || path == "unit/asLocation/RemoteCanonicalize4"
                     // TODO: import headers
@@ -579,9 +577,11 @@ fn run_test_or_panic(test: &SpecTest) {
 fn run_test(test: &SpecTest) -> Result<()> {
     use self::SpecTestKind::*;
     // Setup current directory to the root of the repository. Important for `as Location` tests.
-    env::set_current_dir(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap(),
-    )?;
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    env::set_current_dir(root_dir.as_path())?;
     // Set environment variable for import tests.
     env::set_var("DHALL_TEST_VAR", "6 * 7");
 
@@ -626,6 +626,16 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare_ui(parsed)?;
         }
         ImportSuccess => {
+            // Configure cache for import tests
+            env::set_var(
+                "XDG_CACHE_HOME",
+                root_dir
+                    .join("dhall-lang")
+                    .join("tests")
+                    .join("import")
+                    .join("cache")
+                    .as_path(),
+            );
             let expr = expr.normalize()?;
             expected.compare(expr)?;
         }

@@ -8,8 +8,6 @@
     clippy::useless_format
 )]
 
-mod tests;
-
 pub mod builtins;
 pub mod error;
 pub mod operations;
