@@ -201,10 +201,8 @@ pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
     Ok(reqwest::blocking::get(url).unwrap().text().unwrap())
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
-    blocking::block_on(async {
-        Ok(reqwest::get(url).await.unwrap().text().await.unwrap())
-    })
+pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
+    panic!("Remote imports are not supported on wasm yet")
 }
 
 fn make_aslocation_uniontype() -> Expr {
