@@ -9,6 +9,7 @@ readme = "README.md"
 repository = "https://github.com/Nadrieril/dhall-rust"
 edition = "2018"
 build = "build.rs"
+include = ["src/**/*", "README.md", "build.rs"]
 
 [dependencies]
 annotate-snippets = "0.7.0"
