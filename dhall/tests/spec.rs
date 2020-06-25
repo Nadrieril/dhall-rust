@@ -345,15 +345,7 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
         for path in
             dhall_files_in_dir(&tests_dir, take_ab_suffix, feature.input_type)
         {
-            let normalized_path = path.replace("\\", "/");
-            if (feature.exclude_path)(&normalized_path) {
-                continue;
-            }
-            if (feature.too_slow_path)(&normalized_path)
-                && cfg!(debug_assertions)
-            {
-                continue;
-            }
+            let normalized_rel_path = path.replace("\\", "/");
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
 
@@ -371,7 +363,10 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
             };
 
             // Transform path into a valid Rust identifier
-            let name = normalized_path.replace("/", "_").replace("-", "_");
+            let name = normalized_rel_path.replace("/", "_").replace("-", "_");
+            let excluded = (feature.exclude_path)(&normalized_rel_path);
+            let too_slow = (feature.too_slow_path)(&normalized_rel_path);
+            let is_ignored = excluded || (cfg!(debug_assertions) && too_slow);
             let input = feature
                 .input_type
                 .construct(&format!("{}{}", path, input_suffix));
@@ -382,7 +377,7 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
             tests.push(Test {
                 name: format!("{}::{}", feature.module_name, name),
                 kind: "".into(),
-                is_ignored: false,
+                is_ignored,
                 is_bench: false,
                 data: SpecTest {
                     input,
