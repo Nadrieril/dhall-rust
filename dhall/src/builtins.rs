@@ -42,8 +42,6 @@ pub enum Builtin {
     ListLast,
     ListIndexed,
     ListReverse,
-    OptionalFold,
-    OptionalBuild,
     TextShow,
 }
 
@@ -79,8 +77,6 @@ impl Builtin {
             "List/last" => Some(ListLast),
             "List/indexed" => Some(ListIndexed),
             "List/reverse" => Some(ListReverse),
-            "Optional/fold" => Some(OptionalFold),
-            "Optional/build" => Some(OptionalBuild),
             "Text/show" => Some(TextShow),
             _ => None,
         }
@@ -245,22 +241,6 @@ pub fn type_of_builtin(b: Builtin) -> Hir {
             forall (a: Type) -> (List a) -> List a
         ),
 
-        OptionalBuild => make_type!(
-            forall (a: Type) ->
-            (forall (optional: Type) ->
-                forall (just: a -> optional) ->
-                forall (nothing: optional) ->
-                optional) ->
-            Optional a
-        ),
-        OptionalFold => make_type!(
-            forall (a: Type) ->
-            (Optional a) ->
-            forall (optional: Type) ->
-            forall (just: a -> optional) ->
-            forall (nothing: optional) ->
-            optional
-        ),
         OptionalNone => make_type!(
             forall (A: Type) -> Optional A
         ),
@@ -510,27 +490,6 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             }
             _ => Ret::DoneAsIs,
         },
-        (Builtin::OptionalBuild, [t, f]) => {
-            let optional_t =
-                Nir::from_builtin(Builtin::Optional).app(t.clone());
-            Ret::Nir(
-                f.app(optional_t)
-                    .app(
-                        make_closure(make_closure!(
-                            λ(T : Type) ->
-                            λ(a : var(T)) ->
-                            Some(var(a))
-                        ))
-                        .app(t.clone()),
-                    )
-                    .app(EmptyOptionalLit(t.clone()).into_nir()),
-            )
-        }
-        (Builtin::OptionalFold, [_, v, _, just, nothing]) => match &*v.kind() {
-            EmptyOptionalLit(_) => Ret::Nir(nothing.clone()),
-            NEOptionalLit(x) => Ret::Nir(just.app(x.clone())),
-            _ => Ret::DoneAsIs,
-        },
         (Builtin::NaturalBuild, [f]) => Ret::Nir(
             f.app(Nir::from_builtin(Builtin::Natural))
                 .app(make_closure(make_closure!(
@@ -600,8 +559,6 @@ impl std::fmt::Display for Builtin {
             ListLast => "List/last",
             ListIndexed => "List/indexed",
             ListReverse => "List/reverse",
-            OptionalFold => "Optional/fold",
-            OptionalBuild => "Optional/build",
             TextShow => "Text/show",
         })
     }

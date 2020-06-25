@@ -11,7 +11,6 @@ From https://github.com/dhall-lang/dhall-lang/issues/280 :
     "${ not_really_an_expression ;-) }"
     ''${ not_an_expression ;-) }''
     {- {- -} 1
-{ x = 0 } with x = 1 + 1
 
 import:
 failure/
@@ -36,6 +35,5 @@ failure/
     merge { x = True, y = 1 } < x | y >.x
     merge {x=...,y=...} <x>.x
     merge {x=...,y=...} <x:T>.x
-fix unit_RightBiasedRecordMergeMixedKinds3 & 2 & unit_RecordMixedKinds3
 
 equivalence:

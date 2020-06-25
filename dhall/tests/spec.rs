@@ -51,7 +51,7 @@ impl FileType {
         match self {
             FileType::Text => TestFile::Source(file),
             FileType::Binary => TestFile::Binary(file),
-            FileType::Hash => TestFile::Binary(file),
+            FileType::Hash => TestFile::UI(file),
             FileType::UI => TestFile::UI(file),
         }
     }
@@ -413,11 +413,6 @@ fn define_features() -> Vec<TestFeature> {
             directory: "parser/success/",
             variant: SpecTestKind::ParserSuccess,
             too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-            }),
             output_type: FileType::Binary,
             ..default_feature.clone()
         },
@@ -445,15 +440,6 @@ fn define_features() -> Vec<TestFeature> {
             directory: "parser/success/",
             variant: SpecTestKind::BinaryEncoding,
             too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "double"
-                    || path == "unit/DoubleLitExponentNoDot"
-                    || path == "unit/DoubleLitSecretelyInt"
-            }),
             output_type: FileType::Binary,
             ..default_feature.clone()
         },
@@ -493,6 +479,7 @@ fn define_features() -> Vec<TestFeature> {
                     || path == "noHeaderForwarding"
                     // TODO: git changes newlines on windows
                     || (cfg!(windows) && path == "unit/AsText")
+                    || (cfg!(windows) && path == "unit/QuotedPath")
                     // TODO: paths on windows have backslashes; this breaks all the `as Location` tests
                     // See https://github.com/dhall-lang/dhall-lang/issues/1032
                     || (cfg!(windows) && path.contains("asLocation"))
@@ -518,13 +505,8 @@ fn define_features() -> Vec<TestFeature> {
             directory: "semantic-hash/success/",
             variant: SpecTestKind::SemanticHash,
             exclude_path: Rc::new(|path: &str| {
-                false
-                    // We don't support bignums
-                    || path == "simple/integerToDouble"
-                    // See https://github.com/pyfisch/cbor/issues/109
-                    || path == "prelude/Integer/toDouble/0"
-                    || path == "prelude/Integer/toDouble/1"
-                    || path == "prelude/Natural/toDouble/0"
+                // We don't support bignums
+                path == "simple/integerToDouble"
             }),
             output_type: FileType::Hash,
             ..default_feature.clone()
@@ -559,7 +541,9 @@ fn define_features() -> Vec<TestFeature> {
             module_name: "type_inference_success",
             directory: "type-inference/success/",
             variant: SpecTestKind::TypeInferenceSuccess,
-            too_slow_path: Rc::new(|path: &str| path == "prelude"),
+            // TODO: this fails because of caching shenanigans
+            // too_slow_path: Rc::new(|path: &str| path == "prelude"),
+            exclude_path: Rc::new(|path: &str| path == "prelude"),
             ..default_feature.clone()
         },
         TestFeature {
@@ -614,6 +598,17 @@ fn run_test(test: &SpecTest) -> Result<()> {
     // Set environment variable for import tests.
     env::set_var("DHALL_TEST_VAR", "6 * 7");
 
+    // Configure cache for import tests
+    env::set_var(
+        "XDG_CACHE_HOME",
+        root_dir
+            .join("dhall-lang")
+            .join("tests")
+            .join("import")
+            .join("cache")
+            .as_path(),
+    );
+
     let SpecTest {
         input: expr,
         output: expected,
@@ -662,16 +657,6 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare_ui(parsed)?;
         }
         ImportSuccess => {
-            // Configure cache for import tests
-            env::set_var(
-                "XDG_CACHE_HOME",
-                root_dir
-                    .join("dhall-lang")
-                    .join("tests")
-                    .join("import")
-                    .join("cache")
-                    .as_path(),
-            );
             let expr = expr.normalize()?;
             expected.compare(expr)?;
         }

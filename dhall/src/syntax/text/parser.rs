@@ -130,6 +130,7 @@ lazy_static::lazy_static! {
         use Rule::*;
         // In order of precedence
         let operators = vec![
+            equivalent,
             import_alt,
             bool_or,
             natural_plus,
@@ -142,7 +143,6 @@ lazy_static::lazy_static! {
             natural_times,
             bool_eq,
             bool_ne,
-            equivalent,
         ];
         PrecClimber::new(
             operators
@@ -514,14 +514,14 @@ impl DhallParser {
 
     fn http_raw(input: ParseInput) -> ParseResult<URL<Expr>> {
         Ok(match_nodes!(input.into_children();
-            [scheme(sch), authority(auth), url_path(p)] => URL {
+            [scheme(sch), authority(auth), path_abempty(p)] => URL {
                 scheme: sch,
                 authority: auth,
                 path: p,
                 query: None,
                 headers: None,
             },
-            [scheme(sch), authority(auth), url_path(p), query(q)] => URL {
+            [scheme(sch), authority(auth), path_abempty(p), query(q)] => URL {
                 scheme: sch,
                 authority: auth,
                 path: p,
@@ -531,10 +531,10 @@ impl DhallParser {
         ))
     }
 
-    fn url_path(input: ParseInput) -> ParseResult<FilePath> {
+    fn path_abempty(input: ParseInput) -> ParseResult<FilePath> {
         Ok(match_nodes!(input.into_children();
-            [path_component(components)..] => {
-                let mut file_path: Vec<_> = components.collect();
+            [segment(segments)..] => {
+                let mut file_path: Vec<_> = segments.collect();
                 // An empty path normalizes to "/"
                 if file_path.is_empty() {
                     file_path = vec!["".to_owned()];
@@ -548,7 +548,6 @@ impl DhallParser {
         Ok(input.as_str().to_owned())
     }
 
-    #[alias(path_component)]
     fn segment(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_string())
     }
@@ -909,24 +908,17 @@ impl DhallParser {
         ))
     }
 
-    #[alias(record_type_or_literal)]
-    fn empty_record_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        Ok(RecordLit(Default::default()))
-    }
-
-    #[alias(record_type_or_literal)]
-    fn empty_record_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        Ok(RecordType(Default::default()))
-    }
-
-    #[alias(record_type_or_literal)]
-    fn non_empty_record_type_or_literal(
-        input: ParseInput,
-    ) -> ParseResult<UnspannedExpr> {
+    fn record_type_or_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
         Ok(match_nodes!(input.children();
+            [empty_record_literal(_)] => RecordLit(Default::default()),
             [non_empty_record_type(map)] => RecordType(map),
             [non_empty_record_literal(map)] => RecordLit(map),
+            [] => RecordType(Default::default()),
         ))
+    }
+
+    fn empty_record_literal(input: ParseInput) -> ParseResult<()> {
+        Ok(())
     }
 
     fn non_empty_record_type(
@@ -997,8 +989,7 @@ impl DhallParser {
     }
 
     fn union_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        let map = match_nodes!(input.children();
-            [empty_union_type(_)] => Default::default(),
+        Ok(match_nodes!(input.children();
             [union_type_entry(entries)..] => {
                 let mut map = BTreeMap::default();
                 for (l, t) in entries {
@@ -1015,14 +1006,9 @@ impl DhallParser {
                         }
                     }
                 }
-                map
+                UnionType(map)
             },
-        );
-        Ok(UnionType(map))
-    }
-
-    fn empty_union_type(_input: ParseInput) -> ParseResult<()> {
-        Ok(())
+        ))
     }
 
     fn union_type_entry(
@@ -1065,7 +1051,7 @@ pub fn parse_expr(input_str: &str) -> ParseResult<Expr> {
 }
 
 #[test]
-#[ignore]
+#[cfg_attr(windows, ignore)]
 // Check that the local copy of the grammar file is in sync with the one from dhall-lang.
 fn test_grammar_files_in_sync() {
     use std::process::Command;
@@ -1079,8 +1065,8 @@ fn test_grammar_files_in_sync() {
         .arg("--ignore-space-change")
         .arg("--color")
         .arg("--")
-        .arg(spec_abnf_path)
         .arg(local_abnf_path)
+        .arg(spec_abnf_path)
         .output()
         .expect("failed to run `git diff` command");
 

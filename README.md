@@ -72,7 +72,7 @@ assert_eq!(deserialized_map, expected_map);
 ## Standard-compliance
 
 This implementation currently supports most of the [Dhall
-standard](https://github.com/dhall-lang/dhall-lang) version `15.0.0`.
+standard](https://github.com/dhall-lang/dhall-lang) version `17.0.0`.
 
 The main missing feature is import headers. See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
@@ -169,7 +169,7 @@ same name as the corresponding test.
 
 I try to keep commit messages somewhat in the style of [Conventional
 Commits](https://www.conventionalcommits.org/en/v1.0.0). That means the commit
-message should start with `feat:`, `test:`, `doc:`, `fix:`, `style:`,
+message should start with `feat:`, `test:`, `spec:`, `doc:`, `fix:`, `style:`,
 `refactor:`, `chore:`, `perf:` or similar prefixes.
 
 A breaking change should be indicated with `!` before the `:`.

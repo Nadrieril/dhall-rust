@@ -1,0 +1,6 @@
+Type error: error: unbound variable ``Optional/fold``
+ --> <current file>:1:1
+  |
+1 | Optional/fold
+  | ^^^^^^^^^^^^^ not found in this scope
+  |

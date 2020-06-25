@@ -1,0 +1,6 @@
+Type error: error: unbound variable ``Optional/build``
+ --> <current file>:1:1
+  |
+1 | Optional/build
+  | ^^^^^^^^^^^^^^ not found in this scope
+  |

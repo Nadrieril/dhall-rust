@@ -6,6 +6,8 @@ use crate::syntax::{trivial_result, Label};
 // pretty-printing to work correctly
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
+    /// x === y
+    Equivalence,
     /// `x ? y`
     ImportAlt,
     /// `x || y`
@@ -30,8 +32,6 @@ pub enum BinOp {
     BoolEQ,
     /// `x != y`
     BoolNE,
-    /// x === y
-    Equivalence,
 }
 
 /// Operations

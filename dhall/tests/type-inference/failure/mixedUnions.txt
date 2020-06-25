@@ -1,6 +1,0 @@
-Type error: error: InvalidVariantType
- --> <current file>:1:28
-  |
-1 | < Left : Natural | Right : Type >
-  |                            ^^^^ InvalidVariantType
-  |

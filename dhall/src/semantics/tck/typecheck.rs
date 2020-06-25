@@ -137,29 +137,19 @@ fn type_one_layer(
             Type::from_const(k)
         }
         ExprKind::UnionType(kts) => {
-            // Check that all types are the same const
-            let mut k = None;
+            // An empty union type has type Type;
+            // an union type with only unary variants also has type Type
+            let mut k = Const::Type;
             for t in kts.values() {
                 if let Some(t) = t {
-                    let c = match t.ty().as_const() {
-                        Some(c) => c,
+                    match t.ty().as_const() {
+                        Some(c) => k = max(k, c),
                         None => {
-                            return mk_span_err(t.span(), "InvalidVariantType")
-                        }
-                    };
-                    match k {
-                        None => k = Some(c),
-                        Some(k) if k == c => {}
-                        _ => {
                             return mk_span_err(t.span(), "InvalidVariantType")
                         }
                     }
                 }
             }
-
-            // An empty union type has type Type;
-            // an union type with only unary variants also has type Type
-            let k = k.unwrap_or(Const::Type);
 
             Type::from_const(k)
         }

@@ -120,7 +120,7 @@ home_path
 absolute_path
 scheme
 http_raw
-url_path
+path_abempty
 authority
 # userinfo
 # host
@@ -178,19 +178,15 @@ selector
 labels
 # type_selector
 primitive_expression
-# record_type_or_literal
+record_type_or_literal
 empty_record_literal
-empty_record_type
-non_empty_record_type_or_literal
+# non_empty_record_type_or_literal
 non_empty_record_type
 record_type_entry
 non_empty_record_literal
 record_literal_entry
-# record_literal_punned_entry
 # record_literal_normal_entry
 union_type
-empty_union_type
-# non_empty_union_type
 union_type_entry
 non_empty_list_literal
 # complete_expression
