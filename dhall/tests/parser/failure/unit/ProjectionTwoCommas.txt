@@ -1,0 +1,6 @@
+ --> 1:8
+  |
+1 | foo.{ ,, }␊
+  |        ^---
+  |
+  = expected any_label_or_some
