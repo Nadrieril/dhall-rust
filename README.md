@@ -78,11 +78,11 @@ The main missing feature is import headers. See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
 for a list of the other missing features.
 
-# Contributing
+## Contributing
 
 This section will cover how we can get started on contributing this project.
 
-## Setting up the repository
+### Setting up the repository
 
 To get a copy of this repository we can run:
 
@@ -100,7 +100,7 @@ in the project, i.e. `dhall-lang`. We can do this by running:
 $ git submodule update --init --recursive
 ```
 
-## Building and Testing
+### Building and Testing
 
 A preferred method among the Rust community for developing is to use [`rustup`](https://rustup.rs/).
 
@@ -140,7 +140,7 @@ $ cargo test tests::spec::name_of_test
 
 Now we can have fun and happy contributing!
 
-## Test suite
+### Test suite
 
 The test suite uses tests from the dhall-lang submodule as well as from the
 local `dhall/tests` directory.
@@ -196,7 +196,7 @@ same name as the corresponding test.
     various type annotation methods have been removed; use instead the methods on
     the `Deserializer` struct.
 
-#### [0.4.0]
+#### 0.4.0
 
 - `dhall` now uses the stable Rust toolchain !
 - Implement record puns
@@ -207,7 +207,7 @@ same name as the corresponding test.
 - Implement projection by expression
 - Implement some normalization simplifications
 
-#### [0.3.0]
+#### 0.3.0
 
 - Update to supporting dhall v14.0.0
 - Add support for dotted field syntax
@@ -215,15 +215,15 @@ same name as the corresponding test.
 - Add support for duplicate record fields
 - Update to supporting dhall v13.0.0
 
-#### [0.2.1]
+#### 0.2.1
 
 - Improve documentation and deserialize many more types
 
-#### [0.2.0]
+#### 0.2.0
 
 - Update to supporting dhall v12.0.0
 
-#### [0.1.0]
+#### 0.1.0
 
 - Initial release
 
