@@ -2,10 +2,11 @@
 
 #### [Unreleased]
 
-- BREAKING CHANGE: Remove Optional/build and Optional/fold
-- BREAKING CHANGE: Remove the ability to quote paths in URLs
-- Allow quoted labels to be empty
-- Support Dhall v16.0.0
+- BREAKING CHANGE: Support Dhall v17.0.0
+
+    See https://github.com/dhall-lang/dhall-lang/releases/tag/v16.0.0 and
+    https://github.com/dhall-lang/dhall-lang/releases/tag/v17.0.0 for details.
+
 - Fix running tests on Windows. Developing on this lib should now be possible on Windows.
 
 #### [0.5.3] - 2020-05-30
@@ -17,7 +18,7 @@
 #### [0.5.2] - 2020-04-12
 
 - Fix #162
-- Update to supporting dhall v15.0.0
+- Update to supporting Dhall v15.0.0
 - Deserialize `Prelude.Map` and `toMap` to a map instead of a list.
 
 #### [0.5.1] - 2020-04-09
