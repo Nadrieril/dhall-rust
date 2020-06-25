@@ -9,9 +9,9 @@ fn test_html_root_url() {
 }
 
 #[test]
-fn test_readme_mentions_version() {
+fn test_changelog_mentions_version() {
     version_sync::assert_contains_regex!(
-        "../README.md",
+        "../CHANGELOG.md",
         "^#### \\[{version}\\]"
     );
 }
