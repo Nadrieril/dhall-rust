@@ -3,4 +3,4 @@
 1 | let x :T = y in e␊
   |     ^---
   |
-  = expected missing, if_, merge, NaN, Some_, toMap, assert, or forall
+  = expected missing, if_, merge, NaN, Some_, toMap, assert, or forall_keyword
