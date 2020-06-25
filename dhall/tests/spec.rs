@@ -598,6 +598,17 @@ fn run_test(test: &SpecTest) -> Result<()> {
     // Set environment variable for import tests.
     env::set_var("DHALL_TEST_VAR", "6 * 7");
 
+    // Configure cache for import tests
+    env::set_var(
+        "XDG_CACHE_HOME",
+        root_dir
+            .join("dhall-lang")
+            .join("tests")
+            .join("import")
+            .join("cache")
+            .as_path(),
+    );
+
     let SpecTest {
         input: expr,
         output: expected,
@@ -646,16 +657,6 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare_ui(parsed)?;
         }
         ImportSuccess => {
-            // Configure cache for import tests
-            env::set_var(
-                "XDG_CACHE_HOME",
-                root_dir
-                    .join("dhall-lang")
-                    .join("tests")
-                    .join("import")
-                    .join("cache")
-                    .as_path(),
-            );
             let expr = expr.normalize()?;
             expected.compare(expr)?;
         }
