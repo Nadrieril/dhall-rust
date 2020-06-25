@@ -165,6 +165,16 @@ The output of the ui tests is stored in the local `dhall/tests` directory, even
 for the tests coming from dhall-lang. They are stored in a `.txt` file with the
 same name as the corresponding test.
 
+### Commit messages
+
+I try to keep commit messages somewhat in the style of [Conventional
+Commits](https://www.conventionalcommits.org/en/v1.0.0). That means the commit
+message should start with `feat:`, `test:`, `doc:`, `fix:`, `style:`,
+`refactor:`, `chore:`, `perf:` or similar prefixes.
+
+A breaking change should be indicated with `!` before the `:`.
+
+
 ## Changelog
 
 #### [Unreleased]
