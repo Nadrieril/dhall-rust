@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- Allow quoted labels to be empty
 - Support Dhall v16.0.0
 - Fix running tests on Windows. Developing on this lib should now be possible on Windows.
 
