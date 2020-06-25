@@ -11,6 +11,10 @@ edition = "2018"
 build = "build.rs"
 include = ["src/**/*", "README.md", "build.rs"]
 
+[[test]]
+name = "spec"
+harness = false
+
 [dependencies]
 annotate-snippets = "0.7.0"
 hex = "0.4.2"
@@ -31,9 +35,13 @@ url = "2.1"
 reqwest = { version = "0.10", features = ["blocking"] }
 
 [dev-dependencies]
-pretty_assertions = "0.6.1"
-version-sync = "0.9"
+anyhow = "1.0.28"
+colored-diff = "0.2.2"
+# Latest master allows tests to be run in parallel.
+libtest-mimic = { version = "0.2.0", git = "https://github.com/LukasKalbertodt/libtest-mimic" }
 rand = "0.7"
+version-sync = "0.9"
+walkdir = "2"
 
 [build-dependencies]
 walkdir = "2"

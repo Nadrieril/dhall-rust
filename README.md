@@ -129,7 +129,7 @@ $ cargo build
 ```
 
 ```bash
-$ cargo test
+$ cargo test -- -q
 ```
 
 You can also run tests individually by their name:
@@ -168,6 +168,8 @@ same name as the corresponding test.
 ## Changelog
 
 #### [Unreleased]
+
+- Fix running tests on Windows. Developing on this lib should now be possible on Windows.
 
 #### [0.5.3] - 2020-05-30
 

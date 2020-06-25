@@ -92,6 +92,17 @@ impl std::fmt::Display for TypeError {
 
 impl std::error::Error for TypeError {}
 
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let msg = match self {
+            EncodeError::CBORError(e) => format!("Encode error: {}", e),
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+impl std::error::Error for EncodeError {}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self.kind {
