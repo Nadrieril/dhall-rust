@@ -74,7 +74,7 @@ assert_eq!(deserialized_map, expected_map);
 This implementation currently supports most of the [Dhall
 standard](https://github.com/dhall-lang/dhall-lang) version `15.0.0`.
 
-The main missing features are import caching and import headers. See
+The main missing feature is import headers. See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
 for a list of the other missing features.
 
@@ -173,6 +173,7 @@ same name as the corresponding test.
 
 #### [0.5.3] - 2020-05-30
 
+- Support import caching
 - Support building on Windows
 - Support building to wasm (but imports don't work)
 
