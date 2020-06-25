@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- Allow trailing delimiters in records, lists, etc.
 - BREAKING CHANGE: Support Dhall v17.0.0
 
     See https://github.com/dhall-lang/dhall-lang/releases/tag/v16.0.0 and
