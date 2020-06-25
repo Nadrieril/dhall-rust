@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Remove Optional/build and Optional/fold
 - BREAKING CHANGE: Remove the ability to quote paths in URLs
 - Allow quoted labels to be empty
 - Support Dhall v16.0.0

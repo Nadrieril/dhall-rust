@@ -1,0 +1,12 @@
+Type error: error: expected function, found `Natural`
+  --> <current file>:6:25
+   |
+ 1 | -- When you check if an inferred type is equivalent to an annotation,
+ 2 | -- you must alpha-beta-normalize both sides first.  But it is not safe
+ 3 | -- to beta-normalise an expression which hasn't first been
+ 4 | -- typechecked.
+...
+10 | let a
+11 |     : (λ(x : Natural) → x x) (λ(x : Natural) → x x)
+   |                         ^ function application requires a function
+   |
