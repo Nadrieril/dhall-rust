@@ -479,6 +479,7 @@ fn define_features() -> Vec<TestFeature> {
                     || path == "noHeaderForwarding"
                     // TODO: git changes newlines on windows
                     || (cfg!(windows) && path == "unit/AsText")
+                    || (cfg!(windows) && path == "unit/QuotedPath")
                     // TODO: paths on windows have backslashes; this breaks all the `as Location` tests
                     // See https://github.com/dhall-lang/dhall-lang/issues/1032
                     || (cfg!(windows) && path.contains("asLocation"))
