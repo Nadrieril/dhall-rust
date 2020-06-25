@@ -514,14 +514,14 @@ impl DhallParser {
 
     fn http_raw(input: ParseInput) -> ParseResult<URL<Expr>> {
         Ok(match_nodes!(input.into_children();
-            [scheme(sch), authority(auth), url_path(p)] => URL {
+            [scheme(sch), authority(auth), path_abempty(p)] => URL {
                 scheme: sch,
                 authority: auth,
                 path: p,
                 query: None,
                 headers: None,
             },
-            [scheme(sch), authority(auth), url_path(p), query(q)] => URL {
+            [scheme(sch), authority(auth), path_abempty(p), query(q)] => URL {
                 scheme: sch,
                 authority: auth,
                 path: p,
@@ -531,10 +531,10 @@ impl DhallParser {
         ))
     }
 
-    fn url_path(input: ParseInput) -> ParseResult<FilePath> {
+    fn path_abempty(input: ParseInput) -> ParseResult<FilePath> {
         Ok(match_nodes!(input.into_children();
-            [path_component(components)..] => {
-                let mut file_path: Vec<_> = components.collect();
+            [segment(segments)..] => {
+                let mut file_path: Vec<_> = segments.collect();
                 // An empty path normalizes to "/"
                 if file_path.is_empty() {
                     file_path = vec!["".to_owned()];
@@ -548,7 +548,6 @@ impl DhallParser {
         Ok(input.as_str().to_owned())
     }
 
-    #[alias(path_component)]
     fn segment(input: ParseInput) -> ParseResult<String> {
         Ok(input.as_str().to_string())
     }

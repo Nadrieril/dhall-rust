@@ -120,7 +120,7 @@ home_path
 absolute_path
 scheme
 http_raw
-url_path
+path_abempty
 authority
 # userinfo
 # host
