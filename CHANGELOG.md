@@ -2,9 +2,7 @@
 
 #### [Unreleased]
 
-- Update encoding of floating point values to RFC7049bis
-- Allow unions with mixed kinds
-- Adjust precedence of `===` and `with`
+- Support Dhall v16.0.0
 - Fix running tests on Windows. Developing on this lib should now be possible on Windows.
 
 #### [0.5.3] - 2020-05-30
