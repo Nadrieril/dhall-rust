@@ -413,11 +413,6 @@ fn define_features() -> Vec<TestFeature> {
             directory: "parser/success/",
             variant: SpecTestKind::ParserSuccess,
             too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-            }),
             output_type: FileType::Binary,
             ..default_feature.clone()
         },
@@ -445,11 +440,6 @@ fn define_features() -> Vec<TestFeature> {
             directory: "parser/success/",
             variant: SpecTestKind::BinaryEncoding,
             too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Pretty sure the test is incorrect
-                    || path == "unit/import/urls/quotedPathFakeUrlEncode"
-            }),
             output_type: FileType::Binary,
             ..default_feature.clone()
         },
