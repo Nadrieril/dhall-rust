@@ -595,6 +595,14 @@ fn run_test_stringy_error(test: &SpecTest) -> std::result::Result<(), String> {
     res.map_err(|e| e.to_string())
 }
 
+/// Like `Result::unwrap_err`, but returns an error instead of panicking.
+fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
+    match x {
+        Ok(x) => Err(TestError(format!("{:?}", x))),
+        Err(e) => Ok(e),
+    }
+}
+
 fn run_test(test: &SpecTest) -> Result<()> {
     use self::SpecTestKind::*;
     // Setup current directory to the root of the repository. Important for `as Location` tests.
@@ -619,7 +627,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
         }
         ParserFailure => {
             use std::io;
-            let err = expr.parse().unwrap_err();
+            let err = unwrap_err(expr.parse())?;
             match err.downcast_ref::<DhallError>() {
                 Some(err) => match err.kind() {
                     ErrorKind::Parse(_) => {}
@@ -643,7 +651,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare_debug(expr)?;
         }
         BinaryDecodingFailure => {
-            let err = expr.parse().unwrap_err();
+            let err = unwrap_err(expr.parse())?;
             expected.compare_ui(err)?;
         }
         Printer => {
@@ -668,7 +676,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare(expr)?;
         }
         ImportFailure => {
-            let err = expr.resolve().unwrap_err();
+            let err = unwrap_err(expr.resolve())?;
             expected.compare_ui(err)?;
         }
         SemanticHash => {
@@ -681,7 +689,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare(ty)?;
         }
         TypeInferenceFailure => {
-            let err = expr.typecheck().unwrap_err();
+            let err = unwrap_err(expr.typecheck())?;
             expected.compare_ui(err)?;
         }
         Normalization => {
@@ -704,9 +712,15 @@ fn main() {
         .collect();
 
     libtest_mimic::run_tests(&Arguments::from_args(), tests, |test| {
-        match run_test_stringy_error(&test.data) {
-            Ok(_) => Outcome::Passed,
-            Err(e) => Outcome::Failed { msg: Some(e) },
+        let result = std::panic::catch_unwind(move || {
+            run_test_stringy_error(&test.data)
+        });
+        match result {
+            Ok(Ok(_)) => Outcome::Passed,
+            Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
+            Err(_) => Outcome::Failed {
+                msg: Some("thread panicked".to_string()),
+            },
         }
     })
     .exit();
