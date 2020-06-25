@@ -909,24 +909,17 @@ impl DhallParser {
         ))
     }
 
-    #[alias(record_type_or_literal)]
-    fn empty_record_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        Ok(RecordLit(Default::default()))
-    }
-
-    #[alias(record_type_or_literal)]
-    fn empty_record_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        Ok(RecordType(Default::default()))
-    }
-
-    #[alias(record_type_or_literal)]
-    fn non_empty_record_type_or_literal(
-        input: ParseInput,
-    ) -> ParseResult<UnspannedExpr> {
+    fn record_type_or_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
         Ok(match_nodes!(input.children();
+            [empty_record_literal(_)] => RecordLit(Default::default()),
             [non_empty_record_type(map)] => RecordType(map),
             [non_empty_record_literal(map)] => RecordLit(map),
+            [] => RecordType(Default::default()),
         ))
+    }
+
+    fn empty_record_literal(input: ParseInput) -> ParseResult<()> {
+        Ok(())
     }
 
     fn non_empty_record_type(
@@ -997,8 +990,7 @@ impl DhallParser {
     }
 
     fn union_type(input: ParseInput) -> ParseResult<UnspannedExpr> {
-        let map = match_nodes!(input.children();
-            [empty_union_type(_)] => Default::default(),
+        Ok(match_nodes!(input.children();
             [union_type_entry(entries)..] => {
                 let mut map = BTreeMap::default();
                 for (l, t) in entries {
@@ -1015,14 +1007,9 @@ impl DhallParser {
                         }
                     }
                 }
-                map
+                UnionType(map)
             },
-        );
-        Ok(UnionType(map))
-    }
-
-    fn empty_union_type(_input: ParseInput) -> ParseResult<()> {
-        Ok(())
+        ))
     }
 
     fn union_type_entry(
@@ -1065,7 +1052,7 @@ pub fn parse_expr(input_str: &str) -> ParseResult<Expr> {
 }
 
 #[test]
-#[ignore]
+#[cfg_attr(windows, ignore)]
 // Check that the local copy of the grammar file is in sync with the one from dhall-lang.
 fn test_grammar_files_in_sync() {
     use std::process::Command;
@@ -1079,8 +1066,8 @@ fn test_grammar_files_in_sync() {
         .arg("--ignore-space-change")
         .arg("--color")
         .arg("--")
-        .arg(spec_abnf_path)
         .arg(local_abnf_path)
+        .arg(spec_abnf_path)
         .output()
         .expect("failed to run `git diff` command");
 

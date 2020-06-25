@@ -3,4 +3,4 @@
 1 | { x :T }␊
   |   ^---
   |
-  = expected missing, if_, merge, NaN, Some_, toMap, assert, forall, empty_record_literal, or record_type_entry
+  = expected missing, record_type_entry, if_, merge, NaN, Some_, toMap, assert, forall, or empty_record_literal
