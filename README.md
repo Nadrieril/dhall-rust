@@ -169,6 +169,8 @@ same name as the corresponding test.
 
 #### [Unreleased]
 
+- Fix running tests on Windows. Developing on this lib should now be possible on Windows.
+
 #### [0.5.3] - 2020-05-30
 
 - Support building on Windows
