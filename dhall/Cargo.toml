@@ -14,6 +14,7 @@ include = ["src/**/*", "README.md", "build.rs"]
 [[test]]
 name = "spec"
 harness = false
+path = "tests/spec.rs"
 
 [dependencies]
 annotate-snippets = "0.7.0"
