@@ -1218,7 +1218,7 @@ dependencies = [
 
 [[package]]
 name = "serde_dhall"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "dhall 0.6.0",
  "dhall_proc_macros 0.5.0",
