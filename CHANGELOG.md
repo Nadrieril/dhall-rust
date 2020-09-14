@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Support Dhall v17.1.0
+
 #### [0.6.0] - 2020-08-05
 
 - Allow trailing delimiters in records, lists, etc.
