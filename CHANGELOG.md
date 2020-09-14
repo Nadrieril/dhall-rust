@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.7.0] - 2020-09-15
+
 - BREAKING CHANGE: Support Dhall v18.0.0
 
 #### [0.6.0] - 2020-08-05
@@ -71,7 +73,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.6.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.0...HEAD
+[0.7.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.6.0...serde_dhall-v0.7.0
 [0.6.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.3...serde_dhall-v0.6.0
 [0.5.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.2...serde_dhall-v0.5.3
 [0.5.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.1...serde_dhall-v0.5.2
