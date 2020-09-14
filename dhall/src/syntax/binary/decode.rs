@@ -434,6 +434,27 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
                 let x = cbor_value_to_dhall(&x)?;
                 EmptyListLit(x)
             }
+            [U64(29), x, labels, y] => {
+                let x = cbor_value_to_dhall(&x)?;
+                let y = cbor_value_to_dhall(&y)?;
+                let labels = match labels {
+                    Array(labels) => labels
+                        .iter()
+                        .map(|s| match s {
+                            String(s) => Ok(Label::from(s.as_str())),
+                            _ => Err(DecodeError::WrongFormatError(
+                                "with".to_owned(),
+                            )),
+                        })
+                        .collect::<Result<_, _>>()?,
+                    _ => {
+                        return Err(DecodeError::WrongFormatError(
+                            "with".to_owned(),
+                        ))
+                    }
+                };
+                Op(With(x, labels, y))
+            }
             _ => {
                 return Err(DecodeError::WrongFormatError(format!(
                     "{:?}",

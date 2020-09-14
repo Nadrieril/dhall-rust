@@ -2,6 +2,7 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env;
+use std::iter::once;
 use std::path::PathBuf;
 use url::Url;
 
@@ -12,8 +13,8 @@ use crate::operations::{BinOp, OpKind};
 use crate::semantics::{mkerr, Cache, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::{
-    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
-    UnspannedExpr, URL,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
+    Label, Span, UnspannedExpr, URL,
 };
 use crate::{Parsed, Resolved};
 
@@ -276,6 +277,30 @@ fn resolve_one_import(
     })
 }
 
+/// Desugar a `with` expression.
+fn desugar_with(x: Expr, path: &[Label], y: Expr, span: Span) -> Expr {
+    use crate::operations::BinOp::RightBiasedRecordMerge;
+    use ExprKind::{Op, RecordLit};
+    use OpKind::{BinOp, Field};
+    let expr = |k| Expr::new(k, span.clone());
+    match path {
+        [] => y,
+        [l, rest @ ..] => {
+            let res = desugar_with(
+                expr(Op(Field(x.clone(), l.clone()))),
+                rest,
+                y,
+                span.clone(),
+            );
+            expr(Op(BinOp(
+                RightBiasedRecordMerge,
+                x,
+                expr(RecordLit(once((l.clone(), res)).collect())),
+            )))
+        }
+    }
+}
+
 /// Desugar the first level of the expression.
 fn desugar(expr: &Expr) -> Cow<'_, Expr> {
     match expr.kind() {
@@ -300,6 +325,9 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
                 ExprKind::Annot(merged, ty_field_type),
                 expr.span(),
             ))
+        }
+        ExprKind::Op(OpKind::With(x, path, y)) => {
+            Cow::Owned(desugar_with(x.clone(), path, y.clone(), expr.span()))
         }
         _ => Cow::Borrowed(expr),
     }

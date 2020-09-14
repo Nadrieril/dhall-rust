@@ -299,7 +299,7 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             )),
             _ => nothing_to_do(),
         },
-        Completion(..) => {
+        Completion(..) | With(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     }

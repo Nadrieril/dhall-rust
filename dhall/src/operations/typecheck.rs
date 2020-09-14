@@ -503,7 +503,7 @@ pub fn typecheck_operation(
 
             selection_val
         }
-        Completion(..) => {
+        Completion(..) | With(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     })

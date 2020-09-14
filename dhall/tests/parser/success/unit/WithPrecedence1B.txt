@@ -1,1 +1,1 @@
-{ a = Some 1 } ⫽ { a = Some 2 } ⫽ { a = Some 3 }
+{ a = Some 1 } with a = Some 2 with a = Some 3
