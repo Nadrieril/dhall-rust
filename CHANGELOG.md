@@ -2,8 +2,7 @@
 
 #### [Unreleased]
 
-- BREAKING CHANGE: Enable `with` optimizations
-- Support Dhall v17.1.0
+- BREAKING CHANGE: Support Dhall v18.0.0
 
 #### [0.6.0] - 2020-08-05
 
