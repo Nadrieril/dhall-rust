@@ -21,7 +21,6 @@ pub enum Span {
     /// Desugarings
     DuplicateRecordFieldsSugar,
     DottedFieldSugar,
-    WithSugar,
     RecordPunSugar,
     /// For expressions obtained from decoding binary
     Decoded,

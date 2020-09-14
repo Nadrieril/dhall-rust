@@ -171,6 +171,10 @@ where
         Op(Completion(x, y)) => {
             ser_seq!(ser; tag(3), tag(13), expr(x), expr(y))
         }
+        Op(With(x, ls, y)) => {
+            let ls: Vec<_> = ls.iter().map(label).collect();
+            ser_seq!(ser; tag(29), expr(x), ls, expr(y))
+        }
         Import(import) => serialize_import(ser, import),
     }
 }

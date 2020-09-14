@@ -55,6 +55,8 @@ pub enum OpKind<SubExpr> {
     ProjectionByExpr(SubExpr, SubExpr),
     ///  `x::y`
     Completion(SubExpr, SubExpr),
+    ///  `x with a.b.c = y`
+    With(SubExpr, Vec<Label>, SubExpr),
 }
 
 impl<SE> OpKind<SE> {
@@ -85,6 +87,7 @@ impl<SE> OpKind<SE> {
             Projection(e, ls) => Projection(expr!(e), ls.clone()),
             ProjectionByExpr(e, x) => ProjectionByExpr(expr!(e), expr!(x)),
             Completion(e, x) => Completion(expr!(e), expr!(x)),
+            With(x, ls, y) => With(expr!(x), ls.clone(), expr!(y)),
         })
     }
 

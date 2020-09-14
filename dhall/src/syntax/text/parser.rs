@@ -105,26 +105,6 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
     }
 }
 
-fn desugar_with_expr(x: Expr, labels: &[Label], y: Expr) -> Expr {
-    use crate::operations::BinOp::RightBiasedRecordMerge;
-    let expr = |k| Expr::new(k, Span::WithSugar);
-    match labels {
-        [] => y,
-        [l, rest @ ..] => {
-            let res = desugar_with_expr(
-                expr(Op(Field(x.clone(), l.clone()))),
-                rest,
-                y,
-            );
-            expr(Op(BinOp(
-                RightBiasedRecordMerge,
-                x,
-                expr(RecordLit(once((l.clone(), res)).collect())),
-            )))
-        }
-    }
-}
-
 lazy_static::lazy_static! {
     static ref PRECCLIMBER: PrecClimber<Rule> = {
         use Rule::*;
@@ -778,7 +758,11 @@ impl DhallParser {
                 clauses.fold(
                     first,
                     |acc, (labels, e)| {
-                        desugar_with_expr(acc, &labels, e)
+                        spanned_union(
+                            acc.span(),
+                            e.span(),
+                            Op(With(acc, labels, e))
+                        )
                     }
                 )
             },

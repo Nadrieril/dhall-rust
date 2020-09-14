@@ -275,6 +275,10 @@ impl<SE: Display + Clone> Display for OpKind<SE> {
             Completion(a, b) => {
                 write!(f, "{}::{}", a, b)?;
             }
+            With(a, ls, b) => {
+                let ls = ls.iter().join(".");
+                write!(f, "{} with {} = {}", a, ls, b)?;
+            }
         }
         Ok(())
     }
