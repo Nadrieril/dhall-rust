@@ -197,9 +197,13 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
 }
 
 // TODO: error handling
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
 pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
     Ok(reqwest::blocking::get(url).unwrap().text().unwrap())
+}
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "reqwest")))]
+pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
+    panic!("Remote imports are disabled in this build of dhall-rust")
 }
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
