@@ -290,6 +290,11 @@ impl SimpleType {
             ),
         })
     }
+
+    /// Converts back to the corresponding AST expression.
+    pub(crate) fn to_expr(&self) -> Expr {
+        self.to_hir().to_expr(Default::default())
+    }
 }
 
 impl Sealed for Value {}
@@ -335,4 +340,20 @@ impl std::fmt::Display for Value {
     ) -> std::result::Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
+}
+
+impl std::fmt::Display for SimpleType {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        self.to_expr().fmt(f)
+    }
+}
+
+#[test]
+fn test_display_simpletype() {
+    use SimpleType::*;
+    let ty = List(Box::new(Optional(Box::new(Natural))));
+    assert_eq!(ty.to_string(), "List (Optional Natural)".to_string())
 }

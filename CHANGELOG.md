@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Add a `Display` impl for `SimpleType` (https://github.com/Nadrieril/dhall-rust/issues/179)
+
 #### [0.7.0] - 2020-09-15
 
 - BREAKING CHANGE: Support Dhall v18.0.0
