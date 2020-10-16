@@ -1,10 +1,10 @@
 {
     "dhall": {
-        "sha256": "0jv2s3rjk4ha5vq0z4x5w9q3x01kxvwdadcj1a9x1qyx29xxi9qp",
+        "sha256": "0xy6bqasr0z3pnrav8mqc9jxjwz1xck0v6g0pgrr3rfgbi4l0hjz",
         "type": "tarball",
-        "url": "https://github.com/dhall-lang/dhall-haskell/releases/download/1.32.0/dhall-1.32.0-x86_64-linux.tar.bz2",
+        "url": "https://github.com/dhall-lang/dhall-haskell/releases/download/1.35.0/dhall-1.35.0-x86_64-linux.tar.bz2",
         "url_template": "https://github.com/dhall-lang/dhall-haskell/releases/download/<version>/dhall-<version>-x86_64-linux.tar.bz2",
-        "version": "1.32.0"
+        "version": "1.35.0"
     },
     "nixpkgs": {
         "branch": "nixos-20.03",

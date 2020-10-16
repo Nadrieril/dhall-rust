@@ -7,8 +7,8 @@ let
     version = sources.dhall.version;
     src = sources.dhall;
     installPhase = ''
-      mkdir -p $out/bin
-      cp $src/* $out/bin/
+      mkdir -p $out
+      cp -r $src/* $out/
     '';
   };
 in
