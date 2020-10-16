@@ -41,8 +41,7 @@ reqwest = { version = "0.10", features = ["blocking"], optional = true }
 [dev-dependencies]
 anyhow = "1.0.28"
 colored-diff = "0.2.2"
-# Latest master allows tests to be run in parallel.
-libtest-mimic = { version = "0.2.0", git = "https://github.com/LukasKalbertodt/libtest-mimic" }
+libtest-mimic = "0.3.0"
 rand = "0.7"
 version-sync = "0.9"
 walkdir = "2"
