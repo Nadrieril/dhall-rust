@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Support Dhall v19.0.0
+
 #### [0.7.3] - 2020-10-24
 
 - Add a `SimpleValue` type to the public interface (https://github.com/Nadrieril/dhall-rust/pull/183)
