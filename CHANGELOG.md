@@ -2,7 +2,10 @@
 
 #### [Unreleased]
 
+#### [0.7.1] - 2020-10-16
+
 - Add a `Display` impl for `SimpleType` (https://github.com/Nadrieril/dhall-rust/issues/179)
+- Make reqwest an optional dependency (https://github.com/Nadrieril/dhall-rust/issues/178)
 
 #### [0.7.0] - 2020-09-15
 
@@ -75,7 +78,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.1...HEAD
+[0.7.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.0...serde_dhall-v0.7.1
 [0.7.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.6.0...serde_dhall-v0.7.0
 [0.6.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.3...serde_dhall-v0.6.0
 [0.5.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.5.2...serde_dhall-v0.5.3
