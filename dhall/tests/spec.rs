@@ -519,6 +519,10 @@ fn define_features() -> Vec<TestFeature> {
                     || path == "simple/integerToDouble"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
+                    // With builtin not implemented yet
+                    || path == "unit/WithCreateIntermediateRecords"
+                    || path == "unit/WithDesugar"
+                    || path == "unit/WithPartiallyAbstract"
             }),
             ..default_feature.clone()
         },
@@ -538,7 +542,12 @@ fn define_features() -> Vec<TestFeature> {
             variant: SpecTestKind::TypeInferenceSuccess,
             // TODO: this fails because of caching shenanigans
             // too_slow_path: Rc::new(|path: &str| path == "prelude"),
-            exclude_path: Rc::new(|path: &str| path == "prelude"),
+            exclude_path: Rc::new(|path: &str| {
+                false
+                    || path == "prelude"
+                    // With builtin not implemented yet
+                    || path == "unit/WithCreateIntermediateRecords"
+            }),
             ..default_feature.clone()
         },
         TestFeature {
