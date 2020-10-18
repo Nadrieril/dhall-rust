@@ -410,51 +410,38 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::TextReplace, [needle, replacement, haystack]) => {
-            match (&*needle.kind(), &*haystack.kind()) {
-                (TextLit(n_lit), TextLit(h_lit)) => {
-                    // The needle and the haystack need to be fully
-                    // evaluated as Text otherwise no progress can be made
-                    match (n_lit.as_text(), h_lit.as_text()) {
-                        (Some(n), Some(h)) => {
-                            // Helper to match a Nir as a text literal
-                            fn nir_to_string(n: &Nir) -> Option<String> {
-                                match &*n.kind() {
-                                    TextLit(r_lit) => r_lit.as_text(),
-                                    _ => None,
-                                }
-                            }
+            // Helper to match a Nir as a text literal
+            fn nir_to_string(n: &Nir) -> Option<String> {
+                match &*n.kind() {
+                    TextLit(n_lit) => n_lit.as_text(),
+                    _ => None,
+                }
+            }
 
-                            // When the needle is empty the haystack is returned untouched
-                            if n.is_empty() {
-                                Ret::Nir(haystack.clone())
-                            // Fast case when replacement is fully evaluated
-                            } else if let Some(r) = nir_to_string(replacement) {
-                                Ret::Nir(Nir::from_text(h.replace(&n, &r)))
-                            } else {
-                                use std::iter::{once, repeat};
+            // The needle and the haystack need to be fully
+            // evaluated as Text otherwise no progress can be made
+            match (nir_to_string(needle), nir_to_string(haystack)) {
+                (Some(n), Some(h)) => {
+                    // When the needle is empty the haystack is returned untouched
+                    if n.is_empty() {
+                        Ret::Nir(haystack.clone())
+                    // Fast case when replacement is fully evaluated
+                    } else if let Some(r) = nir_to_string(replacement) {
+                        Ret::Nir(Nir::from_text(h.replace(&n, &r)))
+                    } else {
+                        use itertools::Itertools;
 
-                                let mut parts = h.split(&n).map(|s| {
-                                    InterpolatedTextContents::Text(
-                                        s.to_string(),
-                                    )
-                                });
-                                let replacement =
-                                    InterpolatedTextContents::Expr(
-                                        replacement.clone(),
-                                    );
-                                let first = parts.next();
-                                let rest = repeat(replacement)
-                                    .zip(parts)
-                                    .flat_map(|(r, p)| once(r).chain(once(p)));
+                        let parts = h.split(&n).map(|s| {
+                            InterpolatedTextContents::Text(s.to_string())
+                        });
+                        let replacement =
+                            InterpolatedTextContents::Expr(replacement.clone());
 
-                                Ret::Nir(Nir::from_kind(NirKind::TextLit(
-                                    nze::nir::TextLit::new(
-                                        first.into_iter().chain(rest),
-                                    ),
-                                )))
-                            }
-                        }
-                        _ => Ret::DoneAsIs,
+                        Ret::Nir(Nir::from_kind(NirKind::TextLit(
+                            nze::nir::TextLit::new(
+                                parts.intersperse(replacement),
+                            ),
+                        )))
                     }
                 }
                 _ => Ret::DoneAsIs,
