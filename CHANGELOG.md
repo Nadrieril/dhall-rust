@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Fix `reqwest` feature (https://github.com/Nadrieril/dhall-rust/issues/182)
+
 #### [0.7.1] - 2020-10-16
 
 - Add a `Display` impl for `SimpleType` (https://github.com/Nadrieril/dhall-rust/issues/179)
