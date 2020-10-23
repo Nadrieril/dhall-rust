@@ -11,9 +11,13 @@ keywords = ["serde", "serialization", "dhall"]
 edition = "2018"
 include = ["src/**/*"]
 
+[features]
+default = [ "reqwest" ]
+reqwest = [ "dhall/reqwest" ]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-dhall = { version = "= 0.7.0", path = "../dhall" }
+dhall = { version = "= 0.7.0", path = "../dhall",  default-features = false }
 dhall_proc_macros = { version = "= 0.5.0", path = "../dhall_proc_macros" }
 doc-comment = "0.3"
 url = "2.1"
