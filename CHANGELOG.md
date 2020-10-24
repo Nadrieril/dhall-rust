@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.7.3] - 2020-10-24
+
 - Add a `SimpleValue` type to the public interface (https://github.com/Nadrieril/dhall-rust/pull/183)
 
 #### [0.7.2] - 2020-10-24
@@ -84,7 +86,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.2...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...HEAD
+[0.7.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.2...serde_dhall-v0.7.3
 [0.7.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.1...serde_dhall-v0.7.2
 [0.7.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.0...serde_dhall-v0.7.1
 [0.7.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.6.0...serde_dhall-v0.7.0

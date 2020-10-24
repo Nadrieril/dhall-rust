@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/serde_dhall/0.7.2")]
+#![doc(html_root_url = "https://docs.rs/serde_dhall/0.7.3")]
 #![warn(missing_docs, missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
