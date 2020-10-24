@@ -2,9 +2,11 @@
 
 #### [Unreleased]
 
+- Add a `SimpleValue` type to the public interface (https://github.com/Nadrieril/dhall-rust/pull/183)
+
 #### [0.7.2] - 2020-10-24
 
-- Fix `reqwest` feature (https://github.com/Nadrieril/dhall-rust/issues/182)
+- Fix `reqwest` feature (https://github.com/Nadrieril/dhall-rust/pull/182)
 
 #### [0.7.1] - 2020-10-16
 
