@@ -176,10 +176,10 @@ mod value;
 #[doc(hidden)]
 pub use dhall_proc_macros::StaticType;
 
-pub use deserialize::FromDhall;
 pub(crate) use deserialize::Sealed;
+pub use deserialize::{from_simple_value, FromDhall};
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
 pub use options::{from_file, from_str, Deserializer};
 pub use static_type::StaticType;
-pub use value::{SimpleType, Value};
+pub use value::{NumKind, SimpleType, SimpleValue, Value};

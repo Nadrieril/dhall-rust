@@ -45,6 +45,51 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 
 struct Deserializer<'a>(Cow<'a, SimpleValue>);
 
+/// Deserialize a Rust value from a Dhall [`SimpleValue`].
+///
+/// # Example
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::BTreeMap;
+/// use serde::Deserialize;
+///
+/// // We use serde's derive feature
+/// #[derive(Deserialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+///
+/// // Some Dhall data
+/// let mut data = BTreeMap::new();
+/// data.insert(
+///     "x".to_string(),
+///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(1))
+/// );
+/// data.insert(
+///     "y".to_string(),
+///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(2))
+/// );
+/// let data = serde_dhall::SimpleValue::Record(data);
+///
+/// // Parse the Dhall value as a Point.
+/// let point: Point = serde_dhall::from_simple_value(data)?;
+///
+/// assert_eq!(point.x, 1);
+/// assert_eq!(point.y, 2);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [`SimpleValue`]: enum.SimpleValue.html
+pub fn from_simple_value<T>(v: SimpleValue) -> Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    T::deserialize(Deserializer(Cow::Owned(v)))
+}
+
 impl<T> FromDhall for T
 where
     T: serde::de::DeserializeOwned,
@@ -56,7 +101,7 @@ where
                 v
             )))
         })?;
-        T::deserialize(Deserializer(Cow::Owned(sval)))
+        from_simple_value(sval)
     }
 }
 
