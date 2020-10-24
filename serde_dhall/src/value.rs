@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use dhall::builtins::Builtin;
 use dhall::operations::OpKind;
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
-use dhall::syntax::{Expr, ExprKind, NumKind, Span};
+pub use dhall::syntax::NumKind;
+use dhall::syntax::{Expr, ExprKind, Span};
 
 use crate::{Error, ErrorKind, FromDhall, Result, Sealed};
 
@@ -19,14 +20,92 @@ pub struct Value {
     as_simple_ty: Option<SimpleType>,
 }
 
-/// A simple value of the kind that can be decoded with serde
+/// A value of the kind that can be decoded by `serde_dhall`, e.g. `{ x = True, y = [1, 2, 3] }`.
+/// This can be obtained with [`from_str()`] or [`from_file()`].
+/// It can also be deserialized into Rust types with [`from_simple_value()`].
+///
+/// # Examples
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::BTreeMap;
+/// use serde::Deserialize;
+/// use serde_dhall::{from_simple_value, NumKind, SimpleValue};
+///
+/// #[derive(Debug, PartialEq, Eq, Deserialize)]
+/// struct Foo {
+///     x: bool,
+///     y: Vec<u64>,
+/// }
+///
+/// let value: SimpleValue =
+///     serde_dhall::from_str("{ x = True, y = [1, 2, 3] }").parse()?;
+///
+/// assert_eq!(
+///     value,
+///     SimpleValue::Record({
+///         let mut r = BTreeMap::new();
+///         r.insert(
+///             "x".to_string(),
+///             SimpleValue::Num(NumKind::Bool(true))
+///         );
+///         r.insert(
+///             "y".to_string(),
+///             SimpleValue::List(vec![
+///                 SimpleValue::Num(NumKind::Natural(1)),
+///                 SimpleValue::Num(NumKind::Natural(2)),
+///                 SimpleValue::Num(NumKind::Natural(3)),
+///             ])
+///         );
+///         r
+///     })
+/// );
+///
+/// let foo: Foo = from_simple_value(value)?;
+///
+/// assert_eq!(
+///     foo,
+///     Foo {
+///         x: true,
+///         y: vec![1, 2, 3]
+///     }
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::BTreeMap;
+/// use serde_dhall::{NumKind, SimpleValue};
+///
+/// let value: SimpleValue =
+///     serde_dhall::from_str("{ x = 1, y = 2 }").parse()?;
+///
+/// let mut map = BTreeMap::new();
+/// map.insert("x".to_string(), SimpleValue::Num(NumKind::Natural(1)));
+/// map.insert("y".to_string(), SimpleValue::Num(NumKind::Natural(2)));
+/// assert_eq!(value, SimpleValue::Record(map));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [`from_str()`]: fn.from_str.html
+/// [`from_file()`]: fn.from_file.html
+/// [`from_simple_value()`]: fn.from_simple_value.html
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SimpleValue {
+pub enum SimpleValue {
+    /// Numbers and booleans - `True`, `1`, `+2`, `3.24`
     Num(NumKind),
+    /// A string of text - `"Hello world!"`
     Text(String),
+    /// An optional value - `Some e`, `None`
     Optional(Option<Box<SimpleValue>>),
+    /// A list of values - `[a, b, c, d, e]`
     List(Vec<SimpleValue>),
+    /// A record value - `{ k1 = v1, k2 = v2 }`
     Record(BTreeMap<String, SimpleValue>),
+    /// A union value (both the name of the variant and the variant's value) - `Left e`
     Union(String, Option<Box<SimpleValue>>),
 }
 
