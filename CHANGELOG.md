@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.7.4] - 2020-10-25
+
 - Add new `Text/replace` builtin (https://github.com/Nadrieril/dhall-rust/pull/181)
 
 #### [0.7.3] - 2020-10-24
@@ -88,7 +90,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.4...HEAD
+[0.7.4]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...serde_dhall-v0.7.4
 [0.7.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.2...serde_dhall-v0.7.3
 [0.7.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.1...serde_dhall-v0.7.2
 [0.7.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.0...serde_dhall-v0.7.1
