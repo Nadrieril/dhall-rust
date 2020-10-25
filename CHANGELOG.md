@@ -2,7 +2,7 @@
 
 #### [Unreleased]
 
-- BREAKING CHANGE: Support Dhall v19.0.0
+- Add new `Text/replace` builtin (https://github.com/Nadrieril/dhall-rust/pull/181)
 
 #### [0.7.3] - 2020-10-24
 
