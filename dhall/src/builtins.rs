@@ -3,7 +3,8 @@ use std::convert::TryInto;
 
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
-    skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv,
+    nze, skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv,
+    VarEnv,
 };
 use crate::syntax::Const::Type;
 use crate::syntax::{
@@ -43,6 +44,7 @@ pub enum Builtin {
     ListIndexed,
     ListReverse,
     TextShow,
+    TextReplace,
 }
 
 impl Builtin {
@@ -78,6 +80,7 @@ impl Builtin {
             "List/indexed" => Some(ListIndexed),
             "List/reverse" => Some(ListReverse),
             "Text/show" => Some(TextShow),
+            "Text/replace" => Some(TextReplace),
             _ => None,
         }
     }
@@ -211,7 +214,12 @@ pub fn type_of_builtin(b: Builtin) -> Hir {
 
         DoubleShow => make_type!(Double -> Text),
         TextShow => make_type!(Text -> Text),
-
+        TextReplace => make_type!(
+            forall (needle: Text) ->
+            forall (replacement: Text) ->
+            forall (haystack: Text) ->
+            Text
+        ),
         ListBuild => make_type!(
             forall (a: Type) ->
             (forall (list: Type) ->
@@ -401,6 +409,44 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             }
             _ => Ret::DoneAsIs,
         },
+        (Builtin::TextReplace, [needle, replacement, haystack]) => {
+            // Helper to match a Nir as a text literal
+            fn nir_to_string(n: &Nir) -> Option<String> {
+                match &*n.kind() {
+                    TextLit(n_lit) => n_lit.as_text(),
+                    _ => None,
+                }
+            }
+
+            // The needle and the haystack need to be fully
+            // evaluated as Text otherwise no progress can be made
+            match (nir_to_string(needle), nir_to_string(haystack)) {
+                (Some(n), Some(h)) => {
+                    // When the needle is empty the haystack is returned untouched
+                    if n.is_empty() {
+                        Ret::Nir(haystack.clone())
+                    // Fast case when replacement is fully evaluated
+                    } else if let Some(r) = nir_to_string(replacement) {
+                        Ret::Nir(Nir::from_text(h.replace(&n, &r)))
+                    } else {
+                        use itertools::Itertools;
+
+                        let parts = h.split(&n).map(|s| {
+                            InterpolatedTextContents::Text(s.to_string())
+                        });
+                        let replacement =
+                            InterpolatedTextContents::Expr(replacement.clone());
+
+                        Ret::Nir(Nir::from_kind(NirKind::TextLit(
+                            nze::nir::TextLit::new(
+                                parts.intersperse(replacement),
+                            ),
+                        )))
+                    }
+                }
+                _ => Ret::DoneAsIs,
+            }
+        }
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
             EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
             NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len()))),
@@ -560,6 +606,7 @@ impl std::fmt::Display for Builtin {
             ListIndexed => "List/indexed",
             ListReverse => "List/reverse",
             TextShow => "Text/show",
+            TextReplace => "Text/replace",
         })
     }
 }
