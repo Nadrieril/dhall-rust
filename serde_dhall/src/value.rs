@@ -377,22 +377,11 @@ impl SimpleType {
 }
 
 impl Sealed for Value {}
-impl Sealed for SimpleValue {}
 impl Sealed for SimpleType {}
 
 impl FromDhall for Value {
     fn from_dhall(v: &Value) -> Result<Self> {
         Ok(v.clone())
-    }
-}
-impl FromDhall for SimpleValue {
-    fn from_dhall(v: &Value) -> Result<Self> {
-        v.to_simple_value().ok_or_else(|| {
-            Error(ErrorKind::Deserialize(format!(
-                "this cannot be deserialized into a simple type: {}",
-                v
-            )))
-        })
     }
 }
 impl FromDhall for SimpleType {
