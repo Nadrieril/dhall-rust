@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- Implement serialization (https://github.com/Nadrieril/dhall-rust/issues/164)
 - BREAKING CHANGE: use u64/i64 instead of usize/isize in `NumKind`
 
 #### [0.7.5] - 2020-10-28

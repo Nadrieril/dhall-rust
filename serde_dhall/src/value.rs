@@ -6,7 +6,7 @@ use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 pub use dhall::syntax::NumKind;
 use dhall::syntax::{Expr, ExprKind, Span};
 
-use crate::{Error, ErrorKind, FromDhall, Result, Sealed};
+use crate::{Error, ErrorKind, FromDhall, Result, ToDhall};
 
 #[doc(hidden)]
 /// An arbitrary Dhall value.
@@ -124,6 +124,28 @@ pub enum SimpleValue {
 /// [`StaticType`]: trait.StaticType.html
 /// [`Deserializer::static_type_annotation`]: options/struct.Deserializer.html#method.static_type_annotation
 ///
+/// # Type correspondence
+///
+/// The following Dhall types correspond to the following Rust types:
+///
+/// Dhall  | Rust
+/// -------|------
+/// `Bool`  | `bool`
+/// `Natural`  | `u64`, `u32`, ...
+/// `Integer`  | `i64`, `i32`, ...
+/// `Double`  | `f64`, `f32`, ...
+/// `Text`  | `String`
+/// `List T`  | `Vec<T>`
+/// `Optional T`  | `Option<T>`
+/// `{ x: T, y: U }`  | structs
+/// `{ _1: T, _2: U }`  | `(T, U)`, structs
+/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
+/// `< x: T \| y: U >`  | enums
+/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
+/// `T -> U`  | unsupported
+/// `Prelude.JSON.Type`  | unsupported
+/// `Prelude.Map.Type T U`  | unsupported
+///
 /// # Examples
 ///
 /// ```rust
@@ -159,7 +181,6 @@ pub enum SimpleValue {
 /// # Ok(())
 /// # }
 /// ```
-///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleType {
     /// Corresponds to the Dhall type `Bool`
@@ -292,6 +313,110 @@ impl SimpleValue {
             _ => return None,
         })
     }
+
+    // Converts this to `Hir`, using the optional type annotation. Without the type, things like
+    // empty lists and unions will fail to convert.
+    fn to_hir(&self, ty: Option<&SimpleType>) -> Result<Hir> {
+        use SimpleType as T;
+        use SimpleValue as V;
+        let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
+        let type_error = || {
+            Error(ErrorKind::Serialize(format!(
+                "expected a value of type {}, found {:?}",
+                ty.unwrap().to_hir().to_expr(Default::default()),
+                self
+            )))
+        };
+        let type_missing = || {
+            Error(ErrorKind::Serialize(format!(
+                "cannot serialize value without a type annotation: {:?}",
+                self
+            )))
+        };
+        let kind = match (self, ty) {
+            (V::Num(num @ NumKind::Bool(_)), Some(T::Bool))
+            | (V::Num(num @ NumKind::Natural(_)), Some(T::Natural))
+            | (V::Num(num @ NumKind::Integer(_)), Some(T::Integer))
+            | (V::Num(num @ NumKind::Double(_)), Some(T::Double))
+            | (V::Num(num), None) => ExprKind::Num(num.clone()),
+            (V::Text(v), Some(T::Text)) | (V::Text(v), None) => {
+                ExprKind::TextLit(v.clone().into())
+            }
+
+            (V::Optional(None), None) => return Err(type_missing()),
+            (V::Optional(None), Some(T::Optional(t))) => {
+                ExprKind::Op(OpKind::App(
+                    hir(ExprKind::Builtin(Builtin::OptionalNone)),
+                    t.to_hir(),
+                ))
+            }
+            (V::Optional(Some(v)), None) => ExprKind::SomeLit(v.to_hir(None)?),
+            (V::Optional(Some(v)), Some(T::Optional(t))) => {
+                ExprKind::SomeLit(v.to_hir(Some(t))?)
+            }
+
+            (V::List(v), None) if v.is_empty() => return Err(type_missing()),
+            (V::List(v), Some(T::List(t))) if v.is_empty() => {
+                ExprKind::EmptyListLit(hir(ExprKind::Op(OpKind::App(
+                    hir(ExprKind::Builtin(Builtin::List)),
+                    t.to_hir(),
+                ))))
+            }
+            (V::List(v), None) => ExprKind::NEListLit(
+                v.iter().map(|v| v.to_hir(None)).collect::<Result<_>>()?,
+            ),
+            (V::List(v), Some(T::List(t))) => ExprKind::NEListLit(
+                v.iter().map(|v| v.to_hir(Some(t))).collect::<Result<_>>()?,
+            ),
+
+            (V::Record(v), None) => ExprKind::RecordLit(
+                v.iter()
+                    .map(|(k, v)| Ok((k.clone().into(), v.to_hir(None)?)))
+                    .collect::<Result<_>>()?,
+            ),
+            (V::Record(v), Some(T::Record(t))) => ExprKind::RecordLit(
+                v.iter()
+                    .map(|(k, v)| match t.get(k) {
+                        Some(t) => Ok((k.clone().into(), v.to_hir(Some(t))?)),
+                        None => Err(type_error()),
+                    })
+                    .collect::<Result<_>>()?,
+            ),
+
+            (V::Union(..), None) => return Err(type_missing()),
+            (V::Union(variant, Some(v)), Some(T::Union(t))) => {
+                match t.get(variant) {
+                    Some(Some(variant_t)) => ExprKind::Op(OpKind::App(
+                        hir(ExprKind::Op(OpKind::Field(
+                            ty.unwrap().to_hir(),
+                            variant.clone().into(),
+                        ))),
+                        v.to_hir(Some(variant_t))?,
+                    )),
+                    _ => return Err(type_error()),
+                }
+            }
+            (V::Union(variant, None), Some(T::Union(t))) => {
+                match t.get(variant) {
+                    Some(None) => ExprKind::Op(OpKind::Field(
+                        ty.unwrap().to_hir(),
+                        variant.clone().into(),
+                    )),
+                    _ => return Err(type_error()),
+                }
+            }
+
+            (_, Some(_)) => return Err(type_error()),
+        };
+        Ok(hir(kind))
+    }
+    pub(crate) fn into_value(self, ty: Option<&SimpleType>) -> Result<Value> {
+        Ok(Value {
+            hir: self.to_hir(ty)?,
+            as_simple_val: Some(self),
+            as_simple_ty: None,
+        })
+    }
 }
 
 impl SimpleType {
@@ -376,8 +501,9 @@ impl SimpleType {
     }
 }
 
-impl Sealed for Value {}
-impl Sealed for SimpleType {}
+impl crate::deserialize::Sealed for Value {}
+impl crate::deserialize::Sealed for SimpleType {}
+impl crate::serialize::Sealed for Value {}
 
 impl FromDhall for Value {
     fn from_dhall(v: &Value) -> Result<Self> {
@@ -392,6 +518,11 @@ impl FromDhall for SimpleType {
                 v
             )))
         })
+    }
+}
+impl ToDhall for Value {
+    fn to_dhall(&self, _ty: Option<&SimpleType>) -> Result<Value> {
+        Ok(self.clone())
     }
 }
 

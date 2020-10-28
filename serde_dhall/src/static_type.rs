@@ -10,6 +10,10 @@ use crate::SimpleType;
 /// corresponds to them. For example, `HashMap<String, u64>` could correspond to multiple different
 /// Dhall types, e.g. `{ foo: Natural, bar: Natural }` and `{ baz: Natural }`.
 ///
+/// See also [the table of type correspondances].
+///
+/// [the table of type correspondances]: enum.SimpleType.html#type-correspondence
+///
 /// # Example
 ///
 /// ```rust
@@ -29,28 +33,6 @@ use crate::SimpleType;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// # Type correspondence
-///
-/// The following Dhall types correspond to the following Rust types:
-///
-/// Dhall  | Rust
-/// -------|------
-/// `Bool`  | `bool`
-/// `Natural`  | `u64`, `u32`, ...
-/// `Integer`  | `i64`, `i32`, ...
-/// `Double`  | `f64`, `f32`, ...
-/// `Text`  | `String`
-/// `List T`  | `Vec<T>`
-/// `Optional T`  | `Option<T>`
-/// `{ x: T, y: U }`  | structs
-/// `{ _1: T, _2: U }`  | `(T, U)`, structs
-/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
-/// `< x: T \| y: U >`  | enums
-/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
-/// `T -> U`  | unsupported
-/// `Prelude.JSON.Type`  | unsupported
-/// `Prelude.Map.Type T U`  | unsupported
 pub trait StaticType {
     /// Return the Dhall type that represents this type.
     ///
@@ -103,6 +85,26 @@ derive_builtin!(i32, Integer);
 derive_builtin!(f64, Double);
 derive_builtin!(f32, Double);
 derive_builtin!(String, Text);
+derive_builtin!(&str, Text);
+
+impl StaticType for () {
+    fn static_type() -> SimpleType {
+        SimpleType::Record(vec![].into_iter().collect())
+    }
+}
+
+impl<A> StaticType for (A,)
+where
+    A: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![("_1".to_owned(), A::static_type())]
+                .into_iter()
+                .collect(),
+        )
+    }
+}
 
 impl<A, B> StaticType for (A, B)
 where
@@ -114,6 +116,46 @@ where
             vec![
                 ("_1".to_owned(), A::static_type()),
                 ("_2".to_owned(), B::static_type()),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    }
+}
+
+impl<A, B, C> StaticType for (A, B, C)
+where
+    A: StaticType,
+    B: StaticType,
+    C: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![
+                ("_1".to_owned(), A::static_type()),
+                ("_2".to_owned(), B::static_type()),
+                ("_3".to_owned(), C::static_type()),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    }
+}
+
+impl<A, B, C, D> StaticType for (A, B, C, D)
+where
+    A: StaticType,
+    B: StaticType,
+    C: StaticType,
+    D: StaticType,
+{
+    fn static_type() -> SimpleType {
+        SimpleType::Record(
+            vec![
+                ("_1".to_owned(), A::static_type()),
+                ("_2".to_owned(), B::static_type()),
+                ("_3".to_owned(), C::static_type()),
+                ("_4".to_owned(), D::static_type()),
             ]
             .into_iter()
             .collect(),

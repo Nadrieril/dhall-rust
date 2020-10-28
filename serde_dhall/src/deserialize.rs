@@ -47,8 +47,6 @@ pub trait FromDhall: Sealed + Sized {
 
 impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 
-struct Deserializer<'a>(Cow<'a, SimpleValue>);
-
 /// Deserialize a Rust value from a Dhall [`SimpleValue`].
 ///
 /// # Example
@@ -108,6 +106,8 @@ where
         from_simple_value(sval)
     }
 }
+
+struct Deserializer<'a>(Cow<'a, SimpleValue>);
 
 impl<'de: 'a, 'a> serde::de::IntoDeserializer<'de, Error> for Deserializer<'a> {
     type Deserializer = Deserializer<'a>;
@@ -171,9 +171,19 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         }
     }
 
+    fn deserialize_unit<V>(self, visitor: V) -> crate::Result<V::Value>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match self.0.as_ref() {
+            SimpleValue::Record(m) if m.is_empty() => visitor.visit_unit(),
+            _ => self.deserialize_any(visitor),
+        }
+    }
+
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf option unit unit_struct newtype_struct seq
+        bytes byte_buf option unit_struct newtype_struct seq
         tuple_struct map struct enum identifier ignored_any
     }
 }

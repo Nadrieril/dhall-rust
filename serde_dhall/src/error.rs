@@ -11,6 +11,7 @@ pub struct Error(pub(crate) ErrorKind);
 pub(crate) enum ErrorKind {
     Dhall(DhallError),
     Deserialize(String),
+    Serialize(String),
 }
 
 impl From<ErrorKind> for Error {
@@ -24,6 +25,7 @@ impl std::fmt::Display for Error {
         match &self.0 {
             ErrorKind::Dhall(err) => write!(f, "{}", err),
             ErrorKind::Deserialize(err) => write!(f, "{}", err),
+            ErrorKind::Serialize(err) => write!(f, "{}", err),
         }
     }
 }
@@ -36,5 +38,14 @@ impl serde::de::Error for Error {
         T: std::fmt::Display,
     {
         ErrorKind::Deserialize(msg.to_string()).into()
+    }
+}
+
+impl serde::ser::Error for Error {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        ErrorKind::Serialize(msg.to_string()).into()
     }
 }
