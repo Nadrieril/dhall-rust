@@ -1,0 +1,6 @@
+Type error: error: MustCombineRecord
+ --> <current file>:1:1
+  |
+1 | 5 with a = 10
+  | ^^^^^^^^^^^^^ MustCombineRecord
+  |
