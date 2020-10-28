@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.7.5] - 2020-10-28
+
 - Make `SimpleValue` deserializable within other types (https://github.com/Nadrieril/dhall-rust/issues/184)
 
 #### [0.7.4] - 2020-10-25
@@ -92,7 +94,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.4...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.5...HEAD
+[0.7.5]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.4...serde_dhall-v0.7.5
 [0.7.4]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...serde_dhall-v0.7.4
 [0.7.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.2...serde_dhall-v0.7.3
 [0.7.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.1...serde_dhall-v0.7.2
