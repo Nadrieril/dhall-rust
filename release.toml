@@ -1,7 +1,7 @@
 disable-push = true
 disable-publish = true
 no-dev-version = true
-pre-release-commit-message = "Release {{crate_name}} version {{version}}"
+pre-release-commit-message = "release: {{crate_name}} version {{version}}"
 
 [[pre-release-replacements]]
 file = "src/lib.rs"
