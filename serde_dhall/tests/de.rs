@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, FromDhall, StaticType};
+use serde_dhall::{from_str, FromDhall, NumKind, SimpleValue, StaticType};
 
 #[test]
 fn test_de_typed() {
@@ -114,6 +114,38 @@ fn test_de_untyped() {
 
     // https://github.com/Nadrieril/dhall-rust/issues/155
     assert!(from_str("List/length [True, 42]").parse::<bool>().is_err());
+}
+
+#[test]
+fn test_de_simplevalue() {
+    let bool_true = SimpleValue::Num(NumKind::Bool(true));
+    // https://github.com/Nadrieril/dhall-rust/issues/184
+    assert_eq!(
+        from_str("[ True ]").parse::<Vec<SimpleValue>>().unwrap(),
+        vec![bool_true.clone()]
+    );
+
+    assert_eq!(
+        from_str("< Foo >.Foo").parse::<SimpleValue>().unwrap(),
+        SimpleValue::Union("Foo".into(), None)
+    );
+    assert_eq!(
+        from_str("< Foo: Bool >.Foo True")
+            .parse::<SimpleValue>()
+            .unwrap(),
+        SimpleValue::Union("Foo".into(), Some(Box::new(bool_true.clone())))
+    );
+
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct Foo {
+        foo: SimpleValue,
+    }
+    assert_eq!(
+        from_str("{ foo = True }").parse::<Foo>().unwrap(),
+        Foo {
+            foo: bool_true.clone()
+        },
+    );
 }
 
 // TODO: test various builder configurations

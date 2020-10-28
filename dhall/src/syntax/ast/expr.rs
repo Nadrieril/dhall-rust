@@ -7,6 +7,7 @@ use crate::semantics::Universe;
 use crate::syntax::visitor;
 use crate::syntax::*;
 
+// TODO: `usize` was a mistake. Should use `u64`.
 pub type Integer = isize;
 pub type Natural = usize;
 pub type Double = NaiveDouble;

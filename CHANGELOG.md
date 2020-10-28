@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Make `SimpleValue` deserializable within other types (https://github.com/Nadrieril/dhall-rust/issues/184)
+
 #### [0.7.4] - 2020-10-25
 
 - Add new `Text/replace` builtin (https://github.com/Nadrieril/dhall-rust/pull/181)
