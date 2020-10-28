@@ -347,6 +347,50 @@ impl serde::ser::Serialize for SimpleValue {
     where
         S: serde::ser::Serializer,
     {
-        todo!()
+        use serde::ser::{SerializeMap, SerializeSeq};
+        use NumKind::*;
+        use SimpleValue::*;
+
+        match self {
+            Num(Bool(x)) => serializer.serialize_bool(*x),
+            Num(Natural(x)) => serializer.serialize_u64(*x),
+            Num(Integer(x)) => serializer.serialize_i64(*x),
+            Num(Double(x)) => serializer.serialize_f64((*x).into()),
+            Text(x) => serializer.serialize_str(x),
+            List(xs) => {
+                let mut seq = serializer.serialize_seq(Some(xs.len()))?;
+                for x in xs {
+                    seq.serialize_element(x)?;
+                }
+                seq.end()
+            }
+            Optional(None) => serializer.serialize_none(),
+            Optional(Some(x)) => serializer.serialize_some(x),
+            Record(m) => {
+                let mut map = serializer.serialize_map(Some(m.len()))?;
+                for (k, v) in m {
+                    map.serialize_entry(k, v)?;
+                }
+                map.end()
+            }
+            // serde's enum support is yet again really limited. We can't avoid a memleak here :(.
+            Union(field_name, None) => {
+                let field_name: Box<str> = field_name.clone().into();
+                serializer.serialize_unit_variant(
+                    "SimpleValue",
+                    0,
+                    Box::leak(field_name),
+                )
+            }
+            Union(field_name, Some(x)) => {
+                let field_name: Box<str> = field_name.clone().into();
+                serializer.serialize_newtype_variant(
+                    "SimpleValue",
+                    0,
+                    Box::leak(field_name),
+                    x,
+                )
+            }
+        }
     }
 }

@@ -31,27 +31,28 @@ mod simple_value {
     fn test_serde() {
         let bool_true = SimpleValue::Num(NumKind::Bool(true));
         // https://github.com/Nadrieril/dhall-rust/issues/184
-        // assert_serde("[ True ]", vec![bool_true.clone()]);
+        assert_serde("[True]", vec![bool_true.clone()]);
+
         assert_de("< Foo >.Foo", SimpleValue::Union("Foo".into(), None));
         assert_de(
             "< Foo: Bool >.Foo True",
             SimpleValue::Union("Foo".into(), Some(Box::new(bool_true.clone()))),
         );
 
-        // assert_eq!(
-        //     serialize(&SimpleValue::Optional(None)).to_string().map_err(|e| e.to_string()),
-        //     Err("cannot serialize value without a type annotation: Optional(None)".to_string())
-        // );
+        assert_eq!(
+            serialize(&SimpleValue::Union("Foo".into(), None)).to_string().map_err(|e| e.to_string()),
+            Err("cannot serialize value without a type annotation: Union(\"Foo\", None)".to_string())
+        );
 
-        // #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-        // struct Foo {
-        //     foo: SimpleValue,
-        // }
-        // assert_serde(
-        //     "{ foo = True }",
-        //     Foo {
-        //         foo: bool_true.clone(),
-        //     },
-        // );
+        #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+        struct Foo {
+            foo: SimpleValue,
+        }
+        assert_serde(
+            "{ foo = True }",
+            Foo {
+                foo: bool_true.clone(),
+            },
+        );
     }
 }
