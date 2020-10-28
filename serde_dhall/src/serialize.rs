@@ -9,6 +9,34 @@ use SimpleValue::*;
 
 pub trait Sealed {}
 
+/// A data structure that can be serialized from a Dhall expression.
+///
+/// This is automatically implemented for any type that [serde] can serialize.
+/// In fact, this trait cannot be implemented manually. To implement it for your type,
+/// use serde's derive mechanism.
+///
+/// # Example
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde::Serialize;
+///
+/// // Use serde's derive
+/// #[derive(Serialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+///
+/// // Convert a Point to a Dhall string.
+/// let point = Point { x: 0, y: 0 };
+/// let point_str = serde_dhall::serialize(&point).to_string()?;
+/// assert_eq!(point_str, "{ x = 0, y = 0 }".to_string());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [serde]: https://serde.rs
 pub trait ToDhall: Sealed {
     #[doc(hidden)]
     fn to_dhall(&self, ty: Option<&SimpleType>) -> Result<Value>;

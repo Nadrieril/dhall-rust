@@ -12,13 +12,12 @@
 //! YAML. It uses the [Serde][serde] serialization library to provide drop-in support for Dhall
 //! for any datatype that supports serde (and that's a lot of them !).
 //!
-//! This library is limited to deserializing (reading) Dhall values; serializing (writing)
-//! values to Dhall is not supported.
-//!
 //! # Basic usage
 //!
-//! The main entrypoint of this library is the [`from_str`](fn.from_str.html) function. It reads a string
-//! containing a Dhall expression and deserializes it into any serde-compatible type.
+//! ## Deserialization (reading)
+//!
+//! The entrypoint for deserialization is the [`from_str`](fn.from_str.html) function. It reads a
+//! string containing a Dhall expression and deserializes it into any serde-compatible type.
 //!
 //! This could mean a common Rust type like `HashMap`:
 //!
@@ -65,16 +64,69 @@
 //! # }
 //! ```
 //!
+//! ## Serialization (writing)
+//!
+//! The entrypoint for serialization is the [`serialize`](fn.serialize.html) function. It takes a
+//! serde-compatible type value and serializes it to a string containing a Dhall expression.
+//!
+//! This could mean a common Rust type like `HashMap`:
+//!
+//! ```rust
+//! # fn main() -> serde_dhall::Result<()> {
+//! use std::collections::HashMap;
+//!
+//! let mut map = HashMap::new();
+//! map.insert("x".to_string(), 1u64);
+//! map.insert("y".to_string(), 2u64);
+//!
+//! let string = serde_dhall::serialize(&map).to_string()?;
+//! assert_eq!(
+//!     string,
+//!     "{ x = 1, y = 2 }".to_string(),
+//! );
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! or a custom datatype, using serde's `derive` mechanism:
+//!
+//! ```rust
+//! # fn main() -> serde_dhall::Result<()> {
+//! use serde::Serialize;
+//!
+//! #[derive(Serialize)]
+//! struct Point {
+//!     x: u64,
+//!     y: u64,
+//! }
+//!
+//! let data = Point { x: 1, y: 2 };
+//! let string = serde_dhall::serialize(&data).to_string()?;
+//! assert_eq!(
+//!     string,
+//!     "{ x = 1, y = 2 }".to_string(),
+//! );
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Beware that in order to serialize empty options, empty lists or enums correctly, you will need
+//! to provide a type annotation!
+//!
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
 //! [`serde_yaml::from_str`] with [`serde_dhall::from_str(…).parse()`](fn.from_str.html).
+//! If you used to produce JSON or YAML, you only need to replace [`serde_json::to_string`] or
+//! [`serde_yaml::to_string`] with [`serde_dhall::serialize(…).to_string()`](fn.serialize.html).
 //!
 //! [`serde_json::from_str`]: https://docs.serde.rs/serde_json/fn.from_str.html
 //! [`serde_yaml::from_str`]: https://docs.serde.rs/serde_yaml/fn.from_str.html
+//! [`serde_json::to_string`]: https://docs.serde.rs/serde_json/fn.to_string.html
+//! [`serde_yaml::to_string`]: https://docs.serde.rs/serde_yaml/fn.to_string.html
 //!
 //!
-//! # Additional Dhall typechecking
+//! # Additional type annotations
 //!
 //! When deserializing, normal type checking is done to ensure that the returned value is a valid
 //! Dhall value. However types are
@@ -82,11 +134,16 @@
 //! matches a given Dhall type. That way, a type error will be caught on the Dhall side, and have
 //! pretty and explicit errors that point to the source file.
 //!
-//! There are two ways to typecheck a Dhall value in this way: you can provide the type manually or
-//! you can let Rust infer it for you.
+//! It is also possible to provide a type annotation when serializing. This is useful in particular
+//! for types like `HashMap` or [`SimpleValue`] that do not have a fixed type as Dhall values.
 //!
-//! To let Rust infer the appropriate Dhall type, use the [StaticType](trait.StaticType.html)
-//! trait.
+//! Moreover, some values (namely empty options, empty lists, and enums) _require_ a type annotation
+//! in order to be converted to Dhall, because the resulting Dhall value will contain the type
+//! explicitly.
+//!
+//! There are two ways to provide a type in this way: you can provide it manually or you can let
+//! Rust infer it for you. To let Rust infer the appropriate Dhall type, use the
+//! [StaticType](trait.StaticType.html) trait.
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -121,6 +178,28 @@
 //! # }
 //! ```
 //!
+//! ```
+//! # fn main() -> serde_dhall::Result<()> {
+//! use serde::Serialize;
+//! use serde_dhall::{serialize, StaticType};
+//!
+//! #[derive(Serialize, StaticType)]
+//! enum MyOption {
+//!     MyNone,
+//!     MySome(u64),
+//! }
+//!
+//! let data = MyOption::MySome(0);
+//! let string = serialize(&data)
+//!     .static_type_annotation()
+//!     .to_string()?;
+//! // The resulting Dhall string depends on the type annotation; it could not have been
+//! // printed without it.
+//! assert_eq!(string, "< MyNone | MySome: Natural >.MySome 0".to_string());
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! To provide a type manually, you need a [`SimpleType`](enum.SimpleType.html) value. You
 //! can parse it from some Dhall text like you would parse any other value.
 //!
@@ -151,12 +230,27 @@
 //! # }
 //! ```
 //!
+//! ```
+//! # fn main() -> serde_dhall::Result<()> {
+//! use serde_dhall::{serialize, from_str, SimpleValue};
+//!
+//! let ty = from_str("< A | B: Bool >").parse()?;
+//! let data = SimpleValue::Union("A".to_string(), None);
+//! let string = serialize(&data)
+//!     .type_annotation(&ty)
+//!     .to_string()?;
+//! assert_eq!(string, "< A | B: Bool >.A".to_string());
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Controlling deserialization
 //!
 //! If you need more control over the process of reading Dhall values, e.g. disabling
 //! imports, see the [`Deserializer`] methods.
 //!
 //! [`Deserializer`]: struct.Deserializer.html
+//! [`SimpleValue`]: enum.SimpleValue.html
 //! [dhall]: https://dhall-lang.org/
 //! [serde]: https://docs.serde.rs/serde/
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html
