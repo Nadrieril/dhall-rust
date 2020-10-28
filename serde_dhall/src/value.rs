@@ -124,6 +124,28 @@ pub enum SimpleValue {
 /// [`StaticType`]: trait.StaticType.html
 /// [`Deserializer::static_type_annotation`]: options/struct.Deserializer.html#method.static_type_annotation
 ///
+/// # Type correspondence
+///
+/// The following Dhall types correspond to the following Rust types:
+///
+/// Dhall  | Rust
+/// -------|------
+/// `Bool`  | `bool`
+/// `Natural`  | `u64`, `u32`, ...
+/// `Integer`  | `i64`, `i32`, ...
+/// `Double`  | `f64`, `f32`, ...
+/// `Text`  | `String`
+/// `List T`  | `Vec<T>`
+/// `Optional T`  | `Option<T>`
+/// `{ x: T, y: U }`  | structs
+/// `{ _1: T, _2: U }`  | `(T, U)`, structs
+/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
+/// `< x: T \| y: U >`  | enums
+/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
+/// `T -> U`  | unsupported
+/// `Prelude.JSON.Type`  | unsupported
+/// `Prelude.Map.Type T U`  | unsupported
+///
 /// # Examples
 ///
 /// ```rust
@@ -159,7 +181,6 @@ pub enum SimpleValue {
 /// # Ok(())
 /// # }
 /// ```
-///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleType {
     /// Corresponds to the Dhall type `Bool`

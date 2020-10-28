@@ -10,6 +10,10 @@ use crate::SimpleType;
 /// corresponds to them. For example, `HashMap<String, u64>` could correspond to multiple different
 /// Dhall types, e.g. `{ foo: Natural, bar: Natural }` and `{ baz: Natural }`.
 ///
+/// See also [the table of type correspondances].
+///
+/// [the table of type correspondances]: enum.SimpleType.html#type-correspondence
+///
 /// # Example
 ///
 /// ```rust
@@ -29,28 +33,6 @@ use crate::SimpleType;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// # Type correspondence
-///
-/// The following Dhall types correspond to the following Rust types:
-///
-/// Dhall  | Rust
-/// -------|------
-/// `Bool`  | `bool`
-/// `Natural`  | `u64`, `u32`, ...
-/// `Integer`  | `i64`, `i32`, ...
-/// `Double`  | `f64`, `f32`, ...
-/// `Text`  | `String`
-/// `List T`  | `Vec<T>`
-/// `Optional T`  | `Option<T>`
-/// `{ x: T, y: U }`  | structs
-/// `{ _1: T, _2: U }`  | `(T, U)`, structs
-/// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
-/// `< x: T \| y: U >`  | enums
-/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
-/// `T -> U`  | unsupported
-/// `Prelude.JSON.Type`  | unsupported
-/// `Prelude.Map.Type T U`  | unsupported
 pub trait StaticType {
     /// Return the Dhall type that represents this type.
     ///
