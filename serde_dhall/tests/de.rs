@@ -69,7 +69,7 @@ fn test_de_untyped() {
 
     // Test tuples on record of wrong type
     assert_eq!(
-        parse::<(u64, String, isize)>(r#"{ y = "foo", x = 1, z = +42 }"#),
+        parse::<(u64, String, i64)>(r#"{ y = "foo", x = 1, z = +42 }"#),
         (1, "foo".to_owned(), 42)
     );
 
@@ -77,11 +77,11 @@ fn test_de_untyped() {
     expected_map.insert("x".to_string(), 1);
     expected_map.insert("y".to_string(), 2);
     assert_eq!(
-        parse::<HashMap<String, usize>>("{ x = 1, y = 2 }"),
+        parse::<HashMap<String, u64>>("{ x = 1, y = 2 }"),
         expected_map
     );
     assert_eq!(
-        parse::<HashMap<String, usize>>("toMap { x = 1, y = 2 }"),
+        parse::<HashMap<String, u64>>("toMap { x = 1, y = 2 }"),
         expected_map
     );
 
@@ -90,9 +90,7 @@ fn test_de_untyped() {
     expected_map.insert("FOO_BAR".to_string(), 2);
     expected_map.insert("baz-kux".to_string(), 3);
     assert_eq!(
-        parse::<HashMap<String, usize>>(
-            "{ `if` = 1, FOO_BAR = 2, baz-kux = 3 }"
-        ),
+        parse::<HashMap<String, u64>>("{ `if` = 1, FOO_BAR = 2, baz-kux = 3 }"),
         expected_map
     );
 
@@ -100,7 +98,7 @@ fn test_de_untyped() {
     expected_map.insert("x".to_string(), 1);
     expected_map.insert("y".to_string(), 2);
     assert_eq!(
-        parse::<BTreeMap<String, usize>>("{ x = 1, y = 2 }"),
+        parse::<BTreeMap<String, u64>>("{ x = 1, y = 2 }"),
         expected_map
     );
 

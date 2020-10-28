@@ -378,7 +378,7 @@ impl DhallParser {
         let s = input.as_str().trim();
         if s.starts_with("0x") {
             let without_prefix = s.trim_start_matches("0x");
-            usize::from_str_radix(without_prefix, 16)
+            u64::from_str_radix(without_prefix, 16)
                 .map_err(|e| input.error(format!("{}", e)))
         } else {
             s.parse().map_err(|e| input.error(format!("{}", e)))
@@ -391,7 +391,7 @@ impl DhallParser {
         if rest.starts_with("0x") {
             let without_prefix =
                 sign.to_owned() + rest.trim_start_matches("0x");
-            isize::from_str_radix(&without_prefix, 16)
+            i64::from_str_radix(&without_prefix, 16)
                 .map_err(|e| input.error(format!("{}", e)))
         } else {
             s.parse().map_err(|e| input.error(format!("{}", e)))
@@ -408,7 +408,7 @@ impl DhallParser {
 
     fn variable(input: ParseInput) -> ParseResult<V> {
         Ok(match_nodes!(input.into_children();
-            [label(l), natural_literal(idx)] => V(l, idx),
+            [label(l), natural_literal(idx)] => V(l, idx as usize),
             [label(l)] => V(l, 0),
         ))
     }

@@ -30,7 +30,7 @@
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Deserialize it to a Rust type.
-//! let deserialized_map: HashMap<String, usize> = serde_dhall::from_str(data).parse()?;
+//! let deserialized_map: HashMap<String, u64> = serde_dhall::from_str(data).parse()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -140,7 +140,7 @@
 //! // the data matches the provided type.
 //! let deserialized_map = serde_dhall::from_str(point_data)
 //!     .type_annotation(&point_type)
-//!     .parse::<HashMap<String, usize>>()?;
+//!     .parse::<HashMap<String, u64>>()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);

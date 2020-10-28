@@ -58,7 +58,7 @@ use std::collections::BTreeMap;
 let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 
 // Deserialize it to a Rust type.
-let deserialized_map: BTreeMap<String, usize> = serde_dhall::from_str(data).parse().unwrap();
+let deserialized_map: BTreeMap<String, u64> = serde_dhall::from_str(data).parse().unwrap();
 
 let mut expected_map = BTreeMap::new();
 expected_map.insert("x".to_string(), 1);

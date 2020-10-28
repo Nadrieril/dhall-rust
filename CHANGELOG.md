@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: use u64/i64 instead of usize/isize in `NumKind`
+
 #### [0.7.5] - 2020-10-28
 
 - Make `SimpleValue` deserializable within other types (https://github.com/Nadrieril/dhall-rust/issues/184)
