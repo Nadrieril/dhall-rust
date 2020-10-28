@@ -223,7 +223,7 @@ where
 /// [`type_annotation`]: struct.Serializer.html#method.type_annotation
 /// [`static_type_annotation`]: struct.Serializer.html#method.static_type_annotation
 /// [`to_string`]: struct.Serializer.html#method.to_string
-pub fn serialize<'a, T>(data: &'a T) -> Serializer<'a, T, NoAnnot>
+pub fn serialize<T>(data: &T) -> Serializer<'_, T, NoAnnot>
 where
     T: ToDhall,
 {

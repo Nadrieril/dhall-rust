@@ -179,7 +179,9 @@ mod serde {
         expected_map.insert("FOO_BAR".to_string(), 2);
         expected_map.insert("baz-kux".to_string(), 3);
         assert_eq!(
-            parse::<HashMap<String, u64>>("{ `if` = 1, FOO_BAR = 2, baz-kux = 3 }"),
+            parse::<HashMap<String, u64>>(
+                "{ `if` = 1, FOO_BAR = 2, baz-kux = 3 }"
+            ),
             expected_map
         );
 
