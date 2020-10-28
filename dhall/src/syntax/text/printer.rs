@@ -156,7 +156,9 @@ fn fmt_label(label: &Label, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
     };
     if s.is_empty() {
         write!(f, "``")
-    } else if !is_reserved && s.chars().all(|c| c.is_ascii_alphanumeric()) {
+    } else if !is_reserved
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
         write!(f, "{}", s)
     } else {
         write!(f, "`{}`", s)
