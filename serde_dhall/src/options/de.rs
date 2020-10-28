@@ -2,40 +2,15 @@ use std::path::{Path, PathBuf};
 
 use dhall::Parsed;
 
+use crate::options::{HasAnnot, ManualAnnot, NoAnnot, StaticAnnot, TypeAnnot};
 use crate::SimpleType;
-use crate::{Error, ErrorKind, FromDhall, Result, StaticType, Value};
+use crate::{Error, ErrorKind, FromDhall, Result, Value};
 
 #[derive(Debug, Clone)]
 enum Source<'a> {
     Str(&'a str),
     File(PathBuf),
     // Url(&'a str),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NoAnnot;
-#[derive(Debug, Clone, Copy)]
-pub struct ManualAnnot<'ty>(&'ty SimpleType);
-#[derive(Debug, Clone, Copy)]
-pub struct StaticAnnot;
-
-pub trait OptionalAnnot<A> {
-    fn get_annot(a: &A) -> Option<SimpleType>;
-}
-impl<T> OptionalAnnot<NoAnnot> for T {
-    fn get_annot(_: &NoAnnot) -> Option<SimpleType> {
-        None
-    }
-}
-impl<'ty, T> OptionalAnnot<ManualAnnot<'ty>> for T {
-    fn get_annot(a: &ManualAnnot<'ty>) -> Option<SimpleType> {
-        Some(a.0.clone())
-    }
-}
-impl<T: StaticType> OptionalAnnot<StaticAnnot> for T {
-    fn get_annot(_: &StaticAnnot) -> Option<SimpleType> {
-        Some(T::static_type())
-    }
 }
 
 /// Controls how a Dhall value is read.
@@ -252,7 +227,8 @@ impl<'a, A> Deserializer<'a, A> {
 
     fn _parse<T>(&self) -> dhall::error::Result<Value>
     where
-        T: OptionalAnnot<A>,
+        A: TypeAnnot,
+        T: HasAnnot<A>,
     {
         let parsed = match &self.source {
             Source::Str(s) => Parsed::parse_str(s)?,
@@ -263,7 +239,7 @@ impl<'a, A> Deserializer<'a, A> {
         } else {
             parsed.skip_resolve()?
         };
-        let typed = match &T::get_annot(&self.annot) {
+        let typed = match &T::get_annot(self.annot) {
             None => resolved.typecheck()?,
             Some(ty) => resolved.typecheck_with(ty.to_value().as_hir())?,
         };
@@ -287,7 +263,8 @@ impl<'a, A> Deserializer<'a, A> {
     /// [`StaticType`]: trait.StaticType.html
     pub fn parse<T>(&self) -> Result<T>
     where
-        T: FromDhall + OptionalAnnot<A>,
+        A: TypeAnnot,
+        T: FromDhall + HasAnnot<A>,
     {
         let val = self
             ._parse::<T>()

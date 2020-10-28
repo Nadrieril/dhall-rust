@@ -11,7 +11,7 @@ pub trait Sealed {}
 
 pub trait ToDhall: Sealed {
     #[doc(hidden)]
-    fn to_dhall(&self, ty: &SimpleType) -> Result<Value>;
+    fn to_dhall(&self, ty: Option<&SimpleType>) -> Result<Value>;
 }
 
 impl<T> Sealed for T where T: ser::Serialize {}
@@ -20,7 +20,7 @@ impl<T> ToDhall for T
 where
     T: ser::Serialize,
 {
-    fn to_dhall(&self, ty: &SimpleType) -> Result<Value> {
+    fn to_dhall(&self, ty: Option<&SimpleType>) -> Result<Value> {
         let sval: SimpleValue = self.serialize(Serializer)?;
         sval.into_value(ty)
     }
@@ -308,5 +308,17 @@ impl ser::SerializeStruct for StructSerializer {
 
     fn end(self) -> Result<Self::Ok> {
         Ok(Record(self.0))
+    }
+}
+
+impl serde::ser::Serialize for SimpleValue {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        todo!()
     }
 }

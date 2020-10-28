@@ -75,9 +75,13 @@ mod serde {
 
     #[test]
     fn optional() {
-        assert_serde::<Option<u64>>("None Natural", None);
-        assert_serde::<Option<String>>("None Text", None);
+        assert_serde("None Natural", None::<u64>);
+        assert_serde("None Text", None::<String>);
         assert_serde("Some 1", Some(1u64));
+        assert_eq!(
+            serialize(&None::<u64>).to_string().map_err(|e| e.to_string()),
+            Err("cannot serialize value without a type annotation: Optional(None)".to_string())
+        );
     }
 
     #[test]
