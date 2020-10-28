@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.8.0] - 2020-10-28
+
 - Implement serialization (https://github.com/Nadrieril/dhall-rust/issues/164)
 - BREAKING CHANGE: use u64/i64 instead of usize/isize in `NumKind`
 
@@ -97,7 +99,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.5...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.8.0...HEAD
+[0.8.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.5...serde_dhall-v0.8.0
 [0.7.5]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.4...serde_dhall-v0.7.5
 [0.7.4]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...serde_dhall-v0.7.4
 [0.7.3]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.2...serde_dhall-v0.7.3
