@@ -1,19 +1,22 @@
 <img src="https://github.com/dhall-lang/dhall-lang/blob/master/img/dhall-logo.svg" width="600" alt="Dhall Logo">
 
-[![][cratesio-badge]][cratesio-url]
-[![][docs-badge]][docs-url]
-[![][ci-badge]][ci-url]
-[![][codecov-badge]][codecov-url]
+[![crates.io][cratesio-badge]][cratesio-url]
+[![documentation][docs-badge]][docs-url]
+[![CI status][ci-badge]][ci-url]
+[![coverage status][codecov-badge]][codecov-url]
+[![dependency status][depsrs-badge]][depsrs-url]
 
 [cratesio-badge]: https://img.shields.io/crates/v/serde_dhall.svg?style=flat-square
 [docs-badge]: https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square
 [ci-badge]: https://img.shields.io/github/workflow/status/Nadrieril/dhall-rust/Test%20suite?style=flat-square
 [codecov-badge]: https://img.shields.io/codecov/c/github/Nadrieril/dhall-rust?style=flat-square
+[depsrs-badge]: https://deps.rs/repo/github/nadrieril/dhall-rust/status.svg
 
 [cratesio-url]: https://crates.io/crates/serde_dhall
 [docs-url]: https://docs.rs/serde_dhall
 [ci-url]: https://github.com/Nadrieril/dhall-rust/actions
 [codecov-url]: https://codecov.io/gh/Nadrieril/dhall-rust
+[depsrs-url]: https://deps.rs/repo/github/nadrieril/dhall-rust
 
 Dhall is a programmable configuration language optimized for
 maintainability.
