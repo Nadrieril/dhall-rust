@@ -21,7 +21,7 @@
 //!
 //! [pest]: https://pest.rs
 
-use abnf::types::{Node, NumVal, Repeat, Rule};
+use abnf::types::{Node, Repeat, Rule, TerminalValues};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 use pretty::BoxDoc;
@@ -43,7 +43,7 @@ impl Pretty for Node {
                 BoxDoc::space().append(BoxDoc::text("~ ")),
             ),
             Repetition(rep) => {
-                rep.get_node().pretty().append(rep.get_repeat().pretty())
+                rep.node().pretty().append(rep.repeat().pretty())
             }
             Rulename(s) => BoxDoc::text(escape_rulename(s)),
             Group(n) => BoxDoc::text("(")
@@ -52,19 +52,19 @@ impl Pretty for Node {
             Optional(n) => BoxDoc::text("(")
                 .append(n.pretty().nest(4).group())
                 .append(BoxDoc::text(")?")),
-            CharVal(s) => BoxDoc::text(format!(
+            String(s) => BoxDoc::text(format!(
                 "^\"{}\"",
                 s.replace("\"", "\\\"").replace("\\", "\\\\")
             )),
-            NumVal(r) => r.pretty(),
-            ProseVal(_) => unimplemented!(),
+            TerminalValues(r) => r.pretty(),
+            Prose(_) => unimplemented!(),
         }
     }
 }
 
 impl Pretty for Repeat {
     fn pretty(&self) -> BoxDoc<'static> {
-        BoxDoc::text(match (self.get_min().unwrap_or(0), self.get_max()) {
+        BoxDoc::text(match (self.min().unwrap_or(0), self.max()) {
             (0, None) => "*".into(),
             (1, None) => "+".into(),
             (0, Some(1)) => "?".into(),
@@ -75,14 +75,14 @@ impl Pretty for Repeat {
     }
 }
 
-impl Pretty for NumVal {
+impl Pretty for TerminalValues {
     fn pretty(&self) -> BoxDoc<'static> {
-        use NumVal::*;
+        use TerminalValues::*;
         BoxDoc::text(match self {
             Range(x, y) => {
                 format!("'{}'..'{}'", format_char(*x), format_char(*y))
             }
-            Terminal(v) => {
+            Concatenation(v) => {
                 format!("\"{}\"", v.iter().map(|x| format_char(*x)).join(""))
             }
         })
@@ -160,10 +160,10 @@ pub fn parse_abnf(
         .into_iter()
         .map(|rule| {
             (
-                escape_rulename(rule.get_name()),
+                escape_rulename(rule.name()),
                 PestyRule {
                     silent: false,
-                    node: rule.get_node().clone(),
+                    node: rule.node().clone(),
                 },
             )
         })

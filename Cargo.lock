@@ -2,9 +2,19 @@
 # It is not intended for manual editing.
 [[package]]
 name = "abnf"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47feb9fbcef700639ef28e04ca2a87eab8161a01a075ee227b15c90143805462"
+checksum = "76d5f963d2236fd5701b660a9733bd22a5be300267955c71fa03bdf75ecb30b5"
+dependencies = [
+ "abnf-core",
+ "nom",
+]
+
+[[package]]
+name = "abnf-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "137c894fdb05ad3feb514cec800945cfebbb6435c73f9c2097b953e44a106273"
 dependencies = [
  "nom",
 ]
