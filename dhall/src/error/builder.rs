@@ -29,9 +29,9 @@ struct FreeAnnotation {
 }
 
 impl SpannedAnnotation {
-    fn into_annotation(self) -> SourceAnnotation {
+    fn to_annotation(&self) -> SourceAnnotation<'_> {
         SourceAnnotation {
-            label: self.message,
+            label: &self.message,
             annotation_type: self.annotation_type,
             range: self.span.as_char_range(),
         }
@@ -39,9 +39,9 @@ impl SpannedAnnotation {
 }
 
 impl FreeAnnotation {
-    fn into_annotation(self) -> Annotation {
+    fn to_annotation(&self) -> Annotation<'_> {
         Annotation {
-            label: Some(self.message),
+            label: Some(&self.message),
             id: None,
             annotation_type: self.annotation_type,
         }
@@ -124,31 +124,32 @@ impl ErrorBuilder {
         self.consumed = true;
         drop(self); // Get rid of the self reference so we don't use it by mistake.
 
+        let input;
         let slices = if this.annotations.is_empty() {
             Vec::new()
         } else {
-            let input = this.annotations[0].span.to_input();
+            input = this.annotations[0].span.to_input();
             let annotations = this
                 .annotations
-                .into_iter()
-                .map(|annot| annot.into_annotation())
+                .iter()
+                .map(|annot| annot.to_annotation())
                 .collect();
             vec![Slice {
-                source: input,
+                source: &input,
                 line_start: 1, // TODO
-                origin: Some("<current file>".to_string()),
+                origin: Some("<current file>"),
                 fold: true,
                 annotations,
             }]
         };
         let footer = this
             .footer
-            .into_iter()
-            .map(|annot| annot.into_annotation())
+            .iter()
+            .map(|annot| annot.to_annotation())
             .collect();
 
         let snippet = Snippet {
-            title: Some(this.title.into_annotation()),
+            title: Some(this.title.to_annotation()),
             slices,
             footer,
             opt: Default::default(),
