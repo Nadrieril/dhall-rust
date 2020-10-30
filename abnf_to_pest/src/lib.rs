@@ -21,50 +21,50 @@
 //!
 //! [pest]: https://pest.rs
 
-use abnf::types::{Node, NumVal, Repeat, Rule};
+use abnf::types::{Node, Repeat, Rule, TerminalValues};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
-use pretty::{BoxDoc, Doc};
+use pretty::BoxDoc;
 
 trait Pretty {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>>;
+    fn pretty(&self) -> BoxDoc<'static>;
 }
 
 impl Pretty for Node {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
+    fn pretty(&self) -> BoxDoc<'static> {
         use Node::*;
         match self {
-            Alternation(nodes) => Doc::intersperse(
+            Alternation(nodes) => BoxDoc::intersperse(
                 nodes.iter().map(|x| x.pretty().nest(2).group()),
-                Doc::space().append(Doc::text("| ")),
+                BoxDoc::space().append(BoxDoc::text("| ")),
             ),
-            Concatenation(nodes) => Doc::intersperse(
+            Concatenation(nodes) => BoxDoc::intersperse(
                 nodes.iter().map(|x| x.pretty()),
-                Doc::space().append(Doc::text("~ ")),
+                BoxDoc::space().append(BoxDoc::text("~ ")),
             ),
             Repetition(rep) => {
-                rep.get_node().pretty().append(rep.get_repeat().pretty())
+                rep.node().pretty().append(rep.repeat().pretty())
             }
-            Rulename(s) => Doc::text(escape_rulename(s)),
-            Group(n) => Doc::text("(")
+            Rulename(s) => BoxDoc::text(escape_rulename(s)),
+            Group(n) => BoxDoc::text("(")
                 .append(n.pretty().nest(4).group())
-                .append(Doc::text(")")),
-            Optional(n) => Doc::text("(")
+                .append(BoxDoc::text(")")),
+            Optional(n) => BoxDoc::text("(")
                 .append(n.pretty().nest(4).group())
-                .append(Doc::text(")?")),
-            CharVal(s) => Doc::text(format!(
+                .append(BoxDoc::text(")?")),
+            String(s) => BoxDoc::text(format!(
                 "^\"{}\"",
                 s.replace("\"", "\\\"").replace("\\", "\\\\")
             )),
-            NumVal(r) => r.pretty(),
-            ProseVal(_) => unimplemented!(),
+            TerminalValues(r) => r.pretty(),
+            Prose(_) => unimplemented!(),
         }
     }
 }
 
 impl Pretty for Repeat {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        Doc::text(match (self.get_min().unwrap_or(0), self.get_max()) {
+    fn pretty(&self) -> BoxDoc<'static> {
+        BoxDoc::text(match (self.min().unwrap_or(0), self.max()) {
             (0, None) => "*".into(),
             (1, None) => "+".into(),
             (0, Some(1)) => "?".into(),
@@ -75,14 +75,14 @@ impl Pretty for Repeat {
     }
 }
 
-impl Pretty for NumVal {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
-        use NumVal::*;
-        Doc::text(match self {
+impl Pretty for TerminalValues {
+    fn pretty(&self) -> BoxDoc<'static> {
+        use TerminalValues::*;
+        BoxDoc::text(match self {
             Range(x, y) => {
                 format!("'{}'..'{}'", format_char(*x), format_char(*y))
             }
-            Terminal(v) => {
+            Concatenation(v) => {
                 format!("\"{}\"", v.iter().map(|x| format_char(*x)).join(""))
             }
         })
@@ -135,16 +135,16 @@ pub struct PestyRule {
 }
 
 impl Pretty for (String, PestyRule) {
-    fn pretty(&self) -> Doc<'static, BoxDoc<'static, ()>> {
+    fn pretty(&self) -> BoxDoc<'static> {
         let (name, rule) = self;
-        Doc::nil()
-            .append(Doc::text(name.clone()))
-            .append(Doc::text(" = "))
-            .append(Doc::text(if rule.silent { "_" } else { "" }))
-            .append(Doc::text("{"))
-            .append(Doc::space().append(rule.node.pretty()).nest(2))
-            .append(Doc::space())
-            .append(Doc::text("}"))
+        BoxDoc::nil()
+            .append(BoxDoc::text(name.clone()))
+            .append(BoxDoc::text(" = "))
+            .append(BoxDoc::text(if rule.silent { "_" } else { "" }))
+            .append(BoxDoc::text("{"))
+            .append(BoxDoc::space().append(rule.node.pretty()).nest(2))
+            .append(BoxDoc::space())
+            .append(BoxDoc::text("}"))
             .group()
     }
 }
@@ -160,23 +160,20 @@ pub fn parse_abnf(
         .into_iter()
         .map(|rule| {
             (
-                escape_rulename(rule.get_name()),
+                escape_rulename(rule.name()),
                 PestyRule {
                     silent: false,
-                    node: rule.get_node().clone(),
+                    node: rule.node().clone(),
                 },
             )
         })
         .collect())
 }
 
-pub fn render_rules_to_pest<I>(
-    rules: I,
-) -> Doc<'static, BoxDoc<'static, ()>, ()>
+pub fn render_rules_to_pest<I>(rules: I) -> BoxDoc<'static>
 where
     I: IntoIterator<Item = (String, PestyRule)>,
 {
     let pretty_rules = rules.into_iter().map(|x| x.pretty());
-    let doc: Doc<_> = Doc::intersperse(pretty_rules, Doc::newline());
-    doc
+    BoxDoc::intersperse(pretty_rules, BoxDoc::hardline())
 }

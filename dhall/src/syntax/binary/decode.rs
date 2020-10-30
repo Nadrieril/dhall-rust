@@ -1,5 +1,7 @@
 use itertools::Itertools;
-use serde_cbor::value::value as cbor;
+use serde::de;
+use std::collections::BTreeMap;
+use std::fmt;
 use std::iter::FromIterator;
 
 use crate::error::DecodeError;
@@ -19,18 +21,32 @@ pub fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
     }
 }
 
+/// An enum that can encode most CBOR values.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    Null,
+    Bool(bool),
+    U64(u64),
+    I64(i64),
+    F64(f64),
+    String(String),
+    Array(Vec<Value>),
+    Object(BTreeMap<String, Value>),
+    Bytes(Vec<u8>),
+}
+
 // Should probably rename this
 fn rc(x: UnspannedExpr) -> Expr {
     Expr::new(x, Span::Decoded)
 }
 
-fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
+fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
     use crate::builtins::Builtin;
     use crate::operations::BinOp;
-    use cbor::Value::*;
     use syntax::Const;
     use ExprKind::*;
     use OpKind::*;
+    use Value::*;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
             Some(b) => ExprKind::Builtin(b),
@@ -467,16 +483,13 @@ fn cbor_value_to_dhall(data: &cbor::Value) -> Result<DecodedExpr, DecodeError> {
 }
 
 fn cbor_map_to_dhall_map<'a, T>(
-    map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
+    map: impl IntoIterator<Item = (&'a String, &'a Value)>,
 ) -> Result<T, DecodeError>
 where
     T: FromIterator<(Label, DecodedExpr)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
-            let k = k.as_string().ok_or_else(|| {
-                DecodeError::WrongFormatError("map/key".to_owned())
-            })?;
             let v = cbor_value_to_dhall(v)?;
             Ok((Label::from(k.as_ref()), v))
         })
@@ -484,21 +497,158 @@ where
 }
 
 fn cbor_map_to_dhall_opt_map<'a, T>(
-    map: impl IntoIterator<Item = (&'a cbor::ObjectKey, &'a cbor::Value)>,
+    map: impl IntoIterator<Item = (&'a String, &'a Value)>,
 ) -> Result<T, DecodeError>
 where
     T: FromIterator<(Label, Option<DecodedExpr>)>,
 {
     map.into_iter()
         .map(|(k, v)| -> Result<(_, _), _> {
-            let k = k.as_string().ok_or_else(|| {
-                DecodeError::WrongFormatError("map/key".to_owned())
-            })?;
             let v = match v {
-                cbor::Value::Null => None,
+                Value::Null => None,
                 _ => Some(cbor_value_to_dhall(v)?),
             };
             Ok((Label::from(k.as_ref()), v))
         })
         .collect::<Result<_, _>>()
+}
+
+impl Value {
+    pub fn as_string(&self) -> Option<&String> {
+        if let Value::String(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for Value {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Value, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct ValueVisitor;
+
+        impl<'de> de::Visitor<'de> for ValueVisitor {
+            type Value = Value;
+
+            fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+                fmt.write_str("any valid CBOR value")
+            }
+
+            #[inline]
+            fn visit_str<E>(self, value: &str) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_string(String::from(value))
+            }
+
+            #[inline]
+            fn visit_string<E>(self, value: String) -> Result<Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::String(value))
+            }
+            #[inline]
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_byte_buf(v.to_owned())
+            }
+
+            #[inline]
+            fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Bytes(v))
+            }
+
+            #[inline]
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::U64(v))
+            }
+
+            #[inline]
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::I64(v))
+            }
+
+            #[inline]
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Bool(v))
+            }
+
+            #[inline]
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                self.visit_unit()
+            }
+
+            #[inline]
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::Null)
+            }
+
+            #[inline]
+            fn visit_seq<V>(
+                self,
+                mut visitor: V,
+            ) -> Result<Self::Value, V::Error>
+            where
+                V: de::SeqAccess<'de>,
+            {
+                let mut vec = Vec::new();
+
+                while let Some(elem) = visitor.next_element()? {
+                    vec.push(elem);
+                }
+
+                Ok(Value::Array(vec))
+            }
+
+            #[inline]
+            fn visit_map<V>(self, mut visitor: V) -> Result<Value, V::Error>
+            where
+                V: de::MapAccess<'de>,
+            {
+                let mut values = BTreeMap::new();
+
+                while let Some((key, value)) = visitor.next_entry()? {
+                    values.insert(key, value);
+                }
+
+                Ok(Value::Object(values))
+            }
+
+            #[inline]
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Value::F64(v))
+            }
+        }
+
+        deserializer.deserialize_any(ValueVisitor)
+    }
 }
