@@ -1,1 +1,16 @@
-ImportCycle([Local("./dhall-lang/tests/import/data/cycle.dhall"), Local("./dhall-lang/tests/import/failure/cycle.dhall")], Local("./dhall-lang/tests/import/data/cycle.dhall"))
+Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../data/cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^ Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../failure/cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^^^^ Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../data/cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^ ImportCycle([Local("./dhall-lang/tests/import/data/cycle.dhall"), Local("./dhall-lang/tests/import/failure/cycle.dhall")], Local("./dhall-lang/tests/import/data/cycle.dhall"))
+  |
+  |
+  |

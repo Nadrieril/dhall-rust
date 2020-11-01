@@ -411,9 +411,17 @@ fn resolve_with_env(
 
             // Resolve this import, making sure that recursive imports don't cycle back to the
             // current one.
-            let typed = env.with_cycle_detection(location.clone(), |env| {
+            let res = env.with_cycle_detection(location.clone(), |env| {
                 resolve_one_import(env, &import, location.clone(), span.clone())
-            })?;
+            });
+            let typed = match res {
+                Ok(typed) => typed,
+                Err(e) => mkerr(
+                    ErrorBuilder::new("error")
+                        .span_err(span.clone(), e.to_string())
+                        .format(),
+                )?,
+            };
 
             // Add the resolved import to the caches
             check_hash(&import, &typed, span)?;

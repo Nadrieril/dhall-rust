@@ -1,1 +1,6 @@
-MissingEnvVar
+Type error: error: error
+ --> <current file>:1:1
+  |
+1 | env:DHALL_TEST_UNSET
+  | ^^^^^^^^^^^^^^^^^^^^ MissingEnvVar
+  |
