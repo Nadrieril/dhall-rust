@@ -10,7 +10,7 @@ use crate::builtins::Builtin;
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{mkerr, Cache, Hir, HirKind, ImportEnv, NameEnv, Type};
+use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
@@ -222,19 +222,17 @@ fn make_aslocation_uniontype() -> Expr {
 
 fn resolve_one_import(
     env: &mut ImportEnv,
-    cache: &Cache,
     import: &Import,
     location: ImportLocation,
     span: Span,
 ) -> Result<TypedHir, Error> {
     match import.mode {
         ImportMode::Code => {
-            let (hir, ty) = cache.caching_import(
+            let (hir, ty) = env.file_cache.clone().caching_import(
                 import,
                 || location.fetch_dhall(),
                 |parsed| {
-                    let typed =
-                        resolve_with_env(env, cache, parsed)?.typecheck()?;
+                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
                     let hir = typed.normalize().to_hir();
                     Ok((hir, typed.ty))
                 },
@@ -391,7 +389,6 @@ fn traverse_resolve_expr(
 
 fn resolve_with_env(
     env: &mut ImportEnv,
-    cache: &Cache,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
     let Parsed(expr, base_location) = parsed;
@@ -406,7 +403,7 @@ fn resolve_with_env(
                 return Ok(expr.clone());
             }
             let expr = env.with_cycle_detection(location.clone(), |env| {
-                resolve_one_import(env, cache, &import, location.clone(), span)
+                resolve_one_import(env, &import, location.clone(), span)
             })?;
             // Add the resolved import to the cache
             env.set_cache(location, expr.clone());
@@ -417,8 +414,7 @@ fn resolve_with_env(
 }
 
 pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    let cache = Cache::new();
-    resolve_with_env(&mut ImportEnv::new(), &cache, parsed)
+    resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
 pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {

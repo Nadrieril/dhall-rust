@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, ImportLocation, TypedHir, VarEnv};
+use crate::semantics::{AlphaVar, Cache, ImportLocation, TypedHir, VarEnv};
 use crate::syntax::{Label, V};
 
 /// Environment for resolving names.
@@ -10,14 +10,15 @@ pub struct NameEnv {
     names: Vec<Label>,
 }
 
-pub type ImportCache = HashMap<ImportLocation, TypedHir>;
-pub type ImportStack = Vec<ImportLocation>;
+pub type MemCache = HashMap<ImportLocation, TypedHir>;
+pub type CyclesStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub struct ImportEnv {
-    cache: ImportCache,
-    stack: ImportStack,
+    pub file_cache: Cache,
+    mem_cache: MemCache,
+    stack: CyclesStack,
 }
 
 impl NameEnv {
@@ -66,18 +67,22 @@ impl NameEnv {
 
 impl ImportEnv {
     pub fn new() -> Self {
-        ImportEnv::default()
+        ImportEnv {
+            file_cache: Cache::new(),
+            mem_cache: Default::default(),
+            stack: Default::default(),
+        }
     }
 
     pub fn get_from_cache<'a>(
         &'a self,
         location: &ImportLocation,
     ) -> Option<&'a TypedHir> {
-        self.cache.get(location)
+        self.mem_cache.get(location)
     }
 
     pub fn set_cache(&mut self, location: ImportLocation, expr: TypedHir) {
-        self.cache.insert(location, expr);
+        self.mem_cache.insert(location, expr);
     }
 
     pub fn with_cycle_detection(

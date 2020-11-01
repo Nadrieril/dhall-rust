@@ -40,7 +40,7 @@ fn load_cache_dir(
     Err(CacheError::MissingConfiguration)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Cache {
     cache_dir: Option<PathBuf>,
 }
