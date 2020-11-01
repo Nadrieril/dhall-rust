@@ -390,19 +390,35 @@ fn resolve_with_env(
             let do_sanity_check = import.mode != ImportMode::Location;
             let location =
                 base_location.chain(&import.location, do_sanity_check)?;
+
             // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
             // the cached contents.
-            if let Some(resolved) =
-                env.get_from_cache(&location, import.hash.as_ref())
-            {
-                return Ok(resolved);
+            if let Some(typed) = env.get_from_mem_cache(&location) {
+                // The same location may be used with different or no hashes. Thus we need to check
+                // the hashes every time.
+                check_hash(&import, &typed, span)?;
+                env.write_to_disk_cache(&import.hash, &typed);
+                return Ok(typed);
             }
+            if let Some(typed) = env.get_from_disk_cache(&import.hash) {
+                // No need to check the hash, it was checked before reading the file. We also don't
+                // write to the in-memory cache, because the location might be completely unrelated
+                // to the cached file (e.g. `missing sha256:...` is valid).
+                // This actually means that importing many times a same hashed import will take
+                // longer than importing many times a same non-hashed import.
+                return Ok(typed);
+            }
+
+            // Resolve this import, making sure that recursive imports don't cycle back to the
+            // current one.
             let typed = env.with_cycle_detection(location.clone(), |env| {
                 resolve_one_import(env, &import, location.clone(), span.clone())
             })?;
-            check_hash(&import, &typed, span)?;
+
             // Add the resolved import to the caches
-            env.set_cache(location, import.hash.as_ref(), typed.clone());
+            check_hash(&import, &typed, span)?;
+            env.write_to_disk_cache(&import.hash, &typed);
+            env.write_to_mem_cache(location, typed.clone());
             Ok(typed)
         },
     )?;

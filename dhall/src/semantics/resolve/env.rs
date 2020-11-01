@@ -17,7 +17,7 @@ pub type CyclesStack = Vec<ImportLocation>;
 /// Environment for resolving imports
 #[derive(Debug)]
 pub struct ImportEnv {
-    file_cache: Option<Cache>,
+    disk_cache: Option<Cache>, // Missing if it failed to initialize
     mem_cache: MemCache,
     stack: CyclesStack,
 }
@@ -69,37 +69,42 @@ impl NameEnv {
 impl ImportEnv {
     pub fn new() -> Self {
         ImportEnv {
-            file_cache: Cache::new().ok(),
+            disk_cache: Cache::new().ok(),
             mem_cache: Default::default(),
             stack: Default::default(),
         }
     }
 
-    pub fn get_from_cache(
+    pub fn get_from_mem_cache(
         &mut self,
         location: &ImportLocation,
-        hash: Option<&Hash>,
     ) -> Option<Typed> {
-        if let Some(expr) = self.mem_cache.get(location) {
-            return Some(expr.clone());
-        }
+        Some(self.mem_cache.get(location)?.clone())
+    }
+
+    pub fn get_from_disk_cache(
+        &mut self,
+        hash: &Option<Hash>,
+    ) -> Option<Typed> {
         let hash = hash.as_ref()?;
-        let expr = self.file_cache.as_ref()?.get(hash).ok()?;
+        let expr = self.disk_cache.as_ref()?.get(hash).ok()?;
         Some(expr)
     }
 
-    pub fn set_cache(
+    pub fn write_to_mem_cache(
         &mut self,
         location: ImportLocation,
-        hash: Option<&Hash>,
         expr: Typed,
     ) {
-        if let Some(file_cache) = self.file_cache.as_ref() {
+        self.mem_cache.insert(location, expr);
+    }
+
+    pub fn write_to_disk_cache(&mut self, hash: &Option<Hash>, expr: &Typed) {
+        if let Some(disk_cache) = self.disk_cache.as_ref() {
             if let Some(hash) = hash {
-                let _ = file_cache.insert(hash, &expr);
+                let _ = disk_cache.insert(hash, &expr);
             }
         }
-        self.mem_cache.insert(location, expr);
     }
 
     pub fn with_cycle_detection(
