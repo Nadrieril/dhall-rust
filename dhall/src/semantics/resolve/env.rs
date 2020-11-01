@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, Cache, ImportLocation, TypedHir, VarEnv};
+use crate::semantics::{AlphaVar, Cache, ImportLocation, VarEnv};
 use crate::syntax::{Hash, Label, V};
+use crate::Typed;
 
 /// Environment for resolving names.
 #[derive(Debug, Clone, Default)]
@@ -10,7 +11,7 @@ pub struct NameEnv {
     names: Vec<Label>,
 }
 
-pub type MemCache = HashMap<ImportLocation, TypedHir>;
+pub type MemCache = HashMap<ImportLocation, Typed>;
 pub type CyclesStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
@@ -78,7 +79,7 @@ impl ImportEnv {
         &mut self,
         location: &ImportLocation,
         hash: Option<&Hash>,
-    ) -> Option<TypedHir> {
+    ) -> Option<Typed> {
         if let Some(expr) = self.mem_cache.get(location) {
             return Some(expr.clone());
         }
@@ -91,7 +92,7 @@ impl ImportEnv {
         &mut self,
         location: ImportLocation,
         hash: Option<&Hash>,
-        expr: TypedHir,
+        expr: Typed,
     ) {
         if let Some(file_cache) = self.file_cache.as_ref() {
             if let Some(hash) = hash {
@@ -104,8 +105,8 @@ impl ImportEnv {
     pub fn with_cycle_detection(
         &mut self,
         location: ImportLocation,
-        do_resolve: impl FnOnce(&mut Self) -> Result<TypedHir, Error>,
-    ) -> Result<TypedHir, Error> {
+        do_resolve: impl FnOnce(&mut Self) -> Result<Typed, Error>,
+    ) -> Result<Typed, Error> {
         if self.stack.contains(&location) {
             return Err(
                 ImportError::ImportCycle(self.stack.clone(), location).into()

@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{CacheError, Error};
 use crate::parse::parse_binary;
-use crate::semantics::TypedHir;
 use crate::syntax::{binary, Hash};
+use crate::Typed;
 use std::ffi::OsStr;
 use std::fs::File;
 
@@ -52,7 +52,7 @@ impl Cache {
         self.cache_dir.join(filename_for_hash(hash))
     }
 
-    pub fn get(&self, hash: &Hash) -> Result<TypedHir, Error> {
+    pub fn get(&self, hash: &Hash) -> Result<Typed, Error> {
         let path = self.entry_path(hash);
         let res = read_cache_file(&path, hash);
         if let Err(_) = res {
@@ -64,14 +64,14 @@ impl Cache {
         res
     }
 
-    pub fn insert(&self, hash: &Hash, expr: &TypedHir) -> Result<(), Error> {
+    pub fn insert(&self, hash: &Hash, expr: &Typed) -> Result<(), Error> {
         let path = self.entry_path(hash);
         write_cache_file(&path, expr)
     }
 }
 
 /// Read a file from the cache, also checking that its hash is valid.
-fn read_cache_file(path: &Path, hash: &Hash) -> Result<TypedHir, Error> {
+fn read_cache_file(path: &Path, hash: &Hash) -> Result<Typed, Error> {
     let data = crate::utils::read_binary_file(path)?;
 
     match hash {
@@ -83,14 +83,12 @@ fn read_cache_file(path: &Path, hash: &Hash) -> Result<TypedHir, Error> {
         }
     }
 
-    let crate::Typed { hir, ty } =
-        parse_binary(&data)?.skip_resolve()?.typecheck()?;
-    Ok((hir, ty))
+    Ok(parse_binary(&data)?.skip_resolve()?.typecheck()?)
 }
 
 /// Write a file to the cache.
-fn write_cache_file(path: &Path, expr: &TypedHir) -> Result<(), Error> {
-    let data = binary::encode(&expr.0.to_expr_noopts())?;
+fn write_cache_file(path: &Path, expr: &Typed) -> Result<(), Error> {
+    let data = binary::encode(&expr.to_expr())?;
     File::create(path)?.write_all(data.as_slice())?;
     Ok(())
 }
