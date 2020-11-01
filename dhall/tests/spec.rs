@@ -544,12 +544,7 @@ fn define_features() -> Vec<TestFeature> {
             variant: SpecTestKind::TypeInferenceSuccess,
             // TODO: this fails because of caching shenanigans
             // too_slow_path: Rc::new(|path: &str| path == "prelude"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    || path == "prelude"
-                    // With builtin not implemented yet
-                    || path == "unit/WithCreateIntermediateRecords"
-            }),
+            exclude_path: Rc::new(|path: &str| path == "prelude"),
             ..default_feature.clone()
         },
         TestFeature {

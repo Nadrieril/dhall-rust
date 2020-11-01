@@ -503,7 +503,56 @@ pub fn typecheck_operation(
 
             selection_val
         }
-        Completion(..) | With(..) => {
+        With(record, labels, expr) => {
+            use crate::syntax::Label;
+            use std::iter::{once, FromIterator};
+
+            let record_entries = |nk: &NirKind| {
+                match nk {
+                    NirKind::RecordType(kts) => Ok(kts.clone()),
+                    _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
+                }
+            };
+
+            let mut current_nk: Option<NirKind> =
+                Some(record.ty().kind().clone());
+            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
+            let mut to_create = Vec::new();
+
+            for label in labels {
+                match current_nk {
+                    None => to_create.push(label),
+                    Some(nk) => {
+                        let kts = record_entries(&nk)?;
+
+                        current_nk =
+                            kts.get(label).map(|nir| nir.kind().clone());
+                        visited.push((label, kts));
+                    }
+                }
+            }
+
+            // Create Nir for record type bottom up
+            let mut nir = expr.ty().as_nir().clone();
+
+            while let Some(label) = to_create.pop() {
+                let rec = RecordType(FromIterator::from_iter(once((
+                    label.clone(),
+                    nir,
+                ))));
+                nir = Nir::from_kind(rec);
+            }
+
+            // Update visited records
+            while let Some((label, mut kts)) = visited.pop() {
+                kts.insert(label.clone(), nir);
+                let rec = RecordType(kts);
+                nir = Nir::from_kind(rec);
+            }
+
+            nir.to_type(Const::Type)
+        }
+        Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     })
