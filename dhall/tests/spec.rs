@@ -521,10 +521,6 @@ fn define_features() -> Vec<TestFeature> {
                     || path == "simple/integerToDouble"
                     // TODO: fix Double/show
                     || path == "prelude/JSON/number/1"
-                    // With builtin not implemented yet
-                    || path == "unit/WithCreateIntermediateRecords"
-                    || path == "unit/WithDesugar"
-                    || path == "unit/WithPartiallyAbstract"
             }),
             ..default_feature.clone()
         },

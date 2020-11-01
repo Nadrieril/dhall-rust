@@ -306,16 +306,24 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
             let mut to_create = Vec::new();
 
+            // To be used when an abstract entry is reached
+            let mut abstract_nir = None;
+
             for label in labels {
                 match current_nk {
-                    None => to_create.push(label),
+                    None => to_create.push(label.clone()),
                     Some(nk) => match nk {
                         RecordLit(kvs) => {
                             current_nk =
                                 kvs.get(label).map(|nir| nir.kind().clone());
                             visited.push((label, kvs));
                         }
-                        _ => return nothing_to_do(),
+                        // Handle partially abstract case
+                        nir => {
+                            abstract_nir = Some(Nir::from_kind(nir));
+                            to_create.push(label.clone());
+                            current_nk = None;
+                        }
                     },
                 }
             }
@@ -323,12 +331,25 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             // Create Nir for record bottom up
             let mut nir = expr.clone();
 
-            while let Some(label) = to_create.pop() {
-                let rec = RecordLit(FromIterator::from_iter(once((
-                    label.clone(),
-                    nir,
-                ))));
-                nir = Nir::from_kind(rec);
+            match abstract_nir {
+                // No abstract nir, creating singleton records
+                None => {
+                    while let Some(label) = to_create.pop() {
+                        let rec = RecordLit(FromIterator::from_iter(once((
+                            label.clone(),
+                            nir,
+                        ))));
+                        nir = Nir::from_kind(rec);
+                    }
+                }
+                // Abstract nir, creating with op
+                Some(abstract_nir) => {
+                    nir = Nir::from_kind(Op(OpKind::With(
+                        abstract_nir,
+                        to_create,
+                        nir,
+                    )));
+                }
             }
 
             // Update visited records
