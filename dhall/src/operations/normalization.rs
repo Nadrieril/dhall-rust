@@ -4,7 +4,7 @@ use std::iter::once;
 
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
-    merge_maps, ret_kind, ret_op, ret_ref, Nir, NirKind, Ret, TextLit,
+    merge_maps, ret_kind, ret_nir, ret_op, ret_ref, Nir, NirKind, Ret, TextLit,
 };
 use crate::syntax::{ExprKind, Label, NumKind};
 
@@ -299,7 +299,48 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             )),
             _ => nothing_to_do(),
         },
-        Completion(..) | With(..) => {
+        With(record, labels, expr) => {
+            use std::iter::FromIterator;
+
+            let mut current_nk: Option<NirKind> = Some(record.kind().clone());
+            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
+            let mut to_create = Vec::new();
+
+            for label in labels {
+                match current_nk {
+                    None => to_create.push(label),
+                    Some(nk) => match nk {
+                        RecordLit(kvs) => {
+                            current_nk =
+                                kvs.get(label).map(|nir| nir.kind().clone());
+                            visited.push((label, kvs));
+                        }
+                        _ => return nothing_to_do(),
+                    },
+                }
+            }
+
+            // Create Nir for record bottom up
+            let mut nir = expr.clone();
+
+            while let Some(label) = to_create.pop() {
+                let rec = RecordLit(FromIterator::from_iter(once((
+                    label.clone(),
+                    nir,
+                ))));
+                nir = Nir::from_kind(rec);
+            }
+
+            // Update visited records
+            while let Some((label, mut kvs)) = visited.pop() {
+                kvs.insert(label.clone(), nir);
+                let rec = RecordLit(kvs);
+                nir = Nir::from_kind(rec);
+            }
+
+            ret_nir(nir)
+        }
+        Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     }
