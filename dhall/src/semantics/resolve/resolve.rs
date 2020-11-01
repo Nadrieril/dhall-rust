@@ -218,23 +218,22 @@ fn make_aslocation_uniontype() -> Expr {
 }
 
 fn check_hash(import: &Import, typed: &Typed, span: Span) -> Result<(), Error> {
-    match (import.mode, &import.hash) {
-        (ImportMode::Code, Some(Hash::SHA256(hash))) => {
-            let actual_hash = typed.hir.to_expr_alpha().sha256_hash()?;
-            if hash[..] != actual_hash[..] {
-                mkerr(
-                    ErrorBuilder::new("hash mismatch")
-                        .span_err(span, "hash mismatch")
-                        .note(format!("Expected sha256:{}", hex::encode(hash)))
-                        .note(format!(
-                            "Found    sha256:{}",
-                            hex::encode(actual_hash)
-                        ))
-                        .format(),
-                )?
-            }
+    if let (ImportMode::Code, Some(Hash::SHA256(hash))) =
+        (import.mode, &import.hash)
+    {
+        let actual_hash = typed.hir.to_expr_alpha().sha256_hash()?;
+        if hash[..] != actual_hash[..] {
+            mkerr(
+                ErrorBuilder::new("hash mismatch")
+                    .span_err(span, "hash mismatch")
+                    .note(format!("Expected sha256:{}", hex::encode(hash)))
+                    .note(format!(
+                        "Found    sha256:{}",
+                        hex::encode(actual_hash)
+                    ))
+                    .format(),
+            )?
         }
-        _ => {}
     }
     Ok(())
 }

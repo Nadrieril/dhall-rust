@@ -55,11 +55,9 @@ impl Cache {
     pub fn get(&self, hash: &Hash) -> Result<Typed, Error> {
         let path = self.entry_path(hash);
         let res = read_cache_file(&path, hash);
-        if let Err(_) = res {
-            if path.exists() {
-                // Delete cache file since it's invalid. We ignore the error.
-                let _ = std::fs::remove_file(&path);
-            }
+        if res.is_err() && path.exists() {
+            // Delete cache file since it's invalid. We ignore the error.
+            let _ = std::fs::remove_file(&path);
         }
         res
     }
