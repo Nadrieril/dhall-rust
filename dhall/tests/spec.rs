@@ -1,4 +1,6 @@
 use anyhow::Result;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use std::env;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
@@ -593,26 +595,6 @@ fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
 
 fn run_test(test: &SpecTest) -> Result<()> {
     use self::SpecTestKind::*;
-    // Setup current directory to the root of the repository. Important for `as Location` tests.
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    env::set_current_dir(root_dir.as_path())?;
-    // Set environment variable for import tests.
-    env::set_var("DHALL_TEST_VAR", "6 * 7");
-
-    // Configure cache for import tests
-    env::set_var(
-        "XDG_CACHE_HOME",
-        root_dir
-            .join("dhall-lang")
-            .join("tests")
-            .join("import")
-            .join("cache")
-            .as_path(),
-    );
-
     let SpecTest {
         input: expr,
         output: expected,
@@ -690,7 +672,6 @@ fn run_test(test: &SpecTest) -> Result<()> {
             expected.compare(expr)?;
         }
     }
-
     Ok(())
 }
 
@@ -700,17 +681,50 @@ fn main() {
         .flat_map(discover_tests_for_feature)
         .collect();
 
-    libtest_mimic::run_tests(&Arguments::from_args(), tests, |test| {
-        let result = std::panic::catch_unwind(move || {
-            run_test_stringy_error(&test.data)
+    // Setup current directory to the root of the repository. Important for `as Location` tests.
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    env::set_current_dir(root_dir.as_path()).unwrap();
+
+    // Set environment variable for import tests.
+    env::set_var("DHALL_TEST_VAR", "6 * 7");
+
+    // Configure cache for import tests
+    let dhall_cache_dir = root_dir
+        .join("dhall-lang")
+        .join("tests")
+        .join("import")
+        .join("cache")
+        .join("dhall");
+    let random_id = rand::thread_rng()
+        .sample_iter(Alphanumeric)
+        .take(36)
+        .collect::<String>();
+    let cache_dir = format!("dhall-tests-{}", random_id);
+    let cache_dir = env::temp_dir().join(cache_dir);
+
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())
+        .unwrap();
+    env::set_var("XDG_CACHE_HOME", &cache_dir);
+
+    let res =
+        libtest_mimic::run_tests(&Arguments::from_args(), tests, |test| {
+            let result = std::panic::catch_unwind(move || {
+                run_test_stringy_error(&test.data)
+            });
+            match result {
+                Ok(Ok(_)) => Outcome::Passed,
+                Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
+                Err(_) => Outcome::Failed {
+                    msg: Some("thread panicked".to_string()),
+                },
+            }
         });
-        match result {
-            Ok(Ok(_)) => Outcome::Passed,
-            Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
-            Err(_) => Outcome::Failed {
-                msg: Some("thread panicked".to_string()),
-            },
-        }
-    })
-    .exit();
+
+    std::fs::remove_dir_all(&cache_dir).unwrap();
+
+    res.exit();
 }
