@@ -224,12 +224,10 @@ fn resolve_one_import(
     env: &mut ImportEnv,
     cache: &Cache,
     import: &Import,
-    location: &ImportLocation,
+    location: ImportLocation,
     span: Span,
 ) -> Result<TypedHir, Error> {
-    let do_sanity_check = import.mode != ImportMode::Location;
-    let location = location.chain(&import.location, do_sanity_check)?;
-    env.handle_import(location.clone(), |env| match import.mode {
+    match import.mode {
         ImportMode::Code => {
             let (hir, ty) = cache.caching_import(
                 import,
@@ -278,7 +276,7 @@ fn resolve_one_import(
             let ty = hir.typecheck_noenv()?.ty().clone();
             Ok((hir, ty))
         }
-    })
+    }
 }
 
 /// Desugar a `with` expression.
@@ -396,12 +394,23 @@ fn resolve_with_env(
     cache: &Cache,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
-    let Parsed(expr, location) = parsed;
+    let Parsed(expr, base_location) = parsed;
     let resolved = traverse_resolve_expr(
         &mut NameEnv::new(),
         &expr,
         &mut |import, span| {
-            resolve_one_import(env, cache, &import, &location, span)
+            let do_sanity_check = import.mode != ImportMode::Location;
+            let location =
+                base_location.chain(&import.location, do_sanity_check)?;
+            if let Some(expr) = env.get_from_cache(&location) {
+                return Ok(expr.clone());
+            }
+            let expr = env.with_cycle_detection(location.clone(), |env| {
+                resolve_one_import(env, cache, &import, location.clone(), span)
+            })?;
+            // Add the resolved import to the cache
+            env.set_cache(location, expr.clone());
+            Ok(expr)
         },
     )?;
     Ok(Resolved(resolved))

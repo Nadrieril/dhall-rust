@@ -69,9 +69,20 @@ impl ImportEnv {
         ImportEnv::default()
     }
 
-    pub fn handle_import(
+    pub fn get_from_cache<'a>(
+        &'a self,
+        location: &ImportLocation,
+    ) -> Option<&'a TypedHir> {
+        self.cache.get(location)
+    }
+
+    pub fn set_cache(&mut self, location: ImportLocation, expr: TypedHir) {
+        self.cache.insert(location, expr);
+    }
+
+    pub fn with_cycle_detection(
         &mut self,
-        mut location: ImportLocation,
+        location: ImportLocation,
         do_resolve: impl FnOnce(&mut Self) -> Result<TypedHir, Error>,
     ) -> Result<TypedHir, Error> {
         if self.stack.contains(&location) {
@@ -79,25 +90,13 @@ impl ImportEnv {
                 ImportError::ImportCycle(self.stack.clone(), location).into()
             );
         }
-        Ok(match self.cache.get(&location) {
-            Some(expr) => expr.clone(),
-            None => {
-                let expr = {
-                    // Push the current location on the stack
-                    self.stack.push(location);
-                    // Resolve the import recursively
-                    // WARNING: do not propagate errors here or the stack will get messed up.
-                    let result = do_resolve(self);
-                    // Remove location from the stack.
-                    location = self.stack.pop().unwrap();
-                    result
-                }?;
-
-                // Add the resolved import to the cache
-                self.cache.insert(location, expr.clone());
-
-                expr
-            }
-        })
+        // Push the current location on the stack
+        self.stack.push(location);
+        // Resolve the import recursively
+        // WARNING: do not propagate errors here or the stack will get messed up.
+        let result = do_resolve(self);
+        // Remove location from the stack.
+        self.stack.pop().unwrap();
+        result
     }
 }
