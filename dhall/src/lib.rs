@@ -13,6 +13,7 @@ pub mod error;
 pub mod operations;
 pub mod semantics;
 pub mod syntax;
+pub mod utils;
 
 use std::fmt::Display;
 use std::path::Path;
@@ -37,8 +38,8 @@ pub struct Resolved(Hir);
 /// A typed expression
 #[derive(Debug, Clone)]
 pub struct Typed {
-    hir: Hir,
-    ty: Type,
+    pub hir: Hir,
+    pub ty: Type,
 }
 
 /// A normalized expression.

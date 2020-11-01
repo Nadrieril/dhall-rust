@@ -52,7 +52,7 @@ pub enum ImportMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Hash {
-    SHA256(Vec<u8>),
+    SHA256(Box<[u8]>),
 }
 
 /// Reference to an external resource

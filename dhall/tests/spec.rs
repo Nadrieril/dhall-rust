@@ -670,7 +670,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
         }
         SemanticHash => {
             let expr = expr.normalize()?.to_expr_alpha();
-            let hash = hex::encode(expr.hash()?);
+            let hash = hex::encode(expr.sha256_hash()?);
             expected.compare_ui(format!("sha256:{}", hash))?;
         }
         TypeInferenceSuccess => {

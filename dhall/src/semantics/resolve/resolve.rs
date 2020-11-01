@@ -220,6 +220,32 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
+fn check_hash(
+    import: &Import,
+    typed: &TypedHir,
+    span: Span,
+) -> Result<(), Error> {
+    match (import.mode, &import.hash) {
+        (ImportMode::Code, Some(Hash::SHA256(hash))) => {
+            let actual_hash = typed.0.to_expr_alpha().sha256_hash()?;
+            if hash[..] != actual_hash[..] {
+                mkerr(
+                    ErrorBuilder::new("hash mismatch")
+                        .span_err(span, "hash mismatch")
+                        .note(format!("Expected sha256:{}", hex::encode(hash)))
+                        .note(format!(
+                            "Found    sha256:{}",
+                            hex::encode(actual_hash)
+                        ))
+                        .format(),
+                )?
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn resolve_one_import(
     env: &mut ImportEnv,
     import: &Import,
@@ -228,44 +254,15 @@ fn resolve_one_import(
 ) -> Result<TypedHir, Error> {
     match import.mode {
         ImportMode::Code => {
-            let (hir, ty) = env.file_cache.clone().caching_import(
-                import,
-                || location.fetch_dhall(),
-                |parsed| {
-                    let typed = resolve_with_env(env, parsed)?.typecheck()?;
-                    let hir = typed.normalize().to_hir();
-                    Ok((hir, typed.ty))
-                },
-            )?;
-            match &import.hash {
-                Some(Hash::SHA256(hash)) => {
-                    let actual_hash = hir.to_expr_alpha().hash()?;
-                    if hash[..] != actual_hash[..] {
-                        mkerr(
-                            ErrorBuilder::new("hash mismatch")
-                                .span_err(span, "hash mismatch")
-                                .note(format!(
-                                    "Expected sha256:{}",
-                                    hex::encode(hash)
-                                ))
-                                .note(format!(
-                                    "Found    sha256:{}",
-                                    hex::encode(actual_hash)
-                                ))
-                                .format(),
-                        )?
-                    }
-                }
-                None => {}
-            }
-            Ok((hir, ty))
+            let parsed = location.fetch_dhall()?;
+            let typed = resolve_with_env(env, parsed)?.typecheck()?;
+            let hir = typed.normalize().to_hir();
+            Ok((hir, typed.ty))
         }
         ImportMode::RawText => {
             let text = location.fetch_text()?;
-            let hir = Hir::new(
-                HirKind::Expr(ExprKind::TextLit(text.into())),
-                Span::Artificial,
-            );
+            let hir =
+                Hir::new(HirKind::Expr(ExprKind::TextLit(text.into())), span);
             Ok((hir, Type::from_builtin(Builtin::Text)))
         }
         ImportMode::Location => {
@@ -399,15 +396,20 @@ fn resolve_with_env(
             let do_sanity_check = import.mode != ImportMode::Location;
             let location =
                 base_location.chain(&import.location, do_sanity_check)?;
-            if let Some(expr) = env.get_from_cache(&location) {
-                return Ok(expr.clone());
+            // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
+            // the cached contents.
+            if let Some(resolved) =
+                env.get_from_cache(&location, import.hash.as_ref())
+            {
+                return Ok(resolved);
             }
-            let expr = env.with_cycle_detection(location.clone(), |env| {
-                resolve_one_import(env, &import, location.clone(), span)
+            let typed = env.with_cycle_detection(location.clone(), |env| {
+                resolve_one_import(env, &import, location.clone(), span.clone())
             })?;
-            // Add the resolved import to the cache
-            env.set_cache(location, expr.clone());
-            Ok(expr)
+            check_hash(&import, &typed, span)?;
+            // Add the resolved import to the caches
+            env.set_cache(location, import.hash.as_ref(), typed.clone());
+            Ok(typed)
         },
     )?;
     Ok(Resolved(resolved))

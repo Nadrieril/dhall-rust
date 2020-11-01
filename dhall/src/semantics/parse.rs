@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use url::Url;
 
@@ -36,9 +34,8 @@ pub fn parse_binary(data: &[u8]) -> Result<Parsed, Error> {
 }
 
 pub fn parse_binary_file(f: &Path) -> Result<Parsed, Error> {
-    let mut buffer = Vec::new();
-    File::open(f)?.read_to_end(&mut buffer)?;
-    let expr = binary::decode(&buffer)?;
+    let data = crate::utils::read_binary_file(f)?;
+    let expr = binary::decode(&data)?;
     let root = ImportLocation::Local(f.to_owned());
     Ok(Parsed(expr, root))
 }
