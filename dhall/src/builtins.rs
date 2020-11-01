@@ -418,30 +418,36 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                 }
             }
 
-            // The needle and the haystack need to be fully
-            // evaluated as Text otherwise no progress can be made
-            match (nir_to_string(needle), nir_to_string(haystack)) {
-                (Some(n), Some(h)) => {
-                    // When the needle is empty the haystack is returned untouched
-                    if n.is_empty() {
-                        Ret::Nir(haystack.clone())
-                    // Fast case when replacement is fully evaluated
-                    } else if let Some(r) = nir_to_string(replacement) {
-                        Ret::Nir(Nir::from_text(h.replace(&n, &r)))
+            // The needle needs to be fully evaluated as Text otherwise no
+            // progress can be made
+            match nir_to_string(needle) {
+                // When the needle is empty the haystack is returned untouched
+                Some(n) if n.is_empty() => Ret::Nir(haystack.clone()),
+                Some(n) => {
+                    // The haystack needs to be fully evaluated as Text otherwise no
+                    // progress can be made
+                    if let Some(h) = nir_to_string(haystack) {
+                        // Fast case when replacement is fully evaluated
+                        if let Some(r) = nir_to_string(replacement) {
+                            Ret::Nir(Nir::from_text(h.replace(&n, &r)))
+                        } else {
+                            use itertools::Itertools;
+
+                            let parts = h.split(&n).map(|s| {
+                                InterpolatedTextContents::Text(s.to_string())
+                            });
+                            let replacement = InterpolatedTextContents::Expr(
+                                replacement.clone(),
+                            );
+
+                            Ret::Nir(Nir::from_kind(NirKind::TextLit(
+                                nze::nir::TextLit::new(
+                                    parts.intersperse(replacement),
+                                ),
+                            )))
+                        }
                     } else {
-                        use itertools::Itertools;
-
-                        let parts = h.split(&n).map(|s| {
-                            InterpolatedTextContents::Text(s.to_string())
-                        });
-                        let replacement =
-                            InterpolatedTextContents::Expr(replacement.clone());
-
-                        Ret::Nir(Nir::from_kind(NirKind::TextLit(
-                            nze::nir::TextLit::new(
-                                parts.intersperse(replacement),
-                            ),
-                        )))
+                        Ret::DoneAsIs
                     }
                 }
                 _ => Ret::DoneAsIs,
