@@ -10,19 +10,16 @@ use crate::builtins::Builtin;
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{mkerr, Cache, Hir, HirKind, ImportEnv, NameEnv, Type};
+use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
     Label, Span, UnspannedExpr, URL,
 };
-use crate::{Parsed, Resolved};
+use crate::{Parsed, Resolved, Typed};
 
 // TODO: evaluate import headers
 pub type Import = syntax::Import<()>;
-
-/// Owned Hir with a type. Different from Tir because the Hir is owned.
-pub type TypedHir = (Hir, Type);
 
 /// The location of some data, usually some dhall code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -220,65 +217,55 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
+fn check_hash(import: &Import, typed: &Typed, span: Span) -> Result<(), Error> {
+    match (import.mode, &import.hash) {
+        (ImportMode::Code, Some(Hash::SHA256(hash))) => {
+            let actual_hash = typed.hir.to_expr_alpha().sha256_hash()?;
+            if hash[..] != actual_hash[..] {
+                mkerr(
+                    ErrorBuilder::new("hash mismatch")
+                        .span_err(span, "hash mismatch")
+                        .note(format!("Expected sha256:{}", hex::encode(hash)))
+                        .note(format!(
+                            "Found    sha256:{}",
+                            hex::encode(actual_hash)
+                        ))
+                        .format(),
+                )?
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn resolve_one_import(
     env: &mut ImportEnv,
-    cache: &Cache,
     import: &Import,
-    location: &ImportLocation,
+    location: ImportLocation,
     span: Span,
-) -> Result<TypedHir, Error> {
-    let do_sanity_check = import.mode != ImportMode::Location;
-    let location = location.chain(&import.location, do_sanity_check)?;
-    env.handle_import(location.clone(), |env| match import.mode {
+) -> Result<Typed, Error> {
+    let (hir, ty) = match import.mode {
         ImportMode::Code => {
-            let (hir, ty) = cache.caching_import(
-                import,
-                || location.fetch_dhall(),
-                |parsed| {
-                    let typed =
-                        resolve_with_env(env, cache, parsed)?.typecheck()?;
-                    let hir = typed.normalize().to_hir();
-                    Ok((hir, typed.ty))
-                },
-            )?;
-            match &import.hash {
-                Some(Hash::SHA256(hash)) => {
-                    let actual_hash = hir.to_expr_alpha().hash()?;
-                    if hash[..] != actual_hash[..] {
-                        mkerr(
-                            ErrorBuilder::new("hash mismatch")
-                                .span_err(span, "hash mismatch")
-                                .note(format!(
-                                    "Expected sha256:{}",
-                                    hex::encode(hash)
-                                ))
-                                .note(format!(
-                                    "Found    sha256:{}",
-                                    hex::encode(actual_hash)
-                                ))
-                                .format(),
-                        )?
-                    }
-                }
-                None => {}
-            }
-            Ok((hir, ty))
+            let parsed = location.fetch_dhall()?;
+            let typed = resolve_with_env(env, parsed)?.typecheck()?;
+            let hir = typed.normalize().to_hir();
+            (hir, typed.ty)
         }
         ImportMode::RawText => {
             let text = location.fetch_text()?;
-            let hir = Hir::new(
-                HirKind::Expr(ExprKind::TextLit(text.into())),
-                Span::Artificial,
-            );
-            Ok((hir, Type::from_builtin(Builtin::Text)))
+            let hir =
+                Hir::new(HirKind::Expr(ExprKind::TextLit(text.into())), span);
+            (hir, Type::from_builtin(Builtin::Text))
         }
         ImportMode::Location => {
             let expr = location.into_location();
             let hir = skip_resolve_expr(&expr)?;
             let ty = hir.typecheck_noenv()?.ty().clone();
-            Ok((hir, ty))
+            (hir, ty)
         }
-    })
+    };
+    Ok(Typed { hir, ty })
 }
 
 /// Desugar a `with` expression.
@@ -342,7 +329,7 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
 fn traverse_resolve_expr(
     name_env: &mut NameEnv,
     expr: &Expr,
-    f: &mut impl FnMut(Import, Span) -> Result<TypedHir, Error>,
+    f: &mut impl FnMut(Import, Span) -> Result<Typed, Error>,
 ) -> Result<Hir, Error> {
     let expr = desugar(expr);
     Ok(match expr.kind() {
@@ -382,7 +369,7 @@ fn traverse_resolve_expr(
                     // TODO: evaluate import headers
                     let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
                     let imported = f(import, expr.span())?;
-                    HirKind::Import(imported.0, imported.1)
+                    HirKind::Import(imported.hir, imported.ty)
                 }
                 kind => HirKind::Expr(kind),
             };
@@ -393,23 +380,53 @@ fn traverse_resolve_expr(
 
 fn resolve_with_env(
     env: &mut ImportEnv,
-    cache: &Cache,
     parsed: Parsed,
 ) -> Result<Resolved, Error> {
-    let Parsed(expr, location) = parsed;
+    let Parsed(expr, base_location) = parsed;
     let resolved = traverse_resolve_expr(
         &mut NameEnv::new(),
         &expr,
         &mut |import, span| {
-            resolve_one_import(env, cache, &import, &location, span)
+            let do_sanity_check = import.mode != ImportMode::Location;
+            let location =
+                base_location.chain(&import.location, do_sanity_check)?;
+
+            // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
+            // the cached contents.
+            if let Some(typed) = env.get_from_mem_cache(&location) {
+                // The same location may be used with different or no hashes. Thus we need to check
+                // the hashes every time.
+                check_hash(&import, &typed, span)?;
+                env.write_to_disk_cache(&import.hash, &typed);
+                return Ok(typed);
+            }
+            if let Some(typed) = env.get_from_disk_cache(&import.hash) {
+                // No need to check the hash, it was checked before reading the file. We also don't
+                // write to the in-memory cache, because the location might be completely unrelated
+                // to the cached file (e.g. `missing sha256:...` is valid).
+                // This actually means that importing many times a same hashed import will take
+                // longer than importing many times a same non-hashed import.
+                return Ok(typed);
+            }
+
+            // Resolve this import, making sure that recursive imports don't cycle back to the
+            // current one.
+            let typed = env.with_cycle_detection(location.clone(), |env| {
+                resolve_one_import(env, &import, location.clone(), span.clone())
+            })?;
+
+            // Add the resolved import to the caches
+            check_hash(&import, &typed, span)?;
+            env.write_to_disk_cache(&import.hash, &typed);
+            env.write_to_mem_cache(location, typed.clone());
+            Ok(typed)
         },
     )?;
     Ok(Resolved(resolved))
 }
 
 pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    let cache = Cache::new();
-    resolve_with_env(&mut ImportEnv::new(), &cache, parsed)
+    resolve_with_env(&mut ImportEnv::new(), parsed)
 }
 
 pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {

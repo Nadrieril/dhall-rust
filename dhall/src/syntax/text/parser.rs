@@ -593,7 +593,7 @@ impl DhallParser {
                 input.error(format!("Unknown hashing protocol '{}'", protocol))
             );
         }
-        Ok(Hash::SHA256(hex::decode(hash).unwrap()))
+        Ok(Hash::SHA256(hex::decode(hash).unwrap().into()))
     }
 
     fn import_hashed(
