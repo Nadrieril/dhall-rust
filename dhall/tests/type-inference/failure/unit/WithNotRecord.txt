@@ -1,6 +1,6 @@
-Type error: error: MustCombineRecord
+Type error: error: WithMustBeRecord
  --> <current file>:1:1
   |
 1 | 5 with a = 10
-  | ^^^^^^^^^^^^^ MustCombineRecord
+  | ^^^^^^^^^^^^^ WithMustBeRecord
   |

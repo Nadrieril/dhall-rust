@@ -4,7 +4,7 @@ use std::iter::once;
 
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
-    merge_maps, ret_kind, ret_op, ret_ref, Nir, NirKind, Ret, TextLit,
+    merge_maps, ret_kind, ret_nir, ret_op, ret_ref, Nir, NirKind, Ret, TextLit,
 };
 use crate::syntax::{ExprKind, Label, NumKind};
 
@@ -299,7 +299,64 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             )),
             _ => nothing_to_do(),
         },
-        Completion(..) | With(..) => {
+        With(record, labels, expr) => {
+            let mut current_nir: Option<Nir> = Some(record.clone());
+            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
+            let mut to_create = Vec::new();
+
+            // To be used when an abstract entry is reached
+            let mut abstract_nir = None;
+
+            for label in labels {
+                match current_nir {
+                    None => to_create.push(label.clone()),
+                    Some(nir) => match nir.kind() {
+                        RecordLit(kvs) => {
+                            current_nir = kvs.get(label).cloned();
+                            visited.push((label, kvs.clone()));
+                        }
+                        // Handle partially abstract case
+                        _ => {
+                            abstract_nir = Some(nir);
+                            to_create.push(label.clone());
+                            current_nir = None;
+                        }
+                    },
+                }
+            }
+
+            // Create Nir for record bottom up
+            let mut nir = expr.clone();
+
+            match abstract_nir {
+                // No abstract nir, creating singleton records
+                None => {
+                    while let Some(label) = to_create.pop() {
+                        let rec =
+                            RecordLit(once((label.clone(), nir)).collect());
+                        nir = Nir::from_kind(rec);
+                    }
+                }
+                // Abstract nir, creating with op
+                Some(abstract_nir) => {
+                    nir = Nir::from_kind(Op(OpKind::With(
+                        abstract_nir,
+                        to_create,
+                        nir,
+                    )));
+                }
+            }
+
+            // Update visited records
+            while let Some((label, mut kvs)) = visited.pop() {
+                kvs.insert(label.clone(), nir);
+                let rec = RecordLit(kvs);
+                nir = Nir::from_kind(rec);
+            }
+
+            ret_nir(nir)
+        }
+        Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     }
