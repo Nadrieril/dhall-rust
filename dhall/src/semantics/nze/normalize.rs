@@ -144,7 +144,7 @@ pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::UnionType(kvs) => {
             ret_kind(UnionType(kvs.into_iter().collect()))
         }
-        ExprKind::Op(ref op) => normalize_operation(op),
+        ExprKind::Op(op) => normalize_operation(op),
         ExprKind::Annot(x, _) => ret_nir(x),
         ExprKind::Assert(x) => ret_kind(Assert(x)),
         ExprKind::Import(..) => {
