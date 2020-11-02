@@ -48,8 +48,8 @@ fn typecheck_binop(
     env: &TyEnv,
     span: Span,
     op: BinOp,
-    l: &Tir<'_>,
-    r: &Tir<'_>,
+    l: Tir<'_>,
+    r: Tir<'_>,
 ) -> Result<Type, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use BinOp::*;
@@ -290,7 +290,7 @@ fn typecheck_merge(
 pub fn typecheck_operation(
     env: &TyEnv,
     span: Span,
-    opkind: &OpKind<Tir<'_>>,
+    opkind: OpKind<Tir<'_>>,
 ) -> Result<Type, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use NirKind::{ListType, PiClosure, RecordType, UnionType};
@@ -345,7 +345,7 @@ pub fn typecheck_operation(
                 ),
             }
         }
-        BinOp(o, l, r) => typecheck_binop(env, span, *o, l, r)?,
+        BinOp(o, l, r) => typecheck_binop(env, span, o, l, r)?,
         BoolIf(x, y, z) => {
             if *x.ty().kind() != NirKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
@@ -360,7 +360,7 @@ pub fn typecheck_operation(
             y.ty().clone()
         }
         Merge(record, scrut, type_annot) => {
-            typecheck_merge(env, span, record, scrut, type_annot.as_ref())?
+            typecheck_merge(env, span, &record, &scrut, type_annot.as_ref())?
         }
         ToMap(record, annot) => {
             if record.ty().ty().as_const() != Some(Const::Type) {
@@ -434,14 +434,14 @@ pub fn typecheck_operation(
         }
         Field(scrut, x) => {
             match scrut.ty().kind() {
-                RecordType(kts) => match kts.get(x) {
+                RecordType(kts) => match kts.get(&x) {
                     Some(val) => Type::new_infer_universe(env, val.clone())?,
                     None => return span_err("MissingRecordField"),
                 },
                 NirKind::Const(_) => {
                     let scrut = scrut.eval_to_type(env)?;
                     match scrut.kind() {
-                        UnionType(kts) => match kts.get(x) {
+                        UnionType(kts) => match kts.get(&x) {
                             // Constructor has type T -> < x: T, ... >
                             Some(Some(ty)) => Nir::from_kind(PiClosure {
                                 binder: Binder::new(x.clone()),
@@ -467,7 +467,7 @@ pub fn typecheck_operation(
 
             let mut new_kts = HashMap::new();
             for l in labels {
-                match kts.get(l) {
+                match kts.get(&l) {
                     None => return span_err("ProjectionMissingEntry"),
                     Some(t) => {
                         new_kts.insert(l.clone(), t.clone());
@@ -504,45 +504,22 @@ pub fn typecheck_operation(
             selection_val
         }
         With(record, labels, expr) => {
-            use crate::syntax::Label;
-            use std::iter::once;
-
-            let mut current_nir: Option<Nir> =
-                Some(record.ty().as_nir().clone());
-            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
-            let mut to_create = Vec::new();
-
+            let mut record_ty = record.into_ty().into_nir();
+            let mut current = &mut record_ty;
+            // We dig through the current record type with the provided labels.
             for label in labels {
-                match current_nir {
-                    None => to_create.push(label),
-                    Some(nir) => {
-                        let kts = (match nir.kind() {
-                            NirKind::RecordType(kts) => Ok(kts.clone()),
-                            _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
-                        })?;
-
-                        current_nir = kts.get(label).cloned();
-                        visited.push((label, kts));
-                    }
+                if let RecordType(kts) = current.kind_mut() {
+                    // Get existing entry or insert empty record type into it.
+                    current = kts.entry(label).or_insert_with(|| {
+                        Nir::from_kind(RecordType(HashMap::new()))
+                    });
+                } else {
+                    return mk_span_err(span.clone(), "WithMustBeRecord");
                 }
             }
+            *current = expr.into_ty().into_nir();
 
-            // Create Nir for record type bottom up
-            let mut nir = expr.ty().as_nir().clone();
-
-            while let Some(label) = to_create.pop() {
-                let rec = RecordType(once((label.clone(), nir)).collect());
-                nir = Nir::from_kind(rec);
-            }
-
-            // Update visited records
-            while let Some((label, mut kts)) = visited.pop() {
-                kts.insert(label.clone(), nir);
-                let rec = RecordType(kts);
-                nir = Nir::from_kind(rec);
-            }
-
-            Type::new_infer_universe(env, nir)?
+            Type::new_infer_universe(env, record_ty)?
         }
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")

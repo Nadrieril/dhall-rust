@@ -35,7 +35,7 @@ fn type_one_layer(
 ) -> Result<Type, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
-    Ok(match &ekind {
+    Ok(match ekind {
         ExprKind::Import(..) => {
             unreachable!("This case should have been handled in resolution")
         }
@@ -57,7 +57,7 @@ fn type_one_layer(
             NumKind::Double(_) => Builtin::Double,
         }),
         ExprKind::Builtin(b) => {
-            let t_hir = type_of_builtin(*b);
+            let t_hir = type_of_builtin(b);
             typecheck(&t_hir)?.eval_to_type(env)?
         }
         ExprKind::TextLit(interpolated) => {
