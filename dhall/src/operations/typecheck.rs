@@ -507,13 +507,6 @@ pub fn typecheck_operation(
             use crate::syntax::Label;
             use std::iter::once;
 
-            let record_entries = |nir: &Nir| {
-                match nir.kind() {
-                    NirKind::RecordType(kts) => Ok(kts.clone()),
-                    _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
-                }
-            };
-
             let mut current_nir: Option<Nir> =
                 Some(record.ty().as_nir().clone());
             let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
@@ -523,7 +516,10 @@ pub fn typecheck_operation(
                 match current_nir {
                     None => to_create.push(label),
                     Some(nir) => {
-                        let kts = record_entries(&nir)?;
+                        let kts = (match nir.kind() {
+                            NirKind::RecordType(kts) => Ok(kts.clone()),
+                            _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
+                        })?;
 
                         current_nir = kts.get(label).cloned();
                         visited.push((label, kts));
