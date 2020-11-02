@@ -542,7 +542,7 @@ pub fn typecheck_operation(
                 nir = Nir::from_kind(rec);
             }
 
-            nir.to_type(Const::Type)
+            Type::new_infer_universe(env, nir)?
         }
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")
