@@ -505,28 +505,27 @@ pub fn typecheck_operation(
         }
         With(record, labels, expr) => {
             use crate::syntax::Label;
-            use std::iter::{once, FromIterator};
+            use std::iter::once;
 
-            let record_entries = |nk: &NirKind| {
-                match nk {
+            let record_entries = |nir: &Nir| {
+                match nir.kind() {
                     NirKind::RecordType(kts) => Ok(kts.clone()),
                     _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
                 }
             };
 
-            let mut current_nk: Option<NirKind> =
-                Some(record.ty().kind().clone());
+            let mut current_nir: Option<Nir> =
+                Some(record.ty().as_nir().clone());
             let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
             let mut to_create = Vec::new();
 
             for label in labels {
-                match current_nk {
+                match current_nir {
                     None => to_create.push(label),
-                    Some(nk) => {
-                        let kts = record_entries(&nk)?;
+                    Some(nir) => {
+                        let kts = record_entries(&nir)?;
 
-                        current_nk =
-                            kts.get(label).map(|nir| nir.kind().clone());
+                        current_nir = kts.get(label).cloned();
                         visited.push((label, kts));
                     }
                 }
@@ -536,10 +535,7 @@ pub fn typecheck_operation(
             let mut nir = expr.ty().as_nir().clone();
 
             while let Some(label) = to_create.pop() {
-                let rec = RecordType(FromIterator::from_iter(once((
-                    label.clone(),
-                    nir,
-                ))));
+                let rec = RecordType(once((label.clone(), nir)).collect());
                 nir = Nir::from_kind(rec);
             }
 

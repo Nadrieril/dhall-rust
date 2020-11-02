@@ -300,9 +300,7 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             _ => nothing_to_do(),
         },
         With(record, labels, expr) => {
-            use std::iter::FromIterator;
-
-            let mut current_nk: Option<NirKind> = Some(record.kind().clone());
+            let mut current_nir: Option<Nir> = Some(record.clone());
             let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
             let mut to_create = Vec::new();
 
@@ -310,19 +308,18 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
             let mut abstract_nir = None;
 
             for label in labels {
-                match current_nk {
+                match current_nir {
                     None => to_create.push(label.clone()),
-                    Some(nk) => match nk {
+                    Some(nir) => match nir.kind() {
                         RecordLit(kvs) => {
-                            current_nk =
-                                kvs.get(label).map(|nir| nir.kind().clone());
-                            visited.push((label, kvs));
+                            current_nir = kvs.get(label).cloned();
+                            visited.push((label, kvs.clone()));
                         }
                         // Handle partially abstract case
-                        nir => {
-                            abstract_nir = Some(Nir::from_kind(nir));
+                        _ => {
+                            abstract_nir = Some(nir);
                             to_create.push(label.clone());
-                            current_nk = None;
+                            current_nir = None;
                         }
                     },
                 }
@@ -335,10 +332,8 @@ pub fn normalize_operation(opkind: &OpKind<Nir>) -> Ret {
                 // No abstract nir, creating singleton records
                 None => {
                     while let Some(label) = to_create.pop() {
-                        let rec = RecordLit(FromIterator::from_iter(once((
-                            label.clone(),
-                            nir,
-                        ))));
+                        let rec =
+                            RecordLit(once((label.clone(), nir)).collect());
                         nir = Nir::from_kind(rec);
                     }
                 }
