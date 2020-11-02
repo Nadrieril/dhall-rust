@@ -84,7 +84,7 @@ where
 pub type Ret = NirKind;
 
 pub fn ret_nir(x: Nir) -> Ret {
-    ret_ref(&x)
+    x.into_kind()
 }
 pub fn ret_kind(x: NirKind) -> Ret {
     x

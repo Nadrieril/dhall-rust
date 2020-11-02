@@ -296,62 +296,34 @@ pub fn normalize_operation(opkind: OpKind<Nir>) -> Ret {
             )),
             _ => ret_op(ProjectionByExpr(v, t)),
         },
-        With(record, labels, expr) => {
-            let mut current_nir: Option<Nir> = Some(record.clone());
-            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
-            let mut to_create = Vec::new();
-
-            // To be used when an abstract entry is reached
-            let mut abstract_nir = None;
-
-            for label in labels {
-                match current_nir {
-                    None => to_create.push(label.clone()),
-                    Some(nir) => match nir.kind() {
-                        RecordLit(kvs) => {
-                            current_nir = kvs.get(label).cloned();
-                            visited.push((label, kvs.clone()));
-                        }
-                        // Handle partially abstract case
-                        _ => {
-                            abstract_nir = Some(nir);
-                            to_create.push(label.clone());
-                            current_nir = None;
-                        }
-                    },
+        With(mut record, labels, expr) => {
+            let mut labels = labels.into_iter();
+            let mut current = &mut record;
+            // We dig through the current record with the provided labels.
+            while let RecordLit(kvs) = current.kind_mut() {
+                if let Some(label) = labels.next() {
+                    // Get existing entry or insert empty record into it.
+                    let nir = kvs.entry(label).or_insert_with(|| {
+                        Nir::from_kind(RecordLit(HashMap::new()))
+                    });
+                    // Disgusting, but the normal assignment works with -Zpolonius, so this
+                    // is safe. See https://github.com/rust-lang/rust/issues/70255 .
+                    current = unsafe { &mut *(nir as *mut _) };
+                } else {
+                    break;
                 }
             }
 
-            // Create Nir for record bottom up
-            let mut nir = expr.clone();
+            // If there are still some fields to dig through, we need to create a `with` expression
+            // with the remaining fields.
+            let labels: Vec<_> = labels.collect();
+            *current = if labels.is_empty() {
+                expr
+            } else {
+                Nir::from_kind(Op(OpKind::With(current.clone(), labels, expr)))
+            };
 
-            match abstract_nir {
-                // No abstract nir, creating singleton records
-                None => {
-                    while let Some(label) = to_create.pop() {
-                        let rec =
-                            RecordLit(once((label.clone(), nir)).collect());
-                        nir = Nir::from_kind(rec);
-                    }
-                }
-                // Abstract nir, creating with op
-                Some(abstract_nir) => {
-                    nir = Nir::from_kind(Op(OpKind::With(
-                        abstract_nir,
-                        to_create,
-                        nir,
-                    )));
-                }
-            }
-
-            // Update visited records
-            while let Some((label, mut kvs)) = visited.pop() {
-                kvs.insert(label.clone(), nir);
-                let rec = RecordLit(kvs);
-                nir = Nir::from_kind(rec);
-            }
-
-            ret_nir(nir)
+            ret_nir(record)
         }
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")

@@ -138,6 +138,24 @@ impl Nir {
         self.0.kind()
     }
 
+    /// The contents of a `Nir` are immutable and shared. If however we happen to be the sole
+    /// owners, we can mutate it directly. Otherwise, this clones the internal value first.
+    pub fn kind_mut(&mut self) -> &mut NirKind {
+        if Rc::get_mut(&mut self.0).is_none() {
+            // Clone self
+            let kind = self.kind().clone();
+            *self = Nir::from_kind(kind);
+        }
+        Rc::get_mut(&mut self.0).unwrap().kind_mut()
+    }
+    /// If we are the sole owner of this Nir, we can avoid a clone.
+    pub fn into_kind(self) -> NirKind {
+        match Rc::try_unwrap(self.0) {
+            Ok(int) => int.into_kind(),
+            Err(rc) => rc.kind().clone(),
+        }
+    }
+
     pub fn to_type(&self, u: impl Into<Universe>) -> Type {
         Type::new(self.clone(), u.into())
     }
@@ -290,6 +308,12 @@ impl NirInternal {
 
     fn kind(&self) -> &NirKind {
         &self.kind
+    }
+    fn kind_mut(&mut self) -> &mut NirKind {
+        self.kind.get_mut()
+    }
+    fn into_kind(self) -> NirKind {
+        self.kind.into_inner()
     }
 }
 
