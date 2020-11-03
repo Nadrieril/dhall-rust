@@ -117,6 +117,9 @@ impl<'hir> Tir<'hir> {
     pub fn ty(&self) -> &Type {
         &self.ty
     }
+    pub fn into_ty(self) -> Type {
+        self.ty
+    }
 
     pub fn to_hir(&self) -> Hir {
         self.as_hir().clone()

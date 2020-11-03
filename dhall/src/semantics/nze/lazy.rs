@@ -35,6 +35,22 @@ where
         let _ = lazy.tgt.set(tgt);
         lazy
     }
+
+    pub fn force(&self) -> &Tgt {
+        self.tgt.get_or_init(|| {
+            let src = self.src.take().unwrap();
+            src.eval()
+        })
+    }
+
+    pub fn get_mut(&mut self) -> &mut Tgt {
+        self.force();
+        self.tgt.get_mut().unwrap()
+    }
+    pub fn into_inner(self) -> Tgt {
+        self.force();
+        self.tgt.into_inner().unwrap()
+    }
 }
 
 impl<Src, Tgt> Deref for Lazy<Src, Tgt>
@@ -43,10 +59,18 @@ where
 {
     type Target = Tgt;
     fn deref(&self) -> &Self::Target {
-        self.tgt.get_or_init(|| {
-            let src = self.src.take().unwrap();
-            src.eval()
-        })
+        self.force()
+    }
+}
+
+/// This implementation evaluates before cloning, because we can't clone the contents of a `Cell`.
+impl<Src, Tgt> Clone for Lazy<Src, Tgt>
+where
+    Src: Eval<Tgt>,
+    Tgt: Clone,
+{
+    fn clone(&self) -> Self {
+        Self::new_completed(self.force().clone())
     }
 }
 

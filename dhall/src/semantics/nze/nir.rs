@@ -14,18 +14,13 @@ use crate::syntax::{
 use crate::ToExprOptions;
 
 /// Stores a possibly unevaluated value. Gets (partially) normalized on-demand, sharing computation
-/// automatically. Uses a Rc<RefCell> to share computation.
+/// automatically. Uses a Rc<OnceCell> to share computation.
 /// If you compare for equality two `Nir`s, then equality will be up to alpha-equivalence
 /// (renaming of bound variables) and beta-equivalence (normalization). It will recursively
 /// normalize as needed.
-/// Stands for "Normalized intermediate representation"
+/// Stands for "Normalized Intermediate Representation"
 #[derive(Clone)]
-pub struct Nir(Rc<NirInternal>);
-
-#[derive(Debug)]
-struct NirInternal {
-    kind: lazy::Lazy<Thunk, NirKind>,
-}
+pub struct Nir(Rc<lazy::Lazy<Thunk, NirKind>>);
 
 /// An unevaluated subexpression
 #[derive(Debug, Clone)]
@@ -101,17 +96,17 @@ pub enum NirKind {
 impl Nir {
     /// Construct a Nir from a completely unnormalized expression.
     pub fn new_thunk(env: NzEnv, hir: Hir) -> Nir {
-        NirInternal::from_thunk(Thunk::new(env, hir)).into_nir()
+        Nir(Rc::new(lazy::Lazy::new(Thunk::new(env, hir))))
     }
     /// Construct a Nir from a partially normalized expression that's not in WHNF.
     pub fn from_partial_expr(e: ExprKind<Nir>) -> Nir {
         // TODO: env
         let env = NzEnv::new();
-        NirInternal::from_thunk(Thunk::from_partial_expr(env, e)).into_nir()
+        Nir(Rc::new(lazy::Lazy::new(Thunk::from_partial_expr(env, e))))
     }
     /// Make a Nir from a NirKind
     pub fn from_kind(v: NirKind) -> Nir {
-        NirInternal::from_whnf(v).into_nir()
+        Nir(Rc::new(lazy::Lazy::new_completed(v)))
     }
     pub fn from_const(c: Const) -> Self {
         Self::from_kind(NirKind::Const(c))
@@ -135,7 +130,20 @@ impl Nir {
 
     /// This is what you want if you want to pattern-match on the value.
     pub fn kind(&self) -> &NirKind {
-        self.0.kind()
+        &*self.0
+    }
+
+    /// The contents of a `Nir` are immutable and shared. If however we happen to be the sole
+    /// owners, we can mutate it directly. Otherwise, this clones the internal value first.
+    pub fn kind_mut(&mut self) -> &mut NirKind {
+        Rc::make_mut(&mut self.0).get_mut()
+    }
+    /// If we are the sole owner of this Nir, we can avoid a clone.
+    pub fn into_kind(self) -> NirKind {
+        match Rc::try_unwrap(self.0) {
+            Ok(lazy) => lazy.into_inner(),
+            Err(rc) => (**rc).clone(),
+        }
     }
 
     pub fn to_type(&self, u: impl Into<Universe>) -> Type {
@@ -270,26 +278,6 @@ impl Nir {
     }
     pub fn to_hir_noenv(&self) -> Hir {
         self.to_hir(VarEnv::new())
-    }
-}
-
-impl NirInternal {
-    fn from_whnf(k: NirKind) -> Self {
-        NirInternal {
-            kind: lazy::Lazy::new_completed(k),
-        }
-    }
-    fn from_thunk(th: Thunk) -> Self {
-        NirInternal {
-            kind: lazy::Lazy::new(th),
-        }
-    }
-    fn into_nir(self) -> Nir {
-        Nir(Rc::new(self))
-    }
-
-    fn kind(&self) -> &NirKind {
-        &self.kind
     }
 }
 
@@ -448,13 +436,11 @@ impl std::cmp::Eq for Closure {}
 
 impl std::fmt::Debug for Nir {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let vint: &NirInternal = &self.0;
-        let kind = vint.kind();
-        if let NirKind::Const(c) = kind {
+        if let NirKind::Const(c) = self.kind() {
             return write!(fmt, "{:?}", c);
         }
         let mut x = fmt.debug_struct("Nir");
-        x.field("kind", kind);
+        x.field("kind", self.kind());
         x.finish()
     }
 }
