@@ -63,6 +63,17 @@ where
     }
 }
 
+/// This implementation evaluates before cloning, because we can't clone the contents of a `Cell`.
+impl<Src, Tgt> Clone for Lazy<Src, Tgt>
+where
+    Src: Eval<Tgt>,
+    Tgt: Clone,
+{
+    fn clone(&self) -> Self {
+        Self::new_completed(self.force().clone())
+    }
+}
+
 impl<Src, Tgt> Debug for Lazy<Src, Tgt>
 where
     Tgt: Debug,
