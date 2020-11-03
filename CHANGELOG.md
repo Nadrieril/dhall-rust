@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Support Dhall v19.0.0
+
 #### [0.8.0] - 2020-10-28
 
 - Implement serialization (https://github.com/Nadrieril/dhall-rust/issues/164)

@@ -178,10 +178,9 @@ impl Expr {
     }
 
     // Compute the sha256 hash of the binary form of the expression.
-    pub fn hash(&self) -> Result<Box<[u8]>, Error> {
-        use sha2::Digest;
+    pub fn sha256_hash(&self) -> Result<Box<[u8]>, Error> {
         let data = binary::encode(self)?;
-        Ok(sha2::Sha256::digest(&data).as_slice().into())
+        Ok(crate::utils::sha256_hash(&data))
     }
 }
 

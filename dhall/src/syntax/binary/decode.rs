@@ -290,7 +290,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     Null => None,
                     Bytes(bytes) => match bytes.as_slice() {
                         [18, 32, rest @ ..] => {
-                            Some(Hash::SHA256(rest.to_vec()))
+                            Some(Hash::SHA256(rest.to_vec().into()))
                         }
                         _ => {
                             return Err(DecodeError::WrongFormatError(format!(

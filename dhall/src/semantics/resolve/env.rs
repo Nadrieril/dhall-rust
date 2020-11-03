@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, ImportLocation, TypedHir, VarEnv};
-use crate::syntax::{Label, V};
+use crate::semantics::{AlphaVar, Cache, ImportLocation, VarEnv};
+use crate::syntax::{Hash, Label, V};
+use crate::Typed;
 
 /// Environment for resolving names.
 #[derive(Debug, Clone, Default)]
@@ -10,14 +11,15 @@ pub struct NameEnv {
     names: Vec<Label>,
 }
 
-pub type ImportCache = HashMap<ImportLocation, TypedHir>;
-pub type ImportStack = Vec<ImportLocation>;
+pub type MemCache = HashMap<ImportLocation, Typed>;
+pub type CyclesStack = Vec<ImportLocation>;
 
 /// Environment for resolving imports
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub struct ImportEnv {
-    cache: ImportCache,
-    stack: ImportStack,
+    disk_cache: Option<Cache>, // Missing if it failed to initialize
+    mem_cache: MemCache,
+    stack: CyclesStack,
 }
 
 impl NameEnv {
@@ -66,38 +68,62 @@ impl NameEnv {
 
 impl ImportEnv {
     pub fn new() -> Self {
-        ImportEnv::default()
+        ImportEnv {
+            disk_cache: Cache::new().ok(),
+            mem_cache: Default::default(),
+            stack: Default::default(),
+        }
     }
 
-    pub fn handle_import(
+    pub fn get_from_mem_cache(
         &mut self,
-        mut location: ImportLocation,
-        do_resolve: impl FnOnce(&mut Self) -> Result<TypedHir, Error>,
-    ) -> Result<TypedHir, Error> {
+        location: &ImportLocation,
+    ) -> Option<Typed> {
+        Some(self.mem_cache.get(location)?.clone())
+    }
+
+    pub fn get_from_disk_cache(
+        &mut self,
+        hash: &Option<Hash>,
+    ) -> Option<Typed> {
+        let hash = hash.as_ref()?;
+        let expr = self.disk_cache.as_ref()?.get(hash).ok()?;
+        Some(expr)
+    }
+
+    pub fn write_to_mem_cache(
+        &mut self,
+        location: ImportLocation,
+        expr: Typed,
+    ) {
+        self.mem_cache.insert(location, expr);
+    }
+
+    pub fn write_to_disk_cache(&mut self, hash: &Option<Hash>, expr: &Typed) {
+        if let Some(disk_cache) = self.disk_cache.as_ref() {
+            if let Some(hash) = hash {
+                let _ = disk_cache.insert(hash, &expr);
+            }
+        }
+    }
+
+    pub fn with_cycle_detection(
+        &mut self,
+        location: ImportLocation,
+        do_resolve: impl FnOnce(&mut Self) -> Result<Typed, Error>,
+    ) -> Result<Typed, Error> {
         if self.stack.contains(&location) {
             return Err(
                 ImportError::ImportCycle(self.stack.clone(), location).into()
             );
         }
-        Ok(match self.cache.get(&location) {
-            Some(expr) => expr.clone(),
-            None => {
-                let expr = {
-                    // Push the current location on the stack
-                    self.stack.push(location);
-                    // Resolve the import recursively
-                    // WARNING: do not propagate errors here or the stack will get messed up.
-                    let result = do_resolve(self);
-                    // Remove location from the stack.
-                    location = self.stack.pop().unwrap();
-                    result
-                }?;
-
-                // Add the resolved import to the cache
-                self.cache.insert(location, expr.clone());
-
-                expr
-            }
-        })
+        // Push the current location on the stack
+        self.stack.push(location);
+        // Resolve the import recursively
+        // WARNING: do not propagate errors here or the stack will get messed up.
+        let result = do_resolve(self);
+        // Remove location from the stack.
+        self.stack.pop().unwrap();
+        result
     }
 }

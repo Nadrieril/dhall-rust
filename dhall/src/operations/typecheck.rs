@@ -503,7 +503,48 @@ pub fn typecheck_operation(
 
             selection_val
         }
-        Completion(..) | With(..) => {
+        With(record, labels, expr) => {
+            use crate::syntax::Label;
+            use std::iter::once;
+
+            let mut current_nir: Option<Nir> =
+                Some(record.ty().as_nir().clone());
+            let mut visited: Vec<(&Label, HashMap<Label, Nir>)> = Vec::new();
+            let mut to_create = Vec::new();
+
+            for label in labels {
+                match current_nir {
+                    None => to_create.push(label),
+                    Some(nir) => {
+                        let kts = (match nir.kind() {
+                            NirKind::RecordType(kts) => Ok(kts.clone()),
+                            _ => mk_span_err(span.clone(), "WithMustBeRecord"), // TODO better error
+                        })?;
+
+                        current_nir = kts.get(label).cloned();
+                        visited.push((label, kts));
+                    }
+                }
+            }
+
+            // Create Nir for record type bottom up
+            let mut nir = expr.ty().as_nir().clone();
+
+            while let Some(label) = to_create.pop() {
+                let rec = RecordType(once((label.clone(), nir)).collect());
+                nir = Nir::from_kind(rec);
+            }
+
+            // Update visited records
+            while let Some((label, mut kts)) = visited.pop() {
+                kts.insert(label.clone(), nir);
+                let rec = RecordType(kts);
+                nir = Nir::from_kind(rec);
+            }
+
+            Type::new_infer_universe(env, nir)?
+        }
+        Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     })

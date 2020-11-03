@@ -42,9 +42,12 @@ impl Pretty for Node {
                 nodes.iter().map(|x| x.pretty()),
                 BoxDoc::space().append(BoxDoc::text("~ ")),
             ),
-            Repetition(rep) => {
-                rep.node().pretty().append(rep.repeat().pretty())
-            }
+            Repetition(rep) => rep
+                .node()
+                .pretty()
+                // this repeat application is a temporary work-around for the clippy issue:
+                // https://github.com/rust-lang/rust-clippy/pull/5948
+                .append(abnf::types::Repetition::repeat(rep).pretty()),
             Rulename(s) => BoxDoc::text(escape_rulename(s)),
             Group(n) => BoxDoc::text("(")
                 .append(n.pretty().nest(4).group())

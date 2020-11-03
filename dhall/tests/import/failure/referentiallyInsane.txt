@@ -1,1 +1,12 @@
-SanityCheck
+Type error: error: error
+  --> <current file>:6:1
+   |
+ 1 | {- The following remote import attempts to import an environment variable, which
+ 2 |    must be disallowed by the referential sanity check
+ 3 | 
+ 4 |    One reason for doing this is to protect against remote imports exfiltrating
+...
+12 | -}
+13 | https://raw.githubusercontent.com/dhall-lang/dhall-lang/master/tests/import/data/referentiallyOpaque.dhall
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ SanityCheck
+   |

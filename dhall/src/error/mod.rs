@@ -1,6 +1,6 @@
 use std::io::Error as IOError;
 
-use crate::semantics::resolve::{ImportLocation, ImportStack};
+use crate::semantics::resolve::{CyclesStack, ImportLocation};
 use crate::syntax::{Import, ParseError};
 
 mod builder;
@@ -31,7 +31,7 @@ pub enum ImportError {
     MissingEnvVar,
     SanityCheck,
     UnexpectedImport(Import<()>),
-    ImportCycle(ImportStack, ImportLocation),
+    ImportCycle(CyclesStack, ImportLocation),
     Url(url::ParseError),
 }
 
