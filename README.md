@@ -153,13 +153,15 @@ The various tests are run according to the instructions present in
 If an output test file (a `fooB.dhall` file) is missing, we will generate it automatically.
 This is useful when writing new tests. Don't forget to commit it to git !
 
-If a test fails but you prefer the new output, you can run the test with
-`UPDATE_TEST_FILES=1` to overwrite the result file with the new output.
-This happens often with ui tests (see below), since we may want to change the
-phrasing of errors for example.
+If one of the specification tests fails but you prefer the new output, you can
+run the test(s) with `--bless` to overwrite the result file with the new
+output. This happens often with ui tests (see below), since we may want to
+change the phrasing of errors for example. Note that the `--bless` argument is
+only accepted by the `spec` tests and will not be recognized if you also run
+other test.
 
 ```bash
-$ UPDATE_TEST_FILES=1 cargo test tests::spec::name_of_test
+$ cargo test --test spec -- -q --bless
 ```
 
 In addition to the usual dhall tests, we additionally run "ui tests", that
