@@ -7,7 +7,6 @@ use std::fmt::{Debug, Display};
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use libtest_mimic::{Arguments, Outcome, Test};
 use walkdir::WalkDir;
@@ -16,9 +15,6 @@ use dhall::error::Error as DhallError;
 use dhall::error::ErrorKind;
 use dhall::syntax::{binary, Expr};
 use dhall::{Normalized, Parsed, Resolved, Typed};
-
-static LOCAL_TEST_PATH: &str = "tests/";
-static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileType {
@@ -255,7 +251,7 @@ impl TestFile {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 struct TestFeature {
     /// Name of the module, used in the output of `cargo test`
     module_name: &'static str,
@@ -263,17 +259,13 @@ struct TestFeature {
     directory: &'static str,
     /// Relevant variant of `dhall::tests::SpecTestKind`
     variant: SpecTestKind,
-    /// Given a file name, whether to only include it in release tests
-    too_slow_path: Rc<dyn Fn(&str) -> bool>,
-    /// Given a file name, whether to exclude it
-    exclude_path: Rc<dyn Fn(&str) -> bool>,
     /// Type of the input file
     input_type: FileType,
     /// Type of the output file
     output_type: FileType,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SpecTestKind {
     ParserSuccess,
     ParserFailure,
@@ -334,6 +326,103 @@ fn dhall_files_in_dir<'a>(
         })
 }
 
+static LOCAL_TEST_PATH: &str = "tests/";
+static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
+
+static FEATURES: &'static [TestFeature] = &[
+    TestFeature {
+        module_name: "parser_success",
+        directory: "parser/success/",
+        variant: SpecTestKind::ParserSuccess,
+        input_type: FileType::Text,
+        output_type: FileType::Binary,
+    },
+    TestFeature {
+        module_name: "parser_failure",
+        directory: "parser/failure/",
+        variant: SpecTestKind::ParserFailure,
+        input_type: FileType::Text,
+        output_type: FileType::UI,
+    },
+    TestFeature {
+        module_name: "printer",
+        directory: "parser/success/",
+        variant: SpecTestKind::Printer,
+        input_type: FileType::Text,
+        output_type: FileType::UI,
+    },
+    TestFeature {
+        module_name: "binary_encoding",
+        directory: "parser/success/",
+        variant: SpecTestKind::BinaryEncoding,
+        input_type: FileType::Text,
+        output_type: FileType::Binary,
+    },
+    TestFeature {
+        module_name: "binary_decoding_success",
+        directory: "binary-decode/success/",
+        variant: SpecTestKind::BinaryDecodingSuccess,
+        input_type: FileType::Binary,
+        output_type: FileType::Text,
+    },
+    TestFeature {
+        module_name: "binary_decoding_failure",
+        directory: "binary-decode/failure/",
+        variant: SpecTestKind::BinaryDecodingFailure,
+        input_type: FileType::Binary,
+        output_type: FileType::UI,
+    },
+    TestFeature {
+        module_name: "import_success",
+        directory: "import/success/",
+        variant: SpecTestKind::ImportSuccess,
+        input_type: FileType::Text,
+        output_type: FileType::Text,
+    },
+    TestFeature {
+        module_name: "import_failure",
+        directory: "import/failure/",
+        variant: SpecTestKind::ImportFailure,
+        input_type: FileType::Text,
+        output_type: FileType::UI,
+    },
+    TestFeature {
+        module_name: "semantic_hash",
+        directory: "semantic-hash/success/",
+        variant: SpecTestKind::SemanticHash,
+        input_type: FileType::Text,
+        output_type: FileType::Hash,
+    },
+    TestFeature {
+        module_name: "beta_normalize",
+        directory: "normalization/success/",
+        variant: SpecTestKind::Normalization,
+        input_type: FileType::Text,
+        output_type: FileType::Text,
+    },
+    TestFeature {
+        module_name: "alpha_normalize",
+        directory: "alpha-normalization/success/",
+        variant: SpecTestKind::AlphaNormalization,
+        input_type: FileType::Text,
+        output_type: FileType::Text,
+    },
+    TestFeature {
+        module_name: "type_inference_success",
+        directory: "type-inference/success/",
+        variant: SpecTestKind::TypeInferenceSuccess,
+        input_type: FileType::Text,
+        output_type: FileType::Text,
+    },
+    TestFeature {
+        module_name: "type_inference_failure",
+        directory: "type-inference/failure/",
+        variant: SpecTestKind::TypeInferenceFailure,
+        input_type: FileType::Text,
+        output_type: FileType::UI,
+    },
+];
+
 fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
     let take_ab_suffix =
         feature.output_type != FileType::UI || feature.module_name == "printer";
@@ -347,7 +436,17 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
         for path in
             dhall_files_in_dir(&tests_dir, take_ab_suffix, feature.input_type)
         {
-            let normalized_rel_path = path.replace("\\", "/");
+            // Ignore some tests if they are known to be failing or not meant to pass.
+            let rel_path = Path::new(feature.directory)
+                .join(&path)
+                .to_string_lossy()
+                .replace("\\", "/");
+            let is_ignored = ignore_test(feature.variant, &rel_path);
+
+            // Transform path into a valid Rust identifier
+            let name =
+                path.replace("\\", "_").replace("/", "_").replace("-", "_");
+
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
 
@@ -364,11 +463,6 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
                 _ => path.as_ref().to_owned(),
             };
 
-            // Transform path into a valid Rust identifier
-            let name = normalized_rel_path.replace("/", "_").replace("-", "_");
-            let excluded = (feature.exclude_path)(&normalized_rel_path);
-            let too_slow = (feature.too_slow_path)(&normalized_rel_path);
-            let is_ignored = excluded || (cfg!(debug_assertions) && too_slow);
             let input = feature
                 .input_type
                 .construct(&format!("{}{}", path, input_suffix));
@@ -392,174 +486,68 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
     tests
 }
 
-fn define_features() -> Vec<TestFeature> {
-    let default_feature = TestFeature {
-        module_name: "",
-        directory: "",
-        variant: SpecTestKind::ParserSuccess, // Dummy
-        too_slow_path: Rc::new(|_path: &str| false),
-        exclude_path: Rc::new(|_path: &str| false),
-        input_type: FileType::Text,
-        output_type: FileType::Text,
-    };
+/// Ignore some tests if they are known to be failing or not meant to pass.
+/// `path` must be relative to the test directorie(s).
+#[allow(clippy::nonminimal_bool)]
+fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
+    use SpecTestKind::*;
 
-    #[allow(clippy::nonminimal_bool)]
-    vec![
-        TestFeature {
-            module_name: "parser_success",
-            directory: "parser/success/",
-            variant: SpecTestKind::ParserSuccess,
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            output_type: FileType::Binary,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "parser_failure",
-            directory: "parser/failure/",
-            variant: SpecTestKind::ParserFailure,
-            output_type: FileType::UI,
-            exclude_path: Rc::new(|_path: &str| {
-                // TODO: git changes newlines on windows
-                cfg!(windows)
-            }),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "printer",
-            directory: "parser/success/",
-            variant: SpecTestKind::Printer,
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            output_type: FileType::UI,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_encoding",
-            directory: "parser/success/",
-            variant: SpecTestKind::BinaryEncoding,
-            too_slow_path: Rc::new(|path: &str| path == "largeExpression"),
-            output_type: FileType::Binary,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_decoding_success",
-            directory: "binary-decode/success/",
-            variant: SpecTestKind::BinaryDecodingSuccess,
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // We don't support bignums
-                    || path == "unit/IntegerBigNegative"
-                    || path == "unit/IntegerBigPositive"
-                    || path == "unit/NaturalBig"
-            }),
-            input_type: FileType::Binary,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "binary_decoding_failure",
-            directory: "binary-decode/failure/",
-            variant: SpecTestKind::BinaryDecodingFailure,
-            input_type: FileType::Binary,
-            output_type: FileType::UI,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "import_success",
-            directory: "import/success/",
-            variant: SpecTestKind::ImportSuccess,
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: the standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
-                    || path == "unit/asLocation/RemoteCanonicalize4"
-                    // TODO: import headers
-                    || path == "customHeaders"
-                    || path == "headerForwarding"
-                    || path == "noHeaderForwarding"
-                    // TODO: git changes newlines on windows
-                    || (cfg!(windows) && path == "unit/AsText")
-                    || (cfg!(windows) && path == "unit/QuotedPath")
-                    // TODO: paths on windows have backslashes; this breaks all the `as Location` tests
-                    // See https://github.com/dhall-lang/dhall-lang/issues/1032
-                    || (cfg!(windows) && path.contains("asLocation"))
-            }),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "import_failure",
-            directory: "import/failure/",
-            variant: SpecTestKind::ImportFailure,
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: paths on windows have backslashes; this breaks many things
-                    || cfg!(windows)
-                    // TODO: import headers
-                    || path == "customHeadersUsingBoundVariable"
-                    // TODO: do not recover from cyclic imports
-                    || path == "unit/DontRecoverCycle"
-            }),
-            output_type: FileType::UI,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "semantic_hash",
-            directory: "semantic-hash/success/",
-            variant: SpecTestKind::SemanticHash,
-            exclude_path: Rc::new(|path: &str| {
-                // We don't support bignums
-                path == "simple/integerToDouble"
-            }),
-            output_type: FileType::Hash,
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "beta_normalize",
-            directory: "normalization/success/",
-            variant: SpecTestKind::Normalization,
-            too_slow_path: Rc::new(|path: &str| path == "remoteSystems"),
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // Cannot typecheck
-                    || path == "unit/Sort"
-                    // We don't support bignums
-                    || path == "simple/integerToDouble"
-                    // TODO: fix Double/show
-                    || path == "prelude/JSON/number/1"
-            }),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "alpha_normalize",
-            directory: "alpha-normalization/success/",
-            variant: SpecTestKind::AlphaNormalization,
-            exclude_path: Rc::new(|path: &str| {
-                // This test is designed to not typecheck
-                path == "unit/FunctionNestedBindingXXFree"
-            }),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "type_inference_success",
-            directory: "type-inference/success/",
-            variant: SpecTestKind::TypeInferenceSuccess,
-            // TODO: this fails because of caching shenanigans
-            // too_slow_path: Rc::new(|path: &str| path == "prelude"),
-            exclude_path: Rc::new(|path: &str| path == "prelude"),
-            ..default_feature.clone()
-        },
-        TestFeature {
-            module_name: "type_inference_failure",
-            directory: "type-inference/failure/",
-            variant: SpecTestKind::TypeInferenceFailure,
-            exclude_path: Rc::new(|path: &str| {
-                false
-                    // TODO: enable free variable checking
-                    || path == "unit/MergeHandlerFreeVar"
-                    // TODO: git changes newlines on windows
-                    || cfg!(windows)
-            }),
-            output_type: FileType::UI,
-            ..default_feature
-        },
-    ]
+    // This will never succeed because of a specificity of dhall-rust.
+    let is_meant_to_fail = false
+        // We don't support bignums
+        || path == "binary-decode/success/unit/IntegerBigNegative"
+        || path == "binary-decode/success/unit/IntegerBigPositive"
+        || path == "binary-decode/success/unit/NaturalBig"
+        || path == "semantic-hash/success/simple/integerToDouble"
+        || path == "normalization/success/simple/integerToDouble"
+        // These don't typecheck but we always tck before normalizing.
+        || path == "alpha-normalization/success/unit/FunctionNestedBindingXXFree"
+        || path == "normalization/success/unit/Sort";
+
+    // Fails because of Windows-specific shenanigans.
+    let fails_on_windows = false
+        // TODO: git changes newlines on windows
+        || (variant == ImportSuccess
+            && (path == "import/success/unit/AsText"
+                || path == "import/success/unit/QuotedPath"))
+        || variant == ParserFailure
+        || variant == TypeInferenceFailure
+        // Paths on windows have backslashes; this breaks many things. This is undefined in the
+        // spec; see https://github.com/dhall-lang/dhall-lang/issues/1032
+        || (variant == ImportSuccess && path.contains("asLocation"))
+        || variant == ImportFailure;
+
+    // Only include in release tests.
+    let is_too_slow = false
+        || path == "parser/success/largeExpression"
+        || path == "normalization/success/remoteSystems";
+
+    // This is a mistake in the spec, we should make a PR for it.
+    let is_spec_error = false
+        // The standard does not respect https://tools.ietf.org/html/rfc3986#section-5.2
+        || path == "import/success/unit/asLocation/RemoteCanonicalize4"
+        // The spec should specify how to print a Double
+        || path == "normalization/success/prelude/JSON/number/1";
+
+    // Failing for now, we should fix that.
+    let is_failing_for_now = false
+        // TODO: fails because of caching issues.
+        || path == "type-inference/success/prelude"
+        // TODO: do not recover from cyclic imports
+        || path == "import/failure/unit/DontRecoverCycle"
+        // TODO: import headers
+        || path == "import/success/customHeaders"
+        || path == "import/success/headerForwarding"
+        || path == "import/success/noHeaderForwarding"
+        || path == "import/failure/customHeadersUsingBoundVariable"
+        // TODO: enable free variable checking
+        || path == "type-inference/failure/unit/MergeHandlerFreeVar";
+
+    (cfg!(debug_assertions) && is_too_slow)
+        || (cfg!(windows) && fails_on_windows)
+        || is_meant_to_fail
+        || is_spec_error
+        || is_failing_for_now
 }
 
 fn run_test_stringy_error(test: &SpecTest) -> std::result::Result<(), String> {
@@ -578,15 +566,15 @@ fn run_test_stringy_error(test: &SpecTest) -> std::result::Result<(), String> {
     res.map_err(|e| e.to_string())
 }
 
-/// Like `Result::unwrap_err`, but returns an error instead of panicking.
-fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
-    match x {
-        Ok(x) => Err(TestError(format!("{:?}", x))),
-        Err(e) => Ok(e),
-    }
-}
-
 fn run_test(test: &SpecTest) -> Result<()> {
+    /// Like `Result::unwrap_err`, but returns an error instead of panicking.
+    fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
+        match x {
+            Ok(x) => Err(TestError(format!("{:?}", x))),
+            Err(e) => Ok(e),
+        }
+    }
+
     use self::SpecTestKind::*;
     let SpecTest {
         input: expr,
@@ -669,8 +657,9 @@ fn run_test(test: &SpecTest) -> Result<()> {
 }
 
 fn main() {
-    let tests = define_features()
-        .into_iter()
+    let tests = FEATURES
+        .iter()
+        .copied()
         .flat_map(discover_tests_for_feature)
         .collect();
 
