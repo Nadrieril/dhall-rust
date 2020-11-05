@@ -7,6 +7,7 @@ use std::fmt::{Debug, Display};
 use std::fs::{create_dir_all, read_to_string, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use libtest_mimic::{Arguments, Outcome, Test};
 use walkdir::WalkDir;
@@ -119,9 +120,9 @@ impl TestFile {
         Ok(self.typecheck()?.normalize())
     }
 
-    /// If UPDATE_TEST_FILES=1, we overwrite the output files with our own output.
+    /// If UPDATE_TEST_FILES is `true`, we overwrite the output files with our own output.
     fn force_update() -> bool {
-        env::var("UPDATE_TEST_FILES") == Ok("1".to_string())
+        UPDATE_TEST_FILES.load(Ordering::Acquire)
     }
     /// Write the provided expression to the pointed file.
     fn write_expr(&self, expr: impl Into<Expr>) -> Result<()> {
@@ -325,6 +326,9 @@ fn dhall_files_in_dir<'a>(
             Some(path)
         })
 }
+
+// Whether to overwrite the output files when our own output differs. This is set once in `main()`.
+static UPDATE_TEST_FILES: AtomicBool = AtomicBool::new(false);
 
 static LOCAL_TEST_PATH: &str = "tests/";
 static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
@@ -686,25 +690,31 @@ fn main() {
         .collect::<String>();
     let cache_dir = format!("dhall-tests-{}", random_id);
     let cache_dir = env::temp_dir().join(cache_dir);
-
     std::fs::create_dir_all(&cache_dir).unwrap();
     fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())
         .unwrap();
     env::set_var("XDG_CACHE_HOME", &cache_dir);
 
-    let res =
-        libtest_mimic::run_tests(&Arguments::from_args(), tests, |test| {
-            let result = std::panic::catch_unwind(move || {
-                run_test_stringy_error(&test.data)
-            });
-            match result {
-                Ok(Ok(_)) => Outcome::Passed,
-                Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
-                Err(_) => Outcome::Failed {
-                    msg: Some("thread panicked".to_string()),
-                },
-            }
+    // Whether to overwrite the output files when our own output differs.
+    // Either set `UPDATE_TEST_FILES=1` (deprecated) or pass `--bless` as an argument to this test
+    // runner. Eg: `cargo test --test spec -- -q --bless`.
+    let bless = env::args().any(|arg| arg == "--bless")
+        || env::var("UPDATE_TEST_FILES") == Ok("1".to_string());
+    UPDATE_TEST_FILES.store(bless, Ordering::Release);
+
+    let args = Arguments::from_iter(env::args().filter(|arg| arg != "--bless"));
+    let res = libtest_mimic::run_tests(&args, tests, |test| {
+        let result = std::panic::catch_unwind(move || {
+            run_test_stringy_error(&test.data)
         });
+        match result {
+            Ok(Ok(_)) => Outcome::Passed,
+            Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
+            Err(_) => Outcome::Failed {
+                msg: Some("thread panicked".to_string()),
+            },
+        }
+    });
 
     std::fs::remove_dir_all(&cache_dir).unwrap();
 
