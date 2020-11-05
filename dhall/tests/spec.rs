@@ -493,6 +493,8 @@ fn define_features() -> Vec<TestFeature> {
                     || cfg!(windows)
                     // TODO: import headers
                     || path == "customHeadersUsingBoundVariable"
+                    // TODO: do not recover from cyclic imports
+                    || path == "unit/DontRecoverCycle"
             }),
             output_type: FileType::UI,
             ..default_feature.clone()

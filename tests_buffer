@@ -14,22 +14,17 @@ From https://github.com/dhall-lang/dhall-lang/issues/280 :
 
 import:
 failure/
-    don't recover cycle
     don't resolve symlinks in canonicalizing
 as Text hash
 as Location hash
 
 normalization:
 move builtins and operators in their own folder ?
-RecordSortFields { b = 1, a = 0 }
-RecordTypeSortFields { b : Bool, a : Natural }
-\(foo: { x: Bool, y: Bool }) -> \(bar: { x: Bool }) -> (foo.{x, y} // bar).{ x }
 
 type-inference:
 something that involves destructuring a recordtype after merge
 add some of the more complicated Prelude tests back, like List/enumerate
 failure/
-    \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
     merge { x = λ(x : Bool) → x } (< x: Bool | y: Natural >.x True)
     merge { x = λ(_ : Bool) → _, y = 1 } < x = True | y >
     merge { x = True, y = 1 } < x | y >.x
