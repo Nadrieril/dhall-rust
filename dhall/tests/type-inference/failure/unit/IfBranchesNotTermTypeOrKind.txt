@@ -1,0 +1,6 @@
+Type error: error: IfBranchMustBeTerm
+ --> <current file>:1:1
+  |
+1 | if True then Kind else Kind
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ IfBranchMustBeTerm
+  |
