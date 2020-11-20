@@ -205,6 +205,27 @@ mod serde {
         assert!(from_str("List/length [True, 42]").parse::<bool>().is_err());
     }
 
+    #[test]
+    fn test_file() {
+        assert_eq!(
+            serde_dhall::from_file(
+                "../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall"
+            )
+            .static_type_annotation()
+            .parse::<bool>()
+            .map_err(|e| e.to_string()),
+            Ok(true)
+        );
+        assert_eq!(
+            serde_dhall::from_binary_file(
+                "../dhall-lang/tests/parser/success/unit/BoolLitTrueB.dhallb"
+            )
+            .static_type_annotation()
+            .parse::<bool>()
+            .map_err(|e| e.to_string()),
+            Ok(true)
+        );
+    }
     // TODO: test various builder configurations
     // In particular test cloning and reusing builder
 }
