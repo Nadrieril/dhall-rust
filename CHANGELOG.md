@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.9.0] - 2020-11-20
+
 - BREAKING CHANGE: Support Dhall v19.0.0
 - Support reading a CBOR-encoded binary file (https://github.com/Nadrieril/dhall-rust/issues/199)
 
@@ -102,7 +104,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.8.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.9.0...HEAD
+[0.9.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.8.0...serde_dhall-v0.9.0
 [0.8.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.5...serde_dhall-v0.8.0
 [0.7.5]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.4...serde_dhall-v0.7.5
 [0.7.4]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.3...serde_dhall-v0.7.4
