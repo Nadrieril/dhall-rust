@@ -3,6 +3,7 @@
 #### [Unreleased]
 
 - BREAKING CHANGE: Support Dhall v19.0.0
+- Support reading a CBOR-encoded binary file (https://github.com/Nadrieril/dhall-rust/issues/199)
 
 #### [0.8.0] - 2020-10-28
 
