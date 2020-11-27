@@ -350,8 +350,8 @@ pub fn typecheck_operation(
             if *x.ty().kind() != NirKind::from_builtin(Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
-            if y.ty().ty().as_const() != Some(Const::Type) {
-                return span_err("IfBranchMustBeTerm");
+            if y.ty().ty().as_const().is_none() {
+                return span_err("IfBranchMustBeTermTypeOrKind");
             }
             if y.ty() != z.ty() {
                 return span_err("IfBranchMismatch");
