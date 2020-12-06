@@ -519,6 +519,7 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
         // Paths on windows have backslashes; this breaks many things. This is undefined in the
         // spec; see https://github.com/dhall-lang/dhall-lang/issues/1032
         || (variant == ImportSuccess && path.contains("asLocation"))
+        || path == "import/success/unit/MixImportModes"
         || variant == ImportFailure;
 
     // Only include in release tests.
