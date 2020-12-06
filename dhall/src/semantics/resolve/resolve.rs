@@ -20,9 +20,8 @@ use crate::{Parsed, Resolved, Typed};
 // TODO: evaluate import headers
 pub type Import = syntax::Import<()>;
 
-/// The location of some data, usually some dhall code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ImportLocation {
+pub enum ImportLocationKind {
     /// Local file
     Local(PathBuf),
     /// Remote file
@@ -33,7 +32,13 @@ pub enum ImportLocation {
     Missing,
 }
 
-impl ImportLocation {
+/// The location of some data, usually some dhall code.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ImportLocation {
+    pub kind: ImportLocationKind,
+}
+
+impl ImportLocationKind {
     /// Given an import pointing to `target` found in the current location, compute the next
     /// location, or error if not allowed.
     /// `sanity_check` indicates whether to check if that location is allowed to be referenced,
@@ -42,14 +47,14 @@ impl ImportLocation {
         &self,
         target: &ImportTarget<()>,
         sanity_check: bool,
-    ) -> Result<ImportLocation, Error> {
+    ) -> Result<Self, Error> {
         Ok(match target {
             ImportTarget::Local(prefix, path) => {
                 self.chain_local(*prefix, path)?
             }
             ImportTarget::Remote(remote) => {
                 if sanity_check {
-                    if let ImportLocation::Remote(..) = self {
+                    if let ImportLocationKind::Remote(..) = self {
                         // TODO: allow if CORS check passes
                         return Err(ImportError::SanityCheck.into());
                     }
@@ -60,17 +65,17 @@ impl ImportLocation {
                 ))?;
                 url.set_path(&remote.path.file_path.iter().join("/"));
                 url.set_query(remote.query.as_ref().map(String::as_ref));
-                ImportLocation::Remote(url)
+                ImportLocationKind::Remote(url)
             }
             ImportTarget::Env(var_name) => {
                 if sanity_check {
-                    if let ImportLocation::Remote(..) = self {
+                    if let ImportLocationKind::Remote(..) = self {
                         return Err(ImportError::SanityCheck.into());
                     }
                 }
-                ImportLocation::Env(var_name.clone())
+                ImportLocationKind::Env(var_name.clone())
             }
-            ImportTarget::Missing => ImportLocation::Missing,
+            ImportTarget::Missing => ImportLocationKind::Missing,
         })
     }
 
@@ -78,18 +83,17 @@ impl ImportLocation {
         &self,
         prefix: FilePrefix,
         path: &FilePath,
-    ) -> Result<ImportLocation, Error> {
+    ) -> Result<Self, Error> {
         Ok(match self {
-            ImportLocation::Local(..)
-            | ImportLocation::Env(..)
-            | ImportLocation::Missing => {
+            ImportLocationKind::Local(..)
+            | ImportLocationKind::Env(..)
+            | ImportLocationKind::Missing => {
                 let dir = match self {
-                    ImportLocation::Local(path) => {
+                    ImportLocationKind::Local(path) => {
                         path.parent().unwrap().to_owned()
                     }
-                    ImportLocation::Env(..) | ImportLocation::Missing => {
-                        std::env::current_dir()?
-                    }
+                    ImportLocationKind::Env(..)
+                    | ImportLocationKind::Missing => std::env::current_dir()?,
                     _ => unreachable!(),
                 };
                 let mut dir: Vec<String> = dir
@@ -120,9 +124,9 @@ impl ImportLocation {
                 };
                 let path =
                     Some(prefix.to_string()).into_iter().chain(path).collect();
-                ImportLocation::Local(path)
+                ImportLocationKind::Local(path)
             }
-            ImportLocation::Remote(url) => {
+            ImportLocationKind::Remote(url) => {
                 let mut url = url.clone();
                 match prefix {
                     FilePrefix::Here => {}
@@ -133,46 +137,52 @@ impl ImportLocation {
                     FilePrefix::Home => panic!("error"),
                 }
                 url = url.join(&path.file_path.join("/"))?;
-                ImportLocation::Remote(url)
+                ImportLocationKind::Remote(url)
             }
         })
     }
 
     fn fetch_dhall(self) -> Result<Parsed, Error> {
         Ok(match self {
-            ImportLocation::Local(path) => Parsed::parse_file(&path)?,
-            ImportLocation::Remote(url) => Parsed::parse_remote(url)?,
-            ImportLocation::Env(var_name) => {
+            ImportLocationKind::Local(path) => Parsed::parse_file(&path)?,
+            ImportLocationKind::Remote(url) => Parsed::parse_remote(url)?,
+            ImportLocationKind::Env(var_name) => {
                 let val = match env::var(var_name) {
                     Ok(val) => val,
                     Err(_) => return Err(ImportError::MissingEnvVar.into()),
                 };
                 Parsed::parse_str(&val)?
             }
-            ImportLocation::Missing => return Err(ImportError::Missing.into()),
+            ImportLocationKind::Missing => {
+                return Err(ImportError::Missing.into())
+            }
         })
     }
 
     fn fetch_text(self) -> Result<String, Error> {
         Ok(match self {
-            ImportLocation::Local(path) => std::fs::read_to_string(&path)?,
-            ImportLocation::Remote(url) => download_http_text(url)?,
-            ImportLocation::Env(var_name) => match env::var(var_name) {
+            ImportLocationKind::Local(path) => std::fs::read_to_string(&path)?,
+            ImportLocationKind::Remote(url) => download_http_text(url)?,
+            ImportLocationKind::Env(var_name) => match env::var(var_name) {
                 Ok(val) => val,
                 Err(_) => return Err(ImportError::MissingEnvVar.into()),
             },
-            ImportLocation::Missing => return Err(ImportError::Missing.into()),
+            ImportLocationKind::Missing => {
+                return Err(ImportError::Missing.into())
+            }
         })
     }
 
     fn into_location(self) -> Expr {
         let (field_name, arg) = match self {
-            ImportLocation::Local(path) => {
+            ImportLocationKind::Local(path) => {
                 ("Local", Some(path.to_string_lossy().into_owned()))
             }
-            ImportLocation::Remote(url) => ("Remote", Some(url.into_string())),
-            ImportLocation::Env(name) => ("Environment", Some(name)),
-            ImportLocation::Missing => ("Missing", None),
+            ImportLocationKind::Remote(url) => {
+                ("Remote", Some(url.into_string()))
+            }
+            ImportLocationKind::Env(name) => ("Environment", Some(name)),
+            ImportLocationKind::Missing => ("Missing", None),
         };
 
         let asloc_ty = make_aslocation_uniontype();
@@ -185,6 +195,33 @@ impl ImportLocation {
             ))),
             None => expr,
         }
+    }
+}
+
+impl ImportLocation {
+    /// Given an import pointing to `target` found in the current location, compute the next
+    /// location, or error if not allowed.
+    /// `sanity_check` indicates whether to check if that location is allowed to be referenced,
+    /// for example to prevent a remote file from reading an environment variable.
+    fn chain(
+        &self,
+        target: &ImportTarget<()>,
+        sanity_check: bool,
+    ) -> Result<ImportLocation, Error> {
+        let kind = self.kind.chain(target, sanity_check)?;
+        Ok(ImportLocation { kind })
+    }
+
+    fn fetch_dhall(self) -> Result<Parsed, Error> {
+        self.kind.fetch_dhall()
+    }
+
+    fn fetch_text(self) -> Result<String, Error> {
+        self.kind.fetch_text()
+    }
+
+    fn into_location(self) -> Expr {
+        self.kind.into_location()
     }
 }
 
