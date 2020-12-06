@@ -9,6 +9,7 @@
 )]
 
 pub mod builtins;
+pub mod ctxt;
 pub mod error;
 pub mod operations;
 pub mod semantics;
@@ -25,6 +26,8 @@ use crate::semantics::resolve;
 use crate::semantics::resolve::ImportLocation;
 use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
 use crate::syntax::Expr;
+
+pub use ctxt::{Ctxt, ImportId, ImportResultId};
 
 #[derive(Debug, Clone)]
 pub struct Parsed(Expr, ImportLocation);
