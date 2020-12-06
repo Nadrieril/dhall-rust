@@ -1,7 +1,7 @@
 use crate::error::TypeError;
 use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv, Type};
 use crate::syntax::{Expr, ExprKind, Span, V};
-use crate::ToExprOptions;
+use crate::{Ctxt, ToExprOptions};
 
 /// Stores an alpha-normalized variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,8 +76,11 @@ impl Hir {
     ) -> Result<Tir<'hir>, TypeError> {
         type_with(env, self, None)
     }
-    pub fn typecheck_noenv<'hir>(&'hir self) -> Result<Tir<'hir>, TypeError> {
-        self.typecheck(&TyEnv::new())
+    pub fn typecheck_noenv<'hir>(
+        &'hir self,
+        cx: Ctxt<'_>,
+    ) -> Result<Tir<'hir>, TypeError> {
+        self.typecheck(&TyEnv::new(cx))
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.

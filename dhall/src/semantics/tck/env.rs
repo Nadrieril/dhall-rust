@@ -1,5 +1,6 @@
 use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
 use crate::syntax::Label;
+use crate::Ctxt;
 
 /// Environment for indexing variables.
 #[derive(Debug, Clone, Copy, Default)]
@@ -9,7 +10,8 @@ pub struct VarEnv {
 
 /// Environment for typing expressions.
 #[derive(Debug, Clone)]
-pub struct TyEnv {
+pub struct TyEnv<'cx> {
+    cx: Ctxt<'cx>,
     names: NameEnv,
     items: ValEnv<Type>,
 }
@@ -38,12 +40,16 @@ impl VarEnv {
     }
 }
 
-impl TyEnv {
-    pub fn new() -> Self {
+impl<'cx> TyEnv<'cx> {
+    pub fn new(cx: Ctxt<'cx>) -> Self {
         TyEnv {
+            cx,
             names: NameEnv::new(),
             items: ValEnv::new(),
         }
+    }
+    pub fn cx(&self) -> Ctxt<'cx> {
+        self.cx
     }
     pub fn as_varenv(&self) -> VarEnv {
         self.names.as_varenv()
@@ -57,12 +63,14 @@ impl TyEnv {
 
     pub fn insert_type(&self, x: &Label, ty: Type) -> Self {
         TyEnv {
+            cx: self.cx,
             names: self.names.insert(x),
             items: self.items.insert_type(ty),
         }
     }
     pub fn insert_value(&self, x: &Label, e: Nir, ty: Type) -> Self {
         TyEnv {
+            cx: self.cx,
             names: self.names.insert(x),
             items: self.items.insert_value(e, ty),
         }
@@ -72,7 +80,7 @@ impl TyEnv {
     }
 }
 
-impl<'a> From<&'a TyEnv> for NzEnv {
+impl<'a, 'cx> From<&'a TyEnv<'cx>> for NzEnv {
     fn from(x: &'a TyEnv) -> Self {
         x.to_nzenv()
     }

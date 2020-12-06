@@ -5,6 +5,7 @@ use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
 use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
 use crate::syntax::{Const, ExprKind, InterpolatedTextContents, NumKind, Span};
+use crate::Ctxt;
 
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {
@@ -29,7 +30,7 @@ pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
 /// When all sub-expressions have been typed, check the remaining toplevel
 /// layer.
 fn type_one_layer(
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     ekind: ExprKind<Tir<'_>>,
     span: Span,
 ) -> Result<Type, TypeError> {
@@ -58,7 +59,7 @@ fn type_one_layer(
         }),
         ExprKind::Builtin(b) => {
             let t_hir = type_of_builtin(b);
-            typecheck(&t_hir)?.eval_to_type(env)?
+            typecheck(env.cx(), &t_hir)?.eval_to_type(env)?
         }
         ExprKind::TextLit(interpolated) => {
             let text_type = Type::from_builtin(Builtin::Text);
@@ -171,7 +172,7 @@ fn type_one_layer(
 // We pass the annotation to avoid duplicating the annot checking logic. I hope one day we can use
 // it to handle the annotations in merge/toMap/etc. uniformly.
 pub fn type_with<'hir>(
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     hir: &'hir Hir,
     annot: Option<Type>,
 ) -> Result<Tir<'hir>, TypeError> {
@@ -267,15 +268,19 @@ pub fn type_with<'hir>(
 
 /// Typecheck an expression and return the expression annotated with its type if type-checking
 /// succeeded, or an error if type-checking failed.
-pub fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
-    type_with(&TyEnv::new(), hir, None)
+pub fn typecheck<'hir>(
+    cx: Ctxt<'_>,
+    hir: &'hir Hir,
+) -> Result<Tir<'hir>, TypeError> {
+    type_with(&TyEnv::new(cx), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
 pub fn typecheck_with<'hir>(
+    cx: Ctxt<'_>,
     hir: &'hir Hir,
     ty: &Hir,
 ) -> Result<Tir<'hir>, TypeError> {
-    let ty = typecheck(ty)?.eval_to_type(&TyEnv::new())?;
-    type_with(&TyEnv::new(), hir, Some(ty))
+    let ty = typecheck(cx, ty)?.eval_to_type(&TyEnv::new(cx))?;
+    type_with(&TyEnv::new(cx), hir, Some(ty))
 }

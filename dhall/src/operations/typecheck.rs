@@ -13,7 +13,7 @@ use crate::syntax::{Const, ExprKind, Span};
 
 fn check_rectymerge(
     span: &Span,
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     x: Nir,
     y: Nir,
 ) -> Result<(), TypeError> {
@@ -45,7 +45,7 @@ fn check_rectymerge(
 }
 
 fn typecheck_binop(
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     span: Span,
     op: BinOp,
     l: Tir<'_>,
@@ -150,7 +150,7 @@ fn typecheck_binop(
 }
 
 fn typecheck_merge(
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     span: Span,
     record: &Tir<'_>,
     scrut: &Tir<'_>,
@@ -288,7 +288,7 @@ fn typecheck_merge(
 }
 
 pub fn typecheck_operation(
-    env: &TyEnv,
+    env: &TyEnv<'_>,
     span: Span,
     opkind: OpKind<Tir<'_>>,
 ) -> Result<Type, TypeError> {

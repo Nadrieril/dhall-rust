@@ -250,7 +250,7 @@ impl ImportLocation {
             ImportMode::Location => {
                 let expr = self.kind.to_location();
                 let hir = skip_resolve_expr(&expr)?;
-                let ty = hir.typecheck_noenv()?.ty().clone();
+                let ty = hir.typecheck_noenv(env.cx())?.ty().clone();
                 (hir, ty)
             }
         };
@@ -463,8 +463,8 @@ fn resolve_with_env<'cx>(
     Ok(Resolved(resolved))
 }
 
-pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    Ctxt::with_new(|cx| resolve_with_env(&mut ImportEnv::new(cx), parsed))
+pub fn resolve(cx: Ctxt<'_>, parsed: Parsed) -> Result<Resolved, Error> {
+    resolve_with_env(&mut ImportEnv::new(cx), parsed)
 }
 
 pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {

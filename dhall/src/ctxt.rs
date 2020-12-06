@@ -108,3 +108,11 @@ impl<'cx> std::ops::Index<ImportResultId> for CtxtS<'cx> {
         &self.import_results[id.0]
     }
 }
+
+/// Empty impl, because `FrozenVec` does not implement `Debug` and I can't be bothered to do it
+/// myself.
+impl<'cx> std::fmt::Debug for Ctxt<'cx> {
+    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+        Ok(())
+    }
+}

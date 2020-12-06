@@ -11,6 +11,7 @@ use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble, NumKind, Span, UnspannedExpr, V,
 };
+use crate::Ctxt;
 
 /// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -98,12 +99,14 @@ pub struct BuiltinClosure {
 
 impl BuiltinClosure {
     pub fn new(b: Builtin, env: NzEnv) -> NirKind {
-        apply_builtin(b, Vec::new(), env)
+        // TODO: thread cx
+        Ctxt::with_new(|cx| apply_builtin(cx, b, Vec::new(), env))
     }
     pub fn apply(&self, a: Nir) -> NirKind {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a)).collect();
-        apply_builtin(self.b, args, self.env.clone())
+        // TODO: thread cx
+        Ctxt::with_new(|cx| apply_builtin(cx, self.b, args, self.env.clone()))
     }
     pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
         HirKind::Expr(self.args.iter().fold(
@@ -307,7 +310,12 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
+fn apply_builtin(
+    cx: Ctxt<'_>,
+    b: Builtin,
+    args: Vec<Nir>,
+    env: NzEnv,
+) -> NirKind {
     use NirKind::*;
     use NumKind::{Bool, Double, Integer, Natural};
 
@@ -318,7 +326,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         DoneAsIs,
     }
     let make_closure = |e| {
-        typecheck(&skip_resolve_expr(&e).unwrap())
+        typecheck(cx, &skip_resolve_expr(&e).unwrap())
             .unwrap()
             .eval(env.clone())
     };

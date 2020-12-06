@@ -77,7 +77,8 @@ impl Parsed {
     }
 
     pub fn resolve(self) -> Result<Resolved, Error> {
-        resolve::resolve(self)
+        // TODO: thread cx
+        Ctxt::with_new(|cx| resolve::resolve(cx, self))
     }
     pub fn skip_resolve(self) -> Result<Resolved, Error> {
         resolve::skip_resolve(self)
@@ -91,10 +92,14 @@ impl Parsed {
 
 impl Resolved {
     pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        Ok(Typed::from_tir(typecheck(&self.0)?))
+        // TODO: thread cx
+        Ctxt::with_new(|cx| Ok(Typed::from_tir(typecheck(cx, &self.0)?)))
     }
     pub fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
-        Ok(Typed::from_tir(typecheck_with(&self.0, ty)?))
+        // TODO: thread cx
+        Ctxt::with_new(|cx| {
+            Ok(Typed::from_tir(typecheck_with(cx, &self.0, ty)?))
+        })
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> Expr {
