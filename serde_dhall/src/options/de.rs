@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use dhall::Parsed;
+use dhall::{Ctxt, Parsed};
 
 use crate::options::{HasAnnot, ManualAnnot, NoAnnot, StaticAnnot, TypeAnnot};
 use crate::SimpleType;
@@ -234,24 +234,26 @@ impl<'a, A> Deserializer<'a, A> {
         A: TypeAnnot,
         T: HasAnnot<A>,
     {
-        let parsed = match &self.source {
-            Source::Str(s) => Parsed::parse_str(s)?,
-            Source::File(p) => Parsed::parse_file(p.as_ref())?,
-            Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
-        };
-        let resolved = if self.allow_imports {
-            parsed.resolve()?
-        } else {
-            parsed.skip_resolve()?
-        };
-        let typed = match &T::get_annot(self.annot) {
-            None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(&ty.to_hir())?,
-        };
-        Ok(Value::from_nir_and_ty(
-            typed.normalize().as_nir(),
-            typed.ty().as_nir(),
-        ))
+        Ctxt::with_new(|cx| {
+            let parsed = match &self.source {
+                Source::Str(s) => Parsed::parse_str(s)?,
+                Source::File(p) => Parsed::parse_file(p.as_ref())?,
+                Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
+            };
+            let resolved = if self.allow_imports {
+                parsed.resolve(cx)?
+            } else {
+                parsed.skip_resolve()?
+            };
+            let typed = match &T::get_annot(self.annot) {
+                None => resolved.typecheck(cx)?,
+                Some(ty) => resolved.typecheck_with(cx, &ty.to_hir())?,
+            };
+            Ok(Value::from_nir_and_ty(
+                typed.normalize(cx).as_nir(),
+                typed.ty().as_nir(),
+            ))
+        })
     }
 
     /// Parses the chosen dhall value with the options provided.

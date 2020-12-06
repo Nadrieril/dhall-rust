@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 use dhall::error::Error as DhallError;
 use dhall::error::ErrorKind;
 use dhall::syntax::{binary, Expr};
-use dhall::{Normalized, Parsed, Resolved, Typed};
+use dhall::{Ctxt, Normalized, Parsed, Resolved, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileType {
@@ -108,16 +108,16 @@ impl TestFile {
         })
     }
     /// Parse and resolve the target file
-    pub fn resolve(&self) -> Result<Resolved> {
-        Ok(self.parse()?.resolve()?)
+    pub fn resolve<'cx>(&self, cx: Ctxt<'cx>) -> Result<Resolved<'cx>> {
+        Ok(self.parse()?.resolve(cx)?)
     }
     /// Parse, resolve and tck the target file
-    pub fn typecheck(&self) -> Result<Typed> {
-        Ok(self.resolve()?.typecheck()?)
+    pub fn typecheck<'cx>(&self, cx: Ctxt<'cx>) -> Result<Typed<'cx>> {
+        Ok(self.resolve(cx)?.typecheck(cx)?)
     }
     /// Parse, resolve, tck and normalize the target file
-    pub fn normalize(&self) -> Result<Normalized> {
-        Ok(self.typecheck()?.normalize())
+    pub fn normalize<'cx>(&self, cx: Ctxt<'cx>) -> Result<Normalized<'cx>> {
+        Ok(self.typecheck(cx)?.normalize(cx))
     }
 
     /// If UPDATE_TEST_FILES is `true`, we overwrite the output files with our own output.
@@ -586,79 +586,81 @@ fn run_test(test: &SpecTest) -> Result<()> {
         output: expected,
         ..
     } = test;
-    match test.kind {
-        ParserSuccess => {
-            let expr = expr.parse()?;
-            // This exercices both parsing and binary decoding
-            expected.compare_debug(expr)?;
-        }
-        ParserFailure => {
-            use std::io;
-            let err = unwrap_err(expr.parse())?;
-            match err.downcast_ref::<DhallError>() {
-                Some(err) => match err.kind() {
-                    ErrorKind::Parse(_) => {}
-                    ErrorKind::IO(e)
-                        if e.kind() == io::ErrorKind::InvalidData => {}
-                    e => Err(TestError(format!(
-                        "Expected parse error, got: {:?}",
-                        e
-                    )))?,
-                },
-                None => {}
+    Ctxt::with_new(|cx| {
+        match test.kind {
+            ParserSuccess => {
+                let expr = expr.parse()?;
+                // This exercices both parsing and binary decoding
+                expected.compare_debug(expr)?;
             }
-            expected.compare_ui(err)?;
+            ParserFailure => {
+                use std::io;
+                let err = unwrap_err(expr.parse())?;
+                match err.downcast_ref::<DhallError>() {
+                    Some(err) => match err.kind() {
+                        ErrorKind::Parse(_) => {}
+                        ErrorKind::IO(e)
+                            if e.kind() == io::ErrorKind::InvalidData => {}
+                        e => Err(TestError(format!(
+                            "Expected parse error, got: {:?}",
+                            e
+                        )))?,
+                    },
+                    None => {}
+                }
+                expected.compare_ui(err)?;
+            }
+            BinaryEncoding => {
+                let expr = expr.parse()?;
+                expected.compare_binary(expr)?;
+            }
+            BinaryDecodingSuccess => {
+                let expr = expr.parse()?;
+                expected.compare_debug(expr)?;
+            }
+            BinaryDecodingFailure => {
+                let err = unwrap_err(expr.parse())?;
+                expected.compare_ui(err)?;
+            }
+            Printer => {
+                let parsed = expr.parse()?;
+                // Round-trip pretty-printer
+                let reparsed = Parsed::parse_str(&parsed.to_string())?;
+                assert_eq!(reparsed, parsed);
+                expected.compare_ui(parsed)?;
+            }
+            ImportSuccess => {
+                let expr = expr.normalize(cx)?;
+                expected.compare(expr)?;
+            }
+            ImportFailure => {
+                let err = unwrap_err(expr.resolve(cx))?;
+                expected.compare_ui(err)?;
+            }
+            SemanticHash => {
+                let expr = expr.normalize(cx)?.to_expr_alpha();
+                let hash = hex::encode(expr.sha256_hash()?);
+                expected.compare_ui(format!("sha256:{}", hash))?;
+            }
+            TypeInferenceSuccess => {
+                let ty = expr.typecheck(cx)?.get_type()?;
+                expected.compare(ty)?;
+            }
+            TypeInferenceFailure => {
+                let err = unwrap_err(expr.typecheck(cx))?;
+                expected.compare_ui(err)?;
+            }
+            Normalization => {
+                let expr = expr.normalize(cx)?;
+                expected.compare(expr)?;
+            }
+            AlphaNormalization => {
+                let expr = expr.normalize(cx)?.to_expr_alpha();
+                expected.compare(expr)?;
+            }
         }
-        BinaryEncoding => {
-            let expr = expr.parse()?;
-            expected.compare_binary(expr)?;
-        }
-        BinaryDecodingSuccess => {
-            let expr = expr.parse()?;
-            expected.compare_debug(expr)?;
-        }
-        BinaryDecodingFailure => {
-            let err = unwrap_err(expr.parse())?;
-            expected.compare_ui(err)?;
-        }
-        Printer => {
-            let parsed = expr.parse()?;
-            // Round-trip pretty-printer
-            let reparsed = Parsed::parse_str(&parsed.to_string())?;
-            assert_eq!(reparsed, parsed);
-            expected.compare_ui(parsed)?;
-        }
-        ImportSuccess => {
-            let expr = expr.normalize()?;
-            expected.compare(expr)?;
-        }
-        ImportFailure => {
-            let err = unwrap_err(expr.resolve())?;
-            expected.compare_ui(err)?;
-        }
-        SemanticHash => {
-            let expr = expr.normalize()?.to_expr_alpha();
-            let hash = hex::encode(expr.sha256_hash()?);
-            expected.compare_ui(format!("sha256:{}", hash))?;
-        }
-        TypeInferenceSuccess => {
-            let ty = expr.typecheck()?.get_type()?;
-            expected.compare(ty)?;
-        }
-        TypeInferenceFailure => {
-            let err = unwrap_err(expr.typecheck())?;
-            expected.compare_ui(err)?;
-        }
-        Normalization => {
-            let expr = expr.normalize()?;
-            expected.compare(expr)?;
-        }
-        AlphaNormalization => {
-            let expr = expr.normalize()?.to_expr_alpha();
-            expected.compare(expr)?;
-        }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn main() {

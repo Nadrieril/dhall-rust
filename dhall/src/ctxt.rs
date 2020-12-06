@@ -23,7 +23,7 @@ pub struct StoredImport<'cx> {
 #[derive(Default)]
 pub struct CtxtS<'cx> {
     imports: FrozenVec<Box<StoredImport<'cx>>>,
-    import_results: FrozenVec<Box<Typed>>,
+    import_results: FrozenVec<Box<Typed<'cx>>>,
 }
 
 /// Context for the dhall compiler. Stores various global maps.
@@ -58,7 +58,7 @@ impl<'cx> Ctxt<'cx> {
         ImportId(id)
     }
     /// Store the result of fetching an import.
-    pub fn push_import_result(self, res: Typed) -> ImportResultId {
+    pub fn push_import_result(self, res: Typed<'cx>) -> ImportResultId {
         let id = self.0.import_results.len();
         self.0.import_results.push(Box::new(res));
         ImportResultId(id)
@@ -77,12 +77,12 @@ impl<'cx> StoredImport<'cx> {
     }
     /// Get the result of fetching this import. Returns `None` if the result has not yet been
     /// fetched.
-    pub fn get_result(&self) -> Option<&'cx Typed> {
+    pub fn get_result(&self) -> Option<&'cx Typed<'cx>> {
         let res = self.get_resultid()?;
         Some(&self.cx[res])
     }
     /// Store the result of fetching this import.
-    pub fn set_result(&self, res: Typed) -> ImportResultId {
+    pub fn set_result(&self, res: Typed<'cx>) -> ImportResultId {
         let res = self.cx.push_import_result(res);
         self.set_resultid(res);
         res
@@ -103,8 +103,8 @@ impl<'cx> std::ops::Index<ImportId> for CtxtS<'cx> {
     }
 }
 impl<'cx> std::ops::Index<ImportResultId> for CtxtS<'cx> {
-    type Output = Typed;
-    fn index(&self, id: ImportResultId) -> &Typed {
+    type Output = Typed<'cx>;
+    fn index(&self, id: ImportResultId) -> &Typed<'cx> {
         &self.import_results[id.0]
     }
 }

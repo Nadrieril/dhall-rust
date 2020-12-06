@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{CacheError, Error};
 use crate::parse::parse_binary;
 use crate::syntax::{binary, Hash};
-use crate::Typed;
+use crate::{Ctxt, Typed};
 use std::ffi::OsStr;
 use std::fs::File;
 
@@ -52,9 +52,13 @@ impl Cache {
         self.cache_dir.join(filename_for_hash(hash))
     }
 
-    pub fn get(&self, hash: &Hash) -> Result<Typed, Error> {
+    pub fn get<'cx>(
+        &self,
+        cx: Ctxt<'cx>,
+        hash: &Hash,
+    ) -> Result<Typed<'cx>, Error> {
         let path = self.entry_path(hash);
-        let res = read_cache_file(&path, hash);
+        let res = read_cache_file(cx, &path, hash);
         if res.is_err() && path.exists() {
             // Delete cache file since it's invalid. We ignore the error.
             let _ = std::fs::remove_file(&path);
@@ -62,14 +66,22 @@ impl Cache {
         res
     }
 
-    pub fn insert(&self, hash: &Hash, expr: &Typed) -> Result<(), Error> {
+    pub fn insert<'cx>(
+        &self,
+        hash: &Hash,
+        expr: &Typed<'cx>,
+    ) -> Result<(), Error> {
         let path = self.entry_path(hash);
         write_cache_file(&path, expr)
     }
 }
 
 /// Read a file from the cache, also checking that its hash is valid.
-fn read_cache_file(path: &Path, hash: &Hash) -> Result<Typed, Error> {
+fn read_cache_file<'cx>(
+    cx: Ctxt<'cx>,
+    path: &Path,
+    hash: &Hash,
+) -> Result<Typed<'cx>, Error> {
     let data = crate::utils::read_binary_file(path)?;
 
     match hash {
@@ -81,7 +93,7 @@ fn read_cache_file(path: &Path, hash: &Hash) -> Result<Typed, Error> {
         }
     }
 
-    Ok(parse_binary(&data)?.skip_resolve()?.typecheck()?)
+    Ok(parse_binary(&data)?.skip_resolve()?.typecheck(cx)?)
 }
 
 /// Write a file to the cache.

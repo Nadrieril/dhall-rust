@@ -231,12 +231,13 @@ impl ImportLocation {
         &self,
         env: &mut ImportEnv<'cx>,
         span: Span,
-    ) -> Result<Typed, Error> {
+    ) -> Result<Typed<'cx>, Error> {
         let (hir, ty) = match self.mode {
             ImportMode::Code => {
                 let parsed = self.kind.fetch_dhall()?;
-                let typed = resolve_with_env(env, parsed)?.typecheck()?;
-                let hir = typed.normalize().to_hir();
+                let typed =
+                    resolve_with_env(env, parsed)?.typecheck(env.cx())?;
+                let hir = typed.normalize(env.cx()).to_hir();
                 (hir, typed.ty)
             }
             ImportMode::RawText => {
@@ -245,7 +246,7 @@ impl ImportLocation {
                     HirKind::Expr(ExprKind::TextLit(text.into())),
                     span,
                 );
-                (hir, Type::from_builtin(Builtin::Text))
+                (hir, Type::from_builtin(env.cx(), Builtin::Text))
             }
             ImportMode::Location => {
                 let expr = self.kind.to_location();
@@ -286,7 +287,11 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
-fn check_hash(import: &Import, typed: &Typed, span: Span) -> Result<(), Error> {
+fn check_hash<'cx>(
+    import: &Import,
+    typed: &Typed<'cx>,
+    span: Span,
+) -> Result<(), Error> {
     if let (ImportMode::Code, Some(Hash::SHA256(hash))) =
         (import.mode, &import.hash)
     {
@@ -338,11 +343,11 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
 
 /// Traverse the expression, handling import alternatives and passing
 /// found imports to the provided function. Also resolving names.
-fn traverse_resolve_expr(
+fn traverse_resolve_expr<'cx>(
     name_env: &mut NameEnv,
     expr: &Expr,
-    f: &mut impl FnMut(Import, Span) -> Result<Typed, Error>,
-) -> Result<Hir, Error> {
+    f: &mut impl FnMut(Import, Span) -> Result<Typed<'cx>, Error>,
+) -> Result<Hir<'cx>, Error> {
     let expr = desugar(expr);
     Ok(match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
@@ -447,7 +452,7 @@ fn fetch_import<'cx>(
 fn resolve_with_env<'cx>(
     env: &mut ImportEnv<'cx>,
     parsed: Parsed,
-) -> Result<Resolved, Error> {
+) -> Result<Resolved<'cx>, Error> {
     let Parsed(expr, base_location) = parsed;
     let resolved = traverse_resolve_expr(
         &mut NameEnv::new(),
@@ -463,17 +468,20 @@ fn resolve_with_env<'cx>(
     Ok(Resolved(resolved))
 }
 
-pub fn resolve(cx: Ctxt<'_>, parsed: Parsed) -> Result<Resolved, Error> {
+pub fn resolve<'cx>(
+    cx: Ctxt<'cx>,
+    parsed: Parsed,
+) -> Result<Resolved<'cx>, Error> {
     resolve_with_env(&mut ImportEnv::new(cx), parsed)
 }
 
-pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
+pub fn skip_resolve_expr<'cx>(expr: &Expr) -> Result<Hir<'cx>, Error> {
     traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import, _span| {
         Err(ImportError::UnexpectedImport(import).into())
     })
 }
 
-pub fn skip_resolve(parsed: Parsed) -> Result<Resolved, Error> {
+pub fn skip_resolve<'cx>(parsed: Parsed) -> Result<Resolved<'cx>, Error> {
     let Parsed(expr, _) = parsed;
     let resolved = skip_resolve_expr(&expr)?;
     Ok(Resolved(resolved))

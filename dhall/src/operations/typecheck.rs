@@ -14,8 +14,8 @@ use crate::syntax::{Const, ExprKind, Span};
 fn check_rectymerge(
     span: &Span,
     env: &TyEnv<'_>,
-    x: Nir,
-    y: Nir,
+    x: Nir<'_>,
+    y: Nir<'_>,
 ) -> Result<(), TypeError> {
     let kts_x = match x.kind() {
         NirKind::RecordType(kts) => kts,
@@ -44,13 +44,14 @@ fn check_rectymerge(
     Ok(())
 }
 
-fn typecheck_binop(
-    env: &TyEnv<'_>,
+fn typecheck_binop<'cx>(
+    env: &TyEnv<'cx>,
     span: Span,
     op: BinOp,
-    l: Tir<'_>,
-    r: Tir<'_>,
-) -> Result<Type, TypeError> {
+    l: Tir<'cx, '_>,
+    r: Tir<'cx, '_>,
+) -> Result<Type<'cx>, TypeError> {
+    let cx = env.cx();
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use BinOp::*;
     use NirKind::{ListType, RecordType};
@@ -124,17 +125,20 @@ fn typecheck_binop(
             Type::from_const(Const::Type)
         }
         op => {
-            let t = Type::from_builtin(match op {
-                BoolAnd | BoolOr | BoolEQ | BoolNE => Builtin::Bool,
-                NaturalPlus | NaturalTimes => Builtin::Natural,
-                TextAppend => Builtin::Text,
-                ListAppend
-                | RightBiasedRecordMerge
-                | RecursiveRecordMerge
-                | RecursiveRecordTypeMerge
-                | Equivalence => unreachable!(),
-                ImportAlt => unreachable!("ImportAlt leftover in tck"),
-            });
+            let t = Type::from_builtin(
+                cx,
+                match op {
+                    BoolAnd | BoolOr | BoolEQ | BoolNE => Builtin::Bool,
+                    NaturalPlus | NaturalTimes => Builtin::Natural,
+                    TextAppend => Builtin::Text,
+                    ListAppend
+                    | RightBiasedRecordMerge
+                    | RecursiveRecordMerge
+                    | RecursiveRecordTypeMerge
+                    | Equivalence => unreachable!(),
+                    ImportAlt => unreachable!("ImportAlt leftover in tck"),
+                },
+            );
 
             if *l.ty() != t {
                 return span_err("BinOpTypeMismatch");
@@ -149,13 +153,13 @@ fn typecheck_binop(
     })
 }
 
-fn typecheck_merge(
-    env: &TyEnv<'_>,
+fn typecheck_merge<'cx>(
+    env: &TyEnv<'cx>,
     span: Span,
-    record: &Tir<'_>,
-    scrut: &Tir<'_>,
-    type_annot: Option<&Tir<'_>>,
-) -> Result<Type, TypeError> {
+    record: &Tir<'cx, '_>,
+    scrut: &Tir<'cx, '_>,
+    type_annot: Option<&Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use NirKind::{OptionalType, PiClosure, RecordType, UnionType};
 
@@ -287,11 +291,12 @@ fn typecheck_merge(
     })
 }
 
-pub fn typecheck_operation(
-    env: &TyEnv<'_>,
+pub fn typecheck_operation<'cx>(
+    env: &TyEnv<'cx>,
     span: Span,
-    opkind: OpKind<Tir<'_>>,
-) -> Result<Type, TypeError> {
+    opkind: OpKind<Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
+    let cx = env.cx();
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use NirKind::{ListType, PiClosure, RecordType, UnionType};
     use OpKind::*;
@@ -347,7 +352,7 @@ pub fn typecheck_operation(
         }
         BinOp(o, l, r) => typecheck_binop(env, span, o, l, r)?,
         BoolIf(x, y, z) => {
-            if *x.ty().kind() != NirKind::from_builtin(Builtin::Bool) {
+            if *x.ty().kind() != NirKind::from_builtin(cx, Builtin::Bool) {
                 return span_err("InvalidPredicate");
             }
             if y.ty().ty().as_const().is_none() {
@@ -399,7 +404,7 @@ pub fn typecheck_operation(
                     return span_err(err_msg);
                 }
                 match kts.get("mapKey") {
-                    Some(t) if *t == Nir::from_builtin(Builtin::Text) => {}
+                    Some(t) if *t == Nir::from_builtin(cx, Builtin::Text) => {}
                     _ => return span_err(err_msg),
                 }
                 match kts.get("mapValue") {
@@ -418,9 +423,12 @@ pub fn typecheck_operation(
                 }
 
                 let mut kts = HashMap::new();
-                kts.insert("mapKey".into(), Nir::from_builtin(Builtin::Text));
+                kts.insert(
+                    "mapKey".into(),
+                    Nir::from_builtin(cx, Builtin::Text),
+                );
                 kts.insert("mapValue".into(), entry_type);
-                let output_type: Type = Nir::from_builtin(Builtin::List)
+                let output_type: Type = Nir::from_builtin(cx, Builtin::List)
                     .app(Nir::from_kind(RecordType(kts)))
                     .to_type(Const::Type);
                 if let Some(annot) = annot {

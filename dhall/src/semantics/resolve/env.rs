@@ -86,9 +86,12 @@ impl<'cx> ImportEnv<'cx> {
         Some(*self.mem_cache.get(location)?)
     }
 
-    pub fn get_from_disk_cache(&self, hash: &Option<Hash>) -> Option<Typed> {
+    pub fn get_from_disk_cache(
+        &self,
+        hash: &Option<Hash>,
+    ) -> Option<Typed<'cx>> {
         let hash = hash.as_ref()?;
-        let expr = self.disk_cache.as_ref()?.get(hash).ok()?;
+        let expr = self.disk_cache.as_ref()?.get(self.cx(), hash).ok()?;
         Some(expr)
     }
 
@@ -100,7 +103,7 @@ impl<'cx> ImportEnv<'cx> {
         self.mem_cache.insert(location, result);
     }
 
-    pub fn write_to_disk_cache(&self, hash: &Option<Hash>, expr: &Typed) {
+    pub fn write_to_disk_cache(&self, hash: &Option<Hash>, expr: &Typed<'cx>) {
         if let Some(disk_cache) = self.disk_cache.as_ref() {
             if let Some(hash) = hash {
                 let _ = disk_cache.insert(hash, &expr);
@@ -111,8 +114,8 @@ impl<'cx> ImportEnv<'cx> {
     pub fn with_cycle_detection(
         &mut self,
         location: ImportLocation,
-        do_resolve: impl FnOnce(&mut Self) -> Result<Typed, Error>,
-    ) -> Result<Typed, Error> {
+        do_resolve: impl FnOnce(&mut Self) -> Result<Typed<'cx>, Error>,
+    ) -> Result<Typed<'cx>, Error> {
         if self.stack.contains(&location) {
             return Err(
                 ImportError::ImportCycle(self.stack.clone(), location).into()

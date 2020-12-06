@@ -335,7 +335,7 @@ impl SimpleValue {
 
     // Converts this to `Hir`, using the optional type annotation. Without the type, things like
     // empty lists and unions will fail to convert.
-    fn to_hir(&self, ty: Option<&SimpleType>) -> Result<Hir> {
+    fn to_hir<'cx>(&self, ty: Option<&SimpleType>) -> Result<Hir<'cx>> {
         use SimpleType as T;
         use SimpleValue as V;
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
@@ -481,7 +481,7 @@ impl SimpleType {
         })
     }
 
-    pub(crate) fn to_hir(&self) -> Hir {
+    pub(crate) fn to_hir<'cx>(&self) -> Hir<'cx> {
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
         hir(match self {
             SimpleType::Bool => ExprKind::Builtin(Builtin::Bool),

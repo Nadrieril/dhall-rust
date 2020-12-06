@@ -10,19 +10,19 @@ pub struct AlphaVar {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HirKind {
+pub enum HirKind<'cx> {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
     /// Result of resolving an import.
-    Import(Hir, Type),
+    Import(Hir<'cx>, Type<'cx>),
     // Forbidden ExprKind variants: Var, Import, Completion
-    Expr(ExprKind<Hir>),
+    Expr(ExprKind<Hir<'cx>>),
 }
 
 // An expression with resolved variables and imports.
 #[derive(Debug, Clone)]
-pub struct Hir {
-    kind: Box<HirKind>,
+pub struct Hir<'cx> {
+    kind: Box<HirKind<'cx>>,
     span: Span,
 }
 
@@ -35,15 +35,15 @@ impl AlphaVar {
     }
 }
 
-impl Hir {
-    pub fn new(kind: HirKind, span: Span) -> Self {
+impl<'cx> Hir<'cx> {
+    pub fn new(kind: HirKind<'cx>, span: Span) -> Self {
         Hir {
             kind: Box::new(kind),
             span,
         }
     }
 
-    pub fn kind(&self) -> &HirKind {
+    pub fn kind(&self) -> &HirKind<'cx> {
         &*self.kind
     }
     pub fn span(&self) -> Span {
@@ -63,7 +63,7 @@ impl Hir {
         let opts = ToExprOptions { alpha: true };
         self.to_expr(opts)
     }
-    pub fn to_expr_tyenv(&self, env: &TyEnv) -> Expr {
+    pub fn to_expr_tyenv(&self, env: &TyEnv<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: false };
         let mut env = env.as_nameenv().clone();
         hir_to_expr(self, opts, &mut env)
@@ -72,29 +72,33 @@ impl Hir {
     /// Typecheck the Hir.
     pub fn typecheck<'hir>(
         &'hir self,
-        env: &TyEnv,
-    ) -> Result<Tir<'hir>, TypeError> {
+        env: &TyEnv<'cx>,
+    ) -> Result<Tir<'cx, 'hir>, TypeError> {
         type_with(env, self, None)
     }
     pub fn typecheck_noenv<'hir>(
         &'hir self,
-        cx: Ctxt<'_>,
-    ) -> Result<Tir<'hir>, TypeError> {
+        cx: Ctxt<'cx>,
+    ) -> Result<Tir<'cx, 'hir>, TypeError> {
         self.typecheck(&TyEnv::new(cx))
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.
-    pub fn eval(&self, env: impl Into<NzEnv>) -> Nir {
+    pub fn eval(&self, env: impl Into<NzEnv<'cx>>) -> Nir<'cx> {
         Nir::new_thunk(env.into(), self.clone())
     }
     /// Eval a closed Hir (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
-    pub fn eval_closed_expr(&self) -> Nir {
-        self.eval(NzEnv::new())
+    pub fn eval_closed_expr(&self, cx: Ctxt<'cx>) -> Nir<'cx> {
+        self.eval(NzEnv::new(cx))
     }
 }
 
-fn hir_to_expr(hir: &Hir, opts: ToExprOptions, env: &mut NameEnv) -> Expr {
+fn hir_to_expr<'cx>(
+    hir: &Hir<'cx>,
+    opts: ToExprOptions,
+    env: &mut NameEnv,
+) -> Expr {
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
@@ -127,9 +131,9 @@ fn hir_to_expr(hir: &Hir, opts: ToExprOptions, env: &mut NameEnv) -> Expr {
     Expr::new(kind, hir.span())
 }
 
-impl std::cmp::PartialEq for Hir {
+impl<'cx> std::cmp::PartialEq for Hir<'cx> {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
-impl std::cmp::Eq for Hir {}
+impl<'cx> std::cmp::Eq for Hir<'cx> {}

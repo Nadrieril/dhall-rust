@@ -5,7 +5,8 @@
     clippy::needless_lifetimes,
     clippy::new_ret_no_self,
     clippy::new_without_default,
-    clippy::useless_format
+    clippy::useless_format,
+    unreachable_code
 )]
 
 pub mod builtins;
@@ -36,20 +37,20 @@ pub struct Parsed(Expr, ImportLocation);
 ///
 /// Invariant: there must be no `Import` nodes or `ImportAlt` operations left.
 #[derive(Debug, Clone)]
-pub struct Resolved(Hir);
+pub struct Resolved<'cx>(Hir<'cx>);
 
 /// A typed expression
 #[derive(Debug, Clone)]
-pub struct Typed {
-    pub hir: Hir,
-    pub ty: Type,
+pub struct Typed<'cx> {
+    pub hir: Hir<'cx>,
+    pub ty: Type<'cx>,
 }
 
 /// A normalized expression.
 ///
 /// This is actually a lie, because the expression will only get normalized on demand.
 #[derive(Debug, Clone)]
-pub struct Normalized(Nir);
+pub struct Normalized<'cx>(Nir<'cx>);
 
 /// Controls conversion from `Nir` to `Expr`
 #[derive(Copy, Clone, Default)]
@@ -76,11 +77,10 @@ impl Parsed {
         parse::parse_binary(data)
     }
 
-    pub fn resolve(self) -> Result<Resolved, Error> {
-        // TODO: thread cx
-        Ctxt::with_new(|cx| resolve::resolve(cx, self))
+    pub fn resolve<'cx>(self, cx: Ctxt<'cx>) -> Result<Resolved<'cx>, Error> {
+        resolve::resolve(cx, self)
     }
-    pub fn skip_resolve(self) -> Result<Resolved, Error> {
+    pub fn skip_resolve<'cx>(self) -> Result<Resolved<'cx>, Error> {
         resolve::skip_resolve(self)
     }
 
@@ -90,16 +90,16 @@ impl Parsed {
     }
 }
 
-impl Resolved {
-    pub fn typecheck(&self) -> Result<Typed, TypeError> {
-        // TODO: thread cx
-        Ctxt::with_new(|cx| Ok(Typed::from_tir(typecheck(cx, &self.0)?)))
+impl<'cx> Resolved<'cx> {
+    pub fn typecheck(&self, cx: Ctxt<'cx>) -> Result<Typed<'cx>, TypeError> {
+        Ok(Typed::from_tir(typecheck(cx, &self.0)?))
     }
-    pub fn typecheck_with(self, ty: &Hir) -> Result<Typed, TypeError> {
-        // TODO: thread cx
-        Ctxt::with_new(|cx| {
-            Ok(Typed::from_tir(typecheck_with(cx, &self.0, ty)?))
-        })
+    pub fn typecheck_with(
+        self,
+        cx: Ctxt<'cx>,
+        ty: &Hir<'cx>,
+    ) -> Result<Typed<'cx>, TypeError> {
+        Ok(Typed::from_tir(typecheck_with(cx, &self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> Expr {
@@ -107,16 +107,16 @@ impl Resolved {
     }
 }
 
-impl Typed {
-    fn from_tir(tir: Tir<'_>) -> Self {
+impl<'cx> Typed<'cx> {
+    fn from_tir(tir: Tir<'cx, '_>) -> Self {
         Typed {
             hir: tir.as_hir().clone(),
             ty: tir.ty().clone(),
         }
     }
     /// Reduce an expression to its normal form, performing beta reduction
-    pub fn normalize(&self) -> Normalized {
-        Normalized(self.hir.eval_closed_expr())
+    pub fn normalize(&self, cx: Ctxt<'cx>) -> Normalized<'cx> {
+        Normalized(self.hir.eval_closed_expr(cx))
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -124,24 +124,24 @@ impl Typed {
         self.hir.to_expr(ToExprOptions { alpha: false })
     }
 
-    pub fn ty(&self) -> &Type {
+    pub fn ty(&self) -> &Type<'cx> {
         &self.ty
     }
-    pub fn get_type(&self) -> Result<Normalized, TypeError> {
+    pub fn get_type(&self) -> Result<Normalized<'cx>, TypeError> {
         Ok(Normalized(self.ty.clone().into_nir()))
     }
 }
 
-impl Normalized {
+impl<'cx> Normalized<'cx> {
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self) -> Expr {
         self.0.to_expr(ToExprOptions::default())
     }
     /// Converts a value back to the corresponding Hir expression.
-    pub fn to_hir(&self) -> Hir {
+    pub fn to_hir(&self) -> Hir<'cx> {
         self.0.to_hir_noenv()
     }
-    pub fn as_nir(&self) -> &Nir {
+    pub fn as_nir(&self) -> &Nir<'cx> {
         &self.0
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
@@ -178,37 +178,31 @@ impl From<Parsed> for Expr {
         other.to_expr()
     }
 }
-impl From<Normalized> for Expr {
-    fn from(other: Normalized) -> Self {
+impl<'cx> From<Normalized<'cx>> for Expr {
+    fn from(other: Normalized<'cx>) -> Self {
         other.to_expr()
     }
 }
 
-impl Display for Resolved {
+impl<'cx> Display for Resolved<'cx> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
 }
 
-impl Eq for Typed {}
-impl PartialEq for Typed {
-    fn eq(&self, other: &Self) -> bool {
-        self.normalize() == other.normalize()
-    }
-}
-impl Display for Typed {
+impl<'cx> Display for Typed<'cx> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
 }
 
-impl Eq for Normalized {}
-impl PartialEq for Normalized {
+impl<'cx> Eq for Normalized<'cx> {}
+impl<'cx> PartialEq for Normalized<'cx> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
-impl Display for Normalized {
+impl<'cx> Display for Normalized<'cx> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
