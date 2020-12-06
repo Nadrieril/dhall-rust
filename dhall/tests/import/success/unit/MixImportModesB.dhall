@@ -1,0 +1,1 @@
+{ loc = < Environment: Text | Local: Text | Missing | Remote: Text >.Local "./dhall/tests/import/data/simple.dhall", n = < Environment: Text | Local: Text | Missing | Remote: Text >.Local "./dhall/tests/import/data/simple.dhall", txt = < Environment: Text | Local: Text | Missing | Remote: Text >.Local "./dhall/tests/import/data/simple.dhall" }
