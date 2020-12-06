@@ -10,7 +10,7 @@ Type error: error: error
  --> <current file>:1:1
   |
 1 | ../data/cycle.dhall
-  | ^^^^^^^^^^^^^^^^^^^ ImportCycle([ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall") }, ImportLocation { kind: Local("./dhall-lang/tests/import/failure/cycle.dhall") }], ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall") })
+  | ^^^^^^^^^^^^^^^^^^^ ImportCycle([ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall"), mode: Code }, ImportLocation { kind: Local("./dhall-lang/tests/import/failure/cycle.dhall"), mode: Code }], ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall"), mode: Code })
   |
   |
   |

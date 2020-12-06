@@ -535,8 +535,6 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
 
     // Failing for now, we should fix that.
     let is_failing_for_now = false
-        // TODO: fix that one
-        // || path == "import/success/unit/MixImportModes"
         // TODO: fails because of caching issues.
         || path == "type-inference/success/prelude"
         // TODO: do not recover from cyclic imports
