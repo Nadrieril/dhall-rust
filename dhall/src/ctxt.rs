@@ -10,22 +10,26 @@ pub struct ImportId(usize);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ImportResultId(usize);
 
-struct StoredImport {
-    base_location: ImportLocation,
-    import: Import,
-    span: Span,
+/// What's stored for each `ImportId`. Allows getting and setting a result for this import.
+pub struct StoredImport<'cx> {
+    cx: Ctxt<'cx>,
+    pub base_location: ImportLocation,
+    pub import: Import,
+    pub span: Span,
     result: OnceCell<ImportResultId>,
 }
 
+/// Implementation detail. Made public for the `Index` instances.
 #[derive(Default)]
-struct CtxtS {
-    imports: FrozenVec<Box<StoredImport>>,
+pub struct CtxtS<'cx> {
+    imports: FrozenVec<Box<StoredImport<'cx>>>,
     import_results: FrozenVec<Box<Typed>>,
 }
 
 /// Context for the dhall compiler. Stores various global maps.
+/// Access the relevant value using `cx[id]`.
 #[derive(Copy, Clone)]
-pub struct Ctxt<'cx>(&'cx CtxtS);
+pub struct Ctxt<'cx>(&'cx CtxtS<'cx>);
 
 impl Ctxt<'_> {
     pub fn with_new<T>(f: impl for<'cx> FnOnce(Ctxt<'cx>) -> T) -> T {
@@ -35,13 +39,6 @@ impl Ctxt<'_> {
     }
 }
 impl<'cx> Ctxt<'cx> {
-    fn get_stored_import(self, import: ImportId) -> &'cx StoredImport {
-        self.0.imports.get(import.0).unwrap()
-    }
-    pub fn get_import_result(self, id: ImportResultId) -> &'cx Typed {
-        &self.0.import_results.get(id.0).unwrap()
-    }
-
     /// Store an import and the location relative to which it must be resolved.
     pub fn push_import(
         self,
@@ -50,6 +47,7 @@ impl<'cx> Ctxt<'cx> {
         span: Span,
     ) -> ImportId {
         let stored = StoredImport {
+            cx: self,
             base_location,
             import,
             span,
@@ -65,45 +63,48 @@ impl<'cx> Ctxt<'cx> {
         self.0.import_results.push(Box::new(res));
         ImportResultId(id)
     }
+}
 
-    pub fn get_import(self, import: ImportId) -> &'cx Import {
-        &self.get_stored_import(import).import
+impl<'cx> StoredImport<'cx> {
+    /// Get the id of the result of fetching this import. Returns `None` if the result has not yet
+    /// been fetched.
+    pub fn get_resultid(&self) -> Option<ImportResultId> {
+        self.result.get().copied()
     }
-    pub fn get_import_base_location(
-        self,
-        import: ImportId,
-    ) -> &'cx ImportLocation {
-        &self.get_stored_import(import).base_location
-    }
-    pub fn get_import_span(self, import: ImportId) -> Span {
-        self.get_stored_import(import).span.clone()
+    /// Store the result of fetching this import.
+    pub fn set_resultid(&self, res: ImportResultId) {
+        let _ = self.result.set(res);
     }
     /// Get the result of fetching this import. Returns `None` if the result has not yet been
     /// fetched.
-    pub fn get_result_of_import(self, import: ImportId) -> Option<&'cx Typed> {
-        let res = self.get_resultid_of_import(import)?;
-        Some(self.get_import_result(res))
-    }
-    /// Get the id of the result of fetching this import. Returns `None` if the result has not yet
-    /// been fetched.
-    pub fn get_resultid_of_import(
-        self,
-        import: ImportId,
-    ) -> Option<ImportResultId> {
-        self.get_stored_import(import).result.get().copied()
+    pub fn get_result(&self) -> Option<&'cx Typed> {
+        let res = self.get_resultid()?;
+        Some(&self.cx[res])
     }
     /// Store the result of fetching this import.
-    pub fn set_result_of_import(
-        self,
-        import: ImportId,
-        res: Typed,
-    ) -> ImportResultId {
-        let res = self.push_import_result(res);
-        self.set_resultid_of_import(import, res);
+    pub fn set_result(&self, res: Typed) -> ImportResultId {
+        let res = self.cx.push_import_result(res);
+        self.set_resultid(res);
         res
     }
-    /// Store the result of fetching this import.
-    pub fn set_resultid_of_import(self, import: ImportId, res: ImportResultId) {
-        let _ = self.get_stored_import(import).result.set(res);
+}
+
+impl<'cx> std::ops::Deref for Ctxt<'cx> {
+    type Target = &'cx CtxtS<'cx>;
+    fn deref(&self) -> &&'cx CtxtS<'cx> {
+        &self.0
+    }
+}
+
+impl<'cx> std::ops::Index<ImportId> for CtxtS<'cx> {
+    type Output = StoredImport<'cx>;
+    fn index(&self, id: ImportId) -> &StoredImport<'cx> {
+        &self.imports[id.0]
+    }
+}
+impl<'cx> std::ops::Index<ImportResultId> for CtxtS<'cx> {
+    type Output = Typed;
+    fn index(&self, id: ImportResultId) -> &Typed {
+        &self.import_results[id.0]
     }
 }

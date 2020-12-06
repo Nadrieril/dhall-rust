@@ -395,18 +395,18 @@ fn fetch_import<'cx>(
     env: &mut ImportEnv<'cx>,
     import_id: ImportId,
 ) -> Result<(), Error> {
-    let base_location = env.cx().get_import_base_location(import_id);
-    let import = env.cx().get_import(import_id);
-    let span = env.cx().get_import_span(import_id);
-    let location = base_location.chain(&import)?;
+    let cx = env.cx();
+    let import = &cx[import_id].import;
+    let span = cx[import_id].span.clone();
+    let location = cx[import_id].base_location.chain(import)?;
 
     // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
     // the cached contents.
     if let Some(res_id) = env.get_from_mem_cache(&location) {
-        env.cx().set_resultid_of_import(import_id, res_id);
+        cx[import_id].set_resultid(res_id);
         // The same location may be used with different or no hashes. Thus we need to check
         // the hashes every time.
-        let typed = env.cx().get_import_result(res_id);
+        let typed = &cx[res_id];
         check_hash(import, typed, span)?;
         env.write_to_disk_cache(&import.hash, typed);
         return Ok(());
@@ -417,7 +417,7 @@ fn fetch_import<'cx>(
         // to the cached file (e.g. `missing sha256:...` is valid).
         // This actually means that importing many times a same hashed import will take
         // longer than importing many times a same non-hashed import.
-        env.cx().set_result_of_import(import_id, typed);
+        cx[import_id].set_result(typed);
         return Ok(());
     }
 
@@ -436,10 +436,9 @@ fn fetch_import<'cx>(
     };
 
     // Add the resolved import to the caches
-    let import = env.cx().get_import(import_id);
     check_hash(import, &typed, span)?;
     env.write_to_disk_cache(&import.hash, &typed);
-    let res_id = env.cx().set_result_of_import(import_id, typed);
+    let res_id = cx[import_id].set_result(typed);
     env.write_to_mem_cache(location, res_id);
 
     Ok(())
@@ -458,7 +457,7 @@ fn resolve_with_env<'cx>(
                 env.cx().push_import(base_location.clone(), import, span);
             fetch_import(env, import_id)?;
             // TODO: store import id in Hir
-            Ok(env.cx().get_result_of_import(import_id).unwrap().clone())
+            Ok(env.cx()[import_id].get_result().unwrap().clone())
         },
     )?;
     Ok(Resolved(resolved))
