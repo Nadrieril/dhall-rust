@@ -1,6 +1,8 @@
 mod serde {
     use serde::{Deserialize, Serialize};
-    use serde_dhall::{from_str, serialize, FromDhall, StaticType, ToDhall};
+    use serde_dhall::{
+        from_str, serialize, FromDhall, StaticType, ToDhall, Value,
+    };
 
     fn assert_de<T>(s: &str, x: T)
     where
@@ -242,6 +244,20 @@ mod serde {
             .parse::<bool>()
             .map_err(|e| e.to_string()),
             Err("UnexpectedImport(Import { mode: Code, location: Local(Parent, FilePath { file_path: [\"dhall-lang\", \"tests\", \"parser\", \"success\", \"unit\", \"BoolLitTrueA.dhall\"] }), hash: None })".to_string())
+        );
+    }
+
+    #[test]
+    #[ignore] // Way too slow
+    fn test_prelude() {
+        assert_eq!(
+            serde_dhall::from_str(
+                "https://prelude.dhall-lang.org/package.dhall"
+            )
+            .parse::<Value>()
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+            Ok(())
         );
     }
 
