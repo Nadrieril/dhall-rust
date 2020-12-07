@@ -184,7 +184,10 @@ pub fn type_with<'cx, 'hir>(
 ) -> Result<Tir<'cx, 'hir>, TypeError> {
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
-        HirKind::Import(_, ty) => Tir::from_hir(hir, ty.clone()),
+        HirKind::Import(import) => {
+            let typed = env.cx()[import].unwrap_result();
+            Tir::from_hir(hir, typed.ty.clone())
+        }
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }

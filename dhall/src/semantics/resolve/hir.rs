@@ -1,7 +1,7 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv, Type};
+use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv};
 use crate::syntax::{Expr, ExprKind, Span, V};
-use crate::{Ctxt, ToExprOptions};
+use crate::{Ctxt, ImportId, ToExprOptions};
 
 /// Stores an alpha-normalized variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -13,8 +13,8 @@ pub struct AlphaVar {
 pub enum HirKind<'cx> {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
-    /// Result of resolving an import.
-    Import(Hir<'cx>, Type<'cx>),
+    /// An import. It must have been resolved by the time we get to typechecking/normalization.
+    Import(ImportId<'cx>),
     // Forbidden ExprKind variants: Var, Import, Completion
     Expr(ExprKind<Hir<'cx>>),
 }
@@ -104,8 +104,9 @@ fn hir_to_expr<'cx>(
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
-        HirKind::Import(hir, _) => {
-            return hir_to_expr(cx, hir, opts, &mut NameEnv::new());
+        HirKind::Import(import) => {
+            let typed = cx[import].unwrap_result();
+            return hir_to_expr(cx, &typed.hir, opts, &mut NameEnv::new());
         }
         HirKind::Expr(e) => {
             let e = e.map_ref_maybe_binder(|l, hir| {

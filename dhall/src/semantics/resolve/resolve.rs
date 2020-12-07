@@ -348,7 +348,7 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
 fn traverse_resolve_expr<'cx>(
     name_env: &mut NameEnv,
     expr: &Expr,
-    f: &mut impl FnMut(Import, Span) -> Result<Typed<'cx>, Error>,
+    f: &mut impl FnMut(Import, Span) -> Result<ImportId<'cx>, Error>,
 ) -> Result<Hir<'cx>, Error> {
     let expr = desugar(expr);
     Ok(match expr.kind() {
@@ -387,8 +387,8 @@ fn traverse_resolve_expr<'cx>(
                 ExprKind::Import(import) => {
                     // TODO: evaluate import headers
                     let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
-                    let imported = f(import, expr.span())?;
-                    HirKind::Import(imported.hir, imported.ty)
+                    let import_id = f(import, expr.span())?;
+                    HirKind::Import(import_id)
                 }
                 kind => HirKind::Expr(kind),
             };
@@ -463,8 +463,7 @@ fn resolve_with_env<'cx>(
             let import_id =
                 env.cx().push_import(base_location.clone(), import, span);
             fetch_import(env, import_id)?;
-            // TODO: store import id in Hir
-            Ok(env.cx()[import_id].unwrap_result().clone())
+            Ok(import_id)
         },
     )?;
     Ok(Resolved(resolved))

@@ -155,7 +155,10 @@ pub fn normalize_one_layer<'cx>(expr: ExprKind<Nir<'cx>>) -> NirKind<'cx> {
 pub fn normalize_hir<'cx>(env: &NzEnv<'cx>, hir: &Hir<'cx>) -> NirKind<'cx> {
     match hir.kind() {
         HirKind::Var(var) => env.lookup_val(*var),
-        HirKind::Import(hir, _) => normalize_hir(env, hir),
+        HirKind::Import(import) => {
+            let typed = env.cx()[import].unwrap_result();
+            normalize_hir(env, &typed.hir)
+        }
         HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             NirKind::LamClosure {
