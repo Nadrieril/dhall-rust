@@ -379,7 +379,7 @@ fn fetch_import<'cx>(
     let span = cx[import_id].span.clone();
     let location = cx[import_id].base_location.chain(import)?;
 
-    // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
+    // If the hash is in the on-disk cache, return
     // the cached contents.
     if let Some(typed) = env.get_from_disk_cache(&import.hash) {
         // No need to check the hash, it was checked before reading the file.
@@ -390,34 +390,35 @@ fn fetch_import<'cx>(
         let res_id = cx.push_import_result(typed);
         return Ok(res_id);
     }
-    if let Some(res_id) = env.get_from_mem_cache(&location) {
-        // The same location may be used with different or no hashes. Thus we need to check
-        // the hashes every time.
-        env.check_hash(import_id, res_id)?;
-        env.write_to_disk_cache(&import.hash, res_id);
-        return Ok(res_id);
-    }
 
-    // Resolve this import, making sure that recursive imports don't cycle back to the
-    // current one.
-    let res = env.with_cycle_detection(location.clone(), |env| {
-        location.fetch(env, span.clone())
-    });
-    let typed = match res {
-        Ok(typed) => typed,
-        Err(e) => mkerr(
-            ErrorBuilder::new("error")
-                .span_err(span.clone(), e.to_string())
-                .format(),
-        )?,
+    // If the import is in the in-memory cache return the cached contents. Otherwise fetch the
+    // import.
+    let res_id = if let Some(res_id) = env.get_from_mem_cache(&location) {
+        res_id
+    } else {
+        // Resolve this import, making sure that recursive imports don't cycle back to the
+        // current one.
+        let res = env.with_cycle_detection(location.clone(), |env| {
+            location.fetch(env, span.clone())
+        });
+        let typed = match res {
+            Ok(typed) => typed,
+            Err(e) => mkerr(
+                ErrorBuilder::new("error")
+                    .span_err(span.clone(), e.to_string())
+                    .format(),
+            )?,
+        };
+
+        let res_id = cx.push_import_result(typed);
+        // Cache the mapping from this location to the result.
+        env.write_to_mem_cache(location, res_id);
+        res_id
     };
 
-    // Add the resolved import to the caches
-    let res_id = cx.push_import_result(typed);
+    // Add the resolved import to the on-disk cache if the hash matches.
     env.check_hash(import_id, res_id)?;
     env.write_to_disk_cache(&import.hash, res_id);
-    // Cache the mapping from this location to the result.
-    env.write_to_mem_cache(location, res_id);
 
     Ok(res_id)
 }
