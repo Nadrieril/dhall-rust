@@ -1,7 +1,7 @@
 use crate::error::TypeError;
 use crate::semantics::{type_with, typecheck, NameEnv, Nir, NzEnv, Tir, TyEnv};
 use crate::syntax::{Expr, ExprKind, Span, V};
-use crate::{Ctxt, ImportId, ToExprOptions};
+use crate::{Ctxt, ImportAlternativeId, ImportId, ToExprOptions};
 
 /// Stores an alpha-normalized variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,8 +15,10 @@ pub enum HirKind<'cx> {
     Var(AlphaVar),
     /// A variable that couldn't be resolved. Detected during resolution, but causes an error during typeck.
     MissingVar(V),
-    /// An import. It must have been resolved by the time we get to typechecking/normalization.
+    /// An import. It must have been resolved after resolution.
     Import(ImportId<'cx>),
+    /// An import alternative. It must have been decided after resolution.
+    ImportAlternative(ImportAlternativeId<'cx>, Hir<'cx>, Hir<'cx>),
     // Forbidden ExprKind variants: Var, Import, Completion
     Expr(ExprKind<Hir<'cx>>),
 }
@@ -110,6 +112,14 @@ fn hir_to_expr<'cx>(
         HirKind::Import(import) => {
             let typed = cx[import].unwrap_result();
             return hir_to_expr(cx, &typed.hir, opts, &mut NameEnv::new());
+        }
+        HirKind::ImportAlternative(alt, left, right) => {
+            let hir = if cx[alt].unwrap_selected() {
+                left
+            } else {
+                right
+            };
+            return hir_to_expr(cx, hir, opts, env);
         }
         HirKind::Expr(e) => {
             let e = e.map_ref_maybe_binder(|l, hir| {

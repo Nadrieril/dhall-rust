@@ -26,7 +26,7 @@ use crate::semantics::resolve::ImportLocation;
 use crate::semantics::{typecheck, typecheck_with, Hir, Nir, Tir, Type};
 use crate::syntax::Expr;
 
-pub use ctxt::{Ctxt, ImportId, ImportResultId};
+pub use ctxt::*;
 
 #[derive(Debug, Clone)]
 pub struct Parsed(Expr, ImportLocation);

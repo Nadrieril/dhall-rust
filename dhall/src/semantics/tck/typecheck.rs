@@ -193,6 +193,14 @@ pub fn type_with<'cx, 'hir>(
             let typed = env.cx()[import].unwrap_result();
             Tir::from_hir(hir, typed.ty.clone())
         }
+        HirKind::ImportAlternative(alt, left, right) => {
+            let hir = if env.cx()[alt].unwrap_selected() {
+                left
+            } else {
+                right
+            };
+            return type_with(env, hir, annot);
+        }
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }

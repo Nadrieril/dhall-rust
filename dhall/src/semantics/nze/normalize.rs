@@ -160,6 +160,14 @@ pub fn normalize_hir<'cx>(env: &NzEnv<'cx>, hir: &Hir<'cx>) -> NirKind<'cx> {
             let typed = env.cx()[import].unwrap_result();
             normalize_hir(env, &typed.hir)
         }
+        HirKind::ImportAlternative(alt, left, right) => {
+            let hir = if env.cx()[alt].unwrap_selected() {
+                left
+            } else {
+                right
+            };
+            normalize_hir(env, hir)
+        }
         HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             NirKind::LamClosure {

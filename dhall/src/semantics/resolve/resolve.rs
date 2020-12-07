@@ -15,7 +15,10 @@ use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
     UnspannedExpr, URL,
 };
-use crate::{Ctxt, ImportId, ImportResultId, Parsed, Resolved, Typed};
+use crate::{
+    Ctxt, ImportAlternativeId, ImportId, ImportResultId, Parsed, Resolved,
+    Typed,
+};
 
 // TODO: evaluate import headers
 pub type Import = syntax::Import<()>;
@@ -252,7 +255,7 @@ impl ImportLocation {
         let typed = match self.mode {
             ImportMode::Code => {
                 let parsed = self.kind.fetch_dhall()?;
-                let typed = resolve_with_env(env, parsed)?.typecheck(cx)?;
+                let typed = parsed.resolve_with_env(env)?.typecheck(cx)?;
                 Typed {
                     // TODO: manage to keep the Nir around. Will need fixing variables.
                     hir: typed.normalize(cx).to_hir(),
@@ -366,56 +369,6 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
     }
 }
 
-/// Traverse the expression, handling import alternatives and passing
-/// found imports to the provided function. Also resolving names.
-fn traverse_resolve_expr<'cx>(
-    name_env: &mut NameEnv,
-    expr: &Expr,
-    f: &mut impl FnMut(Import, Span) -> Result<ImportId<'cx>, Error>,
-) -> Result<Hir<'cx>, Error> {
-    let expr = desugar(expr);
-    Ok(match expr.kind() {
-        ExprKind::Var(var) => match name_env.unlabel_var(&var) {
-            Some(v) => Hir::new(HirKind::Var(v), expr.span()),
-            None => Hir::new(HirKind::MissingVar(var.clone()), expr.span()),
-        },
-        ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
-            match traverse_resolve_expr(name_env, l, f) {
-                Ok(l) => l,
-                Err(_) => {
-                    match traverse_resolve_expr(name_env, r, f) {
-                        Ok(r) => r,
-                        // TODO: keep track of the other error too
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
-        }
-        kind => {
-            let kind = kind.traverse_ref_maybe_binder(|l, e| {
-                if let Some(l) = l {
-                    name_env.insert_mut(l);
-                }
-                let hir = traverse_resolve_expr(name_env, e, f)?;
-                if l.is_some() {
-                    name_env.remove_mut();
-                }
-                Ok::<_, Error>(hir)
-            })?;
-            let kind = match kind {
-                ExprKind::Import(import) => {
-                    // TODO: evaluate import headers
-                    let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
-                    let import_id = f(import, expr.span())?;
-                    HirKind::Import(import_id)
-                }
-                kind => HirKind::Expr(kind),
-            };
-            Hir::new(kind, expr.span())
-        }
-    })
-}
-
 /// Fetch the import and store the result in the global context.
 fn fetch_import<'cx>(
     env: &mut ImportEnv<'cx>,
@@ -469,22 +422,123 @@ fn fetch_import<'cx>(
     Ok(res_id)
 }
 
+/// Part of a tree of imports.
+#[derive(Debug, Clone, Copy)]
+pub enum ImportNode<'cx> {
+    Import(ImportId<'cx>),
+    Alternative(ImportAlternativeId<'cx>),
+}
+
+/// Traverse the expression and replace each import and import alternative by an id into the global
+/// context. The ids are also accumulated into `nodes` so that we can resolve them afterwards.
+fn traverse_accumulate<'cx>(
+    env: &mut ImportEnv<'cx>,
+    name_env: &mut NameEnv,
+    nodes: &mut Vec<ImportNode<'cx>>,
+    base_location: &ImportLocation,
+    expr: &Expr,
+) -> Hir<'cx> {
+    let cx = env.cx();
+    let expr = desugar(expr);
+    let kind = match expr.kind() {
+        ExprKind::Var(var) => match name_env.unlabel_var(&var) {
+            Some(v) => HirKind::Var(v),
+            None => HirKind::MissingVar(var.clone()),
+        },
+        ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
+            let mut imports_l = Vec::new();
+            let l = traverse_accumulate(
+                env,
+                name_env,
+                &mut imports_l,
+                base_location,
+                l,
+            );
+            let mut imports_r = Vec::new();
+            let r = traverse_accumulate(
+                env,
+                name_env,
+                &mut imports_r,
+                base_location,
+                r,
+            );
+            let alt =
+                cx.push_import_alternative(imports_l.into(), imports_r.into());
+            nodes.push(ImportNode::Alternative(alt));
+            HirKind::ImportAlternative(alt, l, r)
+        }
+        kind => {
+            let kind = kind.map_ref_maybe_binder(|l, e| {
+                if let Some(l) = l {
+                    name_env.insert_mut(l);
+                }
+                let hir =
+                    traverse_accumulate(env, name_env, nodes, base_location, e);
+                if l.is_some() {
+                    name_env.remove_mut();
+                }
+                hir
+            });
+            match kind {
+                ExprKind::Import(import) => {
+                    // TODO: evaluate import headers
+                    let import = import.map_ref(|_| ());
+                    let import_id = cx.push_import(
+                        base_location.clone(),
+                        import,
+                        expr.span(),
+                    );
+                    nodes.push(ImportNode::Import(import_id));
+                    HirKind::Import(import_id)
+                }
+                kind => HirKind::Expr(kind),
+            }
+        }
+    };
+    Hir::new(kind, expr.span())
+}
+
+/// Take a list of nodes and recursively resolve them.
+fn resolve_nodes<'cx>(
+    env: &mut ImportEnv<'cx>,
+    nodes: &[ImportNode<'cx>],
+) -> Result<(), Error> {
+    for &node in nodes {
+        match node {
+            ImportNode::Import(import) => {
+                let res_id = fetch_import(env, import)?;
+                env.cx()[import].set_resultid(res_id);
+            }
+            ImportNode::Alternative(alt) => {
+                let alt = &env.cx()[alt];
+                if resolve_nodes(env, &alt.left_imports).is_ok() {
+                    alt.set_selected(true);
+                } else {
+                    resolve_nodes(env, &alt.right_imports)?;
+                    alt.set_selected(false);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn resolve_with_env<'cx>(
     env: &mut ImportEnv<'cx>,
     parsed: Parsed,
 ) -> Result<Resolved<'cx>, Error> {
     let Parsed(expr, base_location) = parsed;
-    let resolved = traverse_resolve_expr(
+    let mut nodes = Vec::new();
+    // First we collect all imports.
+    let resolved = traverse_accumulate(
+        env,
         &mut NameEnv::new(),
+        &mut nodes,
+        &base_location,
         &expr,
-        &mut |import, span| {
-            let import_id =
-                env.cx().push_import(base_location.clone(), import, span);
-            let res_id = fetch_import(env, import_id)?;
-            env.cx()[import_id].set_resultid(res_id);
-            Ok(import_id)
-        },
-    )?;
+    );
+    // Then we resolve them and choose sides for the alternatives.
+    resolve_nodes(env, &nodes)?;
     Ok(Resolved(resolved))
 }
 
@@ -494,16 +548,25 @@ pub fn resolve<'cx>(
     cx: Ctxt<'cx>,
     parsed: Parsed,
 ) -> Result<Resolved<'cx>, Error> {
-    resolve_with_env(&mut ImportEnv::new(cx), parsed)
+    parsed.resolve_with_env(&mut ImportEnv::new(cx))
 }
 
-/// Resolves names and errors if we find any imports.
+/// Resolves names, and errors if we find any imports.
 pub fn skip_resolve<'cx>(
     cx: Ctxt<'cx>,
     parsed: Parsed,
 ) -> Result<Resolved<'cx>, Error> {
     let parsed = Parsed::from_expr_without_imports(parsed.0);
     Ok(resolve(cx, parsed)?)
+}
+
+impl Parsed {
+    fn resolve_with_env<'cx>(
+        self,
+        env: &mut ImportEnv<'cx>,
+    ) -> Result<Resolved<'cx>, Error> {
+        resolve_with_env(env, self)
+    }
 }
 
 pub trait Canonicalize {
