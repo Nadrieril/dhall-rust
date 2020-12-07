@@ -381,13 +381,6 @@ fn fetch_import<'cx>(
 
     // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
     // the cached contents.
-    if let Some(res_id) = env.get_from_mem_cache(&location) {
-        // The same location may be used with different or no hashes. Thus we need to check
-        // the hashes every time.
-        env.check_hash(import_id, res_id)?;
-        env.write_to_disk_cache(&import.hash, res_id);
-        return Ok(res_id);
-    }
     if let Some(typed) = env.get_from_disk_cache(&import.hash) {
         // No need to check the hash, it was checked before reading the file.
         // We also don't write to the in-memory cache, because the location might be completely
@@ -395,6 +388,13 @@ fn fetch_import<'cx>(
         // This actually means that importing many times a same hashed import will take
         // longer than importing many times a same non-hashed import.
         let res_id = cx.push_import_result(typed);
+        return Ok(res_id);
+    }
+    if let Some(res_id) = env.get_from_mem_cache(&location) {
+        // The same location may be used with different or no hashes. Thus we need to check
+        // the hashes every time.
+        env.check_hash(import_id, res_id)?;
+        env.write_to_disk_cache(&import.hash, res_id);
         return Ok(res_id);
     }
 
