@@ -13,6 +13,8 @@ pub struct AlphaVar {
 pub enum HirKind<'cx> {
     /// A resolved variable (i.e. a DeBruijn index)
     Var(AlphaVar),
+    /// A variable that couldn't be resolved. Detected during resolution, but causes an error during typeck.
+    MissingVar(V),
     /// An import. It must have been resolved by the time we get to typechecking/normalization.
     Import(ImportId<'cx>),
     // Forbidden ExprKind variants: Var, Import, Completion
@@ -104,6 +106,7 @@ fn hir_to_expr<'cx>(
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
+        HirKind::MissingVar(v) => ExprKind::Var(v.clone()),
         HirKind::Import(import) => {
             let typed = cx[import].unwrap_result();
             return hir_to_expr(cx, &typed.hir, opts, &mut NameEnv::new());

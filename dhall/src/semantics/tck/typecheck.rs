@@ -184,6 +184,11 @@ pub fn type_with<'cx, 'hir>(
 ) -> Result<Tir<'cx, 'hir>, TypeError> {
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
+        HirKind::MissingVar(var) => mkerr(
+            ErrorBuilder::new(format!("unbound variable `{}`", var))
+                .span_err(hir.span(), "not found in this scope")
+                .format(),
+        )?,
         HirKind::Import(import) => {
             let typed = env.cx()[import].unwrap_result();
             Tir::from_hir(hir, typed.ty.clone())

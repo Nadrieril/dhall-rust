@@ -154,6 +154,7 @@ pub fn normalize_one_layer<'cx>(expr: ExprKind<Nir<'cx>>) -> NirKind<'cx> {
 /// Normalize Hir into WHNF
 pub fn normalize_hir<'cx>(env: &NzEnv<'cx>, hir: &Hir<'cx>) -> NirKind<'cx> {
     match hir.kind() {
+        HirKind::MissingVar(..) => unreachable!("ruled out by typechecking"),
         HirKind::Var(var) => env.lookup_val(*var),
         HirKind::Import(import) => {
             let typed = env.cx()[import].unwrap_result();

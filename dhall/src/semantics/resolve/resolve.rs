@@ -377,11 +377,7 @@ fn traverse_resolve_expr<'cx>(
     Ok(match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
             Some(v) => Hir::new(HirKind::Var(v), expr.span()),
-            None => mkerr(
-                ErrorBuilder::new(format!("unbound variable `{}`", var))
-                    .span_err(expr.span(), "not found in this scope")
-                    .format(),
-            )?,
+            None => Hir::new(HirKind::MissingVar(var.clone()), expr.span()),
         },
         ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
             match traverse_resolve_expr(name_env, l, f) {
@@ -492,6 +488,8 @@ fn resolve_with_env<'cx>(
     Ok(Resolved(resolved))
 }
 
+/// Resolves all imports and names. Returns errors if importing failed. Name errors are deferred to
+/// typechecking.
 pub fn resolve<'cx>(
     cx: Ctxt<'cx>,
     parsed: Parsed,
@@ -499,6 +497,7 @@ pub fn resolve<'cx>(
     resolve_with_env(&mut ImportEnv::new(cx), parsed)
 }
 
+/// Resolves names and errors if we find any imports.
 pub fn skip_resolve<'cx>(
     cx: Ctxt<'cx>,
     parsed: Parsed,
