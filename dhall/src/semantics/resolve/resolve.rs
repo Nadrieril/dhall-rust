@@ -15,7 +15,7 @@ use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
     UnspannedExpr, URL,
 };
-use crate::{Ctxt, ImportId, Parsed, Resolved, Typed};
+use crate::{Ctxt, ImportId, ImportResultId, Parsed, Resolved, Typed};
 
 // TODO: evaluate import headers
 pub type Import = syntax::Import<()>;
@@ -310,16 +310,16 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
-/// Invariant: the import must have been fetched.
 pub fn check_hash<'cx>(
     cx: Ctxt<'cx>,
     import: ImportId<'cx>,
+    result: ImportResultId<'cx>,
 ) -> Result<(), Error> {
     let import = &cx[import];
     if let (ImportMode::Code, Some(Hash::SHA256(hash))) =
         (import.import.mode, &import.import.hash)
     {
-        let expr = import.unwrap_result().hir.to_expr_alpha(cx);
+        let expr = cx[result].hir.to_expr_alpha(cx);
         let actual_hash = expr.sha256_hash()?;
         if hash[..] != actual_hash[..] {
             mkerr(
@@ -424,7 +424,7 @@ fn traverse_resolve_expr<'cx>(
 fn fetch_import<'cx>(
     env: &mut ImportEnv<'cx>,
     import_id: ImportId<'cx>,
-) -> Result<(), Error> {
+) -> Result<ImportResultId<'cx>, Error> {
     let cx = env.cx();
     let import = &cx[import_id].import;
     let span = cx[import_id].span.clone();
@@ -433,12 +433,11 @@ fn fetch_import<'cx>(
     // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
     // the cached contents.
     if let Some(res_id) = env.get_from_mem_cache(&location) {
-        cx[import_id].set_resultid(res_id);
         // The same location may be used with different or no hashes. Thus we need to check
         // the hashes every time.
-        env.check_hash(import_id)?;
-        env.write_to_disk_cache(import_id);
-        return Ok(());
+        env.check_hash(import_id, res_id)?;
+        env.write_to_disk_cache(&import.hash, res_id);
+        return Ok(res_id);
     }
     if let Some(typed) = env.get_from_disk_cache(&import.hash) {
         // No need to check the hash, it was checked before reading the file.
@@ -446,8 +445,8 @@ fn fetch_import<'cx>(
         // unrelated to the cached file (e.g. `missing sha256:...` is valid).
         // This actually means that importing many times a same hashed import will take
         // longer than importing many times a same non-hashed import.
-        cx[import_id].set_result(typed);
-        return Ok(());
+        let res_id = cx.push_import_result(typed);
+        return Ok(res_id);
     }
 
     // Resolve this import, making sure that recursive imports don't cycle back to the
@@ -465,13 +464,13 @@ fn fetch_import<'cx>(
     };
 
     // Add the resolved import to the caches
-    let res_id = cx[import_id].set_result(typed.clone());
-    env.check_hash(import_id)?;
-    env.write_to_disk_cache(import_id);
+    let res_id = cx.push_import_result(typed);
+    env.check_hash(import_id, res_id)?;
+    env.write_to_disk_cache(&import.hash, res_id);
     // Cache the mapping from this location to the result.
     env.write_to_mem_cache(location, res_id);
 
-    Ok(())
+    Ok(res_id)
 }
 
 fn resolve_with_env<'cx>(
@@ -485,7 +484,8 @@ fn resolve_with_env<'cx>(
         &mut |import, span| {
             let import_id =
                 env.cx().push_import(base_location.clone(), import, span);
-            fetch_import(env, import_id)?;
+            let res_id = fetch_import(env, import_id)?;
+            env.cx()[import_id].set_resultid(res_id);
             Ok(import_id)
         },
     )?;
