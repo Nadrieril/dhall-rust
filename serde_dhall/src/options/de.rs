@@ -229,7 +229,7 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
-    fn _parse<T>(&self) -> dhall::error::Result<Value>
+    fn _parse<T>(&self) -> dhall::error::Result<Result<Value>>
     where
         A: TypeAnnot,
         T: HasAnnot<A>,
@@ -246,9 +246,12 @@ impl<'a, A> Deserializer<'a, A> {
         };
         let typed = match &T::get_annot(self.annot) {
             None => resolved.typecheck()?,
-            Some(ty) => resolved.typecheck_with(ty.to_value().as_hir())?,
+            Some(ty) => resolved.typecheck_with(&ty.to_hir())?,
         };
-        Ok(Value::from_nir(typed.normalize().as_nir()))
+        Ok(Value::from_nir_and_ty(
+            typed.normalize().as_nir(),
+            typed.ty().as_nir(),
+        ))
     }
 
     /// Parses the chosen dhall value with the options provided.
@@ -274,7 +277,7 @@ impl<'a, A> Deserializer<'a, A> {
         let val = self
             ._parse::<T>()
             .map_err(ErrorKind::Dhall)
-            .map_err(Error)?;
+            .map_err(Error)??;
         T::from_dhall(&val)
     }
 }

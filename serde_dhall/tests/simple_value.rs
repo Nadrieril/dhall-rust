@@ -1,7 +1,7 @@
 mod simple_value {
     use serde::{Deserialize, Serialize};
     use serde_dhall::{
-        from_str, serialize, FromDhall, NumKind, SimpleValue, ToDhall,
+        from_str, serialize, FromDhall, NumKind, SimpleValue, ToDhall, Value,
     };
 
     fn assert_de<T>(s: &str, x: T)
@@ -53,6 +53,18 @@ mod simple_value {
             Foo {
                 foo: bool_true.clone(),
             },
+        );
+
+        // Neither a simple value or a simple type.
+        let not_simple = "Type → Type";
+        assert_eq!(
+            from_str(not_simple)
+                .parse::<Value>()
+                .map_err(|e| e.to_string()),
+            Err(format!(
+                "this is neither a simple type nor a simple value: {}",
+                not_simple
+            ))
         );
     }
 }

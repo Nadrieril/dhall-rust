@@ -8,16 +8,18 @@ use dhall::syntax::{Expr, ExprKind, Span};
 
 use crate::{Error, ErrorKind, FromDhall, Result, ToDhall};
 
+#[derive(Debug, Clone)]
+enum ValueKind {
+    /// Invariant: the value must be printable with the given type.
+    Val(SimpleValue, Option<SimpleType>),
+    Ty(SimpleType),
+}
+
 #[doc(hidden)]
 /// An arbitrary Dhall value.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Value {
-    /// Invariant: in normal form
-    hir: Hir,
-    /// Cached conversions because they are annoying to construct from Hir.
-    /// At most one of them will be `Some`.
-    as_simple_val: Option<SimpleValue>,
-    as_simple_ty: Option<SimpleType>,
+    kind: ValueKind,
 }
 
 /// A value of the kind that can be decoded by `serde_dhall`, e.g. `{ x = True, y = [1, 2, 3] }`.
@@ -204,31 +206,48 @@ pub enum SimpleType {
 }
 
 impl Value {
-    pub(crate) fn from_nir(x: &Nir) -> Self {
-        Value {
-            hir: x.to_hir_noenv(),
-            as_simple_val: SimpleValue::from_nir(x),
-            as_simple_ty: SimpleType::from_nir(x),
-        }
-    }
-
-    pub(crate) fn as_hir(&self) -> &Hir {
-        &self.hir
+    pub(crate) fn from_nir_and_ty(x: &Nir, ty: &Nir) -> Result<Self> {
+        Ok(if let Some(val) = SimpleValue::from_nir(x) {
+            // The type must be simple if the value is simple.
+            let ty = SimpleType::from_nir(ty).unwrap();
+            Value {
+                kind: ValueKind::Val(val, Some(ty)),
+            }
+        } else if let Some(ty) = SimpleType::from_nir(x) {
+            Value {
+                kind: ValueKind::Ty(ty),
+            }
+        } else {
+            let expr = x.to_hir_noenv().to_expr(Default::default());
+            return Err(Error(ErrorKind::Deserialize(format!(
+                "this is neither a simple type nor a simple value: {}",
+                expr
+            ))));
+        })
     }
 
     /// Converts a Value into a SimpleValue.
     pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
-        self.as_simple_val.clone()
+        match &self.kind {
+            ValueKind::Val(val, _) => Some(val.clone()),
+            _ => None,
+        }
     }
 
     /// Converts a Value into a SimpleType.
     pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
-        self.as_simple_ty.clone()
+        match &self.kind {
+            ValueKind::Ty(ty) => Some(ty.clone()),
+            _ => None,
+        }
     }
 
     /// Converts a value back to the corresponding AST expression.
     pub(crate) fn to_expr(&self) -> Expr {
-        self.hir.to_expr(Default::default())
+        match &self.kind {
+            ValueKind::Val(val, ty) => val.to_expr(ty.as_ref()).unwrap(),
+            ValueKind::Ty(ty) => ty.to_expr(),
+        }
     }
 }
 
@@ -411,11 +430,16 @@ impl SimpleValue {
         Ok(hir(kind))
     }
     pub(crate) fn into_value(self, ty: Option<&SimpleType>) -> Result<Value> {
+        // Check that the value is printable with the given type.
+        self.to_hir(ty)?;
         Ok(Value {
-            hir: self.to_hir(ty)?,
-            as_simple_val: Some(self),
-            as_simple_ty: None,
+            kind: ValueKind::Val(self, ty.cloned()),
         })
+    }
+
+    /// Converts back to the corresponding AST expression.
+    pub(crate) fn to_expr(&self, ty: Option<&SimpleType>) -> Result<Expr> {
+        Ok(self.to_hir(ty)?.to_expr(Default::default()))
     }
 }
 
@@ -457,13 +481,6 @@ impl SimpleType {
         })
     }
 
-    pub(crate) fn to_value(&self) -> Value {
-        Value {
-            hir: self.to_hir(),
-            as_simple_val: None,
-            as_simple_ty: Some(self.clone()),
-        }
-    }
     pub(crate) fn to_hir(&self) -> Hir {
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
         hir(match self {
@@ -526,10 +543,15 @@ impl ToDhall for Value {
     }
 }
 
-impl Eq for Value {}
-impl PartialEq for Value {
+impl Eq for ValueKind {}
+impl PartialEq for ValueKind {
     fn eq(&self, other: &Self) -> bool {
-        self.hir == other.hir
+        use ValueKind::*;
+        match (self, other) {
+            (Val(a, _), Val(b, _)) => a == b,
+            (Ty(a), Ty(b)) => a == b,
+            _ => false,
+        }
     }
 }
 impl std::fmt::Display for Value {
@@ -555,4 +577,15 @@ fn test_display_simpletype() {
     use SimpleType::*;
     let ty = List(Box::new(Optional(Box::new(Natural))));
     assert_eq!(ty.to_string(), "List (Optional Natural)".to_string())
+}
+
+#[test]
+fn test_display_value() {
+    use SimpleType::*;
+    let ty = List(Box::new(Optional(Box::new(Natural))));
+    let val = SimpleValue::List(vec![]);
+    let val = Value {
+        kind: ValueKind::Val(val, Some(ty)),
+    };
+    assert_eq!(val.to_string(), "[] : List (Optional Natural)".to_string())
 }
