@@ -5,6 +5,7 @@
     clippy::needless_lifetimes,
     clippy::new_ret_no_self,
     clippy::new_without_default,
+    clippy::try_err,
     clippy::useless_format
 )]
 
