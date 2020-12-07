@@ -51,22 +51,23 @@ impl<'cx> Hir<'cx> {
     }
 
     /// Converts a closed Hir expr back to the corresponding AST expression.
-    pub fn to_expr(&self, opts: ToExprOptions) -> Expr {
-        hir_to_expr(self, opts, &mut NameEnv::new())
+    pub fn to_expr(&self, cx: Ctxt<'cx>, opts: ToExprOptions) -> Expr {
+        hir_to_expr(cx, self, opts, &mut NameEnv::new())
     }
     /// Converts a closed Hir expr back to the corresponding AST expression.
-    pub fn to_expr_noopts(&self) -> Expr {
+    pub fn to_expr_noopts(&self, cx: Ctxt<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: false };
-        self.to_expr(opts)
+        self.to_expr(cx, opts)
     }
-    pub fn to_expr_alpha(&self) -> Expr {
+    pub fn to_expr_alpha(&self, cx: Ctxt<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: true };
-        self.to_expr(opts)
+        self.to_expr(cx, opts)
     }
     pub fn to_expr_tyenv(&self, env: &TyEnv<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: false };
+        let cx = env.cx();
         let mut env = env.as_nameenv().clone();
-        hir_to_expr(self, opts, &mut env)
+        hir_to_expr(cx, self, opts, &mut env)
     }
 
     /// Typecheck the Hir.
@@ -95,6 +96,7 @@ impl<'cx> Hir<'cx> {
 }
 
 fn hir_to_expr<'cx>(
+    cx: Ctxt<'cx>,
     hir: &Hir<'cx>,
     opts: ToExprOptions,
     env: &mut NameEnv,
@@ -103,14 +105,14 @@ fn hir_to_expr<'cx>(
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
         HirKind::Import(hir, _) => {
-            return hir_to_expr(hir, opts, &mut NameEnv::new())
+            return hir_to_expr(cx, hir, opts, &mut NameEnv::new());
         }
         HirKind::Expr(e) => {
             let e = e.map_ref_maybe_binder(|l, hir| {
                 if let Some(l) = l {
                     env.insert_mut(l);
                 }
-                let e = hir_to_expr(hir, opts, env);
+                let e = hir_to_expr(cx, hir, opts, env);
                 if l.is_some() {
                     env.remove_mut();
                 }

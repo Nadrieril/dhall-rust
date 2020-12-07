@@ -148,8 +148,8 @@ impl<'cx> Nir<'cx> {
         Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self, opts: ToExprOptions) -> Expr {
-        self.to_hir_noenv().to_expr(opts)
+    pub fn to_expr(&self, cx: Ctxt<'cx>, opts: ToExprOptions) -> Expr {
+        self.to_hir_noenv().to_expr(cx, opts)
     }
     pub fn to_expr_tyenv(&self, tyenv: &TyEnv<'cx>) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)

@@ -5,6 +5,7 @@ use dhall::operations::OpKind;
 use dhall::semantics::{Hir, HirKind, Nir, NirKind};
 pub use dhall::syntax::NumKind;
 use dhall::syntax::{Expr, ExprKind, Span};
+use dhall::Ctxt;
 
 use crate::{Error, ErrorKind, FromDhall, Result, ToDhall};
 
@@ -206,7 +207,11 @@ pub enum SimpleType {
 }
 
 impl Value {
-    pub(crate) fn from_nir_and_ty(x: &Nir, ty: &Nir) -> Result<Self> {
+    pub(crate) fn from_nir_and_ty<'cx>(
+        cx: Ctxt<'cx>,
+        x: &Nir<'cx>,
+        ty: &Nir<'cx>,
+    ) -> Result<Self> {
         Ok(if let Some(val) = SimpleValue::from_nir(x) {
             // The type must be simple if the value is simple.
             let ty = SimpleType::from_nir(ty).unwrap();
@@ -218,7 +223,7 @@ impl Value {
                 kind: ValueKind::Ty(ty),
             }
         } else {
-            let expr = x.to_hir_noenv().to_expr(Default::default());
+            let expr = x.to_hir_noenv().to_expr(cx, Default::default());
             return Err(Error(ErrorKind::Deserialize(format!(
                 "this is neither a simple type nor a simple value: {}",
                 expr
@@ -342,7 +347,7 @@ impl SimpleValue {
         let type_error = || {
             Error(ErrorKind::Serialize(format!(
                 "expected a value of type {}, found {:?}",
-                ty.unwrap().to_hir().to_expr(Default::default()),
+                ty.unwrap().to_expr(),
                 self
             )))
         };
@@ -439,7 +444,9 @@ impl SimpleValue {
 
     /// Converts back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, ty: Option<&SimpleType>) -> Result<Expr> {
-        Ok(self.to_hir(ty)?.to_expr(Default::default()))
+        Ctxt::with_new(|cx| {
+            Ok(self.to_hir(ty)?.to_expr(cx, Default::default()))
+        })
     }
 }
 
@@ -514,7 +521,7 @@ impl SimpleType {
 
     /// Converts back to the corresponding AST expression.
     pub(crate) fn to_expr(&self) -> Expr {
-        self.to_hir().to_expr(Default::default())
+        Ctxt::with_new(|cx| self.to_hir().to_expr(cx, Default::default()))
     }
 }
 

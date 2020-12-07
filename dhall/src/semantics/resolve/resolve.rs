@@ -287,19 +287,21 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
-fn check_hash<'cx>(
-    import: &Import,
-    typed: &Typed<'cx>,
-    span: Span,
+/// Invariant: the import must have been fetched.
+pub fn check_hash<'cx>(
+    cx: Ctxt<'cx>,
+    import: ImportId<'cx>,
 ) -> Result<(), Error> {
+    let import = &cx[import];
     if let (ImportMode::Code, Some(Hash::SHA256(hash))) =
-        (import.mode, &import.hash)
+        (import.import.mode, &import.import.hash)
     {
-        let actual_hash = typed.hir.to_expr_alpha().sha256_hash()?;
+        let expr = import.unwrap_result().hir.to_expr_alpha(cx);
+        let actual_hash = expr.sha256_hash()?;
         if hash[..] != actual_hash[..] {
             mkerr(
                 ErrorBuilder::new("hash mismatch")
-                    .span_err(span, "hash mismatch")
+                    .span_err(import.span.clone(), "hash mismatch")
                     .note(format!("Expected sha256:{}", hex::encode(hash)))
                     .note(format!(
                         "Found    sha256:{}",
@@ -411,15 +413,14 @@ fn fetch_import<'cx>(
         cx[import_id].set_resultid(res_id);
         // The same location may be used with different or no hashes. Thus we need to check
         // the hashes every time.
-        let typed = &cx[res_id];
-        check_hash(import, typed, span)?;
-        env.write_to_disk_cache(&import.hash, typed);
+        env.check_hash(import_id)?;
+        env.write_to_disk_cache(import_id);
         return Ok(());
     }
     if let Some(typed) = env.get_from_disk_cache(&import.hash) {
-        // No need to check the hash, it was checked before reading the file. We also don't
-        // write to the in-memory cache, because the location might be completely unrelated
-        // to the cached file (e.g. `missing sha256:...` is valid).
+        // No need to check the hash, it was checked before reading the file.
+        // We also don't write to the in-memory cache, because the location might be completely
+        // unrelated to the cached file (e.g. `missing sha256:...` is valid).
         // This actually means that importing many times a same hashed import will take
         // longer than importing many times a same non-hashed import.
         cx[import_id].set_result(typed);
@@ -441,9 +442,10 @@ fn fetch_import<'cx>(
     };
 
     // Add the resolved import to the caches
-    check_hash(import, &typed, span)?;
-    env.write_to_disk_cache(&import.hash, &typed);
-    let res_id = cx[import_id].set_result(typed);
+    let res_id = cx[import_id].set_result(typed.clone());
+    env.check_hash(import_id)?;
+    env.write_to_disk_cache(import_id);
+    // Cache the mapping from this location to the result.
     env.write_to_mem_cache(location, res_id);
 
     Ok(())
@@ -462,7 +464,7 @@ fn resolve_with_env<'cx>(
                 env.cx().push_import(base_location.clone(), import, span);
             fetch_import(env, import_id)?;
             // TODO: store import id in Hir
-            Ok(env.cx()[import_id].get_result().unwrap().clone())
+            Ok(env.cx()[import_id].unwrap_result().clone())
         },
     )?;
     Ok(Resolved(resolved))

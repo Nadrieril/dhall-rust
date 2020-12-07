@@ -83,6 +83,12 @@ impl<'cx> StoredImport<'cx> {
         let res = self.get_resultid()?;
         Some(&self.cx[res])
     }
+    /// Get the result of fetching this import. Panicx if the result has not yet been
+    /// fetched.
+    pub fn unwrap_result(&self) -> &'cx Typed<'cx> {
+        self.get_result()
+            .expect("imports should all have been resolved at this stage")
+    }
     /// Store the result of fetching this import.
     pub fn set_result(&self, res: Typed<'cx>) -> ImportResultId<'cx> {
         let res = self.cx.push_import_result(res);

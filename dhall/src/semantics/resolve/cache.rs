@@ -68,11 +68,12 @@ impl Cache {
 
     pub fn insert<'cx>(
         &self,
+        cx: Ctxt<'cx>,
         hash: &Hash,
         expr: &Typed<'cx>,
     ) -> Result<(), Error> {
         let path = self.entry_path(hash);
-        write_cache_file(&path, expr)
+        write_cache_file(cx, &path, expr)
     }
 }
 
@@ -97,8 +98,12 @@ fn read_cache_file<'cx>(
 }
 
 /// Write a file to the cache.
-fn write_cache_file(path: &Path, expr: &Typed) -> Result<(), Error> {
-    let data = binary::encode(&expr.to_expr())?;
+fn write_cache_file<'cx>(
+    cx: Ctxt<'cx>,
+    path: &Path,
+    expr: &Typed<'cx>,
+) -> Result<(), Error> {
+    let data = binary::encode(&expr.to_expr(cx))?;
     File::create(path)?.write_all(data.as_slice())?;
     Ok(())
 }

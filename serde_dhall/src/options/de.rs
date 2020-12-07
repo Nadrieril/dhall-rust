@@ -250,6 +250,7 @@ impl<'a, A> Deserializer<'a, A> {
                 Some(ty) => resolved.typecheck_with(cx, &ty.to_hir())?,
             };
             Ok(Value::from_nir_and_ty(
+                cx,
                 typed.normalize(cx).as_nir(),
                 typed.ty().as_nir(),
             ))

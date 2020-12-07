@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{AlphaVar, Cache, ImportLocation, VarEnv};
+use crate::semantics::{check_hash, AlphaVar, Cache, ImportLocation, VarEnv};
 use crate::syntax::{Hash, Label, V};
-use crate::{Ctxt, ImportResultId, Typed};
+use crate::{Ctxt, ImportId, ImportResultId, Typed};
 
 /// Environment for resolving names.
 #[derive(Debug, Clone, Default)]
@@ -95,6 +95,11 @@ impl<'cx> ImportEnv<'cx> {
         Some(expr)
     }
 
+    /// Invariant: the import must have been fetched.
+    pub fn check_hash(&self, import: ImportId<'cx>) -> Result<(), Error> {
+        check_hash(self.cx(), import)
+    }
+
     pub fn write_to_mem_cache(
         &mut self,
         location: ImportLocation,
@@ -103,10 +108,13 @@ impl<'cx> ImportEnv<'cx> {
         self.mem_cache.insert(location, result);
     }
 
-    pub fn write_to_disk_cache(&self, hash: &Option<Hash>, expr: &Typed<'cx>) {
+    /// Invariant: the import must have been fetched.
+    pub fn write_to_disk_cache(&self, import: ImportId<'cx>) {
+        let import = &self.cx()[import];
         if let Some(disk_cache) = self.disk_cache.as_ref() {
-            if let Some(hash) = hash {
-                let _ = disk_cache.insert(hash, &expr);
+            if let Some(hash) = &import.import.hash {
+                let expr = import.unwrap_result();
+                let _ = disk_cache.insert(self.cx(), hash, expr);
             }
         }
     }

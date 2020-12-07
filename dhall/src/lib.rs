@@ -5,8 +5,7 @@
     clippy::needless_lifetimes,
     clippy::new_ret_no_self,
     clippy::new_without_default,
-    clippy::useless_format,
-    unreachable_code
+    clippy::useless_format
 )]
 
 pub mod builtins;
@@ -17,7 +16,6 @@ pub mod semantics;
 pub mod syntax;
 pub mod utils;
 
-use std::fmt::Display;
 use std::path::Path;
 use url::Url;
 
@@ -102,8 +100,8 @@ impl<'cx> Resolved<'cx> {
         Ok(Typed::from_tir(typecheck_with(cx, &self.0, ty)?))
     }
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> Expr {
-        self.0.to_expr_noopts()
+    pub fn to_expr(&self, cx: Ctxt<'cx>) -> Expr {
+        self.0.to_expr_noopts(cx)
     }
 }
 
@@ -120,8 +118,8 @@ impl<'cx> Typed<'cx> {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    fn to_expr(&self) -> Expr {
-        self.hir.to_expr(ToExprOptions { alpha: false })
+    fn to_expr(&self, cx: Ctxt<'cx>) -> Expr {
+        self.hir.to_expr(cx, ToExprOptions { alpha: false })
     }
 
     pub fn ty(&self) -> &Type<'cx> {
@@ -134,8 +132,8 @@ impl<'cx> Typed<'cx> {
 
 impl<'cx> Normalized<'cx> {
     /// Converts a value back to the corresponding AST expression.
-    pub fn to_expr(&self) -> Expr {
-        self.0.to_expr(ToExprOptions::default())
+    pub fn to_expr(&self, cx: Ctxt<'cx>) -> Expr {
+        self.0.to_expr(cx, ToExprOptions::default())
     }
     /// Converts a value back to the corresponding Hir expression.
     pub fn to_hir(&self) -> Hir<'cx> {
@@ -145,8 +143,8 @@ impl<'cx> Normalized<'cx> {
         &self.0
     }
     /// Converts a value back to the corresponding AST expression, alpha-normalizing in the process.
-    pub fn to_expr_alpha(&self) -> Expr {
-        self.0.to_expr(ToExprOptions { alpha: true })
+    pub fn to_expr_alpha(&self, cx: Ctxt<'cx>) -> Expr {
+        self.0.to_expr(cx, ToExprOptions { alpha: true })
     }
 }
 
@@ -178,32 +176,10 @@ impl From<Parsed> for Expr {
         other.to_expr()
     }
 }
-impl<'cx> From<Normalized<'cx>> for Expr {
-    fn from(other: Normalized<'cx>) -> Self {
-        other.to_expr()
-    }
-}
-
-impl<'cx> Display for Resolved<'cx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.to_expr().fmt(f)
-    }
-}
-
-impl<'cx> Display for Typed<'cx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.to_expr().fmt(f)
-    }
-}
 
 impl<'cx> Eq for Normalized<'cx> {}
 impl<'cx> PartialEq for Normalized<'cx> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
-    }
-}
-impl<'cx> Display for Normalized<'cx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.to_expr().fmt(f)
     }
 }
