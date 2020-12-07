@@ -94,7 +94,7 @@ fn read_cache_file<'cx>(
         }
     }
 
-    Ok(parse_binary(&data)?.skip_resolve()?.typecheck(cx)?)
+    Ok(parse_binary(&data)?.resolve(cx)?.typecheck(cx)?)
 }
 
 /// Write a file to the cache.

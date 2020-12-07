@@ -29,8 +29,10 @@ enum ImportLocationKind {
     Remote(Url),
     /// Environment variable
     Env(String),
-    /// Data without a location
+    /// Data without a location; chaining will start from current directory.
     Missing,
+    /// Token to signal that thi sfile should contain no imports.
+    NoImport,
 }
 
 /// The location of some data.
@@ -101,6 +103,7 @@ impl ImportLocationKind {
                 url = url.join(&path.file_path.join("/"))?;
                 ImportLocationKind::Remote(url)
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -120,6 +123,7 @@ impl ImportLocationKind {
             ImportLocationKind::Missing => {
                 return Err(ImportError::Missing.into())
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -134,6 +138,7 @@ impl ImportLocationKind {
             ImportLocationKind::Missing => {
                 return Err(ImportError::Missing.into())
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -149,6 +154,7 @@ impl ImportLocationKind {
                 ("Environment", Some(name.clone()))
             }
             ImportLocationKind::Missing => ("Missing", None),
+            ImportLocationKind::NoImport => unreachable!(),
         };
 
         let asloc_ty = make_aslocation_uniontype();
@@ -168,6 +174,12 @@ impl ImportLocation {
     pub fn dhall_code_of_unknown_origin() -> Self {
         ImportLocation {
             kind: ImportLocationKind::Missing,
+            mode: ImportMode::Code,
+        }
+    }
+    pub fn dhall_code_without_imports() -> Self {
+        ImportLocation {
+            kind: ImportLocationKind::NoImport,
             mode: ImportMode::Code,
         }
     }
@@ -191,6 +203,10 @@ impl ImportLocation {
     fn chain(&self, import: &Import) -> Result<ImportLocation, Error> {
         // Makes no sense to chain an import if the current file is not a dhall file.
         assert!(matches!(self.mode, ImportMode::Code));
+        if matches!(self.kind, ImportLocationKind::NoImport) {
+            Err(ImportError::UnexpectedImport(import.clone()))?;
+        }
+
         let kind = match &import.location {
             ImportTarget::Local(prefix, path) => {
                 self.kind.chain_local(*prefix, path)?
@@ -232,30 +248,37 @@ impl ImportLocation {
         env: &mut ImportEnv<'cx>,
         span: Span,
     ) -> Result<Typed<'cx>, Error> {
-        let (hir, ty) = match self.mode {
+        let cx = env.cx();
+        let typed = match self.mode {
             ImportMode::Code => {
                 let parsed = self.kind.fetch_dhall()?;
-                let typed =
-                    resolve_with_env(env, parsed)?.typecheck(env.cx())?;
-                let hir = typed.normalize(env.cx()).to_hir();
-                (hir, typed.ty)
+                let typed = resolve_with_env(env, parsed)?.typecheck(cx)?;
+                Typed {
+                    // TODO: manage to keep the Nir around. Will need fixing variables.
+                    hir: typed.normalize(cx).to_hir(),
+                    ty: typed.ty,
+                }
             }
             ImportMode::RawText => {
                 let text = self.kind.fetch_text()?;
-                let hir = Hir::new(
-                    HirKind::Expr(ExprKind::TextLit(text.into())),
-                    span,
-                );
-                (hir, Type::from_builtin(env.cx(), Builtin::Text))
+                Typed {
+                    hir: Hir::new(
+                        HirKind::Expr(ExprKind::TextLit(text.into())),
+                        span,
+                    ),
+                    ty: Type::from_builtin(cx, Builtin::Text),
+                }
             }
             ImportMode::Location => {
                 let expr = self.kind.to_location();
-                let hir = skip_resolve_expr(&expr)?;
-                let ty = hir.typecheck_noenv(env.cx())?.ty().clone();
-                (hir, ty)
+                Parsed::from_expr_without_imports(expr)
+                    .resolve(cx)
+                    .unwrap()
+                    .typecheck(cx)
+                    .unwrap()
             }
         };
-        Ok(Typed { hir, ty })
+        Ok(typed)
     }
 }
 
@@ -476,16 +499,12 @@ pub fn resolve<'cx>(
     resolve_with_env(&mut ImportEnv::new(cx), parsed)
 }
 
-pub fn skip_resolve_expr<'cx>(expr: &Expr) -> Result<Hir<'cx>, Error> {
-    traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import, _span| {
-        Err(ImportError::UnexpectedImport(import).into())
-    })
-}
-
-pub fn skip_resolve<'cx>(parsed: Parsed) -> Result<Resolved<'cx>, Error> {
-    let Parsed(expr, _) = parsed;
-    let resolved = skip_resolve_expr(&expr)?;
-    Ok(Resolved(resolved))
+pub fn skip_resolve<'cx>(
+    cx: Ctxt<'cx>,
+    parsed: Parsed,
+) -> Result<Resolved<'cx>, Error> {
+    let parsed = Parsed::from_expr_without_imports(parsed.0);
+    Ok(resolve(cx, parsed)?)
 }
 
 pub trait Canonicalize {

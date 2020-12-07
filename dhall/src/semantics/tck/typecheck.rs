@@ -62,8 +62,8 @@ fn type_one_layer<'cx>(
             },
         ),
         ExprKind::Builtin(b) => {
-            let t_hir = type_of_builtin(b);
-            typecheck(env.cx(), &t_hir)?.eval_to_type(env)?
+            let t_hir = type_of_builtin(cx, b);
+            typecheck(cx, &t_hir)?.eval_to_type(env)?
         }
         ExprKind::TextLit(interpolated) => {
             let text_type = Type::from_builtin(cx, Builtin::Text);

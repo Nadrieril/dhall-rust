@@ -226,6 +226,25 @@ mod serde {
             Ok(true)
         );
     }
+
+    #[test]
+    fn test_import() {
+        assert_de(
+            "../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall",
+            true,
+        );
+        assert_eq!(
+            serde_dhall::from_str(
+                "../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall"
+            )
+            .imports(false)
+            .static_type_annotation()
+            .parse::<bool>()
+            .map_err(|e| e.to_string()),
+            Err("UnexpectedImport(Import { mode: Code, location: Local(Parent, FilePath { file_path: [\"dhall-lang\", \"tests\", \"parser\", \"success\", \"unit\", \"BoolLitTrueA.dhall\"] }), hash: None })".to_string())
+        );
+    }
+
     // TODO: test various builder configurations
     // In particular test cloning and reusing builder
 }

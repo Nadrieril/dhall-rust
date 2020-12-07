@@ -2,15 +2,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{
-    nze, skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv,
-    VarEnv,
-};
+use crate::semantics::{nze, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv};
 use crate::syntax::Const::Type;
 use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble, NumKind, Span, UnspannedExpr, V,
 };
+use crate::{Ctxt, Parsed};
 
 /// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -178,7 +176,7 @@ macro_rules! make_type {
     };
 }
 
-pub fn type_of_builtin<'cx>(b: Builtin) -> Hir<'cx> {
+pub fn type_of_builtin<'cx>(cx: Ctxt<'cx>, b: Builtin) -> Hir<'cx> {
     use Builtin::*;
     let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -253,7 +251,10 @@ pub fn type_of_builtin<'cx>(b: Builtin) -> Hir<'cx> {
             forall (A: Type) -> Optional A
         ),
     };
-    skip_resolve_expr(&expr).unwrap()
+    Parsed::from_expr_without_imports(expr)
+        .resolve(cx)
+        .unwrap()
+        .0
 }
 
 // Ad-hoc macro to help construct closures
@@ -323,8 +324,12 @@ fn apply_builtin<'cx>(
         DoneAsIs,
     }
     let make_closure = |e| {
-        typecheck(cx, &skip_resolve_expr(&e).unwrap())
+        Parsed::from_expr_without_imports(e)
+            .resolve(cx)
             .unwrap()
+            .typecheck(cx)
+            .unwrap()
+            .as_hir()
             .eval(env.clone())
     };
 

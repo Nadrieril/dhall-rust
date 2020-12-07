@@ -58,6 +58,11 @@ pub struct ToExprOptions {
 }
 
 impl Parsed {
+    /// Construct from an `Expr`. This `Expr` will have imports disabled.
+    pub fn from_expr_without_imports(e: Expr) -> Self {
+        Parsed(e, ImportLocation::dhall_code_without_imports())
+    }
+
     pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
         parse::parse_file(f)
     }
@@ -78,8 +83,11 @@ impl Parsed {
     pub fn resolve<'cx>(self, cx: Ctxt<'cx>) -> Result<Resolved<'cx>, Error> {
         resolve::resolve(cx, self)
     }
-    pub fn skip_resolve<'cx>(self) -> Result<Resolved<'cx>, Error> {
-        resolve::skip_resolve(self)
+    pub fn skip_resolve<'cx>(
+        self,
+        cx: Ctxt<'cx>,
+    ) -> Result<Resolved<'cx>, Error> {
+        resolve::skip_resolve(cx, self)
     }
 
     /// Converts a value back to the corresponding AST expression.
@@ -122,6 +130,9 @@ impl<'cx> Typed<'cx> {
         self.hir.to_expr(cx, ToExprOptions { alpha: false })
     }
 
+    pub fn as_hir(&self) -> &Hir<'cx> {
+        &self.hir
+    }
     pub fn ty(&self) -> &Type<'cx> {
         &self.ty
     }

@@ -1,5 +1,5 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, NameEnv, Nir, NzEnv, Tir, TyEnv};
+use crate::semantics::{type_with, typecheck, NameEnv, Nir, NzEnv, Tir, TyEnv};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{Ctxt, ImportId, ToExprOptions};
 
@@ -81,7 +81,7 @@ impl<'cx> Hir<'cx> {
         &'hir self,
         cx: Ctxt<'cx>,
     ) -> Result<Tir<'cx, 'hir>, TypeError> {
-        self.typecheck(&TyEnv::new(cx))
+        typecheck(cx, self)
     }
 
     /// Eval the Hir. It will actually get evaluated only as needed on demand.

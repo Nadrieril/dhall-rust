@@ -243,7 +243,7 @@ impl<'a, A> Deserializer<'a, A> {
             let resolved = if self.allow_imports {
                 parsed.resolve(cx)?
             } else {
-                parsed.skip_resolve()?
+                parsed.skip_resolve(cx)?
             };
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,
