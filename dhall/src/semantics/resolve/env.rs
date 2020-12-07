@@ -17,7 +17,7 @@ pub type CyclesStack = Vec<ImportLocation>;
 pub struct ImportEnv<'cx> {
     cx: Ctxt<'cx>,
     disk_cache: Option<Cache>, // `None` if it failed to initialize
-    mem_cache: HashMap<ImportLocation, ImportResultId>,
+    mem_cache: HashMap<ImportLocation, ImportResultId<'cx>>,
     stack: CyclesStack,
 }
 
@@ -82,7 +82,7 @@ impl<'cx> ImportEnv<'cx> {
     pub fn get_from_mem_cache(
         &self,
         location: &ImportLocation,
-    ) -> Option<ImportResultId> {
+    ) -> Option<ImportResultId<'cx>> {
         Some(*self.mem_cache.get(location)?)
     }
 
@@ -98,7 +98,7 @@ impl<'cx> ImportEnv<'cx> {
     pub fn write_to_mem_cache(
         &mut self,
         location: ImportLocation,
-        result: ImportResultId,
+        result: ImportResultId<'cx>,
     ) {
         self.mem_cache.insert(location, result);
     }

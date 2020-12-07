@@ -398,7 +398,7 @@ fn traverse_resolve_expr<'cx>(
 /// Fetch the import and store the result in the global context.
 fn fetch_import<'cx>(
     env: &mut ImportEnv<'cx>,
-    import_id: ImportId,
+    import_id: ImportId<'cx>,
 ) -> Result<(), Error> {
     let cx = env.cx();
     let import = &cx[import_id].import;
