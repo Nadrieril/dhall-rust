@@ -2,15 +2,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{
-    nze, skip_resolve_expr, typecheck, Hir, HirKind, Nir, NirKind, NzEnv,
-    VarEnv,
-};
+use crate::semantics::{nze, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv};
 use crate::syntax::Const::Type;
 use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,
     NaiveDouble, NumKind, Span, UnspannedExpr, V,
 };
+use crate::{Ctxt, Parsed};
 
 /// Built-ins
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -89,23 +87,23 @@ impl Builtin {
 /// A partially applied builtin.
 /// Invariant: the evaluation of the given args must not be able to progress further
 #[derive(Debug, Clone)]
-pub struct BuiltinClosure {
-    env: NzEnv,
+pub struct BuiltinClosure<'cx> {
+    env: NzEnv<'cx>,
     b: Builtin,
     /// Arguments applied to the closure so far.
-    args: Vec<Nir>,
+    args: Vec<Nir<'cx>>,
 }
 
-impl BuiltinClosure {
-    pub fn new(b: Builtin, env: NzEnv) -> NirKind {
+impl<'cx> BuiltinClosure<'cx> {
+    pub fn new(b: Builtin, env: NzEnv<'cx>) -> NirKind<'cx> {
         apply_builtin(b, Vec::new(), env)
     }
-    pub fn apply(&self, a: Nir) -> NirKind {
+    pub fn apply(&self, a: Nir<'cx>) -> NirKind<'cx> {
         use std::iter::once;
         let args = self.args.iter().cloned().chain(once(a)).collect();
         apply_builtin(self.b, args, self.env.clone())
     }
-    pub fn to_hirkind(&self, venv: VarEnv) -> HirKind {
+    pub fn to_hirkind(&self, venv: VarEnv) -> HirKind<'cx> {
         HirKind::Expr(self.args.iter().fold(
             ExprKind::Builtin(self.b),
             |acc, v| {
@@ -178,7 +176,7 @@ macro_rules! make_type {
     };
 }
 
-pub fn type_of_builtin(b: Builtin) -> Hir {
+pub fn type_of_builtin<'cx>(cx: Ctxt<'cx>, b: Builtin) -> Hir<'cx> {
     use Builtin::*;
     let expr = match b {
         Bool | Natural | Integer | Double | Text => make_type!(Type),
@@ -253,7 +251,10 @@ pub fn type_of_builtin(b: Builtin) -> Hir {
             forall (A: Type) -> Optional A
         ),
     };
-    skip_resolve_expr(&expr).unwrap()
+    Parsed::from_expr_without_imports(expr)
+        .resolve(cx)
+        .unwrap()
+        .0
 }
 
 // Ad-hoc macro to help construct closures
@@ -307,19 +308,28 @@ macro_rules! make_closure {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
+fn apply_builtin<'cx>(
+    b: Builtin,
+    args: Vec<Nir<'cx>>,
+    env: NzEnv<'cx>,
+) -> NirKind<'cx> {
+    let cx = env.cx();
     use NirKind::*;
     use NumKind::{Bool, Double, Integer, Natural};
 
     // Small helper enum
-    enum Ret {
-        NirKind(NirKind),
-        Nir(Nir),
+    enum Ret<'cx> {
+        NirKind(NirKind<'cx>),
+        Nir(Nir<'cx>),
         DoneAsIs,
     }
     let make_closure = |e| {
-        typecheck(&skip_resolve_expr(&e).unwrap())
+        Parsed::from_expr_without_imports(e)
+            .resolve(cx)
             .unwrap()
+            .typecheck(cx)
+            .unwrap()
+            .as_hir()
             .eval(env.clone())
     };
 
@@ -486,7 +496,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
                     let mut kts = HashMap::new();
                     kts.insert(
                         "index".into(),
-                        Nir::from_builtin(Builtin::Natural),
+                        Nir::from_builtin(cx, Builtin::Natural),
                     );
                     kts.insert("value".into(), t.clone());
                     let t = Nir::from_kind(RecordType(kts));
@@ -516,7 +526,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             }
         }
         (Builtin::ListBuild, [t, f]) => {
-            let list_t = Nir::from_builtin(Builtin::List).app(t.clone());
+            let list_t = Nir::from_builtin(cx, Builtin::List).app(t.clone());
             Ret::Nir(
                 f.app(list_t)
                     .app(
@@ -543,7 +553,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalBuild, [f]) => Ret::Nir(
-            f.app(Nir::from_builtin(Builtin::Natural))
+            f.app(Nir::from_builtin(cx, Builtin::Natural))
                 .app(make_closure(make_closure!(
                     λ(x : Natural) ->
                     1 + var(x)
@@ -554,7 +564,7 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
         (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
             Num(Natural(0)) => Ret::Nir(zero.clone()),
             Num(Natural(n)) => {
-                let fold = Nir::from_builtin(Builtin::NaturalFold)
+                let fold = Nir::from_builtin(cx, Builtin::NaturalFold)
                     .app(Num(Natural(n - 1)).into_nir())
                     .app(t.clone())
                     .app(succ.clone())
@@ -572,12 +582,12 @@ fn apply_builtin(b: Builtin, args: Vec<Nir>, env: NzEnv) -> NirKind {
     }
 }
 
-impl std::cmp::PartialEq for BuiltinClosure {
+impl<'cx> std::cmp::PartialEq for BuiltinClosure<'cx> {
     fn eq(&self, other: &Self) -> bool {
         self.b == other.b && self.args == other.args
     }
 }
-impl std::cmp::Eq for BuiltinClosure {}
+impl<'cx> std::cmp::Eq for BuiltinClosure<'cx> {}
 
 impl std::fmt::Display for Builtin {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

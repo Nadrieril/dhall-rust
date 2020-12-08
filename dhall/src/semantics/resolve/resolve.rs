@@ -15,7 +15,10 @@ use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
     UnspannedExpr, URL,
 };
-use crate::{Parsed, Resolved, Typed};
+use crate::{
+    Ctxt, ImportAlternativeId, ImportId, ImportResultId, Parsed, Resolved,
+    Typed,
+};
 
 // TODO: evaluate import headers
 pub type Import = syntax::Import<()>;
@@ -29,8 +32,10 @@ enum ImportLocationKind {
     Remote(Url),
     /// Environment variable
     Env(String),
-    /// Data without a location
+    /// Data without a location; chaining will start from current directory.
     Missing,
+    /// Token to signal that thi sfile should contain no imports.
+    NoImport,
 }
 
 /// The location of some data.
@@ -101,6 +106,7 @@ impl ImportLocationKind {
                 url = url.join(&path.file_path.join("/"))?;
                 ImportLocationKind::Remote(url)
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -120,6 +126,7 @@ impl ImportLocationKind {
             ImportLocationKind::Missing => {
                 return Err(ImportError::Missing.into())
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -134,6 +141,7 @@ impl ImportLocationKind {
             ImportLocationKind::Missing => {
                 return Err(ImportError::Missing.into())
             }
+            ImportLocationKind::NoImport => unreachable!(),
         })
     }
 
@@ -149,6 +157,7 @@ impl ImportLocationKind {
                 ("Environment", Some(name.clone()))
             }
             ImportLocationKind::Missing => ("Missing", None),
+            ImportLocationKind::NoImport => unreachable!(),
         };
 
         let asloc_ty = make_aslocation_uniontype();
@@ -168,6 +177,12 @@ impl ImportLocation {
     pub fn dhall_code_of_unknown_origin() -> Self {
         ImportLocation {
             kind: ImportLocationKind::Missing,
+            mode: ImportMode::Code,
+        }
+    }
+    pub fn dhall_code_without_imports() -> Self {
+        ImportLocation {
+            kind: ImportLocationKind::NoImport,
             mode: ImportMode::Code,
         }
     }
@@ -191,6 +206,10 @@ impl ImportLocation {
     fn chain(&self, import: &Import) -> Result<ImportLocation, Error> {
         // Makes no sense to chain an import if the current file is not a dhall file.
         assert!(matches!(self.mode, ImportMode::Code));
+        if matches!(self.kind, ImportLocationKind::NoImport) {
+            Err(ImportError::UnexpectedImport(import.clone()))?;
+        }
+
         let kind = match &import.location {
             ImportTarget::Local(prefix, path) => {
                 self.kind.chain_local(*prefix, path)?
@@ -227,30 +246,42 @@ impl ImportLocation {
     }
 
     /// Fetches the expression corresponding to this location.
-    fn fetch(&self, env: &mut ImportEnv, span: Span) -> Result<Typed, Error> {
-        let (hir, ty) = match self.mode {
+    fn fetch<'cx>(
+        &self,
+        env: &mut ImportEnv<'cx>,
+        span: Span,
+    ) -> Result<Typed<'cx>, Error> {
+        let cx = env.cx();
+        let typed = match self.mode {
             ImportMode::Code => {
                 let parsed = self.kind.fetch_dhall()?;
-                let typed = resolve_with_env(env, parsed)?.typecheck()?;
-                let hir = typed.normalize().to_hir();
-                (hir, typed.ty)
+                let typed = parsed.resolve_with_env(env)?.typecheck(cx)?;
+                Typed {
+                    // TODO: manage to keep the Nir around. Will need fixing variables.
+                    hir: typed.normalize(cx).to_hir(),
+                    ty: typed.ty,
+                }
             }
             ImportMode::RawText => {
                 let text = self.kind.fetch_text()?;
-                let hir = Hir::new(
-                    HirKind::Expr(ExprKind::TextLit(text.into())),
-                    span,
-                );
-                (hir, Type::from_builtin(Builtin::Text))
+                Typed {
+                    hir: Hir::new(
+                        HirKind::Expr(ExprKind::TextLit(text.into())),
+                        span,
+                    ),
+                    ty: Type::from_builtin(cx, Builtin::Text),
+                }
             }
             ImportMode::Location => {
                 let expr = self.kind.to_location();
-                let hir = skip_resolve_expr(&expr)?;
-                let ty = hir.typecheck_noenv()?.ty().clone();
-                (hir, ty)
+                Parsed::from_expr_without_imports(expr)
+                    .resolve(cx)
+                    .unwrap()
+                    .typecheck(cx)
+                    .unwrap()
             }
         };
-        Ok(Typed { hir, ty })
+        Ok(typed)
     }
 }
 
@@ -282,15 +313,21 @@ fn make_aslocation_uniontype() -> Expr {
     mkexpr(ExprKind::UnionType(union))
 }
 
-fn check_hash(import: &Import, typed: &Typed, span: Span) -> Result<(), Error> {
+pub fn check_hash<'cx>(
+    cx: Ctxt<'cx>,
+    import: ImportId<'cx>,
+    result: ImportResultId<'cx>,
+) -> Result<(), Error> {
+    let import = &cx[import];
     if let (ImportMode::Code, Some(Hash::SHA256(hash))) =
-        (import.mode, &import.hash)
+        (import.import.mode, &import.import.hash)
     {
-        let actual_hash = typed.hir.to_expr_alpha().sha256_hash()?;
+        let expr = cx[result].hir.to_expr_alpha(cx);
+        let actual_hash = expr.sha256_hash()?;
         if hash[..] != actual_hash[..] {
             mkerr(
                 ErrorBuilder::new("hash mismatch")
-                    .span_err(span, "hash mismatch")
+                    .span_err(import.span.clone(), "hash mismatch")
                     .note(format!("Expected sha256:{}", hex::encode(hash)))
                     .note(format!(
                         "Found    sha256:{}",
@@ -332,127 +369,204 @@ fn desugar(expr: &Expr) -> Cow<'_, Expr> {
     }
 }
 
-/// Traverse the expression, handling import alternatives and passing
-/// found imports to the provided function. Also resolving names.
-fn traverse_resolve_expr(
+/// Fetch the import and store the result in the global context.
+fn fetch_import<'cx>(
+    env: &mut ImportEnv<'cx>,
+    import_id: ImportId<'cx>,
+) -> Result<ImportResultId<'cx>, Error> {
+    let cx = env.cx();
+    let import = &cx[import_id].import;
+    let span = cx[import_id].span.clone();
+    let location = cx[import_id].base_location.chain(import)?;
+
+    // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
+    // the cached contents.
+    if let Some(res_id) = env.get_from_mem_cache(&location) {
+        // The same location may be used with different or no hashes. Thus we need to check
+        // the hashes every time.
+        env.check_hash(import_id, res_id)?;
+        env.write_to_disk_cache(&import.hash, res_id);
+        return Ok(res_id);
+    }
+    if let Some(typed) = env.get_from_disk_cache(&import.hash) {
+        // No need to check the hash, it was checked before reading the file.
+        // We also don't write to the in-memory cache, because the location might be completely
+        // unrelated to the cached file (e.g. `missing sha256:...` is valid).
+        // This actually means that importing many times a same hashed import will take
+        // longer than importing many times a same non-hashed import.
+        let res_id = cx.push_import_result(typed);
+        return Ok(res_id);
+    }
+
+    // Resolve this import, making sure that recursive imports don't cycle back to the
+    // current one.
+    let res = env.with_cycle_detection(location.clone(), |env| {
+        location.fetch(env, span.clone())
+    });
+    let typed = match res {
+        Ok(typed) => typed,
+        Err(e) => mkerr(
+            ErrorBuilder::new("error")
+                .span_err(span.clone(), e.to_string())
+                .format(),
+        )?,
+    };
+
+    // Add the resolved import to the caches
+    let res_id = cx.push_import_result(typed);
+    env.check_hash(import_id, res_id)?;
+    env.write_to_disk_cache(&import.hash, res_id);
+    // Cache the mapping from this location to the result.
+    env.write_to_mem_cache(location, res_id);
+
+    Ok(res_id)
+}
+
+/// Part of a tree of imports.
+#[derive(Debug, Clone, Copy)]
+pub enum ImportNode<'cx> {
+    Import(ImportId<'cx>),
+    Alternative(ImportAlternativeId<'cx>),
+}
+
+/// Traverse the expression and replace each import and import alternative by an id into the global
+/// context. The ids are also accumulated into `nodes` so that we can resolve them afterwards.
+fn traverse_accumulate<'cx>(
+    env: &mut ImportEnv<'cx>,
     name_env: &mut NameEnv,
+    nodes: &mut Vec<ImportNode<'cx>>,
+    base_location: &ImportLocation,
     expr: &Expr,
-    f: &mut impl FnMut(Import, Span) -> Result<Typed, Error>,
-) -> Result<Hir, Error> {
+) -> Hir<'cx> {
+    let cx = env.cx();
     let expr = desugar(expr);
-    Ok(match expr.kind() {
+    let kind = match expr.kind() {
         ExprKind::Var(var) => match name_env.unlabel_var(&var) {
-            Some(v) => Hir::new(HirKind::Var(v), expr.span()),
-            None => mkerr(
-                ErrorBuilder::new(format!("unbound variable `{}`", var))
-                    .span_err(expr.span(), "not found in this scope")
-                    .format(),
-            )?,
+            Some(v) => HirKind::Var(v),
+            None => HirKind::MissingVar(var.clone()),
         },
         ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
-            match traverse_resolve_expr(name_env, l, f) {
-                Ok(l) => l,
-                Err(_) => {
-                    match traverse_resolve_expr(name_env, r, f) {
-                        Ok(r) => r,
-                        // TODO: keep track of the other error too
-                        Err(e) => return Err(e),
-                    }
-                }
-            }
+            let mut imports_l = Vec::new();
+            let l = traverse_accumulate(
+                env,
+                name_env,
+                &mut imports_l,
+                base_location,
+                l,
+            );
+            let mut imports_r = Vec::new();
+            let r = traverse_accumulate(
+                env,
+                name_env,
+                &mut imports_r,
+                base_location,
+                r,
+            );
+            let alt =
+                cx.push_import_alternative(imports_l.into(), imports_r.into());
+            nodes.push(ImportNode::Alternative(alt));
+            HirKind::ImportAlternative(alt, l, r)
         }
         kind => {
-            let kind = kind.traverse_ref_maybe_binder(|l, e| {
+            let kind = kind.map_ref_maybe_binder(|l, e| {
                 if let Some(l) = l {
                     name_env.insert_mut(l);
                 }
-                let hir = traverse_resolve_expr(name_env, e, f)?;
+                let hir =
+                    traverse_accumulate(env, name_env, nodes, base_location, e);
                 if l.is_some() {
                     name_env.remove_mut();
                 }
-                Ok::<_, Error>(hir)
-            })?;
-            let kind = match kind {
+                hir
+            });
+            match kind {
                 ExprKind::Import(import) => {
                     // TODO: evaluate import headers
-                    let import = import.traverse_ref(|_| Ok::<_, Error>(()))?;
-                    let imported = f(import, expr.span())?;
-                    HirKind::Import(imported.hir, imported.ty)
+                    let import = import.map_ref(|_| ());
+                    let import_id = cx.push_import(
+                        base_location.clone(),
+                        import,
+                        expr.span(),
+                    );
+                    nodes.push(ImportNode::Import(import_id));
+                    HirKind::Import(import_id)
                 }
                 kind => HirKind::Expr(kind),
-            };
-            Hir::new(kind, expr.span())
+            }
         }
-    })
+    };
+    Hir::new(kind, expr.span())
 }
 
-fn resolve_with_env(
-    env: &mut ImportEnv,
+/// Take a list of nodes and recursively resolve them.
+fn resolve_nodes<'cx>(
+    env: &mut ImportEnv<'cx>,
+    nodes: &[ImportNode<'cx>],
+) -> Result<(), Error> {
+    for &node in nodes {
+        match node {
+            ImportNode::Import(import) => {
+                let res_id = fetch_import(env, import)?;
+                env.cx()[import].set_resultid(res_id);
+            }
+            ImportNode::Alternative(alt) => {
+                let alt = &env.cx()[alt];
+                if resolve_nodes(env, &alt.left_imports).is_ok() {
+                    alt.set_selected(true);
+                } else {
+                    resolve_nodes(env, &alt.right_imports)?;
+                    alt.set_selected(false);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn resolve_with_env<'cx>(
+    env: &mut ImportEnv<'cx>,
     parsed: Parsed,
-) -> Result<Resolved, Error> {
+) -> Result<Resolved<'cx>, Error> {
     let Parsed(expr, base_location) = parsed;
-    let resolved = traverse_resolve_expr(
+    let mut nodes = Vec::new();
+    // First we collect all imports.
+    let resolved = traverse_accumulate(
+        env,
         &mut NameEnv::new(),
+        &mut nodes,
+        &base_location,
         &expr,
-        &mut |import, span| {
-            let location = base_location.chain(&import)?;
-
-            // If the import is in the in-memory cache, or the hash is in the on-disk cache, return
-            // the cached contents.
-            if let Some(typed) = env.get_from_mem_cache(&location) {
-                // The same location may be used with different or no hashes. Thus we need to check
-                // the hashes every time.
-                check_hash(&import, &typed, span)?;
-                env.write_to_disk_cache(&import.hash, &typed);
-                return Ok(typed);
-            }
-            if let Some(typed) = env.get_from_disk_cache(&import.hash) {
-                // No need to check the hash, it was checked before reading the file. We also don't
-                // write to the in-memory cache, because the location might be completely unrelated
-                // to the cached file (e.g. `missing sha256:...` is valid).
-                // This actually means that importing many times a same hashed import will take
-                // longer than importing many times a same non-hashed import.
-                return Ok(typed);
-            }
-
-            // Resolve this import, making sure that recursive imports don't cycle back to the
-            // current one.
-            let res = env.with_cycle_detection(location.clone(), |env| {
-                location.fetch(env, span.clone())
-            });
-            let typed = match res {
-                Ok(typed) => typed,
-                Err(e) => mkerr(
-                    ErrorBuilder::new("error")
-                        .span_err(span.clone(), e.to_string())
-                        .format(),
-                )?,
-            };
-
-            // Add the resolved import to the caches
-            check_hash(&import, &typed, span)?;
-            env.write_to_disk_cache(&import.hash, &typed);
-            env.write_to_mem_cache(location, typed.clone());
-            Ok(typed)
-        },
-    )?;
+    );
+    // Then we resolve them and choose sides for the alternatives.
+    resolve_nodes(env, &nodes)?;
     Ok(Resolved(resolved))
 }
 
-pub fn resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    resolve_with_env(&mut ImportEnv::new(), parsed)
+/// Resolves all imports and names. Returns errors if importing failed. Name errors are deferred to
+/// typechecking.
+pub fn resolve<'cx>(
+    cx: Ctxt<'cx>,
+    parsed: Parsed,
+) -> Result<Resolved<'cx>, Error> {
+    parsed.resolve_with_env(&mut ImportEnv::new(cx))
 }
 
-pub fn skip_resolve_expr(expr: &Expr) -> Result<Hir, Error> {
-    traverse_resolve_expr(&mut NameEnv::new(), expr, &mut |import, _span| {
-        Err(ImportError::UnexpectedImport(import).into())
-    })
+/// Resolves names, and errors if we find any imports.
+pub fn skip_resolve<'cx>(
+    cx: Ctxt<'cx>,
+    parsed: Parsed,
+) -> Result<Resolved<'cx>, Error> {
+    let parsed = Parsed::from_expr_without_imports(parsed.0);
+    Ok(resolve(cx, parsed)?)
 }
 
-pub fn skip_resolve(parsed: Parsed) -> Result<Resolved, Error> {
-    let Parsed(expr, _) = parsed;
-    let resolved = skip_resolve_expr(&expr)?;
-    Ok(Resolved(resolved))
+impl Parsed {
+    fn resolve_with_env<'cx>(
+        self,
+        env: &mut ImportEnv<'cx>,
+    ) -> Result<Resolved<'cx>, Error> {
+        resolve_with_env(env, self)
+    }
 }
 
 pub trait Canonicalize {

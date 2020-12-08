@@ -5,6 +5,7 @@ use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
 use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
 use crate::syntax::{Const, ExprKind, InterpolatedTextContents, NumKind, Span};
+use crate::Ctxt;
 
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {
@@ -28,11 +29,12 @@ pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
 
 /// When all sub-expressions have been typed, check the remaining toplevel
 /// layer.
-fn type_one_layer(
-    env: &TyEnv,
-    ekind: ExprKind<Tir<'_>>,
+fn type_one_layer<'cx>(
+    env: &TyEnv<'cx>,
+    ekind: ExprKind<Tir<'cx, '_>>,
     span: Span,
-) -> Result<Type, TypeError> {
+) -> Result<Type<'cx>, TypeError> {
+    let cx = env.cx();
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
     Ok(match ekind {
@@ -50,18 +52,21 @@ fn type_one_layer(
 
         ExprKind::Const(Const::Type) => Type::from_const(Const::Kind),
         ExprKind::Const(Const::Kind) => Type::from_const(Const::Sort),
-        ExprKind::Num(num) => Type::from_builtin(match num {
-            NumKind::Bool(_) => Builtin::Bool,
-            NumKind::Natural(_) => Builtin::Natural,
-            NumKind::Integer(_) => Builtin::Integer,
-            NumKind::Double(_) => Builtin::Double,
-        }),
+        ExprKind::Num(num) => Type::from_builtin(
+            cx,
+            match num {
+                NumKind::Bool(_) => Builtin::Bool,
+                NumKind::Natural(_) => Builtin::Natural,
+                NumKind::Integer(_) => Builtin::Integer,
+                NumKind::Double(_) => Builtin::Double,
+            },
+        ),
         ExprKind::Builtin(b) => {
-            let t_hir = type_of_builtin(b);
-            typecheck(&t_hir)?.eval_to_type(env)?
+            let t_hir = type_of_builtin(cx, b);
+            typecheck(cx, &t_hir)?.eval_to_type(env)?
         }
         ExprKind::TextLit(interpolated) => {
-            let text_type = Type::from_builtin(Builtin::Text);
+            let text_type = Type::from_builtin(cx, Builtin::Text);
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
                 if let Expr(x) = contents {
@@ -78,7 +83,7 @@ fn type_one_layer(
             }
 
             let t = x.ty().to_nir();
-            Nir::from_builtin(Builtin::Optional)
+            Nir::from_builtin(cx, Builtin::Optional)
                 .app(t)
                 .to_type(Const::Type)
         }
@@ -103,7 +108,9 @@ fn type_one_layer(
             }
 
             let t = x.ty().to_nir();
-            Nir::from_builtin(Builtin::List).app(t).to_type(Const::Type)
+            Nir::from_builtin(cx, Builtin::List)
+                .app(t)
+                .to_type(Const::Type)
         }
         ExprKind::RecordLit(kvs) => {
             // An empty record type has type Type
@@ -170,14 +177,30 @@ fn type_one_layer(
 /// to compare with.
 // We pass the annotation to avoid duplicating the annot checking logic. I hope one day we can use
 // it to handle the annotations in merge/toMap/etc. uniformly.
-pub fn type_with<'hir>(
-    env: &TyEnv,
-    hir: &'hir Hir,
-    annot: Option<Type>,
-) -> Result<Tir<'hir>, TypeError> {
+pub fn type_with<'cx, 'hir>(
+    env: &TyEnv<'cx>,
+    hir: &'hir Hir<'cx>,
+    annot: Option<Type<'cx>>,
+) -> Result<Tir<'cx, 'hir>, TypeError> {
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
-        HirKind::Import(_, ty) => Tir::from_hir(hir, ty.clone()),
+        HirKind::MissingVar(var) => mkerr(
+            ErrorBuilder::new(format!("unbound variable `{}`", var))
+                .span_err(hir.span(), "not found in this scope")
+                .format(),
+        )?,
+        HirKind::Import(import) => {
+            let typed = env.cx()[import].unwrap_result();
+            Tir::from_hir(hir, typed.ty.clone())
+        }
+        HirKind::ImportAlternative(alt, left, right) => {
+            let hir = if env.cx()[alt].unwrap_selected() {
+                left
+            } else {
+                right
+            };
+            return type_with(env, hir, annot);
+        }
         HirKind::Expr(ExprKind::Var(_)) => {
             unreachable!("Hir should contain no unresolved variables")
         }
@@ -267,15 +290,19 @@ pub fn type_with<'hir>(
 
 /// Typecheck an expression and return the expression annotated with its type if type-checking
 /// succeeded, or an error if type-checking failed.
-pub fn typecheck<'hir>(hir: &'hir Hir) -> Result<Tir<'hir>, TypeError> {
-    type_with(&TyEnv::new(), hir, None)
+pub fn typecheck<'cx, 'hir>(
+    cx: Ctxt<'cx>,
+    hir: &'hir Hir<'cx>,
+) -> Result<Tir<'cx, 'hir>, TypeError> {
+    type_with(&TyEnv::new(cx), hir, None)
 }
 
 /// Like `typecheck`, but additionally checks that the expression's type matches the provided type.
-pub fn typecheck_with<'hir>(
-    hir: &'hir Hir,
-    ty: &Hir,
-) -> Result<Tir<'hir>, TypeError> {
-    let ty = typecheck(ty)?.eval_to_type(&TyEnv::new())?;
-    type_with(&TyEnv::new(), hir, Some(ty))
+pub fn typecheck_with<'cx, 'hir>(
+    cx: Ctxt<'cx>,
+    hir: &'hir Hir<'cx>,
+    ty: &Hir<'cx>,
+) -> Result<Tir<'cx, 'hir>, TypeError> {
+    let ty = typecheck(cx, ty)?.eval_to_type(&TyEnv::new(cx))?;
+    type_with(&TyEnv::new(cx), hir, Some(ty))
 }

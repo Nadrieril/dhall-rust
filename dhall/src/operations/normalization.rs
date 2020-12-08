@@ -8,7 +8,7 @@ use crate::semantics::{
 };
 use crate::syntax::{ExprKind, Label, NumKind};
 
-fn normalize_binop(o: BinOp, x: Nir, y: Nir) -> Ret {
+fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
     use BinOp::*;
     use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
     use NumKind::{Bool, Natural};
@@ -119,7 +119,7 @@ fn normalize_binop(o: BinOp, x: Nir, y: Nir) -> Ret {
     }
 }
 
-fn normalize_field(v: &Nir, field: &Label) -> Ret {
+fn normalize_field<'cx>(v: &Nir<'cx>, field: &Label) -> Ret<'cx> {
     use self::BinOp::{RecursiveRecordMerge, RightBiasedRecordMerge};
     use NirKind::{Op, RecordLit, UnionConstructor, UnionType};
     use OpKind::{BinOp, Field, Projection};
@@ -187,7 +187,7 @@ fn normalize_field(v: &Nir, field: &Label) -> Ret {
     }
 }
 
-pub fn normalize_operation(opkind: OpKind<Nir>) -> Ret {
+pub fn normalize_operation<'cx>(opkind: OpKind<Nir<'cx>>) -> Ret<'cx> {
     use self::BinOp::RightBiasedRecordMerge;
     use NirKind::{
         EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num, Op,

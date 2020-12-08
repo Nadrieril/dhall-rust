@@ -5,7 +5,7 @@ use crate::semantics::NzEnv;
 use crate::semantics::{Binder, Closure, Hir, HirKind, Nir, NirKind, TextLit};
 use crate::syntax::{ExprKind, InterpolatedTextContents};
 
-pub fn apply_any(f: &Nir, a: Nir) -> NirKind {
+pub fn apply_any<'cx>(f: &Nir<'cx>, a: Nir<'cx>) -> NirKind<'cx> {
     match f.kind() {
         NirKind::LamClosure { closure, .. } => closure.apply(a).kind().clone(),
         NirKind::AppliedBuiltin(closure) => closure.apply(a),
@@ -16,16 +16,16 @@ pub fn apply_any(f: &Nir, a: Nir) -> NirKind {
     }
 }
 
-pub fn squash_textlit(
-    elts: impl Iterator<Item = InterpolatedTextContents<Nir>>,
-) -> Vec<InterpolatedTextContents<Nir>> {
+pub fn squash_textlit<'cx>(
+    elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
+) -> Vec<InterpolatedTextContents<Nir<'cx>>> {
     use std::mem::replace;
     use InterpolatedTextContents::{Expr, Text};
 
-    fn inner(
-        elts: impl Iterator<Item = InterpolatedTextContents<Nir>>,
+    fn inner<'cx>(
+        elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
         crnt_str: &mut String,
-        ret: &mut Vec<InterpolatedTextContents<Nir>>,
+        ret: &mut Vec<InterpolatedTextContents<Nir<'cx>>>,
     ) {
         for contents in elts {
             match contents {
@@ -81,22 +81,22 @@ where
     kvs
 }
 
-pub type Ret = NirKind;
+pub type Ret<'cx> = NirKind<'cx>;
 
-pub fn ret_nir(x: Nir) -> Ret {
+pub fn ret_nir<'cx>(x: Nir<'cx>) -> Ret<'cx> {
     x.into_kind()
 }
-pub fn ret_kind(x: NirKind) -> Ret {
+pub fn ret_kind<'cx>(x: NirKind<'cx>) -> Ret<'cx> {
     x
 }
-pub fn ret_ref(x: &Nir) -> Ret {
+pub fn ret_ref<'cx>(x: &Nir<'cx>) -> Ret<'cx> {
     x.kind().clone()
 }
-pub fn ret_op(x: OpKind<Nir>) -> Ret {
+pub fn ret_op<'cx>(x: OpKind<Nir<'cx>>) -> Ret<'cx> {
     NirKind::Op(x)
 }
 
-pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
+pub fn normalize_one_layer<'cx>(expr: ExprKind<Nir<'cx>>) -> NirKind<'cx> {
     use NirKind::{
         Assert, Const, NEListLit, NEOptionalLit, Num, RecordLit, RecordType,
         UnionType,
@@ -106,15 +106,13 @@ pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
         ExprKind::Var(..)
         | ExprKind::Lam(..)
         | ExprKind::Pi(..)
-        | ExprKind::Let(..) => {
+        | ExprKind::Let(..)
+        | ExprKind::Builtin(..) => {
             unreachable!("This case should have been handled in normalize_hir")
         }
 
         ExprKind::Const(c) => ret_kind(Const(c)),
         ExprKind::Num(l) => ret_kind(Num(l)),
-        ExprKind::Builtin(b) => {
-            ret_kind(NirKind::from_builtin_env(b, env.clone()))
-        }
         ExprKind::TextLit(elts) => {
             let tlit = TextLit::new(elts.into_iter());
             // Simplify bare interpolation
@@ -154,10 +152,22 @@ pub fn normalize_one_layer(expr: ExprKind<Nir>, env: &NzEnv) -> NirKind {
 }
 
 /// Normalize Hir into WHNF
-pub fn normalize_hir(env: &NzEnv, hir: &Hir) -> NirKind {
+pub fn normalize_hir<'cx>(env: &NzEnv<'cx>, hir: &Hir<'cx>) -> NirKind<'cx> {
     match hir.kind() {
+        HirKind::MissingVar(..) => unreachable!("ruled out by typechecking"),
         HirKind::Var(var) => env.lookup_val(*var),
-        HirKind::Import(hir, _) => normalize_hir(env, hir),
+        HirKind::Import(import) => {
+            let typed = env.cx()[import].unwrap_result();
+            normalize_hir(env, &typed.hir)
+        }
+        HirKind::ImportAlternative(alt, left, right) => {
+            let hir = if env.cx()[alt].unwrap_selected() {
+                left
+            } else {
+                right
+            };
+            normalize_hir(env, hir)
+        }
         HirKind::Expr(ExprKind::Lam(binder, annot, body)) => {
             let annot = annot.eval(env);
             NirKind::LamClosure {
@@ -178,9 +188,12 @@ pub fn normalize_hir(env: &NzEnv, hir: &Hir) -> NirKind {
             let val = val.eval(env);
             body.eval(env.insert_value(val, ())).kind().clone()
         }
+        HirKind::Expr(ExprKind::Builtin(b)) => {
+            NirKind::from_builtin_env(*b, env.clone())
+        }
         HirKind::Expr(e) => {
             let e = e.map_ref(|hir| hir.eval(env));
-            normalize_one_layer(e, env)
+            normalize_one_layer(e)
         }
     }
 }

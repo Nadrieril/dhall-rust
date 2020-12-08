@@ -1,5 +1,6 @@
 use crate::semantics::{AlphaVar, NameEnv, Nir, NzEnv, NzVar, Type, ValEnv};
 use crate::syntax::Label;
+use crate::Ctxt;
 
 /// Environment for indexing variables.
 #[derive(Debug, Clone, Copy, Default)]
@@ -9,9 +10,10 @@ pub struct VarEnv {
 
 /// Environment for typing expressions.
 #[derive(Debug, Clone)]
-pub struct TyEnv {
+pub struct TyEnv<'cx> {
+    cx: Ctxt<'cx>,
     names: NameEnv,
-    items: ValEnv<Type>,
+    items: ValEnv<'cx, Type<'cx>>,
 }
 
 impl VarEnv {
@@ -38,42 +40,48 @@ impl VarEnv {
     }
 }
 
-impl TyEnv {
-    pub fn new() -> Self {
+impl<'cx> TyEnv<'cx> {
+    pub fn new(cx: Ctxt<'cx>) -> Self {
         TyEnv {
+            cx,
             names: NameEnv::new(),
-            items: ValEnv::new(),
+            items: ValEnv::new(cx),
         }
+    }
+    pub fn cx(&self) -> Ctxt<'cx> {
+        self.cx
     }
     pub fn as_varenv(&self) -> VarEnv {
         self.names.as_varenv()
     }
-    pub fn to_nzenv(&self) -> NzEnv {
+    pub fn to_nzenv(&self) -> NzEnv<'cx> {
         self.items.discard_types()
     }
     pub fn as_nameenv(&self) -> &NameEnv {
         &self.names
     }
 
-    pub fn insert_type(&self, x: &Label, ty: Type) -> Self {
+    pub fn insert_type(&self, x: &Label, ty: Type<'cx>) -> Self {
         TyEnv {
+            cx: self.cx,
             names: self.names.insert(x),
             items: self.items.insert_type(ty),
         }
     }
-    pub fn insert_value(&self, x: &Label, e: Nir, ty: Type) -> Self {
+    pub fn insert_value(&self, x: &Label, e: Nir<'cx>, ty: Type<'cx>) -> Self {
         TyEnv {
+            cx: self.cx,
             names: self.names.insert(x),
             items: self.items.insert_value(e, ty),
         }
     }
-    pub fn lookup(&self, var: AlphaVar) -> Type {
+    pub fn lookup(&self, var: AlphaVar) -> Type<'cx> {
         self.items.lookup_ty(var)
     }
 }
 
-impl<'a> From<&'a TyEnv> for NzEnv {
-    fn from(x: &'a TyEnv) -> Self {
+impl<'a, 'cx> From<&'a TyEnv<'cx>> for NzEnv<'cx> {
+    fn from(x: &'a TyEnv<'cx>) -> Self {
         x.to_nzenv()
     }
 }
