@@ -93,9 +93,9 @@ pub struct Value {
 /// # }
 /// ```
 ///
-/// [`from_str()`]: fn.from_str.html
-/// [`from_file()`]: fn.from_file.html
-/// [`from_simple_value()`]: fn.from_simple_value.html
+/// [`from_str()`]: crate::from_str()
+/// [`from_file()`]: crate::from_file()
+/// [`from_simple_value()`]: crate::from_simple_value()
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleValue {
     /// Numbers and booleans - `True`, `1`, `+2`, `3.24`
@@ -124,8 +124,8 @@ pub enum SimpleValue {
 /// [`Deserializer::static_type_annotation`]. If you need to supply a `SimpleType` manually, you
 /// can either deserialize it like any other Dhall value, or construct it manually.
 ///
-/// [`StaticType`]: trait.StaticType.html
-/// [`Deserializer::static_type_annotation`]: options/struct.Deserializer.html#method.static_type_annotation
+/// [`Deserializer::static_type_annotation`]: crate::Deserializer::static_type_annotation()
+/// [`StaticType`]: crate::StaticType
 ///
 /// # Type correspondence
 ///

@@ -12,7 +12,7 @@ use crate::SimpleType;
 ///
 /// See also [the table of type correspondances].
 ///
-/// [the table of type correspondances]: enum.SimpleType.html#type-correspondence
+/// [the table of type correspondances]: SimpleType#type-correspondence
 ///
 /// # Example
 ///

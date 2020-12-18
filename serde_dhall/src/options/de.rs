@@ -19,15 +19,12 @@ enum Source<'a> {
 /// This builder exposes the ability to configure how a value is deserialized and what operations
 /// are permitted during evaluation.
 ///
-/// Generally speaking, when using [`Deserializer`], you'll create it with [`from_str`] or [`from_file`], then
-/// chain calls to methods to set each option, then call [`parse`]. This will give you a
-/// [`Result<T>`] where `T` is a deserializable type of your choice.
+/// Generally speaking, when using [`Deserializer`], you'll create it with [`from_str()`] or
+/// [`from_file()`], then chain calls to methods to set each option, then call [`parse()`]. This
+/// will give you a [`Result<T>`] where `T` is a deserializable type of your choice.
 ///
-/// [`Deserializer`]: struct.Deserializer.html
-/// [`from_str`]: fn.from_str.html
-/// [`from_file`]: fn.from_file.html
-/// [`parse`]: struct.Deserializer.html#method.parse
-/// [`Result<T>`]: type.Result.html
+/// [`parse()`]: Deserializer::parse()
+/// [`Result<T>`]: Result
 ///
 /// # Examples
 ///
@@ -91,7 +88,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// Ensures that the parsed value matches the provided type.
     ///
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
-    /// See the [`StaticType`] trait and the [`static_type_annotation`] method for that.
+    /// See the [`StaticType`] trait and the [`static_type_annotation()`] method for that.
     ///
     /// # Example
     ///
@@ -124,8 +121,8 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// # }
     /// ```
     ///
-    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
-    /// [`StaticType`]: trait.StaticType.html
+    /// [`StaticType`]: crate::StaticType
+    /// [`static_type_annotation()`]: Deserializer::static_type_annotation()
     pub fn type_annotation<'ty>(
         self,
         ty: &'ty SimpleType,
@@ -139,8 +136,8 @@ impl<'a> Deserializer<'a, NoAnnot> {
 
     /// Ensures that the parsed value matches the type of `T`.
     ///
-    /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use [`type_annotation`]
-    /// to provide a type manually.
+    /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use
+    /// [`type_annotation()`] to provide a type manually.
     ///
     /// # Example
     ///
@@ -177,8 +174,8 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// # }
     /// ```
     ///
-    /// [`type_annotation`]: struct.Deserializer.html#method.type_annotation
-    /// [`StaticType`]: trait.StaticType.html
+    /// [`StaticType`]: crate::StaticType
+    /// [`type_annotation()`]: Deserializer::type_annotation()
     pub fn static_type_annotation(self) -> Deserializer<'a, StaticAnnot> {
         Deserializer {
             annot: StaticAnnot,
@@ -210,9 +207,6 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// [`static_type_annotation`]: struct.Deserializer.html#method.static_type_annotation
-    /// [`StaticType`]: trait.StaticType.html
     pub fn imports(self, imports: bool) -> Self {
         Deserializer {
             allow_imports: imports,
@@ -271,7 +265,8 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Ok(())
     /// # }
     /// ```
-    /// [`StaticType`]: trait.StaticType.html
+    ///
+    /// [`StaticType`]: crate::StaticType
     pub fn parse<T>(&self) -> Result<T>
     where
         A: TypeAnnot,
@@ -287,7 +282,7 @@ impl<'a, A> Deserializer<'a, A> {
 
 /// Deserialize a value from a string of Dhall text.
 ///
-/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
+/// This returns a [`Deserializer`] object. Call the [`parse()`] method to get the deserialized
 /// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
 /// Imports will be resolved relative to the current directory.
@@ -317,15 +312,14 @@ impl<'a, A> Deserializer<'a, A> {
 /// # }
 /// ```
 ///
-/// [`Deserializer`]: struct.Deserializer.html
-/// [`parse`]: struct.Deserializer.html#method.parse
+/// [`parse()`]: Deserializer::parse()
 pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_str(s)
 }
 
 /// Deserialize a value from a Dhall file.
 ///
-/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
+/// This returns a [`Deserializer`] object. Call the [`parse()`] method to get the deserialized
 /// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
 /// Imports will be resolved relative to the provided file's path.
@@ -349,8 +343,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 /// # }
 /// ```
 ///
-/// [`Deserializer`]: struct.Deserializer.html
-/// [`parse`]: struct.Deserializer.html#method.parse
+/// [`parse()`]: Deserializer::parse()
 pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
     Deserializer::from_file(path)
 }
@@ -359,7 +352,7 @@ pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
 /// the Dhall standard specification and is mostly used for caching expressions. Using the format
 /// is not recommended because errors won't have a file to refer to and thus will be hard to fix.
 ///
-/// This returns a [`Deserializer`] object. Call the [`parse`] method to get the deserialized
+/// This returns a [`Deserializer`] object. Call the [`parse()`] method to get the deserialized
 /// value, or use other [`Deserializer`] methods to control the deserialization process.
 ///
 /// Imports will be resolved relative to the provided file's path.
@@ -383,8 +376,7 @@ pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
 /// # }
 /// ```
 ///
-/// [`Deserializer`]: struct.Deserializer.html
-/// [`parse`]: struct.Deserializer.html#method.parse
+/// [`parse()`]: Deserializer::parse()
 pub fn from_binary_file<'a, P: AsRef<Path>>(
     path: P,
 ) -> Deserializer<'a, NoAnnot> {

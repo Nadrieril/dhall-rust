@@ -6,17 +6,14 @@ use crate::{Result, SimpleType, ToDhall};
 /// This builder exposes the ability to configure how a value is serialized, and to set type
 /// annotations.
 ///
-/// When using [`Serializer`], you'll create it with [`serialize`], then chain calls to methods to
-/// set each option, then call [`to_string`]. This will give you a [`Result<String>`] containing
-/// the input serialized to Dhall.
+/// When using [`Serializer`], you'll create it with [`serialize()`], then chain calls to methods
+/// to set each option, then call [`to_string()`]. This will give you a [`Result`] containing the
+/// input serialized to Dhall.
 ///
 /// Note that if you do not provide a type annotation, some values may not be convertible to Dhall,
 /// like empty lists or enums.
 ///
-/// [`Serializer`]: struct.Serializer.html
-/// [`serialize`]: fn.serialize.html
-/// [`to_string`]: struct.Serializer.html#method.to_string
-/// [`Result<String>`]: type.Result.html
+/// [`to_string()`]: Serializer::to_string()
 ///
 /// # Examples
 ///
@@ -56,7 +53,7 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// unions.
     ///
     /// In many cases the Dhall type that corresponds to a Rust type can be inferred automatically.
-    /// See the [`StaticType`] trait and the [`static_type_annotation`] method for that.
+    /// See the [`StaticType`] trait and the [`static_type_annotation()`] method for that.
     ///
     /// # Example
     ///
@@ -83,8 +80,8 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// # }
     /// ```
     ///
-    /// [`static_type_annotation`]: struct.Serializer.html#method.static_type_annotation
-    /// [`StaticType`]: trait.StaticType.html
+    /// [`StaticType`]: crate::StaticType
+    /// [`static_type_annotation()`]: Serializer::static_type_annotation()
     pub fn type_annotation<'ty>(
         self,
         ty: &'ty SimpleType,
@@ -98,7 +95,7 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// Uses the type of `T` in the serialization process. This will be used when Dhall needs it,
     /// like for empty lists or for unions.
     ///
-    /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use [`type_annotation`]
+    /// `T` must implement the [`StaticType`] trait. If it doesn't, you can use [`type_annotation()`]
     ///
     /// # Example
     ///
@@ -124,8 +121,8 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// # }
     /// ```
     ///
-    /// [`type_annotation`]: struct.Serializer.html#method.type_annotation
-    /// [`StaticType`]: trait.StaticType.html
+    /// [`StaticType`]: crate::StaticType
+    /// [`type_annotation()`]: Serializer::type_annotation()
     pub fn static_type_annotation(self) -> Serializer<'a, T, StaticAnnot> {
         Serializer {
             annot: StaticAnnot,
@@ -158,7 +155,7 @@ where
     /// # }
     /// ```
     ///
-    /// [`StaticType`]: trait.StaticType.html
+    /// [`StaticType`]: crate::StaticType
     pub fn to_string(&self) -> Result<String>
     where
         T: ToDhall + HasAnnot<A>,
@@ -170,11 +167,11 @@ where
 
 /// Serialize a value to a string of Dhall text.
 ///
-/// This returns a [`Serializer`] object. Call the [`to_string`] method to get the serialized
+/// This returns a [`Serializer`] object. Call the [`to_string()`] method to get the serialized
 /// value, or use other [`Serializer`] methods to control the serialization process.
 ///
 /// In order to process certain values (like unions or empty lists) correctly, it is necessary to
-/// add a type annotation (with [`static_type_annotation`] or [`type_annotation`]).
+/// add a type annotation (with [`static_type_annotation()`] or [`type_annotation()`]).
 ///
 /// # Examples
 ///
@@ -219,10 +216,9 @@ where
 /// # }
 /// ```
 ///
-/// [`Serializer`]: struct.Serializer.html
-/// [`type_annotation`]: struct.Serializer.html#method.type_annotation
-/// [`static_type_annotation`]: struct.Serializer.html#method.static_type_annotation
-/// [`to_string`]: struct.Serializer.html#method.to_string
+/// [`type_annotation()`]: Serializer::type_annotation()
+/// [`static_type_annotation()`]: Serializer::static_type_annotation()
+/// [`to_string()`]: Serializer::to_string()
 pub fn serialize<T>(data: &T) -> Serializer<'_, T, NoAnnot>
 where
     T: ToDhall,

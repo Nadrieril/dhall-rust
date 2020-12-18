@@ -16,8 +16,8 @@
 //!
 //! ## Deserialization (reading)
 //!
-//! The entrypoint for deserialization is the [`from_str`](fn.from_str.html) function. It reads a
-//! string containing a Dhall expression and deserializes it into any serde-compatible type.
+//! The entrypoint for deserialization is the [`from_str()`] function. It reads a string containing
+//! a Dhall expression and deserializes it into any serde-compatible type.
 //!
 //! This could mean a common Rust type like `HashMap`:
 //!
@@ -66,8 +66,8 @@
 //!
 //! ## Serialization (writing)
 //!
-//! The entrypoint for serialization is the [`serialize`](fn.serialize.html) function. It takes a
-//! serde-compatible type value and serializes it to a string containing a Dhall expression.
+//! The entrypoint for serialization is the [`serialize()`] function. It takes a serde-compatible
+//! type value and serializes it to a string containing a Dhall expression.
 //!
 //! This could mean a common Rust type like `HashMap`:
 //!
@@ -116,9 +116,9 @@
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
-//! [`serde_yaml::from_str`] with [`serde_dhall::from_str(…).parse()`](fn.from_str.html).
+//! [`serde_yaml::from_str`] with [`serde_dhall::from_str(…).parse()`](from_str()).
 //! If you used to produce JSON or YAML, you only need to replace [`serde_json::to_string`] or
-//! [`serde_yaml::to_string`] with [`serde_dhall::serialize(…).to_string()`](fn.serialize.html).
+//! [`serde_yaml::to_string`] with [`serde_dhall::serialize(…).to_string()`](serialize()).
 //!
 //! [`serde_json::from_str`]: https://docs.serde.rs/serde_json/fn.from_str.html
 //! [`serde_yaml::from_str`]: https://docs.serde.rs/serde_yaml/fn.from_str.html
@@ -142,8 +142,8 @@
 //! explicitly.
 //!
 //! There are two ways to provide a type in this way: you can provide it manually or you can let
-//! Rust infer it for you. To let Rust infer the appropriate Dhall type, use the
-//! [StaticType](trait.StaticType.html) trait.
+//! Rust infer it for you. To let Rust infer the appropriate Dhall type, use the [`StaticType`]
+//! trait.
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -200,8 +200,8 @@
 //! # }
 //! ```
 //!
-//! To provide a type manually, you need a [`SimpleType`](enum.SimpleType.html) value. You
-//! can parse it from some Dhall text like you would parse any other value.
+//! To provide a type manually, you need a [`SimpleType`] value. You can parse it from some Dhall
+//! text like you would parse any other value.
 //!
 //! ```rust
 //! # fn main() -> serde_dhall::Result<()> {
@@ -249,8 +249,6 @@
 //! If you need more control over the process of reading Dhall values, e.g. disabling
 //! imports, see the [`Deserializer`] methods.
 //!
-//! [`Deserializer`]: struct.Deserializer.html
-//! [`SimpleValue`]: enum.SimpleValue.html
 //! [dhall]: https://dhall-lang.org/
 //! [serde]: https://docs.serde.rs/serde/
 //! [serde::Deserialize]: https://docs.serde.rs/serde/trait.Deserialize.html

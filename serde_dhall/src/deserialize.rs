@@ -84,7 +84,6 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 /// # }
 /// ```
 ///
-/// [`SimpleValue`]: enum.SimpleValue.html
 pub fn from_simple_value<T>(v: SimpleValue) -> crate::Result<T>
 where
     T: serde::de::DeserializeOwned,
