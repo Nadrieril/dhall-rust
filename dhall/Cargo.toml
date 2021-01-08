@@ -37,7 +37,7 @@ url = "2.1"
 # Reqwest needs proper async support to work on wasm. So no remote imports on
 # wasm for now.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.10", features = ["blocking"], optional = true }
+reqwest = { version = "0.11", features = ["blocking"], optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.28"
