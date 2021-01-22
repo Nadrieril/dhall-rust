@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Change minimum supported version to 1.44.0.
+
 #### [0.9.0] - 2020-11-20
 
 - BREAKING CHANGE: Support Dhall v19.0.0
