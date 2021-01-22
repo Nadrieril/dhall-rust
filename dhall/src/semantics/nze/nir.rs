@@ -344,17 +344,17 @@ impl<'cx> Closure<'cx> {
         self.apply_var(NzVar::new(venv.size()))
             .to_hir(venv.insert())
     }
-    /// If the closure variable is free in the closure, return Err. Otherwise, return the value
+    /// If the closure variable is free in the closure, return `None`. Otherwise, return the value
     /// with that free variable remove.
-    pub fn remove_binder(&self) -> Result<Nir<'cx>, ()> {
+    pub fn remove_binder(&self) -> Option<Nir<'cx>> {
         match self {
             Closure::Closure { .. } => {
                 let v = NzVar::fresh();
                 // TODO: handle case where variable is used in closure
                 // TODO: return information about where the variable is used
-                Ok(self.apply_var(v))
+                Some(self.apply_var(v))
             }
-            Closure::ConstantClosure { body, .. } => Ok(body.clone()),
+            Closure::ConstantClosure { body, .. } => Some(body.clone()),
         }
     }
 }

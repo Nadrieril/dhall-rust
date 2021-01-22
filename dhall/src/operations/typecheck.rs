@@ -219,10 +219,8 @@ fn typecheck_merge<'cx>(
 
                     // TODO: this actually doesn't check anything yet
                     match closure.remove_binder() {
-                        Ok(v) => Type::new_infer_universe(env, v.clone())?,
-                        Err(()) => {
-                            return span_err("MergeReturnTypeIsDependent")
-                        }
+                        Some(v) => Type::new_infer_universe(env, v.clone())?,
+                        None => return span_err("MergeReturnTypeIsDependent"),
                     }
                 }
                 _ => {
