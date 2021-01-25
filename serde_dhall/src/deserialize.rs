@@ -138,7 +138,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
             Optional(None) => visitor.visit_none(),
             Optional(Some(x)) => visitor.visit_some(val(x)),
             Record(m) => visitor.visit_map(MapDeserializer::new(
-                m.iter().map(|(k, v)| (k.as_ref(), val(v))),
+                m.iter().map(|(k, v)| (k.as_str(), val(v))),
             )),
             Union(field_name, Some(x)) => visitor.visit_enum(
                 MapAccessDeserializer::new(MapDeserializer::new(
