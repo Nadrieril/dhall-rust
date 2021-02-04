@@ -3,6 +3,8 @@
 #### [Unreleased]
 
 - BREAKING CHANGE: Change minimum supported version to 1.44.0.
+- BREAKING CHANGE: Support dhall v20.0.0
+- `if` can return a type (https://github.com/Nadrieril/dhall-rust/pull/202)
 
 #### [0.9.0] - 2020-11-20
 
