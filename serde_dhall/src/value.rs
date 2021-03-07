@@ -477,9 +477,7 @@ impl SimpleType {
                     .map(|(k, v)| {
                         Some((
                             k.into(),
-                            v.as_ref()
-                                .map(|v| Ok(Self::from_nir(v)?))
-                                .transpose()?,
+                            v.as_ref().map(Self::from_nir).flatten(),
                         ))
                     })
                     .collect::<Option<_>>()?,
