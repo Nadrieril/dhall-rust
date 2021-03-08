@@ -475,10 +475,7 @@ impl SimpleType {
             NirKind::UnionType(kts) => SimpleType::Union(
                 kts.iter()
                     .map(|(k, v)| {
-                        Some((
-                            k.into(),
-                            v.as_ref().map(Self::from_nir).flatten(),
-                        ))
+                        Some((k.into(), v.as_ref().and_then(Self::from_nir)))
                     })
                     .collect::<Option<_>>()?,
             ),
