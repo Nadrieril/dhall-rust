@@ -6,6 +6,7 @@
     clippy::new_ret_no_self,
     clippy::new_without_default,
     clippy::try_err,
+    clippy::unnecessary_wraps,
     clippy::useless_format
 )]
 
