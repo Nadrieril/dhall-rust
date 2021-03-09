@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::result::Result as StdResult;
 
 use dhall::builtins::Builtin;
 use dhall::operations::OpKind;
@@ -212,13 +213,13 @@ impl Value {
         x: &Nir<'cx>,
         ty: &Nir<'cx>,
     ) -> Result<Self> {
-        Ok(if let Some(val) = SimpleValue::from_nir(x) {
+        Ok(if let Ok(val) = SimpleValue::from_nir(x) {
             // The type must be simple if the value is simple.
             let ty = SimpleType::from_nir(ty).unwrap();
             Value {
                 kind: ValueKind::Val(val, Some(ty)),
             }
-        } else if let Some(ty) = SimpleType::from_nir(x) {
+        } else if let Ok(ty) = SimpleType::from_nir(x) {
             Value {
                 kind: ValueKind::Ty(ty),
             }
@@ -256,9 +257,12 @@ impl Value {
     }
 }
 
+#[derive(Debug)]
+struct NotSimpleValue;
+
 impl SimpleValue {
-    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
-        Some(match nir.kind() {
+    fn from_nir(nir: &Nir) -> StdResult<Self, NotSimpleValue> {
+        Ok(match nir.kind() {
             NirKind::Num(lit) => SimpleValue::Num(lit.clone()),
             NirKind::TextLit(x) => SimpleValue::Text(
                 x.as_text()
@@ -275,7 +279,7 @@ impl SimpleValue {
                         && kts.contains_key("mapKey")
                         && kts.contains_key("mapValue")
                     {
-                        return Some(SimpleValue::Record(Default::default()));
+                        return Ok(SimpleValue::Record(Default::default()));
                     }
                 }
                 SimpleValue::List(vec![])
@@ -305,25 +309,27 @@ impl SimpleValue {
                                 let v = Self::from_nir(
                                     kvs.get("mapValue").unwrap(),
                                 )?;
-                                Some((k, v))
+                                Ok((k, v))
                             }
                             _ => unreachable!("Internal type error"),
                         };
-                        return Some(SimpleValue::Record(
+                        return Ok(SimpleValue::Record(
                             xs.iter()
                                 .map(convert_entry)
-                                .collect::<Option<_>>()?,
+                                .collect::<StdResult<_, _>>()?,
                         ));
                     }
                 }
                 SimpleValue::List(
-                    xs.iter().map(Self::from_nir).collect::<Option<_>>()?,
+                    xs.iter()
+                        .map(Self::from_nir)
+                        .collect::<StdResult<_, _>>()?,
                 )
             }
             NirKind::RecordLit(kvs) => SimpleValue::Record(
                 kvs.iter()
-                    .map(|(k, v)| Some((k.to_string(), Self::from_nir(v)?)))
-                    .collect::<Option<_>>()?,
+                    .map(|(k, v)| Ok((k.to_string(), Self::from_nir(v)?)))
+                    .collect::<StdResult<_, _>>()?,
             ),
             NirKind::UnionLit(field, x, _) => SimpleValue::Union(
                 field.into(),
@@ -334,7 +340,7 @@ impl SimpleValue {
             {
                 SimpleValue::Union(field.into(), None)
             }
-            _ => return None,
+            _ => return Err(NotSimpleValue),
         })
     }
 
@@ -450,9 +456,12 @@ impl SimpleValue {
     }
 }
 
+#[derive(Debug)]
+struct NotSimpleType;
+
 impl SimpleType {
-    pub(crate) fn from_nir(nir: &Nir) -> Option<Self> {
-        Some(match nir.kind() {
+    fn from_nir(nir: &Nir) -> StdResult<Self, NotSimpleType> {
+        Ok(match nir.kind() {
             NirKind::BuiltinType(b) => match b {
                 Builtin::Bool => SimpleType::Bool,
                 Builtin::Natural => SimpleType::Natural,
@@ -469,22 +478,20 @@ impl SimpleType {
             }
             NirKind::RecordType(kts) => SimpleType::Record(
                 kts.iter()
-                    .map(|(k, v)| Some((k.into(), Self::from_nir(v)?)))
-                    .collect::<Option<_>>()?,
+                    .map(|(k, v)| Ok((k.into(), Self::from_nir(v)?)))
+                    .collect::<StdResult<_, _>>()?,
             ),
             NirKind::UnionType(kts) => SimpleType::Union(
                 kts.iter()
                     .map(|(k, v)| {
-                        Some((
+                        Ok((
                             k.into(),
-                            v.as_ref()
-                                .map(|v| Ok(Self::from_nir(v)?))
-                                .transpose()?,
+                            v.as_ref().map(Self::from_nir).transpose()?,
                         ))
                     })
-                    .collect::<Option<_>>()?,
+                    .collect::<StdResult<_, _>>()?,
             ),
-            _ => return None,
+            _ => return Err(NotSimpleType),
         })
     }
 
@@ -565,7 +572,7 @@ impl std::fmt::Display for Value {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter,
-    ) -> std::result::Result<(), std::fmt::Error> {
+    ) -> StdResult<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
 }
@@ -574,7 +581,7 @@ impl std::fmt::Display for SimpleType {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter,
-    ) -> std::result::Result<(), std::fmt::Error> {
+    ) -> StdResult<(), std::fmt::Error> {
         self.to_expr().fmt(f)
     }
 }
