@@ -215,18 +215,34 @@ impl ImportLocation {
                 self.kind.chain_local(*prefix, path)?
             }
             ImportTarget::Remote(remote) => {
-                if matches!(self.kind, ImportLocationKind::Remote(..))
-                    && !matches!(import.mode, ImportMode::Location)
-                {
-                    // TODO: allow if CORS check passes
-                    return Err(ImportError::SanityCheck.into());
-                }
                 let mut url = Url::parse(&format!(
                     "{}://{}",
                     remote.scheme, remote.authority
                 ))?;
                 url.set_path(&remote.path.file_path.iter().join("/"));
                 url.set_query(remote.query.as_ref().map(String::as_ref));
+
+                if matches!(self.kind, ImportLocationKind::Remote(..))
+                    && !matches!(import.mode, ImportMode::Location)
+                {
+                    match &self.kind {
+                        ImportLocationKind::Remote(origin) => {
+                            let origin = match origin.host() {
+                                Some(domain) => Some(format!(
+                                    "{}://{}",
+                                    origin.scheme(),
+                                    domain
+                                )),
+                                None => None,
+                            };
+                            cors_check(origin, &url)?;
+                        }
+                        _ => {
+                            return Err(ImportError::SanityCheck.into());
+                        }
+                    };
+                }
+
                 ImportLocationKind::Remote(url)
             }
             ImportTarget::Env(var_name) => {
@@ -292,7 +308,10 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
 // TODO: error handling
 #[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
 pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
-    Ok(reqwest::blocking::get(url).unwrap().text().unwrap())
+    let req = reqwest::blocking::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "dhall-rust");
+    Ok(req.send().unwrap().text().unwrap())
 }
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "reqwest")))]
 pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
@@ -300,6 +319,51 @@ pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
 }
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
+    panic!("Remote imports are not supported on wasm yet")
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
+pub(crate) fn cors_check(
+    origin: Option<String>,
+    remote: &Url,
+) -> Result<(), Error> {
+    if origin.is_none() {
+        return Ok(());
+    }
+    let origin = origin.unwrap();
+    let remote_origin =
+        format!("{}://{}", remote.scheme(), remote.host_str().unwrap());
+    if origin == remote_origin {
+        return Ok(());
+    }
+    let req = reqwest::blocking::Client::new()
+        .head(&remote.to_string())
+        .header(reqwest::header::USER_AGENT, "dhall-rust")
+        .header(reqwest::header::ORIGIN, &origin);
+
+    let resp = req.send().unwrap();
+    let headers = resp.headers();
+    if headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != "*"
+        && headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != origin
+    {
+        Err(ImportError::SanityCheck.into())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "reqwest")))]
+pub(crate) fn cors_check(
+    origin: Option<String>,
+    remote: &Url,
+) -> Result<(), Error> {
+    panic!("Remote imports are disabled in this build of dhall-rust")
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn cors_check(
+    origin: Option<String>,
+    remote: &Url,
+) -> Result<(), Error> {
     panic!("Remote imports are not supported on wasm yet")
 }
 
