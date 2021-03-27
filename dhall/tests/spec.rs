@@ -103,7 +103,9 @@ impl TestFile {
             TestFile::Source(_) => Parsed::parse_file(&self.path())?,
             TestFile::Binary(_) => Parsed::parse_binary_file(&self.path())?,
             TestFile::UI(_) => {
-                Err(TestError(format!("Can't parse a UI test file")))?
+                return Err(
+                    TestError("Can't parse a UI test file".to_string()).into()
+                )
             }
         })
     }
@@ -138,9 +140,12 @@ impl TestFile {
                 let expr_data = binary::encode(&expr)?;
                 file.write_all(&expr_data)?;
             }
-            TestFile::UI(_) => Err(TestError(format!(
-                "Can't write an expression to a UI file"
-            )))?,
+            TestFile::UI(_) => {
+                return Err(TestError(
+                    "Can't write an expression to a UI file".to_string(),
+                )
+                .into())
+            }
         }
         Ok(())
     }
@@ -148,9 +153,12 @@ impl TestFile {
     fn write_ui(&self, x: impl Display) -> Result<()> {
         match self {
             TestFile::UI(_) => {}
-            _ => Err(TestError(format!(
-                "Can't write a ui string to a dhall file"
-            )))?,
+            _ => {
+                return Err(TestError(
+                    "Can't write a ui string to a dhall file".to_string(),
+                )
+                .into())
+            }
         }
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
@@ -195,7 +203,11 @@ impl TestFile {
     pub fn compare_binary(&self, expr: Expr) -> Result<()> {
         match self {
             TestFile::Binary(_) => {}
-            _ => Err(TestError(format!("This is not a binary file")))?,
+            _ => {
+                return Err(
+                    TestError("This is not a binary file".to_string()).into()
+                )
+            }
         }
         if !self.path().is_file() {
             return self.write_expr(expr);
@@ -593,17 +605,19 @@ fn run_test(test: &SpecTest) -> Result<()> {
             ParserFailure => {
                 use std::io;
                 let err = unwrap_err(expr.parse())?;
-                match err.downcast_ref::<DhallError>() {
-                    Some(err) => match err.kind() {
+                if let Some(err) = err.downcast_ref::<DhallError>() {
+                    match err.kind() {
                         ErrorKind::Parse(_) => {}
                         ErrorKind::IO(e)
                             if e.kind() == io::ErrorKind::InvalidData => {}
-                        e => Err(TestError(format!(
-                            "Expected parse error, got: {:?}",
-                            e
-                        )))?,
-                    },
-                    None => {}
+                        e => {
+                            return Err(TestError(format!(
+                                "Expected parse error, got: {:?}",
+                                e
+                            ))
+                            .into())
+                        }
+                    }
                 }
                 expected.compare_ui(err)?;
             }
