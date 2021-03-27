@@ -279,9 +279,7 @@ impl DhallParser {
 
                 trim_indent(&mut lines);
 
-                lines
-                    .into_iter()
-                    .intersperse(newline)
+                Itertools::intersperse(lines.into_iter(), newline)
                     .flat_map(InterpolatedText::into_iter)
                     .collect::<ParsedText>()
             }
