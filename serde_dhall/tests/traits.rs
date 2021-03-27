@@ -54,7 +54,7 @@ fn test_static_type() {
     enum E<T> {
         A(T),
         B(String),
-    };
+    }
     assert_eq!(<E<bool>>::static_type(), parse("< A: Bool | B: Text >"));
 
     #[derive(StaticType)]
@@ -62,6 +62,6 @@ fn test_static_type() {
     enum F {
         A,
         B(bool),
-    };
+    }
     assert_eq!(F::static_type(), parse("< A | B: Bool >"));
 }
