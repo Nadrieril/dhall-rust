@@ -150,7 +150,7 @@ pub fn derive_static_type_inner(
         quote_spanned! {ty.span()=>
             struct #assert_name #impl_generics #local_where_clause {
                 _phantom: std::marker::PhantomData<(#(#phantoms),*)>
-            };
+            }
         }
     });
 
