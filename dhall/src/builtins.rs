@@ -451,9 +451,10 @@ fn apply_builtin<'cx>(
                             );
 
                             Ret::Nir(Nir::from_kind(NirKind::TextLit(
-                                nze::nir::TextLit::new(
-                                    parts.intersperse(replacement),
-                                ),
+                                nze::nir::TextLit::new(Itertools::intersperse(
+                                    parts,
+                                    replacement,
+                                )),
                             )))
                         }
                     } else {

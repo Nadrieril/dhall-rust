@@ -256,7 +256,7 @@ pub fn type_with<'cx, 'hir>(
         HirKind::Expr(ExprKind::Let(binder, annot, val, body)) => {
             let val_annot = annot
                 .as_ref()
-                .map(|t| Ok(type_with(env, t, None)?.eval_to_type(env)?))
+                .map(|t| type_with(env, t, None)?.eval_to_type(env))
                 .transpose()?;
             let val = type_with(env, &val, val_annot)?;
             let val_nf = val.eval(env);

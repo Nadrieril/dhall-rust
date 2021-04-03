@@ -558,7 +558,7 @@ pub fn skip_resolve<'cx>(
     parsed: Parsed,
 ) -> Result<Resolved<'cx>, Error> {
     let parsed = Parsed::from_expr_without_imports(parsed.0);
-    Ok(resolve(cx, parsed)?)
+    resolve(cx, parsed)
 }
 
 impl Parsed {
