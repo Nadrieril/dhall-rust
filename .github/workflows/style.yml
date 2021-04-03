@@ -38,7 +38,9 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          toolchain: 1.44.0  # Minimum supported version
           components: clippy
+          override: true
       - name: Run clippy
         uses: actions-rs/cargo@v1
         with:
