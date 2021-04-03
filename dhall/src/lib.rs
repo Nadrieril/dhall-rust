@@ -3,12 +3,13 @@
     clippy::implicit_hasher,
     clippy::module_inception,
     clippy::needless_lifetimes,
+    clippy::needless_question_mark,
     clippy::new_ret_no_self,
     clippy::new_without_default,
     clippy::try_err,
     clippy::unnecessary_wraps,
-    clippy::useless_format,
-    clippy::needless_question_mark
+    clippy::upper_case_acronyms,
+    clippy::useless_format
 )]
 
 pub mod builtins;
