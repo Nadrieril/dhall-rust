@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.10.1] - 2021-04-03
+
 #### [0.10.0] - 2021-02-04
 
 - BREAKING CHANGE: Change minimum supported version to 1.44.0.
@@ -110,7 +112,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...HEAD
+[0.10.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.0...serde_dhall-v0.10.1
 [0.10.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.9.0...serde_dhall-v0.10.0
 [0.9.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.8.0...serde_dhall-v0.9.0
 [0.8.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.7.5...serde_dhall-v0.8.0
