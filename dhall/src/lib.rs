@@ -9,7 +9,8 @@
     clippy::try_err,
     clippy::unnecessary_wraps,
     clippy::upper_case_acronyms,
-    clippy::useless_format
+    clippy::useless_format,
+    unknown_lints
 )]
 
 pub mod builtins;
