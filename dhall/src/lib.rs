@@ -7,7 +7,8 @@
     clippy::new_without_default,
     clippy::try_err,
     clippy::unnecessary_wraps,
-    clippy::useless_format
+    clippy::useless_format,
+    clippy::needless_question_mark,
 )]
 
 pub mod builtins;
