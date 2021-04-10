@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 
 use dhall::{Ctxt, Parsed};
 
@@ -58,6 +59,7 @@ pub struct Deserializer<'a, A> {
     source: Source<'a>,
     annot: A,
     allow_imports: bool,
+    substitutions: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
     // allow_remote_imports: bool,
     // use_cache: bool,
 }
@@ -68,6 +70,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             source,
             annot: NoAnnot,
             allow_imports: true,
+            substitutions: HashMap::new(),
             // allow_remote_imports: true,
             // use_cache: true,
         }
@@ -131,6 +134,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: ManualAnnot(ty),
             source: self.source,
             allow_imports: self.allow_imports,
+            substitutions: self.substitutions,
         }
     }
 
@@ -181,6 +185,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: StaticAnnot,
             source: self.source,
             allow_imports: self.allow_imports,
+            substitutions: self.substitutions,
         }
     }
 }
@@ -223,6 +228,18 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
+    pub fn substitute_names(self, substs: HashMap<String, SimpleType>) -> Self {
+        Deserializer {
+            substitutions: substs
+                .iter()
+                .map(|(s, ty)| {
+                    (dhall::syntax::Label::from_str(s), ty.to_expr())
+                })
+                .collect(),
+            ..self
+        }
+    }
+
     fn _parse<T>(&self) -> dhall::error::Result<Result<Value>>
     where
         A: TypeAnnot,
@@ -234,11 +251,20 @@ impl<'a, A> Deserializer<'a, A> {
                 Source::File(p) => Parsed::parse_file(p.as_ref())?,
                 Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
             };
+
+            let parsed_with_substs = self
+                .substitutions
+                .iter()
+                .fold(parsed, |acc, (name, subst)| {
+                    acc.substitute_name(name.clone(), subst.clone())
+                });
+
             let resolved = if self.allow_imports {
-                parsed.resolve(cx)?
+                parsed_with_substs.resolve(cx)?
             } else {
-                parsed.skip_resolve(cx)?
+                parsed_with_substs.skip_resolve(cx)?
             };
+            //println!("{:#?}", resolved);
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,
                 Some(ty) => resolved.typecheck_with(cx, &ty.to_hir())?,
