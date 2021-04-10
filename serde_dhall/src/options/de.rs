@@ -228,6 +228,43 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
+    /// Sets a Collection of names which should be substituted with
+    /// the given types, i.e. effectively adds built-in type variables
+    /// which do not need to be imported within dhall.
+    ///
+    /// This is especially useful when deserialising into many nested
+    /// structs and enums at once, since it allows exposing the rust
+    /// types to dhall without having to redefine them in both languages
+    /// and manually keep both definitions in sync.
+    ///
+    /// # Example
+    /// ```
+    /// use serde::Deserialize;
+    /// use serde_dhall::StaticType;
+    /// use std::collections::HashMap;
+    ///
+    /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
+    /// enum Newtype {
+    ///   Foo,
+    ///   Bar
+    /// }
+    ///
+    /// let mut substs = HashMap::new();
+    /// substs.insert(
+    ///     "Newtype".to_string(),
+    ///     Newtype::static_type()
+    /// );
+    ///
+    /// let data = "Newtype.Bar";
+    ///
+    /// let deserialized = serde_dhall::from_str(data)
+    ///   .substitute_names(substs)
+    ///   .parse::<Newtype>()
+    ///   .unwrap();
+    ///
+    /// assert_eq!(deserialized, Newtype::Bar);
+    ///
+    /// ```
     pub fn substitute_names(self, substs: HashMap<String, SimpleType>) -> Self {
         Deserializer {
             substitutions: substs
