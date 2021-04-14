@@ -81,11 +81,11 @@ fn derive_for_enum(
                 }
                 syn::Fields::Unnamed(_) => Err(Error::new(
                     v.span(),
-                    "Variants with more than one field are not supported",
+                    "Derive StaticType: Variants with more than one field are not supported",
                 )),
                 syn::Fields::Named(_) => Err(Error::new(
                     v.span(),
-                    "Named variants are not supported",
+                    "Derive StaticType: Named variants are not supported",
                 )),
             }
         })
@@ -111,14 +111,14 @@ pub fn derive_static_type_inner(
         syn::Data::Enum(data) if data.variants.is_empty() => {
             return Err(Error::new(
                 input.span(),
-                "Empty enums are not supported",
+                "Derive StaticType: Empty enums are not supported",
             ))
         }
         syn::Data::Enum(data) => derive_for_enum(data, &mut constraints)?,
         syn::Data::Union(x) => {
             return Err(Error::new(
                 x.union_token.span(),
-                "Unions are not supported",
+                "Derive StaticType: Unions are not supported",
             ))
         }
     };
