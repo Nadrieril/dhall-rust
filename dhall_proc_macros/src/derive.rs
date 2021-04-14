@@ -78,15 +78,25 @@ fn derive_for_enum(
                     constraints.push(ty.clone());
                     let ty = static_type(ty);
                     Ok(quote!( (#name.to_owned(), Some(#ty)) ))
-                }
+                },
                 syn::Fields::Unnamed(_) => Err(Error::new(
                     v.span(),
                     "Derive StaticType: Variants with more than one field are not supported",
                 )),
-                syn::Fields::Named(_) => Err(Error::new(
-                    v.span(),
-                    "Derive StaticType: Named variants are not supported",
-                )),
+                syn::Fields::Named(fields) => {
+                    let entries = fields
+                        .named
+                        .iter()
+                        .map(|field| {
+                            constraints.push(field.ty.clone());
+                            let ty = static_type(&field.ty);
+                            let name = field.ident.as_ref().unwrap().to_string();
+                            quote!( (#name.to_owned(), #ty) ) });
+                    let record = quote! {::serde_dhall::SimpleType::Record(
+                            vec![ #(#entries),* ].into_iter().collect()
+                    )};
+                    Ok(quote!( (#name.to_owned(), Some(#record)) ))
+                }
             }
         })
         .collect::<Result<_, Error>>()?;
