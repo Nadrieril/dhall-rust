@@ -70,7 +70,7 @@ expected_map.insert("y".to_string(), 2);
 assert_eq!(deserialized_map, expected_map);
 ```
 
-`dhall` requires Rust >= 1.44.0
+`dhall` requires Rust >= 1.46.0
 
 ## Standard-compliance
 

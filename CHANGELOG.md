@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Change minimum supported version to 1.46.0 because of reqwest dependency.
+
 #### [0.10.1] - 2021-04-03
 
 #### [0.10.0] - 2021-02-04
