@@ -3,6 +3,7 @@ mod serde {
     use serde_dhall::{
         from_str, serialize, FromDhall, StaticType, ToDhall, Value,
     };
+    use std::collections;
 
     fn assert_de<T>(s: &str, x: T)
     where
@@ -147,6 +148,26 @@ mod serde {
             .static_type_annotation()
             .parse::<Bar>()
             .is_err());
+    }
+
+    #[test]
+    fn substitutions() {
+        #[derive(Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq)]
+        enum Foo {
+            X(u64),
+            Y(i64),
+        }
+
+        let mut substs = collections::HashMap::new();
+        substs.insert("Foo".to_string(), Foo::static_type());
+
+        assert_eq!(from_str("Foo.X 1")
+                   .substitute_names(substs)
+                   .static_type_annotation()
+                   .parse::<Foo>()
+                   .unwrap(),
+                   Foo::X(1)
+        )
     }
 
     #[test]
