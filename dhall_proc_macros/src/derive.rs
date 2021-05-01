@@ -78,15 +78,25 @@ fn derive_for_enum(
                     constraints.push(ty.clone());
                     let ty = static_type(ty);
                     Ok(quote!( (#name.to_owned(), Some(#ty)) ))
-                }
+                },
                 syn::Fields::Unnamed(_) => Err(Error::new(
                     v.span(),
-                    "Variants with more than one field are not supported",
+                    "Derive StaticType: Variants with more than one field are not supported",
                 )),
-                syn::Fields::Named(_) => Err(Error::new(
-                    v.span(),
-                    "Named variants are not supported",
-                )),
+                syn::Fields::Named(fields) => {
+                    let entries = fields
+                        .named
+                        .iter()
+                        .map(|field| {
+                            constraints.push(field.ty.clone());
+                            let ty = static_type(&field.ty);
+                            let name = field.ident.as_ref().unwrap().to_string();
+                            quote!( (#name.to_owned(), #ty) ) });
+                    let record = quote! {::serde_dhall::SimpleType::Record(
+                            vec![ #(#entries),* ].into_iter().collect()
+                    )};
+                    Ok(quote!( (#name.to_owned(), Some(#record)) ))
+                }
             }
         })
         .collect::<Result<_, Error>>()?;
@@ -111,14 +121,14 @@ pub fn derive_static_type_inner(
         syn::Data::Enum(data) if data.variants.is_empty() => {
             return Err(Error::new(
                 input.span(),
-                "Empty enums are not supported",
+                "Derive StaticType: Empty enums are not supported",
             ))
         }
         syn::Data::Enum(data) => derive_for_enum(data, &mut constraints)?,
         syn::Data::Union(x) => {
             return Err(Error::new(
                 x.union_token.span(),
-                "Unions are not supported",
+                "Derive StaticType: Unions are not supported",
             ))
         }
     };
