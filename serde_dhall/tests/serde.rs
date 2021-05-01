@@ -151,7 +151,73 @@ mod serde {
     }
 
     #[test]
-    fn substitutions() {
+    fn inject_single_type() {
+        #[derive(Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq)]
+        enum Foo {
+            X(u64),
+            Y(i64),
+        }
+
+        assert_eq!(from_str("Foo.X 1")
+                   .inject_single_type("Foo".to_string(), Foo::static_type())
+                   .static_type_annotation()
+                   .parse::<Foo>()
+                   .unwrap(),
+                   Foo::X(1)
+        )
+    }
+
+    #[test]
+    fn chain_inject_type() {
+        #[derive(Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq)]
+        enum Bar {
+            A,B
+        }
+        #[derive(Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq)]
+        enum Foo {
+            X(Bar),
+            Y(i64),
+        }
+
+        assert_eq!(from_str("Foo.X Bar.A")
+                   .inject_single_type("Bar".to_string(), Bar::static_type())
+                   .inject_single_type("Foo".to_string(), Foo::static_type())
+                   .static_type_annotation()
+                   .parse::<Foo>()
+                   .unwrap(),
+                   Foo::X(Bar::A)
+        );
+
+        let mut substs = collections::HashMap::new();
+        substs.insert("Foo".to_string(), Foo::static_type());
+
+        assert_eq!(from_str("Foo.X Bar.A")
+                   .inject_types(substs.clone())
+                   .inject_single_type("Bar".to_string(), Bar::static_type())
+                   .static_type_annotation()
+                   .parse::<Foo>()
+                   .unwrap(),
+                   Foo::X(Bar::A)
+        );
+
+
+        // check that in chained injects, later injects override earlier ones
+        substs.insert("Bar".to_string(), Foo::static_type());
+
+        assert_eq!(from_str("Foo.X Bar.A")
+                   .inject_types(substs)
+                   .inject_single_type("Bar".to_string(), Bar::static_type())
+                   .static_type_annotation()
+                   .parse::<Foo>()
+                   .unwrap(),
+                   Foo::X(Bar::A)
+        );
+
+
+
+    }
+    #[test]
+    fn inject_types() {
         #[derive(Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq)]
         enum Foo {
             X(u64),
@@ -162,7 +228,7 @@ mod serde {
         substs.insert("Foo".to_string(), Foo::static_type());
 
         assert_eq!(from_str("Foo.X 1")
-                   .substitute_names(substs)
+                   .inject_types(substs)
                    .static_type_annotation()
                    .parse::<Foo>()
                    .unwrap(),

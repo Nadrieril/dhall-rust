@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use dhall::{Ctxt, Parsed};
 
@@ -228,7 +228,7 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
-    /// Sets a Collection of names which should be substituted with
+    /// injects a collection of names which should be substituted with
     /// the given types, i.e. effectively adds built-in type variables
     /// which do not need to be imported within dhall.
     ///
@@ -258,20 +258,43 @@ impl<'a, A> Deserializer<'a, A> {
     /// let data = "Newtype.Bar";
     ///
     /// let deserialized = serde_dhall::from_str(data)
-    ///   .substitute_names(substs)
+    ///   .inject_types(substs)
     ///   .parse::<Newtype>()
     ///   .unwrap();
     ///
     /// assert_eq!(deserialized, Newtype::Bar);
     ///
     /// ```
-    pub fn substitute_names(self, substs: HashMap<String, SimpleType>) -> Self {
+    pub fn inject_types(
+        self,
+        tys: impl IntoIterator<Item = (String, SimpleType)>,
+    ) -> Self {
         Deserializer {
-            substitutions: substs
-                .iter()
+            substitutions: tys
+                .into_iter()
                 .map(|(s, ty)| {
-                    (dhall::syntax::Label::from_str(s), ty.to_expr())
+                    (dhall::syntax::Label::from_str(&s), ty.to_expr())
                 })
+                .chain(
+                    self.substitutions
+                        .iter()
+                        .map(|(n,t)| (n.clone(), t.clone())),
+                )
+                .collect(),
+            ..self
+        }
+    }
+
+    pub fn inject_single_type(self, name: String, ty: SimpleType) -> Self {
+        Deserializer {
+            substitutions: self
+                .substitutions
+                .iter()
+                .map(|(n,t)| (n.clone(),t.clone()))
+                .chain(std::iter::once((
+                    dhall::syntax::Label::from_str(&name),
+                    ty.to_expr(),
+                )))
                 .collect(),
             ..self
         }
