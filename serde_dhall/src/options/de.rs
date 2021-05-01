@@ -301,7 +301,6 @@ impl<'a, A> Deserializer<'a, A> {
             } else {
                 parsed_with_substs.skip_resolve(cx)?
             };
-            //println!("{:#?}", resolved);
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,
                 Some(ty) => resolved.typecheck_with(cx, &ty.to_hir())?,
