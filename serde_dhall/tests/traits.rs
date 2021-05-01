@@ -65,13 +65,15 @@ fn test_static_type() {
     }
     assert_eq!(F::static_type(), parse("< A | B: Bool >"));
 
-
     #[derive(StaticType)]
     #[allow(dead_code)]
     enum G {
         A,
         B(bool),
-        C {a: bool, b: u64}
+        C { a: bool, b: u64 },
     }
-    assert_eq!(G::static_type(), parse("< A | B: Bool | C: { a: Bool, b: Natural } >"))
+    assert_eq!(
+        G::static_type(),
+        parse("< A | B: Bool | C: { a: Bool, b: Natural } >")
+    )
 }
