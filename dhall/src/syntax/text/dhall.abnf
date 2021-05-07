@@ -484,14 +484,14 @@ minus-infinity-literal = "-" Infinity
 plus-infinity-literal = Infinity
 
 double-literal =
-    ; "2.0"
-      numeric-double-literal
     ; "-Infinity"
-    / minus-infinity-literal
+      minus-infinity-literal
     ; "Infinity"
     / plus-infinity-literal
     ; "NaN"
     / NaN
+    ; "2.0"
+    / numeric-double-literal
 
 natural-literal =
     ; Hexadecimal with "0x" prefix
@@ -931,5 +931,9 @@ union-type-entry = any-label-or-some [ whsp ":" whsp1 expression ]
 non-empty-list-literal =
     "[" whsp [ "," whsp ] expression whsp *("," whsp expression whsp) [ "," whsp ] "]"
 
+; We provide special support for the Unix shebang convention, by permitting
+; `#!` as a line comment only on the first line
+shebang = "#!" *not-end-of-line end-of-line
+
 ; This just adds surrounding whitespace for the top-level of the program
-complete-expression = whsp expression whsp
+complete-expression = [ shebang ] whsp expression whsp

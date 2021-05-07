@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- Add support for Unix shebangs
 - `StaticType` derive supports records in Union Types (https://github.com/Nadrieril/dhall-rust/pull/219)
 - BREAKING CHANGE: Change minimum supported version to 1.46.0 because of reqwest dependency.
 

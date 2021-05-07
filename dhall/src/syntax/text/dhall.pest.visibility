@@ -189,4 +189,5 @@ record_literal_entry
 union_type
 union_type_entry
 non_empty_list_literal
+# shebang
 # complete_expression
