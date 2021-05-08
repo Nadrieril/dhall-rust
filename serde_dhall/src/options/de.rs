@@ -258,14 +258,14 @@ impl<'a, A> Deserializer<'a, A> {
     /// let data = "Newtype.Bar";
     ///
     /// let deserialized = serde_dhall::from_str(data)
-    ///   .inject_types(substs)
+    ///   .with_builtin_types(substs)
     ///   .parse::<Newtype>()
     ///   .unwrap();
     ///
     /// assert_eq!(deserialized, Newtype::Bar);
     ///
     /// ```
-    pub fn inject_types(
+    pub fn with_builtin_types(
         self,
         tys: impl IntoIterator<Item = (String, SimpleType)>,
     ) -> Self {
@@ -285,7 +285,7 @@ impl<'a, A> Deserializer<'a, A> {
         }
     }
 
-    pub fn inject_single_type(self, name: String, ty: SimpleType) -> Self {
+    pub fn with_builtin_type(self, name: String, ty: SimpleType) -> Self {
         Deserializer {
             substitutions: self
                 .substitutions
