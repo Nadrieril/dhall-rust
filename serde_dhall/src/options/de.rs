@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use dhall::{Ctxt, Parsed};
@@ -58,6 +59,7 @@ pub struct Deserializer<'a, A> {
     source: Source<'a>,
     annot: A,
     allow_imports: bool,
+    substitutions: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
     // allow_remote_imports: bool,
     // use_cache: bool,
 }
@@ -68,6 +70,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             source,
             annot: NoAnnot,
             allow_imports: true,
+            substitutions: HashMap::new(),
             // allow_remote_imports: true,
             // use_cache: true,
         }
@@ -131,6 +134,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: ManualAnnot(ty),
             source: self.source,
             allow_imports: self.allow_imports,
+            substitutions: self.substitutions,
         }
     }
 
@@ -181,6 +185,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: StaticAnnot,
             source: self.source,
             allow_imports: self.allow_imports,
+            substitutions: self.substitutions,
         }
     }
 }
@@ -223,6 +228,78 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
+    /// injects a collection of names which should be substituted with
+    /// the given types, i.e. effectively adds built-in type variables
+    /// which do not need to be imported within dhall.
+    ///
+    /// This is especially useful when deserialising into many nested
+    /// structs and enums at once, since it allows exposing the rust
+    /// types to dhall without having to redefine them in both languages
+    /// and manually keep both definitions in sync.
+    ///
+    /// # Example
+    /// ```
+    /// use serde::Deserialize;
+    /// use serde_dhall::StaticType;
+    /// use std::collections::HashMap;
+    ///
+    /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
+    /// enum Newtype {
+    ///   Foo,
+    ///   Bar
+    /// }
+    ///
+    /// let mut substs = HashMap::new();
+    /// substs.insert(
+    ///     "Newtype".to_string(),
+    ///     Newtype::static_type()
+    /// );
+    ///
+    /// let data = "Newtype.Bar";
+    ///
+    /// let deserialized = serde_dhall::from_str(data)
+    ///   .with_builtin_types(substs)
+    ///   .parse::<Newtype>()
+    ///   .unwrap();
+    ///
+    /// assert_eq!(deserialized, Newtype::Bar);
+    ///
+    /// ```
+    pub fn with_builtin_types(
+        self,
+        tys: impl IntoIterator<Item = (String, SimpleType)>,
+    ) -> Self {
+        Deserializer {
+            substitutions: tys
+                .into_iter()
+                .map(|(s, ty)| {
+                    (dhall::syntax::Label::from_str(&s), ty.to_expr())
+                })
+                .chain(
+                    self.substitutions
+                        .iter()
+                        .map(|(n,t)| (n.clone(), t.clone())),
+                )
+                .collect(),
+            ..self
+        }
+    }
+
+    pub fn with_builtin_type(self, name: String, ty: SimpleType) -> Self {
+        Deserializer {
+            substitutions: self
+                .substitutions
+                .iter()
+                .map(|(n,t)| (n.clone(),t.clone()))
+                .chain(std::iter::once((
+                    dhall::syntax::Label::from_str(&name),
+                    ty.to_expr(),
+                )))
+                .collect(),
+            ..self
+        }
+    }
+
     fn _parse<T>(&self) -> dhall::error::Result<Result<Value>>
     where
         A: TypeAnnot,
@@ -234,10 +311,18 @@ impl<'a, A> Deserializer<'a, A> {
                 Source::File(p) => Parsed::parse_file(p.as_ref())?,
                 Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
             };
+
+            let parsed_with_substs = self
+                .substitutions
+                .iter()
+                .fold(parsed, |acc, (name, subst)| {
+                    acc.substitute_name(name.clone(), subst.clone())
+                });
+
             let resolved = if self.allow_imports {
-                parsed.resolve(cx)?
+                parsed_with_substs.resolve(cx)?
             } else {
-                parsed.skip_resolve(cx)?
+                parsed_with_substs.skip_resolve(cx)?
             };
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,

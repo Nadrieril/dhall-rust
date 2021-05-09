@@ -182,6 +182,19 @@ impl Expr {
         let data = binary::encode(self)?;
         Ok(crate::utils::sha256_hash(&data))
     }
+
+    /// this wraps the expression into an additional let-binding
+    pub fn substitute_name(self, label: Label, value: Expr) -> Expr {
+        Expr::new(
+            ExprKind::Let(
+                label,
+                None,
+                value,
+                self
+            ),
+            Span::Artificial
+        )
+    }
 }
 
 // Empty enum to indicate that no error can occur
