@@ -228,14 +228,14 @@ impl<'a, A> Deserializer<'a, A> {
     //     self
     // }
 
-    /// injects a collection of names which should be substituted with
-    /// the given types, i.e. effectively adds built-in type variables
-    /// which do not need to be imported within dhall.
+    /// Makes a set of types available to the parsed dhall code. This is similar to how builtins
+    /// like `Natural` work: they are provided by dhall and accessible in any file.
     ///
-    /// This is especially useful when deserialising into many nested
-    /// structs and enums at once, since it allows exposing the rust
-    /// types to dhall without having to redefine them in both languages
-    /// and manually keep both definitions in sync.
+    /// This is especially useful when exposing rust types exposing the rust types to dhall, since
+    /// this avoids having to define them in both languages and keep both definitions in sync.
+    ///
+    /// See also [`with_builtin_type()`].
+    /// [`with_builtin_type()`]: Deserializer::with_builtin_type()
     ///
     /// # Example
     /// ```
@@ -246,24 +246,20 @@ impl<'a, A> Deserializer<'a, A> {
     /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
     /// enum Newtype {
     ///   Foo,
-    ///   Bar
+    ///   Bar(u64)
     /// }
     ///
-    /// let mut substs = HashMap::new();
-    /// substs.insert(
-    ///     "Newtype".to_string(),
-    ///     Newtype::static_type()
-    /// );
+    /// let mut builtins = HashMap::new();
+    /// builtins.insert("Newtype".to_string(), Newtype::static_type());
     ///
-    /// let data = "Newtype.Bar";
+    /// let data = "Newtype.Bar 0";
     ///
     /// let deserialized = serde_dhall::from_str(data)
-    ///   .with_builtin_types(substs)
+    ///   .with_builtin_types(builtins)
     ///   .parse::<Newtype>()
     ///   .unwrap();
     ///
-    /// assert_eq!(deserialized, Newtype::Bar);
-    ///
+    /// assert_eq!(deserialized, Newtype::Bar(0));
     /// ```
     pub fn with_builtin_types(
         mut self,
@@ -277,6 +273,36 @@ impl<'a, A> Deserializer<'a, A> {
         self
     }
 
+    /// Makes a type available to the parsed dhall code. This is similar to how builtins like
+    /// `Natural` work: they are provided by dhall and accessible in any file.
+    ///
+    /// This is especially useful when exposing rust types exposing the rust types to dhall, since
+    /// this avoids having to define them in both languages and keep both definitions in sync.
+    ///
+    /// See also [`with_builtin_types()`].
+    /// [`with_builtin_types()`]: Deserializer::with_builtin_types()
+    ///
+    /// # Example
+    /// ```
+    /// use serde::Deserialize;
+    /// use serde_dhall::StaticType;
+    /// use std::collections::HashMap;
+    ///
+    /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
+    /// enum Newtype {
+    ///   Foo,
+    ///   Bar(u64)
+    /// }
+    ///
+    /// let data = "Newtype.Bar 0";
+    ///
+    /// let deserialized = serde_dhall::from_str(data)
+    ///   .with_builtin_type("Newtype".to_string(), Newtype::static_type())
+    ///   .parse::<Newtype>()
+    ///   .unwrap();
+    ///
+    /// assert_eq!(deserialized, Newtype::Bar(0));
+    /// ```
     pub fn with_builtin_type(mut self, name: String, ty: SimpleType) -> Self {
         self.builtins
             .insert(dhall::syntax::Label::from_str(&name), ty.to_expr());
