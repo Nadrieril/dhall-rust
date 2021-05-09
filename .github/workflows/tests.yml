@@ -51,6 +51,8 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+        env:
+          RUSTFLAGS: '-Awarnings' # The `stable` job already emits warnings; no need to duplicate
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
