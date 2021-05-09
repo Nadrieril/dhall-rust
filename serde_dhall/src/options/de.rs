@@ -278,7 +278,7 @@ impl<'a, A> Deserializer<'a, A> {
                 .chain(
                     self.substitutions
                         .iter()
-                        .map(|(n,t)| (n.clone(), t.clone())),
+                        .map(|(n, t)| (n.clone(), t.clone())),
                 )
                 .collect(),
             ..self
@@ -290,7 +290,7 @@ impl<'a, A> Deserializer<'a, A> {
             substitutions: self
                 .substitutions
                 .iter()
-                .map(|(n,t)| (n.clone(),t.clone()))
+                .map(|(n, t)| (n.clone(), t.clone()))
                 .chain(std::iter::once((
                     dhall::syntax::Label::from_str(&name),
                     ty.to_expr(),
@@ -312,12 +312,12 @@ impl<'a, A> Deserializer<'a, A> {
                 Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
             };
 
-            let parsed_with_substs = self
-                .substitutions
-                .iter()
-                .fold(parsed, |acc, (name, subst)| {
-                    acc.substitute_name(name.clone(), subst.clone())
-                });
+            let parsed_with_substs =
+                self.substitutions
+                    .iter()
+                    .fold(parsed, |acc, (name, subst)| {
+                        acc.substitute_name(name.clone(), subst.clone())
+                    });
 
             let resolved = if self.allow_imports {
                 parsed_with_substs.resolve(cx)?

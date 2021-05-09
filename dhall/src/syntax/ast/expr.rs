@@ -185,15 +185,7 @@ impl Expr {
 
     /// this wraps the expression into an additional let-binding
     pub fn substitute_name(self, label: Label, value: Expr) -> Expr {
-        Expr::new(
-            ExprKind::Let(
-                label,
-                None,
-                value,
-                self
-            ),
-            Span::Artificial
-        )
+        Expr::new(ExprKind::Let(label, None, value, self), Span::Artificial)
     }
 }
 

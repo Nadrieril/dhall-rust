@@ -101,8 +101,8 @@ impl Parsed {
     }
 
     pub fn substitute_name(self, label: syntax::Label, value: Expr) -> Parsed {
-        let Parsed (expr, import_location) = self;
-        Parsed (expr.substitute_name(label, value), import_location)
+        let Parsed(expr, import_location) = self;
+        Parsed(expr.substitute_name(label, value), import_location)
     }
 }
 
