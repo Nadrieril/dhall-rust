@@ -234,6 +234,9 @@ impl<'a, A> Deserializer<'a, A> {
     /// This is especially useful when exposing rust types exposing the rust types to dhall, since
     /// this avoids having to define them in both languages and keep both definitions in sync.
     ///
+    /// Warning: the new builtins will only be accessible to the current file. If this file has
+    /// imports, the imported values will not have access to the builtins.
+    ///
     /// See also [`with_builtin_type()`].
     /// [`with_builtin_type()`]: Deserializer::with_builtin_type()
     ///
@@ -278,6 +281,9 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// This is especially useful when exposing rust types exposing the rust types to dhall, since
     /// this avoids having to define them in both languages and keep both definitions in sync.
+    ///
+    /// Warning: the new builtins will only be accessible to the current file. If this file has
+    /// imports, the imported values will not have access to the builtins.
     ///
     /// See also [`with_builtin_types()`].
     /// [`with_builtin_types()`]: Deserializer::with_builtin_types()
