@@ -59,7 +59,7 @@ pub struct Deserializer<'a, A> {
     source: Source<'a>,
     annot: A,
     allow_imports: bool,
-    substitutions: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
+    builtins: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
     // allow_remote_imports: bool,
     // use_cache: bool,
 }
@@ -70,7 +70,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             source,
             annot: NoAnnot,
             allow_imports: true,
-            substitutions: HashMap::new(),
+            builtins: HashMap::new(),
             // allow_remote_imports: true,
             // use_cache: true,
         }
@@ -134,7 +134,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: ManualAnnot(ty),
             source: self.source,
             allow_imports: self.allow_imports,
-            substitutions: self.substitutions,
+            builtins: self.builtins,
         }
     }
 
@@ -185,7 +185,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: StaticAnnot,
             source: self.source,
             allow_imports: self.allow_imports,
-            substitutions: self.substitutions,
+            builtins: self.builtins,
         }
     }
 }
@@ -266,38 +266,21 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// ```
     pub fn with_builtin_types(
-        self,
+        mut self,
         tys: impl IntoIterator<Item = (String, SimpleType)>,
     ) -> Self {
-        Deserializer {
-            substitutions: tys
-                .into_iter()
-                .map(|(s, ty)| {
-                    (dhall::syntax::Label::from_str(&s), ty.to_expr())
-                })
-                .chain(
-                    self.substitutions
-                        .iter()
-                        .map(|(n, t)| (n.clone(), t.clone())),
-                )
-                .collect(),
-            ..self
-        }
+        self.builtins.extend(
+            tys.into_iter().map(|(s, ty)| {
+                (dhall::syntax::Label::from_str(&s), ty.to_expr())
+            }),
+        );
+        self
     }
 
-    pub fn with_builtin_type(self, name: String, ty: SimpleType) -> Self {
-        Deserializer {
-            substitutions: self
-                .substitutions
-                .iter()
-                .map(|(n, t)| (n.clone(), t.clone()))
-                .chain(std::iter::once((
-                    dhall::syntax::Label::from_str(&name),
-                    ty.to_expr(),
-                )))
-                .collect(),
-            ..self
-        }
+    pub fn with_builtin_type(mut self, name: String, ty: SimpleType) -> Self {
+        self.builtins
+            .insert(dhall::syntax::Label::from_str(&name), ty.to_expr());
+        self
     }
 
     fn _parse<T>(&self) -> dhall::error::Result<Result<Value>>
@@ -312,17 +295,15 @@ impl<'a, A> Deserializer<'a, A> {
                 Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
             };
 
-            let parsed_with_substs =
-                self.substitutions
-                    .iter()
-                    .fold(parsed, |acc, (name, subst)| {
-                        acc.substitute_name(name.clone(), subst.clone())
-                    });
+            let parsed_with_builtins =
+                self.builtins.iter().fold(parsed, |acc, (name, subst)| {
+                    acc.add_let_binding(name.clone(), subst.clone())
+                });
 
             let resolved = if self.allow_imports {
-                parsed_with_substs.resolve(cx)?
+                parsed_with_builtins.resolve(cx)?
             } else {
-                parsed_with_substs.skip_resolve(cx)?
+                parsed_with_builtins.skip_resolve(cx)?
             };
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,

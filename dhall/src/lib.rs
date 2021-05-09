@@ -100,9 +100,9 @@ impl Parsed {
         self.0.clone()
     }
 
-    pub fn substitute_name(self, label: syntax::Label, value: Expr) -> Parsed {
+    pub fn add_let_binding(self, label: syntax::Label, value: Expr) -> Parsed {
         let Parsed(expr, import_location) = self;
-        Parsed(expr.substitute_name(label, value), import_location)
+        Parsed(expr.add_let_binding(label, value), import_location)
     }
 }
 

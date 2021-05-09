@@ -152,9 +152,7 @@ mod serde {
 
     #[test]
     fn with_builtin_type() {
-        #[derive(
-            Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq,
-        )]
+        #[derive(Debug, Deserialize, StaticType, Eq, PartialEq)]
         enum Foo {
             X(u64),
             Y(i64),
@@ -167,83 +165,66 @@ mod serde {
                 .parse::<Foo>()
                 .unwrap(),
             Foo::X(1)
-        )
-    }
+        );
 
-    #[test]
-    fn chain_inject_type() {
-        #[derive(
-            Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq,
-        )]
+        let mut substs = collections::HashMap::new();
+        substs.insert("Foo".to_string(), Foo::static_type());
+
+        assert_eq!(
+            from_str("Foo.X 1")
+                .with_builtin_types(substs)
+                .static_type_annotation()
+                .parse::<Foo>()
+                .unwrap(),
+            Foo::X(1)
+        );
+
+        #[derive(Debug, Deserialize, StaticType, Eq, PartialEq)]
         enum Bar {
             A,
             B,
         }
-        #[derive(
-            Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq,
-        )]
-        enum Foo {
+        #[derive(Debug, Deserialize, StaticType, Eq, PartialEq)]
+        enum Baz {
             X(Bar),
             Y(i64),
         }
 
         assert_eq!(
-            from_str("Foo.X Bar.A")
+            from_str("Baz.X Bar.A")
                 .with_builtin_type("Bar".to_string(), Bar::static_type())
-                .with_builtin_type("Foo".to_string(), Foo::static_type())
+                .with_builtin_type("Baz".to_string(), Baz::static_type())
                 .static_type_annotation()
-                .parse::<Foo>()
+                .parse::<Baz>()
                 .unwrap(),
-            Foo::X(Bar::A)
+            Baz::X(Bar::A)
         );
 
         let mut substs = collections::HashMap::new();
-        substs.insert("Foo".to_string(), Foo::static_type());
+        substs.insert("Baz".to_string(), Baz::static_type());
 
         assert_eq!(
-            from_str("Foo.X Bar.A")
+            from_str("Baz.X Bar.A")
                 .with_builtin_types(substs.clone())
                 .with_builtin_type("Bar".to_string(), Bar::static_type())
                 .static_type_annotation()
-                .parse::<Foo>()
+                .parse::<Baz>()
                 .unwrap(),
-            Foo::X(Bar::A)
+            Baz::X(Bar::A)
         );
 
-        // check that in chained injects, later injects override earlier ones
-        substs.insert("Bar".to_string(), Foo::static_type());
+        // Check that when chaining builtins, later builtins override earlier ones
+        substs.insert("Bar".to_string(), u64::static_type());
 
         assert_eq!(
-            from_str("Foo.X Bar.A")
+            from_str("Baz.X Bar.A")
                 .with_builtin_types(substs)
                 .with_builtin_type("Bar".to_string(), Bar::static_type())
                 .static_type_annotation()
-                .parse::<Foo>()
+                .parse::<Baz>()
                 .unwrap(),
-            Foo::X(Bar::A)
+            Baz::X(Bar::A)
         );
-    }
-    #[test]
-    fn with_builtin_types() {
-        #[derive(
-            Debug, Clone, Deserialize, Serialize, StaticType, Eq, PartialEq,
-        )]
-        enum Foo {
-            X(u64),
-            Y(i64),
-        }
-
-        let mut substs = collections::HashMap::new();
-        substs.insert("Foo".to_string(), Foo::static_type());
-
-        assert_eq!(
-            from_str("Foo.X 1")
-                .with_builtin_types(substs)
-                .static_type_annotation()
-                .parse::<Foo>()
-                .unwrap(),
-            Foo::X(1)
-        )
     }
 
     #[test]
