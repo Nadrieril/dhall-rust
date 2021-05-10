@@ -1,3 +1,5 @@
+import/success/unit/cors/Prelude https://raw.githubusercontent.com/dhall-lang/dhall-lang/acee30866a179c9e9bb3fc02ec8be2883685eb14/tests/import/data/cors/Prelude.dhall
+
 parser:
 ./a%20b
 ./"a%20b"
@@ -20,6 +22,7 @@ as Location hash
 
 normalization:
 move builtins and operators in their own folder ?
+let List = 1 in List
 
 type-inference:
 something that involves destructuring a recordtype after merge
