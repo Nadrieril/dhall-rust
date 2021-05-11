@@ -1,6 +1,0 @@
-Type error: error: AssertMismatch
- --> <current file>:1:15
-  |
-1 | \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
-  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ AssertMismatch
-  |
