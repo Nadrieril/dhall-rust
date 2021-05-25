@@ -235,7 +235,9 @@ impl ImportLocation {
                                 )),
                                 None => None,
                             };
-                            cors_check(origin, &url)?;
+                            if let Some(o) = origin {
+                                cors_check(o, &url)?;
+                            }
                         }
                         _ => {
                             return Err(ImportError::SanityCheck.into());
@@ -310,6 +312,7 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
 pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
     let req = reqwest::blocking::Client::new()
         .get(url)
+        .header(reqwest::header::ORIGIN, "")
         .header(reqwest::header::USER_AGENT, "dhall-rust");
     Ok(req.send().unwrap().text().unwrap())
 }
@@ -323,27 +326,23 @@ pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
-pub(crate) fn cors_check(
-    origin: Option<String>,
-    remote: &Url,
-) -> Result<(), Error> {
-    if origin.is_none() {
-        return Ok(());
-    }
-    let origin = origin.unwrap();
+pub(crate) fn cors_check(origin: String, remote: &Url) -> Result<(), Error> {
     let remote_origin =
         format!("{}://{}", remote.scheme(), remote.host_str().unwrap());
     if origin == remote_origin {
         return Ok(());
     }
-    let req = reqwest::blocking::Client::new()
-        .head(&remote.to_string())
+    let client = reqwest::blocking::Client::new();
+    let req = client
+        .request(reqwest::Method::OPTIONS, &remote.to_string())
         .header(reqwest::header::USER_AGENT, "dhall-rust")
         .header(reqwest::header::ORIGIN, &origin);
 
     let resp = req.send().unwrap();
     let headers = resp.headers();
-    if headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != "*"
+
+    if headers.contains_key(reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        && headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != "*"
         && headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != origin
     {
         Err(ImportError::SanityCheck.into())
