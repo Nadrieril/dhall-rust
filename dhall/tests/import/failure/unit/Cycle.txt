@@ -1,0 +1,16 @@
+Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../../data/cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^^^^ Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../failure/unit/Cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../../data/cycle.dhall
+  | ^^^^^^^^^^^^^^^^^^^^^^ ImportCycle([ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall"), mode: Code }, ImportLocation { kind: Local("./dhall-lang/tests/import/failure/unit/Cycle.dhall"), mode: Code }], ImportLocation { kind: Local("./dhall-lang/tests/import/data/cycle.dhall"), mode: Code })
+  |
+  |
+  |

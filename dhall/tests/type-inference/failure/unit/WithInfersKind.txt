@@ -1,0 +1,6 @@
+Type error: error: InvalidOptionalType
+ --> <current file>:1:1
+  |
+1 | Some ({=} with x = Bool)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^ InvalidOptionalType
+  |
