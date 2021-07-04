@@ -547,9 +547,11 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
     let is_failing_for_now = false
         // TODO: fails because of caching issues.
         || path == "type-inference/success/prelude"
-        // TODO: do not recover from non-404 import errors
+        // TODO: only recover 404-like import errors
         || path == "import/failure/unit/DontRecoverCycle"
         || path == "import/failure/unit/DontRecoverTypeError"
+        || path == "import/failure/unit/DontRecoverHashMismatch"
+        || path == "import/failure/unit/DontRecoverParseError"
         // TODO: cors
         || path == "import/success/unit/cors/AllowedAll"
         || path == "import/success/unit/cors/Prelude"
