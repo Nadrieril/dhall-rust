@@ -1,0 +1,11 @@
+Type error: error: error
+ --> <current file>:1:1
+  |
+1 | https://test.dhall-lang.org/nonexistent-file.dhall
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Type error: error: unbound variable `Not`
+ --> <current file>:1:6
+  |
+1 | 404: Not Found
+  |      ^^^ not found in this scope
+  |
+  |
