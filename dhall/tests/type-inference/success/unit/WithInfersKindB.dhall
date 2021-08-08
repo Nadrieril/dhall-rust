@@ -1,1 +1,0 @@
-Optional { x : Natural }
