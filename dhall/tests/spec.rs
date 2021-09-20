@@ -547,8 +547,19 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
     let is_failing_for_now = false
         // TODO: fails because of caching issues.
         || path == "type-inference/success/prelude"
-        // TODO: do not recover from cyclic imports
+        // TODO: only recover 404-like import errors
         || path == "import/failure/unit/DontRecoverCycle"
+        || path == "import/failure/unit/DontRecoverTypeError"
+        || path == "import/failure/unit/DontRecoverHashMismatch"
+        || path == "import/failure/unit/DontRecoverParseError"
+        // TODO: cors
+        || path == "import/success/unit/cors/AllowedAll"
+        || path == "import/success/unit/cors/Prelude"
+        || path == "import/success/unit/cors/SelfImportRelative"
+        || path == "import/success/unit/cors/SelfImportAbsolute"
+        || path == "import/success/unit/cors/SelfImportAbsolute2"
+        || path == "import/success/unit/cors/TwoHops"
+        || path == "import/success/unit/cors/OnlyGithub"
         // TODO: import headers
         || path == "import/success/customHeaders"
         || path == "import/success/headerForwarding"

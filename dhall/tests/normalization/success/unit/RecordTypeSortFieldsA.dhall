@@ -1,1 +1,0 @@
-{ b : Bool, a : Natural }
