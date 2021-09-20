@@ -327,25 +327,26 @@ pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
 pub(crate) fn cors_check(origin: String, remote: &Url) -> Result<(), Error> {
-    let remote_origin =
-        format!("{}://{}", remote.scheme(), remote.host_str().unwrap());
-    if origin == remote_origin {
+    let origin = Url::parse(&origin)?.origin();
+    if origin == remote.origin() {
         return Ok(());
     }
+
     let client = reqwest::blocking::Client::new();
     let req = client
         .request(reqwest::Method::OPTIONS, &remote.to_string())
         .header(reqwest::header::USER_AGENT, "dhall-rust")
-        .header(reqwest::header::ORIGIN, &origin);
+        .header(reqwest::header::ORIGIN, origin.ascii_serialization());
 
     let resp = req.send().unwrap();
     let headers = resp.headers();
 
-    if headers.contains_key(reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN)
-        && headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != "*"
-        && headers[reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN] != origin
-    {
-        Err(ImportError::SanityCheck.into())
+    if let Some(hv) = headers.get(reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN) {
+        if hv != "*" && hv != &origin.ascii_serialization() {
+            Err(ImportError::SanityCheck.into())
+        } else {
+            Ok(())
+        }
     } else {
         Ok(())
     }
