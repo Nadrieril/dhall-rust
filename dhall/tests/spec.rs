@@ -721,10 +721,11 @@ fn main() {
     env::set_var("XDG_CACHE_HOME", &cache_dir);
 
     let dhall_home_dir = root_dir
-        .join("dhall") // TODO: point to the dhall-lang submodule and remove
-                       // local version of ImportRelativeToHome test once
-                       // dhall-lang/dhall-lang#1250 is accepted and available
-                       // in the dhall-lang submodule.
+        .join("dhall")
+        // TODO: point to the dhall-lang submodule and remove
+        // local version of ImportRelativeToHome test once
+        // dhall-lang/dhall-lang#1250 is accepted and available
+        // in the dhall-lang submodule.
         .join("tests")
         .join("import")
         .join("home");
