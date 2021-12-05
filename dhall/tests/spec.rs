@@ -729,7 +729,12 @@ fn main() {
         .join("tests")
         .join("import")
         .join("home");
+
+    #[cfg(target_family = "unix")]
     env::set_var("HOME", &dhall_home_dir);
+
+    #[cfg(target_family = "windows")]
+    env::set_var("USERPROFILE", &dhall_home_dir);
 
     // Whether to overwrite the output files when our own output differs.
     // Either set `UPDATE_TEST_FILES=1` (deprecated) or pass `--bless` as an argument to this test
