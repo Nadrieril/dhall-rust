@@ -617,6 +617,7 @@ impl Canonicalize for FilePath {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn resolve_home(path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     let mut f = PathBuf::new();
 
@@ -633,6 +634,11 @@ pub(crate) fn resolve_home(path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     }
 
     Ok(f)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn resolve_home(_path: impl AsRef<Path>) -> Result<PathBuf, Error> {
+    panic!("Imports relative to home are not supported on wasm yet");
 }
 
 impl<SE: Copy> Canonicalize for ImportTarget<SE> {
