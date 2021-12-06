@@ -79,7 +79,7 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Run tests
-        run: wasm-pack test serde_dhall --node
+        run: wasm-pack test --node serde_dhall
 
   test_windows:
     name: Run tests on windows
