@@ -7,7 +7,8 @@ use crate::syntax::{binary, parse_expr};
 use crate::Parsed;
 
 pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
-    let text = std::fs::read_to_string(f)?;
+    let path = crate::resolve::resolve_home(f)?;
+    let text = std::fs::read_to_string(path)?;
     let expr = parse_expr(&text)?;
     let root = ImportLocation::local_dhall_code(f.to_owned());
     Ok(Parsed(expr, root))

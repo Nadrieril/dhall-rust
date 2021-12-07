@@ -720,6 +720,22 @@ fn main() {
         .unwrap();
     env::set_var("XDG_CACHE_HOME", &cache_dir);
 
+    let dhall_home_dir = root_dir
+        .join("dhall")
+        // TODO: point to the dhall-lang submodule and remove
+        // local version of ImportRelativeToHome test once
+        // dhall-lang/dhall-lang#1250 is accepted and available
+        // in the dhall-lang submodule.
+        .join("tests")
+        .join("import")
+        .join("home");
+
+    #[cfg(target_family = "unix")]
+    env::set_var("HOME", &dhall_home_dir);
+
+    #[cfg(target_family = "windows")]
+    env::set_var("USERPROFILE", &dhall_home_dir);
+
     // Whether to overwrite the output files when our own output differs.
     // Either set `UPDATE_TEST_FILES=1` (deprecated) or pass `--bless` as an argument to this test
     // runner. Eg: `cargo test --test spec -- -q --bless`.

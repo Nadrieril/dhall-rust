@@ -29,6 +29,7 @@ pub enum ErrorKind {
 pub enum ImportError {
     Missing,
     MissingEnvVar,
+    MissingHome,
     SanityCheck,
     UnexpectedImport(Import<()>),
     ImportCycle(CyclesStack, ImportLocation),

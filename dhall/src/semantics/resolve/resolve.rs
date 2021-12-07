@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::Url;
 
 use crate::builtins::Builtin;
@@ -132,7 +132,10 @@ impl ImportLocationKind {
 
     fn fetch_text(&self) -> Result<String, Error> {
         Ok(match self {
-            ImportLocationKind::Local(path) => std::fs::read_to_string(path)?,
+            ImportLocationKind::Local(path) => {
+                let path = resolve_home(path)?;
+                std::fs::read_to_string(path)?
+            }
             ImportLocationKind::Remote(url) => download_http_text(url.clone())?,
             ImportLocationKind::Env(var_name) => match env::var(var_name) {
                 Ok(val) => val,
@@ -612,6 +615,30 @@ impl Canonicalize for FilePath {
 
         FilePath { file_path }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn resolve_home(path: impl AsRef<Path>) -> Result<PathBuf, Error> {
+    let mut f = PathBuf::new();
+
+    match path.as_ref().strip_prefix("~") {
+        Ok(rest) => {
+            let home = home::home_dir()
+                .ok_or_else(|| Error::from(ImportError::MissingHome))?;
+            f.push(home);
+            f.push(rest);
+        }
+        Err(_) => {
+            f.push(path);
+        }
+    }
+
+    Ok(f)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn resolve_home(_path: impl AsRef<Path>) -> Result<PathBuf, Error> {
+    panic!("Imports relative to home are not supported on wasm yet");
 }
 
 impl<SE: Copy> Canonicalize for ImportTarget<SE> {

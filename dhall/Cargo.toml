@@ -38,6 +38,7 @@ url = "2.1"
 # wasm for now.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reqwest = { version = "0.11", features = ["blocking"], optional = true }
+home = "0.5.3"
 
 [dev-dependencies]
 anyhow = "1.0.28"
