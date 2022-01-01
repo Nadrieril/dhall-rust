@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Fix reading file with a path relative to HOME (https://github.com/Nadrieril/dhall-rust/pull/224)
+- Change `?` to only fall back on absent imports
 - Add support for custom builtin types (https://github.com/Nadrieril/dhall-rust/pull/220)
 - Add support for Unix shebangs
 - `StaticType` derive supports records in Union Types (https://github.com/Nadrieril/dhall-rust/pull/219)
