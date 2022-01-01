@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.11.0] - 2022-01-01
+
 - Fix reading file with a path relative to HOME (https://github.com/Nadrieril/dhall-rust/pull/224)
 - Change `?` to only fall back on absent imports
 - Add support for custom builtin types (https://github.com/Nadrieril/dhall-rust/pull/220)
@@ -119,7 +121,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.0...HEAD
+[0.11.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...serde_dhall-v0.11.0
 [0.10.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.0...serde_dhall-v0.10.1
 [0.10.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.9.0...serde_dhall-v0.10.0
 [0.9.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.8.0...serde_dhall-v0.9.0
