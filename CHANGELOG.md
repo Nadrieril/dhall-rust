@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.11.1] - 2022-05-19
+
 - Improve error message on duplicate non-mergeable fields (https://github.com/Nadrieril/dhall-rust/pull/229)
 
 #### [0.11.0] - 2022-01-01
@@ -123,7 +125,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.0...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.1...HEAD
+[0.11.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.0...serde_dhall-v0.11.1
 [0.11.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...serde_dhall-v0.11.0
 [0.10.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.0...serde_dhall-v0.10.1
 [0.10.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.9.0...serde_dhall-v0.10.0
