@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Improve error message on duplicate non-mergeable fields (https://github.com/Nadrieril/dhall-rust/pull/229)
+
 #### [0.11.0] - 2022-01-01
 
 - Fix reading file with a path relative to HOME (https://github.com/Nadrieril/dhall-rust/pull/224)
