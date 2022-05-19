@@ -1,1 +1,7 @@
-Type error: error: RecordTypeMergeRequiresRecordType
+Type error: error: DuplicateFieldName
+ --> <current file>:1:22
+  |
+...
+8 | { x = { y = 0 }, x = { y = 0 } }
+  |                      ^^^^^^^^^ DuplicateFieldName
+  |

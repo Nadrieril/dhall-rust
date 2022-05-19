@@ -17,23 +17,20 @@ fn check_rectymerge(
     x: Nir<'_>,
     y: Nir<'_>,
 ) -> Result<(), TypeError> {
+    let not_record_err = || match span {
+        Span::DuplicateRecordFieldsSugar(_, r) => {
+            mk_span_err((**r).clone(), "DuplicateFieldName")
+        }
+        _ => mk_span_err(span.clone(), "RecordTypeMergeRequiresRecordType"),
+    };
+
     let kts_x = match x.kind() {
         NirKind::RecordType(kts) => kts,
-        _ => {
-            return mk_span_err(
-                span.clone(),
-                "RecordTypeMergeRequiresRecordType",
-            )
-        }
+        _ => return not_record_err(),
     };
     let kts_y = match y.kind() {
         NirKind::RecordType(kts) => kts,
-        _ => {
-            return mk_span_err(
-                span.clone(),
-                "RecordTypeMergeRequiresRecordType",
-            )
-        }
+        _ => return not_record_err(),
     };
     for (k, tx) in kts_x {
         if let Some(ty) = kts_y.get(k) {
