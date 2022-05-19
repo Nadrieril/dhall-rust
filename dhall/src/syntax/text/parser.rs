@@ -97,9 +97,13 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
         Entry::Occupied(mut entry) => {
             let dummy = Expr::new(Num(Bool(false)), Span::Artificial);
             let other = entry.insert(dummy);
+            let span = Span::DuplicateRecordFieldsSugar(
+                Box::new(other.span()),
+                Box::new(e.span()),
+            );
             entry.insert(Expr::new(
                 Op(BinOp(RecursiveRecordMerge, other, e)),
-                Span::DuplicateRecordFieldsSugar,
+                span,
             ));
         }
     }
@@ -133,11 +137,11 @@ lazy_static::lazy_static! {
     };
 }
 
-// Generate pest parser manually becaue otherwise we'd need to modify something outside of OUT_DIR
+// Generate pest parser manually because otherwise we'd need to modify something outside of OUT_DIR
 // and that's forbidden by docs.rs.
 // This is equivalent to:
 // ```
-// #[derive(Parser)
+// #[derive(Parser)]
 // #[grammar = "..."]
 // struct DhallParser;
 // ```

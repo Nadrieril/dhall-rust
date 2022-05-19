@@ -19,7 +19,7 @@ pub enum Span {
     /// A location in the source text
     Parsed(ParsedSpan),
     /// Desugarings
-    DuplicateRecordFieldsSugar,
+    DuplicateRecordFieldsSugar(Box<Span>, Box<Span>),
     DottedFieldSugar,
     RecordPunSugar,
     /// For expressions obtained from decoding binary

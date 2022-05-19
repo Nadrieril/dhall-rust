@@ -1,1 +1,12 @@
-Type error: error: RecordTypeMergeRequiresRecordType
+Type error: error: DuplicateFieldName
+  --> <current file>:6:47
+   |
+ 1 | {-  This test illustrates that duplicate fields need not be literals in order
+ 2 |     to be properly normalized.  One or both of the duplicate fields can be
+ 3 |     abstract because field duplication delegates its behavior to the `∧`
+ 4 |     operator
+...
+12 | -}
+13 | λ(r : { y : Natural }) → { x = { y = 1 }, x = r }
+   |                                               ^ DuplicateFieldName
+   |
