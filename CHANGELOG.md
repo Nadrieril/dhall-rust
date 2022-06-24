@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Implement StaticType for u16 (https://github.com/Nadrieril/dhall-rust/pull/230)
+
 #### [0.11.1] - 2022-05-19
 
 - Improve error message on duplicate non-mergeable fields (https://github.com/Nadrieril/dhall-rust/pull/229)
