@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.11.2] - 2022-06-24
+
 - Implement StaticType for u16 (https://github.com/Nadrieril/dhall-rust/pull/230)
 
 #### [0.11.1] - 2022-05-19
@@ -127,7 +129,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.1...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.2...HEAD
+[0.11.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.1...serde_dhall-v0.11.2
 [0.11.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.0...serde_dhall-v0.11.1
 [0.11.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...serde_dhall-v0.11.0
 [0.10.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.0...serde_dhall-v0.10.1
