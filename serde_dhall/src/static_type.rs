@@ -79,6 +79,7 @@ derive_builtin!(bool, Bool);
 derive_builtin!(usize, Natural);
 derive_builtin!(u64, Natural);
 derive_builtin!(u32, Natural);
+derive_builtin!(u16, Natural);
 derive_builtin!(isize, Integer);
 derive_builtin!(i64, Integer);
 derive_builtin!(i32, Integer);
