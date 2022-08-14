@@ -2,6 +2,7 @@
 
 #### [Unreleased]
 
+- BREAKING CHANGE: Change minimum supported version to 1.58.0 because of libtest-mimic dependency.
 - Implement ToDhall for SimpleType (https://github.com/Nadrieril/dhall-rust/pull/233)
 
 #### [0.11.2] - 2022-06-24

@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use libtest_mimic::{Arguments, Outcome, Test};
+use libtest_mimic::{Arguments, Trial};
 use walkdir::WalkDir;
 
 use dhall::error::Error as DhallError;
@@ -436,7 +436,7 @@ static FEATURES: &'static [TestFeature] = &[
     },
 ];
 
-fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
+fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
     let take_ab_suffix =
         feature.output_type != FileType::UI || feature.module_name == "printer";
     let input_suffix = if take_ab_suffix { "A" } else { "" };
@@ -483,17 +483,18 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Test<SpecTest>> {
                 .output_type
                 .construct(&format!("{}{}", output_path, output_suffix));
 
-            tests.push(Test {
-                name: format!("{}::{}", feature.module_name, name),
-                kind: "".into(),
-                is_ignored,
-                is_bench: false,
-                data: SpecTest {
-                    input,
-                    output,
-                    kind: feature.variant,
+            let test = Trial::test(
+                format!("{}::{}", feature.module_name, name),
+                move || {
+                    run_test_stringy_error(&SpecTest {
+                        kind: feature.variant,
+                        input,
+                        output,
+                    })
+                    .map_err(Into::into)
                 },
-            });
+            );
+            tests.push(test.with_ignored_flag(is_ignored));
         }
     }
     tests
@@ -744,18 +745,7 @@ fn main() {
     UPDATE_TEST_FILES.store(bless, Ordering::Release);
 
     let args = Arguments::from_iter(env::args().filter(|arg| arg != "--bless"));
-    let res = libtest_mimic::run_tests(&args, tests, |test| {
-        let result = std::panic::catch_unwind(move || {
-            run_test_stringy_error(&test.data)
-        });
-        match result {
-            Ok(Ok(_)) => Outcome::Passed,
-            Ok(Err(e)) => Outcome::Failed { msg: Some(e) },
-            Err(_) => Outcome::Failed {
-                msg: Some("thread panicked".to_string()),
-            },
-        }
-    });
+    let res = libtest_mimic::run(&args, tests);
 
     std::fs::remove_dir_all(&cache_dir).unwrap();
 
