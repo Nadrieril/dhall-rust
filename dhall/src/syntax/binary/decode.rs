@@ -1,7 +1,5 @@
 use itertools::Itertools;
-use serde::de;
 use std::collections::BTreeMap;
-use std::fmt;
 use std::iter::FromIterator;
 
 use crate::error::DecodeError;
@@ -15,7 +13,7 @@ use crate::syntax::{
 type DecodedExpr = Expr;
 
 pub fn decode(data: &[u8]) -> Result<DecodedExpr, DecodeError> {
-    match serde_cbor::de::from_slice(data) {
+    match minicbor::Decoder::new(data).decode() {
         Ok(v) => cbor_value_to_dhall(&v),
         Err(e) => Err(DecodeError::CBORError(e)),
     }
@@ -33,6 +31,73 @@ pub enum Value {
     Array(Vec<Value>),
     Object(BTreeMap<String, Value>),
     Bytes(Vec<u8>),
+}
+
+impl<'b> minicbor::Decode<'b, ()> for Value {
+    fn decode(
+        d: &mut minicbor::Decoder<'b>,
+        ctx: &mut (),
+    ) -> Result<Self, minicbor::decode::Error> {
+        use minicbor::data::{Tag, Type};
+        let p = d.position();
+        macro_rules! throw {
+            ($($msg:tt)*) => {
+                return Err(minicbor::decode::Error::message(format!(
+                    $($msg)*
+                ))
+                .at(p))
+            };
+        }
+
+        Ok(match d.datatype()? {
+            Type::Null => {
+                d.null()?;
+                Value::Null
+            }
+            Type::Bool => Value::Bool(d.bool()?),
+            Type::U8 => Value::U64(d.u8()? as u64),
+            Type::U16 => Value::U64(d.u16()? as u64),
+            Type::U32 => Value::U64(d.u32()? as u64),
+            Type::U64 => Value::U64(d.u64()?),
+            Type::I8 => Value::I64(d.i8()? as i64),
+            Type::I16 => Value::I64(d.i16()? as i64),
+            Type::I32 => Value::I64(d.i32()? as i64),
+            Type::I64 => Value::I64(d.i64()?),
+            Type::F16 => Value::F64(d.f16()? as f64),
+            Type::F32 => Value::F64(d.f32()? as f64),
+            Type::F64 => Value::F64(d.f64()?),
+            Type::String | Type::StringIndef => {
+                Value::String(d.str_iter()?.collect::<Result<_, _>>()?)
+            }
+            Type::Array | Type::ArrayIndef => {
+                Value::Array(d.array_iter()?.collect::<Result<_, _>>()?)
+            }
+            Type::Map | Type::MapIndef => {
+                Value::Object(d.map_iter()?.collect::<Result<_, _>>()?)
+            }
+            Type::Bytes | Type::BytesIndef => {
+                let mut bytes = Vec::new();
+                for slice_res in d.bytes_iter()? {
+                    bytes.extend_from_slice(slice_res?);
+                }
+                Value::Bytes(bytes)
+            }
+            Type::Tag => {
+                match d.tag()? {
+                    // That's the cbor self-description tag.
+                    Tag::Unassigned(55799) => Value::decode(d, ctx)?,
+                    tag => {
+                        throw!("Unknown cbor tag: {tag:?}")
+                    }
+                }
+            }
+            t @ (Type::Undefined
+            | Type::Simple
+            | Type::Int
+            | Type::Break
+            | Type::Unknown(_)) => throw!("Unknown cbor type: {t}"),
+        })
+    }
 }
 
 // Should probably rename this
@@ -520,135 +585,5 @@ impl Value {
         } else {
             None
         }
-    }
-}
-
-impl<'de> de::Deserialize<'de> for Value {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Value, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        struct ValueVisitor;
-
-        impl<'de> de::Visitor<'de> for ValueVisitor {
-            type Value = Value;
-
-            fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-                fmt.write_str("any valid CBOR value")
-            }
-
-            #[inline]
-            fn visit_str<E>(self, value: &str) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                self.visit_string(String::from(value))
-            }
-
-            #[inline]
-            fn visit_string<E>(self, value: String) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::String(value))
-            }
-            #[inline]
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                self.visit_byte_buf(v.to_owned())
-            }
-
-            #[inline]
-            fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::Bytes(v))
-            }
-
-            #[inline]
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::U64(v))
-            }
-
-            #[inline]
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::I64(v))
-            }
-
-            #[inline]
-            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::Bool(v))
-            }
-
-            #[inline]
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                self.visit_unit()
-            }
-
-            #[inline]
-            fn visit_unit<E>(self) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::Null)
-            }
-
-            #[inline]
-            fn visit_seq<V>(
-                self,
-                mut visitor: V,
-            ) -> Result<Self::Value, V::Error>
-            where
-                V: de::SeqAccess<'de>,
-            {
-                let mut vec = Vec::new();
-
-                while let Some(elem) = visitor.next_element()? {
-                    vec.push(elem);
-                }
-
-                Ok(Value::Array(vec))
-            }
-
-            #[inline]
-            fn visit_map<V>(self, mut visitor: V) -> Result<Value, V::Error>
-            where
-                V: de::MapAccess<'de>,
-            {
-                let mut values = BTreeMap::new();
-
-                while let Some((key, value)) = visitor.next_entry()? {
-                    values.insert(key, value);
-                }
-
-                Ok(Value::Object(values))
-            }
-
-            #[inline]
-            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::F64(v))
-            }
-        }
-
-        deserializer.deserialize_any(ValueVisitor)
     }
 }
