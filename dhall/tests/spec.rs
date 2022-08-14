@@ -712,6 +712,7 @@ fn main() {
         .join("dhall");
     let random_id = rand::thread_rng()
         .sample_iter(Alphanumeric)
+        .map(|b| b as char)
         .take(36)
         .collect::<String>();
     let cache_dir = format!("dhall-tests-{}", random_id);
