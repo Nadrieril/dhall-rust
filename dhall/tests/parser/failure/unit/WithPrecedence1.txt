@@ -1,6 +1,6 @@
  --> 1:24
   |
-1 | { x = 0 } // { y = 1 } with x = 1␊
+1 | { x = 0 } // { y = 1 } with x = 1
   |                        ^---
   |
   = expected EOI, import_alt, bool_or, natural_plus, text_append, list_append, bool_and, natural_times, bool_eq, bool_ne, combine, combine_types, equivalent, prefer, arrow, import_hashed, or primitive_expression

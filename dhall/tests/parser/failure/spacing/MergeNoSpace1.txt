@@ -1,6 +1,6 @@
  --> 1:1
   |
-1 | merge(x) y␊
+1 | merge(x) y
   | ^---
   |
   = expected expression

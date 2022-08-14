@@ -1,6 +1,6 @@
  --> 1:4
   |
-1 | < || >␊
+1 | < || >
   |    ^---
   |
   = expected any_label_or_some

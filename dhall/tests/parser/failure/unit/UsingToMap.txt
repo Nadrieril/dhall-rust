@@ -1,6 +1,6 @@
  --> 8:27
   |
-8 | https://example.com using toMap { Foo = "Bar" }␊
+8 | https://example.com using toMap { Foo = "Bar" }
   |                           ^---
   |
   = expected import_hashed or primitive_expression

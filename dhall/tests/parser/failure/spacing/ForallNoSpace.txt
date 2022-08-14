@@ -1,6 +1,6 @@
  --> 1:8
   |
-1 | forall(x :T) -> x␊
+1 | forall(x :T) -> x
   |        ^---
   |
   = expected missing, if_, merge, NaN, Some_, toMap, assert, or forall_keyword

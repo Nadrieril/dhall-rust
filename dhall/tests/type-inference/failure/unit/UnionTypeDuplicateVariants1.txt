@@ -1,6 +1,6 @@
  --> 1:2
   |
-1 | <x | x>␊
+1 | <x | x>
   |  ^---^
   |
   = Duplicate variant in union type
