@@ -1,6 +1,6 @@
  --> 1:1
   |
-1 | assert :T␊
+1 | assert :T
   | ^---
   |
   = expected expression

@@ -1,6 +1,6 @@
  --> 1:13
   |
-1 | ./foo sha256:d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe1g␊
+1 | ./foo sha256:d60d8415e36e86dae7f42933d3b0c4fe3ca238f057fba206c7e9fbf5d784fe1g
   |             ^---
   |
   = expected EOI, import_alt, bool_or, natural_plus, text_append, list_append, bool_and, natural_times, bool_eq, bool_ne, combine, combine_types, equivalent, prefer, or arrow

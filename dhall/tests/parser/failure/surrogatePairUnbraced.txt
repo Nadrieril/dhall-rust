@@ -1,6 +1,6 @@
  --> 5:3
   |
-5 | "\uD800"␊
+5 | "\uD800"
   |   ^---^
   |
   = Escape sequences can't contain surrogate pairs

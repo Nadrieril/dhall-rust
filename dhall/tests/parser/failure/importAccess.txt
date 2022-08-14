@@ -1,6 +1,6 @@
  --> 1:15
   |
-1 | ./testImport .hello␊
+1 | ./testImport .hello
   |               ^---
   |
   = expected path

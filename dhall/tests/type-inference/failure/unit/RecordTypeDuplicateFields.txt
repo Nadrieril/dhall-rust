@@ -1,6 +1,6 @@
  --> 1:3
   |
-1 | { x: Natural, x: Natural }␊
+1 | { x: Natural, x: Natural }
   |   ^--------------------^
   |
   = Duplicate field in record type

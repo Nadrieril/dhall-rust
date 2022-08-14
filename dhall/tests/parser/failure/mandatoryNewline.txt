@@ -1,6 +1,6 @@
  --> 2:1
   |
-2 | ''ABC''␊
+2 | ''ABC''
   | ^---
   |
   = expected expression

@@ -13,7 +13,7 @@ repository = "https://github.com/Nadrieril/dhall-rust"
 doctest = false
 
 [dependencies]
-abnf = "0.9.0"
+abnf = "0.12.0"
 indexmap = "1.0.2"
-itertools = "0.9.0"
-pretty = "0.10.0"
+itertools = "0.10.3"
+pretty = "0.11.3"

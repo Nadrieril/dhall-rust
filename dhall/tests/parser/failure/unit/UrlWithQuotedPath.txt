@@ -1,6 +1,6 @@
  --> 1:21
   |
-1 | https://example.com/"a%20b"/c␊
+1 | https://example.com/"a%20b"/c
   |                     ^---
   |
   = expected EOI, import_alt, bool_or, natural_plus, text_append, list_append, bool_and, natural_times, bool_eq, bool_ne, combine, combine_types, equivalent, prefer, or arrow
