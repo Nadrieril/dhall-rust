@@ -535,6 +535,7 @@ impl SimpleType {
 impl crate::deserialize::Sealed for Value {}
 impl crate::deserialize::Sealed for SimpleType {}
 impl crate::serialize::Sealed for Value {}
+impl crate::serialize::Sealed for SimpleType {}
 
 impl FromDhall for Value {
     fn from_dhall(v: &Value) -> Result<Self> {
@@ -554,6 +555,13 @@ impl FromDhall for SimpleType {
 impl ToDhall for Value {
     fn to_dhall(&self, _ty: Option<&SimpleType>) -> Result<Value> {
         Ok(self.clone())
+    }
+}
+impl ToDhall for SimpleType {
+    fn to_dhall(&self, _ty: Option<&SimpleType>) -> Result<Value> {
+        Ok(Value {
+            kind: ValueKind::Ty(self.clone()),
+        })
     }
 }
 

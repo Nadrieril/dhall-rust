@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+- Implement ToDhall for SimpleType (https://github.com/Nadrieril/dhall-rust/pull/233)
+
 #### [0.11.2] - 2022-06-24
 
 - Implement StaticType for u16 (https://github.com/Nadrieril/dhall-rust/pull/230)
