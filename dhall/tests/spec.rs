@@ -483,13 +483,17 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
                 .output_type
                 .construct(&format!("{}{}", output_path, output_suffix));
 
-            let test = Trial::test(format!("{}::{}", feature.module_name, name), move || {
-                run_test_stringy_error(&SpecTest {
-                    kind: feature.variant,
-                    input,
-                    output,
-                }).map_err(Into::into)
-            });
+            let test = Trial::test(
+                format!("{}::{}", feature.module_name, name),
+                move || {
+                    run_test_stringy_error(&SpecTest {
+                        kind: feature.variant,
+                        input,
+                        output,
+                    })
+                    .map_err(Into::into)
+                },
+            );
             tests.push(test.with_ignored_flag(is_ignored));
         }
     }
