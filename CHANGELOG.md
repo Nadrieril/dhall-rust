@@ -2,6 +2,8 @@
 
 #### [Unreleased]
 
+#### [0.12.0] - 2022-08-15
+
 - BREAKING CHANGE: Change minimum supported version to 1.60.0 because of `minicbor` dependency
 - Use `minicbor` instead of the deprecated `serde_cbor` (https://github.com/Nadrieril/dhall-rust/pull/236)
 - BREAKING CHANGE: Change minimum supported version to 1.58.0 because of `libtest-mimic` dependency (https://github.com/Nadrieril/dhall-rust/pull/234)
@@ -134,7 +136,8 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.2...HEAD
+[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.12.0...HEAD
+[0.12.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.2...serde_dhall-v0.12.0
 [0.11.2]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.1...serde_dhall-v0.11.2
 [0.11.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.0...serde_dhall-v0.11.1
 [0.11.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.10.1...serde_dhall-v0.11.0
