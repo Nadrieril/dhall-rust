@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "abnf_to_pest"
-version = "0.5.1-dev"
+version = "0.5.1"
 dependencies = [
  "abnf",
  "indexmap",
