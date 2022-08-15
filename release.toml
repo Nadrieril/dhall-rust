@@ -1,6 +1,6 @@
-disable-push = true
-disable-publish = true
-no-dev-version = true
+push = false
+publish = false
+dev-version = false
 pre-release-commit-message = "release: {{crate_name}} version {{version}}"
 
 [[pre-release-replacements]]
