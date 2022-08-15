@@ -2,7 +2,9 @@
 
 #### [Unreleased]
 
-- BREAKING CHANGE: Change minimum supported version to 1.58.0 because of libtest-mimic dependency.
+- BREAKING CHANGE: Change minimum supported version to 1.60.0 because of `minicbor` dependency
+- Use `minicbor` instead of the deprecated `serde_cbor` (https://github.com/Nadrieril/dhall-rust/pull/236)
+- BREAKING CHANGE: Change minimum supported version to 1.58.0 because of `libtest-mimic` dependency (https://github.com/Nadrieril/dhall-rust/pull/234)
 - Implement ToDhall for SimpleType (https://github.com/Nadrieril/dhall-rust/pull/233)
 
 #### [0.11.2] - 2022-06-24

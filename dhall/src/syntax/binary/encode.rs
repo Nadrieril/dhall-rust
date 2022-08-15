@@ -1,288 +1,267 @@
-use std::collections::BTreeMap;
 use std::vec;
 
 use crate::builtins::Builtin;
 use crate::error::EncodeError;
 use crate::operations::{BinOp, OpKind};
-use crate::syntax;
 use crate::syntax::{
-    Expr, ExprKind, FilePrefix, Hash, Import, ImportMode, ImportTarget, Label,
-    Scheme, V,
+    self, Expr, ExprKind, FilePrefix, Hash, ImportMode, ImportTarget,
+    InterpolatedTextContents, Label, NaiveDouble, Scheme, V,
 };
 
 pub fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
-    serde_cbor::ser::to_vec(&Serialize::Expr(expr))
-        .map_err(EncodeError::CBORError)
+    minicbor::to_vec(expr).map_err(EncodeError::CBORError)
 }
 
-enum Serialize<'a> {
-    Null,
-    Tag(u64),
-    Label(&'a Label),
-    Text(String),
-    Bytes(Vec<u8>),
-
-    Expr(&'a Expr),
-    RecordMap(&'a BTreeMap<Label, Expr>),
-    UnionMap(&'a BTreeMap<Label, Option<Expr>>),
-}
-
-macro_rules! count {
-    (@replace_with $_t:tt $sub:expr) => { $sub };
-    ($($tts:tt)*) => {0usize $(+ count!(@replace_with $tts 1usize))*};
-}
-
-macro_rules! ser_seq {
-    ($ser:expr; $($elt:expr),* $(,)?) => {{
-        use serde::ser::SerializeSeq;
-        let count = count!($($elt)*);
-        let mut ser_seq = $ser.serialize_seq(Some(count))?;
-        $(
-            ser_seq.serialize_element(&$elt)?;
-        )*
-        ser_seq.end()
-    }};
-}
-
-fn serialize_subexpr<S>(ser: S, e: &Expr) -> Result<S::Ok, S::Error>
-where
-    S: serde::ser::Serializer,
-{
-    use std::iter::once;
-    use syntax::ExprKind::*;
-    use syntax::NumKind::*;
-    use OpKind::*;
-
-    use self::Serialize::{RecordMap, UnionMap};
-    fn expr(x: &Expr) -> self::Serialize<'_> {
-        self::Serialize::Expr(x)
-    }
-    fn label(x: &Label) -> self::Serialize<'_> {
-        self::Serialize::Label(x)
-    }
-    let tag = |x: u64| Serialize::Tag(x);
-    let null = || Serialize::Null;
-
-    match e.as_ref() {
-        Const(c) => ser.serialize_str(&c.to_string()),
-        Builtin(b) => ser.serialize_str(&b.to_string()),
-        Num(Bool(b)) => ser.serialize_bool(*b),
-        Num(Natural(n)) => ser_seq!(ser; tag(15), n),
-        Num(Integer(n)) => ser_seq!(ser; tag(16), n),
-        Num(Double(n)) => {
-            let n: f64 = (*n).into();
-            ser.serialize_f64(n)
-        }
-        Op(BoolIf(x, y, z)) => {
-            ser_seq!(ser; tag(14), expr(x), expr(y), expr(z))
-        }
-        Var(V(l, n)) if l.as_ref() == "_" => ser.serialize_u64(*n as u64),
-        Var(V(l, n)) => ser_seq!(ser; label(l), (*n as u64)),
-        Lam(l, x, y) if l.as_ref() == "_" => {
-            ser_seq!(ser; tag(1), expr(x), expr(y))
-        }
-        Lam(l, x, y) => ser_seq!(ser; tag(1), label(l), expr(x), expr(y)),
-        Pi(l, x, y) if l.as_ref() == "_" => {
-            ser_seq!(ser; tag(2), expr(x), expr(y))
-        }
-        Pi(l, x, y) => ser_seq!(ser; tag(2), label(l), expr(x), expr(y)),
-        Let(_, _, _, _) => {
-            let (bound_e, bindings) = collect_nested_lets(e);
-            let count = 1 + 3 * bindings.len() + 1;
-
-            use serde::ser::SerializeSeq;
-            let mut ser_seq = ser.serialize_seq(Some(count))?;
-            ser_seq.serialize_element(&tag(25))?;
-            for (l, t, v) in bindings {
-                ser_seq.serialize_element(&label(l))?;
-                match t {
-                    Some(t) => ser_seq.serialize_element(&expr(t))?,
-                    None => ser_seq.serialize_element(&null())?,
-                }
-                ser_seq.serialize_element(&expr(v))?;
-            }
-            ser_seq.serialize_element(&expr(bound_e))?;
-            ser_seq.end()
-        }
-        Op(App(_, _)) => {
-            let (f, args) = collect_nested_applications(e);
-            ser.collect_seq(
-                once(tag(0))
-                    .chain(once(expr(f)))
-                    .chain(args.into_iter().rev().map(expr)),
-            )
-        }
-        Annot(x, y) => ser_seq!(ser; tag(26), expr(x), expr(y)),
-        Assert(x) => ser_seq!(ser; tag(19), expr(x)),
-        SomeLit(x) => ser_seq!(ser; tag(5), null(), expr(x)),
-        EmptyListLit(x) => match x.as_ref() {
-            Op(App(f, a)) => match f.as_ref() {
-                ExprKind::Builtin(self::Builtin::List) => {
-                    ser_seq!(ser; tag(4), expr(a))
-                }
-                _ => ser_seq!(ser; tag(28), expr(x)),
-            },
-            _ => ser_seq!(ser; tag(28), expr(x)),
-        },
-        NEListLit(xs) => ser.collect_seq(
-            once(tag(4)).chain(once(null())).chain(xs.iter().map(expr)),
-        ),
-        TextLit(xs) => {
-            use syntax::InterpolatedTextContents::{Expr, Text};
-            ser.collect_seq(once(tag(18)).chain(xs.iter().map(|x| match x {
-                Expr(x) => expr(x),
-                Text(x) => Serialize::Text(x),
-            })))
-        }
-        RecordType(map) => ser_seq!(ser; tag(7), RecordMap(map)),
-        RecordLit(map) => ser_seq!(ser; tag(8), RecordMap(map)),
-        UnionType(map) => ser_seq!(ser; tag(11), UnionMap(map)),
-        Op(Field(x, l)) => ser_seq!(ser; tag(9), expr(x), label(l)),
-        Op(BinOp(op, x, y)) => {
-            use self::BinOp::*;
-            let op = match op {
-                BoolOr => 0,
-                BoolAnd => 1,
-                BoolEQ => 2,
-                BoolNE => 3,
-                NaturalPlus => 4,
-                NaturalTimes => 5,
-                TextAppend => 6,
-                ListAppend => 7,
-                RecursiveRecordMerge => 8,
-                RightBiasedRecordMerge => 9,
-                RecursiveRecordTypeMerge => 10,
-                ImportAlt => 11,
-                Equivalence => 12,
-            };
-            ser_seq!(ser; tag(3), op, expr(x), expr(y))
-        }
-        Op(Merge(x, y, None)) => ser_seq!(ser; tag(6), expr(x), expr(y)),
-        Op(Merge(x, y, Some(z))) => {
-            ser_seq!(ser; tag(6), expr(x), expr(y), expr(z))
-        }
-        Op(ToMap(x, None)) => ser_seq!(ser; tag(27), expr(x)),
-        Op(ToMap(x, Some(y))) => ser_seq!(ser; tag(27), expr(x), expr(y)),
-        Op(Projection(x, ls)) => ser.collect_seq(
-            once(tag(10))
-                .chain(once(expr(x)))
-                .chain(ls.iter().map(label)),
-        ),
-        Op(ProjectionByExpr(x, y)) => {
-            ser_seq!(ser; tag(10), expr(x), vec![expr(y)])
-        }
-        Op(Completion(x, y)) => {
-            ser_seq!(ser; tag(3), tag(13), expr(x), expr(y))
-        }
-        Op(With(x, ls, y)) => {
-            let ls: Vec<_> = ls.iter().map(label).collect();
-            ser_seq!(ser; tag(29), expr(x), ls, expr(y))
-        }
-        Import(import) => serialize_import(ser, import),
+impl minicbor::Encode<()> for Label {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        self.as_ref().encode(e, ctx)
     }
 }
-
-fn serialize_import<S>(ser: S, import: &Import<Expr>) -> Result<S::Ok, S::Error>
-where
-    S: serde::ser::Serializer,
-{
-    use serde::ser::SerializeSeq;
-    use Serialize::Null;
-
-    let count = 4 + match &import.location {
-        ImportTarget::Remote(url) => 3 + url.path.file_path.len(),
-        ImportTarget::Local(_, path) => path.file_path.len(),
-        ImportTarget::Env(_) => 1,
-        ImportTarget::Missing => 0,
-    };
-    let mut ser_seq = ser.serialize_seq(Some(count))?;
-
-    ser_seq.serialize_element(&24)?;
-
-    match &import.hash {
-        None => ser_seq.serialize_element(&Null)?,
-        Some(Hash::SHA256(h)) => {
-            let mut bytes = vec![18, 32];
-            bytes.extend_from_slice(h);
-            ser_seq.serialize_element(&Serialize::Bytes(bytes))?;
-        }
-    }
-
-    let mode = match import.mode {
-        ImportMode::Code => 0,
-        ImportMode::RawText => 1,
-        ImportMode::Location => 2,
-    };
-    ser_seq.serialize_element(&mode)?;
-
-    let scheme = match &import.location {
-        ImportTarget::Remote(url) => match url.scheme {
-            Scheme::HTTP => 0,
-            Scheme::HTTPS => 1,
-        },
-        ImportTarget::Local(prefix, _) => match prefix {
-            FilePrefix::Absolute => 2,
-            FilePrefix::Here => 3,
-            FilePrefix::Parent => 4,
-            FilePrefix::Home => 5,
-        },
-        ImportTarget::Env(_) => 6,
-        ImportTarget::Missing => 7,
-    };
-    ser_seq.serialize_element(&scheme)?;
-
-    match &import.location {
-        ImportTarget::Remote(url) => {
-            match &url.headers {
-                None => ser_seq.serialize_element(&Null)?,
-                Some(e) => {
-                    ser_seq.serialize_element(&self::Serialize::Expr(e))?
-                }
-            };
-            ser_seq.serialize_element(&url.authority)?;
-            for p in url.path.file_path.iter() {
-                ser_seq.serialize_element(&p)?;
-            }
-            match &url.query {
-                None => ser_seq.serialize_element(&Null)?,
-                Some(x) => ser_seq.serialize_element(x)?,
-            };
-        }
-        ImportTarget::Local(_, path) => {
-            for p in path.file_path.iter() {
-                ser_seq.serialize_element(&p)?;
-            }
-        }
-        ImportTarget::Env(env) => {
-            ser_seq.serialize_element(env)?;
-        }
-        ImportTarget::Missing => {}
-    }
-
-    ser_seq.end()
-}
-
-impl<'a> serde::ser::Serialize for Serialize<'a> {
-    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        use Serialize::*;
+impl minicbor::Encode<()> for InterpolatedTextContents<&Expr> {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
         match self {
-            Null => ser.serialize_unit(),
-            Tag(v) => ser.serialize_u64(*v),
-            Label(v) => ser.serialize_str(v.as_ref()),
-            Text(v) => ser.serialize_str(v),
-            Bytes(v) => ser.serialize_bytes(v),
-
-            Expr(e) => serialize_subexpr(ser, e),
-            RecordMap(map) => {
-                ser.collect_map(map.iter().map(|(k, v)| (Label(k), Expr(v))))
-            }
-            UnionMap(map) => ser.collect_map(
-                map.iter().map(|(k, v)| (Label(k), v.as_ref().map(Expr))),
-            ),
+            Self::Expr(x) => x.encode(e, ctx),
+            Self::Text(x) => x.encode(e, ctx),
         }
+    }
+}
+
+impl minicbor::Encode<()> for NaiveDouble {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        _ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        let d: f64 = (*self).into();
+        if d.is_nan() || d == half::f16::from_f64(d).to_f64() {
+            e.f16(d as f32)?;
+        } else if d == d as f32 as f64 {
+            e.f32(d as f32)?;
+        } else {
+            e.f64(d)?;
+        }
+        Ok(())
+    }
+}
+
+impl minicbor::Encode<()> for BinOp {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        use self::BinOp::*;
+        let op: u64 = match self {
+            BoolOr => 0,
+            BoolAnd => 1,
+            BoolEQ => 2,
+            BoolNE => 3,
+            NaturalPlus => 4,
+            NaturalTimes => 5,
+            TextAppend => 6,
+            ListAppend => 7,
+            RecursiveRecordMerge => 8,
+            RightBiasedRecordMerge => 9,
+            RecursiveRecordTypeMerge => 10,
+            ImportAlt => 11,
+            Equivalence => 12,
+        };
+        op.encode(e, ctx)
+    }
+}
+
+impl minicbor::Encode<()> for Hash {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        _ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        let Hash::SHA256(h) = self;
+        let mut bytes = vec![18, 32];
+        bytes.extend_from_slice(h);
+        e.bytes(&bytes)?;
+        Ok(())
+    }
+}
+
+impl minicbor::Encode<()> for ImportMode {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        let mode: u64 = match self {
+            ImportMode::Code => 0,
+            ImportMode::RawText => 1,
+            ImportMode::Location => 2,
+        };
+        mode.encode(e, ctx)
+    }
+}
+
+impl minicbor::Encode<()> for Expr {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        enc: &mut minicbor::Encoder<W>,
+        ctx: &mut (),
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        use syntax::ExprKind::*;
+        use syntax::NumKind::*;
+        use OpKind::*;
+
+        let null = None::<()>;
+
+        match self.as_ref() {
+            Const(c) => c.to_string().encode(enc, ctx)?,
+            Builtin(b) => b.to_string().encode(enc, ctx)?,
+            Num(Bool(b)) => b.encode(enc, ctx)?,
+            Num(Natural(n)) => (15u64, n).encode(enc, ctx)?,
+            Num(Integer(n)) => (16u64, n).encode(enc, ctx)?,
+            Num(Double(n)) => n.encode(enc, ctx)?,
+            Op(BoolIf(x, y, z)) => (14u64, x, y, z).encode(enc, ctx)?,
+            Var(V(l, n)) if l.as_ref() == "_" => {
+                (*n as u64).encode(enc, ctx)?
+            }
+            Var(V(l, n)) => {
+                (l, *n as u64).encode(enc, ctx)?;
+            }
+            Lam(l, x, y) if l.as_ref() == "_" => {
+                (1u64, x, y).encode(enc, ctx)?
+            }
+            Lam(l, x, y) => (1u64, l, x, y).encode(enc, ctx)?,
+            Pi(l, x, y) if l.as_ref() == "_" => {
+                (2u64, x, y).encode(enc, ctx)?
+            }
+            Pi(l, x, y) => (2u64, l, x, y).encode(enc, ctx)?,
+            Let(_, _, _, _) => {
+                let (bound_e, bindings) = collect_nested_lets(self);
+                let len = 1 + 3 * bindings.len() as u64 + 1;
+                enc.array(len)?;
+                25u64.encode(enc, ctx)?;
+                for (l, t, v) in bindings {
+                    l.encode(enc, ctx)?;
+                    t.encode(enc, ctx)?;
+                    v.encode(enc, ctx)?;
+                }
+                bound_e.encode(enc, ctx)?;
+            }
+            Op(App(_, _)) => {
+                let (f, args) = collect_nested_applications(self);
+                enc.array(1 + 1 + args.len() as u64)?;
+                0u64.encode(enc, ctx)?;
+                f.encode(enc, ctx)?;
+                for arg in args.into_iter().rev() {
+                    arg.encode(enc, ctx)?;
+                }
+            }
+            Annot(x, y) => (26u64, x, y).encode(enc, ctx)?,
+            Assert(x) => (19u64, x).encode(enc, ctx)?,
+            SomeLit(x) => (5u64, null, x).encode(enc, ctx)?,
+            EmptyListLit(x) => match x.as_ref() {
+                Op(App(f, a))
+                    if matches!(
+                        f.as_ref(),
+                        ExprKind::Builtin(self::Builtin::List)
+                    ) =>
+                {
+                    (4u64, a).encode(enc, ctx)?
+                }
+                _ => (28u64, x).encode(enc, ctx)?,
+            },
+            NEListLit(xs) => {
+                enc.array(2 + xs.len() as u64)?;
+                4u64.encode(enc, ctx)?;
+                null.encode(enc, ctx)?;
+                for x in xs {
+                    x.encode(enc, ctx)?;
+                }
+            }
+            TextLit(xs) => {
+                enc.array(1 + xs.len() as u64)?;
+                18u64.encode(enc, ctx)?;
+                for x in xs.iter() {
+                    x.encode(enc, ctx)?;
+                }
+            }
+            RecordType(map) => (7u64, map).encode(enc, ctx)?,
+            RecordLit(map) => (8u64, map).encode(enc, ctx)?,
+            UnionType(map) => (11u64, map).encode(enc, ctx)?,
+            Op(Field(x, l)) => (9u64, x, l).encode(enc, ctx)?,
+            Op(BinOp(op, x, y)) => (3u64, op, x, y).encode(enc, ctx)?,
+            Op(Merge(x, y, None)) => (6u64, x, y).encode(enc, ctx)?,
+            Op(Merge(x, y, Some(z))) => (6u64, x, y, z).encode(enc, ctx)?,
+            Op(ToMap(x, None)) => (27u64, x).encode(enc, ctx)?,
+            Op(ToMap(x, Some(y))) => (27u64, x, y).encode(enc, ctx)?,
+            Op(Projection(x, ls)) => {
+                enc.array(2 + ls.len() as u64)?;
+                10u64.encode(enc, ctx)?;
+                x.encode(enc, ctx)?;
+                for l in ls {
+                    l.encode(enc, ctx)?;
+                }
+            }
+            Op(ProjectionByExpr(x, y)) => (10u64, x, (y,)).encode(enc, ctx)?,
+            Op(Completion(x, y)) => (3u64, 13u64, x, y).encode(enc, ctx)?,
+            Op(With(x, ls, y)) => (29u64, x, ls, y).encode(enc, ctx)?,
+            Import(import) => {
+                let count = 4 + match &import.location {
+                    ImportTarget::Remote(url) => 3 + url.path.file_path.len(),
+                    ImportTarget::Local(_, path) => path.file_path.len(),
+                    ImportTarget::Env(_) => 1,
+                    ImportTarget::Missing => 0,
+                };
+                enc.array(count as u64)?;
+
+                24u64.encode(enc, ctx)?;
+                import.hash.encode(enc, ctx)?;
+                import.mode.encode(enc, ctx)?;
+
+                let scheme: u64 = match &import.location {
+                    ImportTarget::Remote(url) => match url.scheme {
+                        Scheme::HTTP => 0,
+                        Scheme::HTTPS => 1,
+                    },
+                    ImportTarget::Local(prefix, _) => match prefix {
+                        FilePrefix::Absolute => 2,
+                        FilePrefix::Here => 3,
+                        FilePrefix::Parent => 4,
+                        FilePrefix::Home => 5,
+                    },
+                    ImportTarget::Env(_) => 6,
+                    ImportTarget::Missing => 7,
+                };
+                scheme.encode(enc, ctx)?;
+
+                match &import.location {
+                    ImportTarget::Remote(url) => {
+                        url.headers.encode(enc, ctx)?;
+                        url.authority.encode(enc, ctx)?;
+                        for p in url.path.file_path.iter() {
+                            p.encode(enc, ctx)?;
+                        }
+                        url.query.encode(enc, ctx)?;
+                    }
+                    ImportTarget::Local(_, path) => {
+                        for p in path.file_path.iter() {
+                            p.encode(enc, ctx)?;
+                        }
+                    }
+                    ImportTarget::Env(env) => {
+                        env.encode(enc, ctx)?;
+                    }
+                    ImportTarget::Missing => {}
+                }
+            }
+        };
+        Ok(())
     }
 }
 

@@ -38,13 +38,13 @@ pub enum ImportError {
 
 #[derive(Debug)]
 pub enum DecodeError {
-    CBORError(serde_cbor::error::Error),
+    CBORError(minicbor::decode::Error),
     WrongFormatError(String),
 }
 
 #[derive(Debug)]
 pub enum EncodeError {
-    CBORError(serde_cbor::error::Error),
+    CBORError(minicbor::encode::Error<core::convert::Infallible>),
 }
 
 /// A structured type error

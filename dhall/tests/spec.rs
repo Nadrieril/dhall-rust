@@ -225,12 +225,15 @@ impl TestFile {
             if Self::force_update() {
                 self.write_expr(expr)?;
             } else {
-                use serde_cbor::de::from_slice;
-                use serde_cbor::value::Value;
+                use dhall::syntax::binary::CBORValue;
                 // Pretty-print difference
                 assert_eq!(
-                    from_slice::<Value>(&expr_data).unwrap(),
-                    from_slice::<Value>(&expected_data).unwrap()
+                    minicbor::Decoder::new(&expr_data)
+                        .decode::<CBORValue>()
+                        .unwrap(),
+                    minicbor::Decoder::new(&expected_data)
+                        .decode::<CBORValue>()
+                        .unwrap()
                 );
                 // If difference was not visible in the cbor::Nir, compare normally.
                 assert_eq!(expr_data, expected_data);
