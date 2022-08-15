@@ -1,11 +1,8 @@
 push = false
 publish = true
 allow-branch = ["master"]
-dev-version = true
-dev-version-ext = "dev"
 dependent-version = "upgrade"
 pre-release-commit-message = "release: {{crate_name}} version {{version}}"
-post-release-commit-message = "chore: start work on {{crate_name}} version {{next_version}}"
 
 [[pre-release-replacements]]
 file = "src/lib.rs"
