@@ -1,6 +1,7 @@
 push = false
 publish = true
 allow-branch = ["master"]
+dev-version = true
 dev-version-ext = "dev"
 dependent-version = "upgrade"
 pre-release-commit-message = "release: {{crate_name}} version {{version}}"
