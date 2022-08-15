@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "dhall"
-version = "0.12.0-dev"
+version = "0.12.0"
 dependencies = [
  "abnf_to_pest",
  "annotate-snippets",
