@@ -1,7 +1,7 @@
 [package]
 name = "dhall_proc_macros"
 # remember to update html_root_url
-version = "0.6.1-dev"
+version = "0.6.1"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 description = "Macros for dhall"
