@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "abnf_to_pest"
-version = "0.5.0"
+version = "0.5.1-dev"
 dependencies = [
  "abnf",
  "indexmap",
@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "dhall"
-version = "0.11.1"
+version = "0.12.0-dev"
 dependencies = [
  "abnf_to_pest",
  "annotate-snippets",
@@ -257,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "dhall_proc_macros"
-version = "0.6.0"
+version = "0.6.1-dev"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "serde_dhall"
-version = "0.11.2"
+version = "0.12.0-dev"
 dependencies = [
  "dhall",
  "dhall_proc_macros",

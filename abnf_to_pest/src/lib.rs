@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/abnf_to_pest/0.5.0")]
+#![doc(html_root_url = "https://docs.rs/abnf_to_pest/0.5.1-dev")]
 
 //! A tiny crate that helps convert ABNF grammars to [pest][pest].
 //!
