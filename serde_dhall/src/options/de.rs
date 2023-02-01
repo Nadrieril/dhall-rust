@@ -12,6 +12,7 @@ enum Source<'a> {
     Str(&'a str),
     File(PathBuf),
     BinaryFile(PathBuf),
+    Binary(&'a [u8]),
     // Url(&'a str),
 }
 
@@ -83,6 +84,9 @@ impl<'a> Deserializer<'a, NoAnnot> {
     }
     fn from_binary_file<P: AsRef<Path>>(path: P) -> Self {
         Self::default_with_source(Source::BinaryFile(path.as_ref().to_owned()))
+    }
+    fn from_binary(b: &'a [u8]) -> Self {
+        Self::default_with_source(Source::Binary(b))
     }
     // fn from_url(url: &'a str) -> Self {
     //     Self::default_with_source(Source::Url(url))
@@ -325,6 +329,7 @@ impl<'a, A> Deserializer<'a, A> {
                 Source::Str(s) => Parsed::parse_str(s)?,
                 Source::File(p) => Parsed::parse_file(p.as_ref())?,
                 Source::BinaryFile(p) => Parsed::parse_binary_file(p.as_ref())?,
+                Source::Binary(b) => Parsed::parse_binary(b)?,
             };
 
             let parsed_with_builtins =
@@ -413,6 +418,42 @@ impl<'a, A> Deserializer<'a, A> {
 /// [`parse()`]: Deserializer::parse()
 pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_str(s)
+}
+
+/// Deserialize a value from a slice of CBOR-encoded Dhall. The binary format is
+/// specified by the Dhall standard specification and is mostly used for caching
+/// expressions. Using the format is not recommended because errors won't have a
+/// file to refer to and thus will be hard to fix.
+///
+/// This returns a [`Deserializer`] object. Call the [`parse()`] method to get
+/// the deserialized value, or use other [`Deserializer`] methods to control the
+/// deserialization process.
+///
+/// Imports will be resolved relative to the current directory.
+///
+/// # Example
+///
+/// ```no_run
+/// # use std::fs;
+/// # fn main() -> serde_dhall::Result<()> {
+/// use serde::Deserialize;
+///
+/// // We use serde's derive feature
+/// #[derive(Deserialize)]
+/// struct Point {
+///     x: u64,
+///     y: u64,
+/// }
+/// let binary = fs::read("foo.dhallb").expect("Error reading the binary file");
+/// // Parse the binary Dhall as a Point.
+/// let point: Point = serde_dhall::from_binary(&binary).parse()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [`parse()`]: Deserializer::parse()
+pub fn from_binary(b: &[u8]) -> Deserializer<'_, NoAnnot> {
+    Deserializer::from_binary(b)
 }
 
 /// Deserialize a value from a Dhall file.
