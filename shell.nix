@@ -14,7 +14,7 @@ let
 in
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    binutils cmake gcc gnumake openssl pkgconfig rustup
+    binutils cmake gcc gnumake openssl zlib pkgconfig rustup
     niv dhall
   ];
 }
