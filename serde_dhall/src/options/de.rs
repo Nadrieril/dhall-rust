@@ -434,6 +434,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 /// # Example
 ///
 /// ```no_run
+/// # use std::fs;
 /// # fn main() -> serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
@@ -443,7 +444,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 ///     x: u64,
 ///     y: u64,
 /// }
-/// let binary = fs::read("foo.dhallb")?;
+/// let binary = fs::read("foo.dhallb").expect("Error reading the binary file");
 /// // Parse the binary Dhall as a Point.
 /// let point: Point = serde_dhall::from_binary(&binary).parse()?;
 /// # Ok(())
