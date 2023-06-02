@@ -31,6 +31,10 @@ You can find more details about the language by visiting the official website:
 
 * [https://dhall-lang.org](http://dhall-lang.org/)
 
+# STATUS
+
+I am no longer maintaining this project. I got it to support about 90% of the language but then lost faith in the usability of dhall for my purposes. I am willing to hand this over to someone who's excited about dhall and rust.
+
 # `dhall-rust`
 
 This is the Rust implementation of the Dhall configuration language.
