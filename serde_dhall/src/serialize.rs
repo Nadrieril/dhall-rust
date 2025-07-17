@@ -67,7 +67,7 @@ impl ser::Serializer for Serializer {
     type SerializeTupleVariant = ser::Impossible<Self::Ok, Self::Error>;
     type SerializeMap = MapSerializer;
     type SerializeStruct = StructSerializer;
-    type SerializeStructVariant = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeStructVariant = StructVariantSerializer;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
         Ok(Num(NumKind::Bool(v)))
@@ -195,13 +195,13 @@ impl ser::Serializer for Serializer {
         self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
-        Err(ErrorKind::Serialize(
-            "Unsupported data for serialization: struct variant".to_owned(),
-        )
-        .into())
+        Ok(StructVariantSerializer {
+            variant,
+            value: BTreeMap::new(),
+        })
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
@@ -336,6 +336,32 @@ impl ser::SerializeStruct for StructSerializer {
 
     fn end(self) -> Result<Self::Ok> {
         Ok(Record(self.0))
+    }
+}
+
+struct StructVariantSerializer {
+    variant: &'static str,
+    value: BTreeMap<String, SimpleValue>,
+}
+
+impl ser::SerializeStructVariant for StructVariantSerializer {
+    type Ok = SimpleValue;
+    type Error = Error;
+
+    fn serialize_field<T>(&mut self, key: &'static str, val: &T) -> Result<()>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        let val: SimpleValue = val.serialize(Serializer)?;
+        self.value.insert(key.into(), val);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok> {
+        Ok(SimpleValue::Union(
+            self.variant.to_string(),
+            Some(Box::new(Record(self.value))),
+        ))
     }
 }
 
