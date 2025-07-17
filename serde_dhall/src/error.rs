@@ -23,9 +23,9 @@ impl From<ErrorKind> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self.0 {
-            ErrorKind::Dhall(err) => write!(f, "{}", err),
-            ErrorKind::Deserialize(err) => write!(f, "{}", err),
-            ErrorKind::Serialize(err) => write!(f, "{}", err),
+            ErrorKind::Dhall(err) => write!(f, "{err}"),
+            ErrorKind::Deserialize(err) => write!(f, "{err}"),
+            ErrorKind::Serialize(err) => write!(f, "{err}"),
         }
     }
 }

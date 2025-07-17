@@ -159,9 +159,9 @@ fn fmt_label(label: &Label, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
     } else if !is_reserved
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
-        write!(f, "{}", s)
+        write!(f, "{s}")
     } else {
-        write!(f, "`{}`", s)
+        write!(f, "`{s}`")
     }
 }
 
@@ -174,33 +174,33 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             Lam(a, b, c) => {
                 write!(f, "λ(")?;
                 fmt_label(a, f)?;
-                write!(f, " : {}) → {}", b, c)?;
+                write!(f, " : {b}) → {c}")?;
             }
             Pi(a, b, c) if &String::from(a) == "_" => {
-                write!(f, "{} → {}", b, c)?;
+                write!(f, "{b} → {c}")?;
             }
             Pi(a, b, c) => {
                 write!(f, "∀(")?;
                 fmt_label(a, f)?;
-                write!(f, " : {}) → {}", b, c)?;
+                write!(f, " : {b}) → {c}")?;
             }
             Let(a, b, c, d) => {
                 write!(f, "let ")?;
                 fmt_label(a, f)?;
                 if let Some(b) = b {
-                    write!(f, " : {}", b)?;
+                    write!(f, " : {b}")?;
                 }
-                write!(f, " = {} in {}", c, d)?;
+                write!(f, " = {c} in {d}")?;
             }
             Const(k) => k.fmt(f)?,
             Builtin(v) => v.fmt(f)?,
             Num(a) => a.fmt(f)?,
             TextLit(a) => a.fmt(f)?,
             SomeLit(e) => {
-                write!(f, "Some {}", e)?;
+                write!(f, "Some {e}")?;
             }
             EmptyListLit(t) => {
-                write!(f, "[] : {}", t)?;
+                write!(f, "[] : {t}")?;
             }
             NEListLit(es) => {
                 fmt_list("[", ", ", "]", es, f, Display::fmt)?;
@@ -208,17 +208,17 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
             RecordLit(a) if a.is_empty() => f.write_str("{=}")?,
             RecordLit(a) => fmt_list("{ ", ", ", " }", a, f, |(k, v), f| {
                 fmt_label(k, f)?;
-                write!(f, " = {}", v)
+                write!(f, " = {v}")
             })?,
             RecordType(a) if a.is_empty() => f.write_str("{}")?,
             RecordType(a) => fmt_list("{ ", ", ", " }", a, f, |(k, t), f| {
                 fmt_label(k, f)?;
-                write!(f, " : {}", t)
+                write!(f, " : {t}")
             })?,
             UnionType(a) => fmt_list("< ", " | ", " >", a, f, |(k, v), f| {
                 fmt_label(k, f)?;
                 if let Some(v) = v {
-                    write!(f, ": {}", v)?;
+                    write!(f, ": {v}")?;
                 }
                 Ok(())
             })?,
@@ -226,10 +226,10 @@ impl<SE: Display + Clone> Display for ExprKind<SE> {
                 op.fmt(f)?;
             }
             Annot(a, b) => {
-                write!(f, "{} : {}", a, b)?;
+                write!(f, "{a} : {b}")?;
             }
             Assert(a) => {
-                write!(f, "assert : {}", a)?;
+                write!(f, "assert : {a}")?;
             }
             Import(a) => a.fmt(f)?,
         }
@@ -243,43 +243,43 @@ impl<SE: Display + Clone> Display for OpKind<SE> {
         use OpKind::*;
         match self {
             App(a, b) => {
-                write!(f, "{} {}", a, b)?;
+                write!(f, "{a} {b}")?;
             }
             BinOp(op, a, b) => {
-                write!(f, "{} {} {}", a, op, b)?;
+                write!(f, "{a} {op} {b}")?;
             }
             BoolIf(a, b, c) => {
-                write!(f, "if {} then {} else {}", a, b, c)?;
+                write!(f, "if {a} then {b} else {c}")?;
             }
             Merge(a, b, c) => {
-                write!(f, "merge {} {}", a, b)?;
+                write!(f, "merge {a} {b}")?;
                 if let Some(c) = c {
-                    write!(f, " : {}", c)?;
+                    write!(f, " : {c}")?;
                 }
             }
             ToMap(a, b) => {
-                write!(f, "toMap {}", a)?;
+                write!(f, "toMap {a}")?;
                 if let Some(b) = b {
-                    write!(f, " : {}", b)?;
+                    write!(f, " : {b}")?;
                 }
             }
             Field(a, b) => {
-                write!(f, "{}.", a)?;
+                write!(f, "{a}.")?;
                 fmt_label(b, f)?;
             }
             Projection(e, ls) => {
-                write!(f, "{}.", e)?;
+                write!(f, "{e}.")?;
                 fmt_list("{ ", ", ", " }", ls, f, fmt_label)?;
             }
             ProjectionByExpr(a, b) => {
-                write!(f, "{}.({})", a, b)?;
+                write!(f, "{a}.({b})")?;
             }
             Completion(a, b) => {
-                write!(f, "{}::{}", a, b)?;
+                write!(f, "{a}::{b}")?;
             }
             With(a, ls, b) => {
                 let ls = ls.iter().join(".");
-                write!(f, "{} with {} = {}", a, ls, b)?;
+                write!(f, "{a} with {ls} = {b}")?;
             }
         }
         Ok(())
@@ -343,7 +343,7 @@ impl<SubExpr: Display> Display for InterpolatedText<SubExpr> {
                                     &escaped[3..escaped.len() - 1]
                                 )
                             }
-                            c => write!(f, "{}", c),
+                            c => write!(f, "{c}"),
                         }?;
                     }
                 }
@@ -398,11 +398,11 @@ impl Display for NaiveDouble {
         } else if v == 0.0 && v.is_sign_negative() {
             f.write_str("-0.0")
         } else {
-            let s = format!("{}", v);
+            let s = format!("{v}");
             if s.contains('e') || s.contains('.') {
                 f.write_str(&s)
             } else {
-                write!(f, "{}.0", s)
+                write!(f, "{s}.0")
             }
         }
     }
@@ -431,7 +431,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
             if s.chars().all(|c| c.is_ascii_alphanumeric()) {
                 s.to_string()
             } else {
-                format!("\"{}\"", s)
+                format!("\"{s}\"")
             }
         };
 
@@ -443,12 +443,9 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                     Home => "~",
                     Absolute => "",
                 };
-                write!(f, "{}/", prefix)?;
-                let path: String = path
-                    .file_path
-                    .iter()
-                    .map(|c| quote_if_needed(&*c))
-                    .join("/");
+                write!(f, "{prefix}/")?;
+                let path: String =
+                    path.file_path.iter().map(|c| quote_if_needed(c)).join("/");
                 f.write_str(&path)?;
             }
             Remote(url) => {
@@ -456,16 +453,16 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                 let path: String = url.path.file_path.iter().join("/");
                 f.write_str(&path)?;
                 if let Some(q) = &url.query {
-                    write!(f, "?{}", q)?
+                    write!(f, "?{q}")?
                 }
                 if let Some(h) = &url.headers {
-                    write!(f, " using {}", h)?
+                    write!(f, " using {h}")?
                 }
             }
             Env(s) => {
                 write!(f, "env:")?;
                 if s.chars().all(|c| c.is_ascii_alphanumeric()) {
-                    write!(f, "{}", s)?;
+                    write!(f, "{s}")?;
                 } else {
                     write!(f, "\"")?;
                     for c in s.chars() {
@@ -479,7 +476,7 @@ impl<SubExpr: Display> Display for Import<SubExpr> {
                             '\r' => f.write_str("\\r")?,
                             '\t' => f.write_str("\\t")?,
                             '\u{000B}' => f.write_str("\\v")?,
-                            _ => write!(f, "{}", c)?,
+                            _ => write!(f, "{c}")?,
                         }
                     }
                     write!(f, "\"")?;
@@ -517,7 +514,7 @@ impl Display for V {
         let V(x, n) = self;
         fmt_label(x, f)?;
         if *n != 0 {
-            write!(f, "@{}", n)?;
+            write!(f, "@{n}")?;
         }
         Ok(())
     }

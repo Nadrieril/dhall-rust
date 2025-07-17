@@ -98,8 +98,7 @@ where
     fn from_dhall(v: &Value) -> crate::Result<Self> {
         let sval = v.to_simple_value().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(
-                "this cannot be deserialized into the serde data model: {}",
-                v
+                "this cannot be deserialized into the serde data model: {v}"
             )))
         })?;
         from_simple_value(sval)
@@ -164,8 +163,9 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.as_ref() {
             // Blindly takes keys in sorted order.
-            SimpleValue::Record(m) => visitor
-                .visit_seq(SeqDeserializer::new(m.iter().map(|(_, v)| val(v)))),
+            SimpleValue::Record(m) => {
+                visitor.visit_seq(SeqDeserializer::new(m.values().map(val)))
+            }
             _ => self.deserialize_any(visitor),
         }
     }

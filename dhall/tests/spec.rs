@@ -134,7 +134,7 @@ impl TestFile {
         let mut file = File::create(path)?;
         match self {
             TestFile::Source(_) => {
-                writeln!(file, "{}", expr)?;
+                writeln!(file, "{expr}")?;
             }
             TestFile::Binary(_) => {
                 let expr_data = binary::encode(&expr)?;
@@ -163,7 +163,7 @@ impl TestFile {
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
-        writeln!(file, "{}", x)?;
+        writeln!(file, "{x}")?;
         Ok(())
     }
 
@@ -216,7 +216,7 @@ impl TestFile {
         let expr_data = binary::encode(&expr)?;
         let expected_data = {
             let mut data = Vec::new();
-            File::open(&self.path())?.read_to_end(&mut data)?;
+            File::open(self.path())?.read_to_end(&mut data)?;
             data
         };
 
@@ -250,7 +250,7 @@ impl TestFile {
 
         let expected = read_to_string(self.path())?;
         let expected = expected.replace("\r\n", "\n"); // Normalize line endings
-        let msg = format!("{}\n", x);
+        let msg = format!("{x}\n");
         // TODO: git changes newlines on windows
         let msg = msg.replace("\r\n", "\n");
         if msg != expected {
@@ -345,7 +345,7 @@ static UPDATE_TEST_FILES: AtomicBool = AtomicBool::new(false);
 static LOCAL_TEST_PATH: &str = "tests/";
 static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
 
-static FEATURES: &'static [TestFeature] = &[
+static FEATURES: &[TestFeature] = &[
     TestFeature {
         module_name: "parser_success",
         directory: "parser/success/",
@@ -481,10 +481,10 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
 
             let input = feature
                 .input_type
-                .construct(&format!("{}{}", path, input_suffix));
+                .construct(&format!("{path}{input_suffix}"));
             let output = feature
                 .output_type
-                .construct(&format!("{}{}", output_path, output_suffix));
+                .construct(&format!("{output_path}{output_suffix}"));
 
             let test = Trial::test(
                 format!("{}::{}", feature.module_name, name),
@@ -599,7 +599,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
     /// Like `Result::unwrap_err`, but returns an error instead of panicking.
     fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
         match x {
-            Ok(x) => Err(TestError(format!("{:?}", x))),
+            Ok(x) => Err(TestError(format!("{x:?}"))),
             Err(e) => Ok(e),
         }
     }
@@ -627,8 +627,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
                             if e.kind() == io::ErrorKind::InvalidData => {}
                         e => {
                             return Err(TestError(format!(
-                                "Expected parse error, got: {:?}",
-                                e
+                                "Expected parse error, got: {e:?}"
                             ))
                             .into())
                         }
@@ -666,7 +665,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
             SemanticHash => {
                 let expr = expr.normalize(cx)?.to_expr_alpha(cx);
                 let hash = hex::encode(expr.sha256_hash()?);
-                expected.compare_ui(format!("sha256:{}", hash))?;
+                expected.compare_ui(format!("sha256:{hash}"))?;
             }
             TypeInferenceSuccess => {
                 let ty = expr.typecheck(cx)?.get_type()?;
@@ -718,7 +717,7 @@ fn main() {
         .map(|b| b as char)
         .take(36)
         .collect::<String>();
-    let cache_dir = format!("dhall-tests-{}", random_id);
+    let cache_dir = format!("dhall-tests-{random_id}");
     let cache_dir = env::temp_dir().join(cache_dir);
     std::fs::create_dir_all(&cache_dir).unwrap();
     fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())

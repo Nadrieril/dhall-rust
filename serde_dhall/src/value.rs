@@ -226,8 +226,7 @@ impl Value {
         } else {
             let expr = x.to_hir_noenv().to_expr(cx, Default::default());
             return Err(Error(ErrorKind::Deserialize(format!(
-                "this is neither a simple type nor a simple value: {}",
-                expr
+                "this is neither a simple type nor a simple value: {expr}"
             ))));
         })
     }
@@ -359,8 +358,7 @@ impl SimpleValue {
         };
         let type_missing = || {
             Error(ErrorKind::Serialize(format!(
-                "cannot serialize value without a type annotation: {:?}",
-                self
+                "cannot serialize value without a type annotation: {self:?}"
             )))
         };
         let kind = match (self, ty) {
@@ -546,8 +544,7 @@ impl FromDhall for SimpleType {
     fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_type().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(
-                "this cannot be deserialized into a simple type: {}",
-                v
+                "this cannot be deserialized into a simple type: {v}"
             )))
         })
     }

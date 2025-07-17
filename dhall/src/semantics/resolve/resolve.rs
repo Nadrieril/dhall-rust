@@ -445,7 +445,7 @@ fn traverse_accumulate<'cx>(
     let cx = env.cx();
     let expr = desugar(expr);
     let kind = match expr.kind() {
-        ExprKind::Var(var) => match name_env.unlabel_var(&var) {
+        ExprKind::Var(var) => match name_env.unlabel_var(var) {
             Some(v) => HirKind::Var(v),
             None => HirKind::MissingVar(var.clone()),
         },

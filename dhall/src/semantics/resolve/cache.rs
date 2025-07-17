@@ -110,7 +110,7 @@ fn write_cache_file<'cx>(
 
 fn filename_for_hash(hash: &Hash) -> String {
     match hash {
-        Hash::SHA256(sha) => format!("1220{}", hex::encode(&sha)),
+        Hash::SHA256(sha) => format!("1220{}", hex::encode(sha)),
     }
 }
 

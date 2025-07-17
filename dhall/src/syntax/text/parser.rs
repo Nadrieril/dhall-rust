@@ -221,8 +221,7 @@ impl DhallParser {
                 }
 
                 // pad with zeroes
-                let s: String = std::iter::repeat('0')
-                    .take(8 - s.len())
+                let s: String = std::iter::repeat_n('0', 8 - s.len())
                     .chain(s.chars())
                     .collect();
 
@@ -342,7 +341,7 @@ impl DhallParser {
                 "Sort" => Const(crate::syntax::Const::Sort),
                 _ => {
                     return Err(
-                        input.error(format!("Unrecognized builtin: '{}'", s))
+                        input.error(format!("Unrecognized builtin: '{s}'"))
                     )
                 }
             },
@@ -367,12 +366,10 @@ impl DhallParser {
     fn numeric_double_literal(input: ParseInput) -> ParseResult<Double> {
         let s = input.as_str().trim();
         match s.parse::<f64>() {
-            Ok(x) if x.is_infinite() => Err(input.error(format!(
-                "Overflow while parsing double literal '{}'",
-                s
-            ))),
+            Ok(x) if x.is_infinite() => Err(input
+                .error(format!("Overflow while parsing double literal '{s}'"))),
             Ok(x) => Ok(NaiveDouble::from(x)),
-            Err(e) => Err(input.error(format!("{}", e))),
+            Err(e) => Err(input.error(format!("{e}"))),
         }
     }
 
@@ -381,9 +378,9 @@ impl DhallParser {
         if s.starts_with("0x") {
             let without_prefix = s.trim_start_matches("0x");
             u64::from_str_radix(without_prefix, 16)
-                .map_err(|e| input.error(format!("{}", e)))
+                .map_err(|e| input.error(format!("{e}")))
         } else {
-            s.parse().map_err(|e| input.error(format!("{}", e)))
+            s.parse().map_err(|e| input.error(format!("{e}")))
         }
     }
 
@@ -394,9 +391,9 @@ impl DhallParser {
             let without_prefix =
                 sign.to_owned() + rest.trim_start_matches("0x");
             i64::from_str_radix(&without_prefix, 16)
-                .map_err(|e| input.error(format!("{}", e)))
+                .map_err(|e| input.error(format!("{e}")))
         } else {
-            s.parse().map_err(|e| input.error(format!("{}", e)))
+            s.parse().map_err(|e| input.error(format!("{e}")))
         }
     }
 
@@ -592,7 +589,7 @@ impl DhallParser {
         let hash = &s[7..];
         if protocol != "sha256" {
             return Err(
-                input.error(format!("Unknown hashing protocol '{}'", protocol))
+                input.error(format!("Unknown hashing protocol '{protocol}'"))
             );
         }
         Ok(Hash::SHA256(hex::decode(hash).unwrap().into()))
@@ -740,9 +737,7 @@ impl DhallParser {
             bool_eq => BoolEQ,
             bool_ne => BoolNE,
             equivalent => Equivalence,
-            r => {
-                return Err(op.error(format!("Rule {:?} isn't an operator", r)))
-            }
+            r => return Err(op.error(format!("Rule {r:?} isn't an operator"))),
         };
 
         Ok(spanned_union(l.span(), r.span(), Op(BinOp(op, l, r))))

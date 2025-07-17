@@ -10,8 +10,8 @@ fn convert_abnf_to_pest() -> std::io::Result<()> {
     let abnf_path = "src/syntax/text/dhall.abnf";
     let visibility_path = "src/syntax/text/dhall.pest.visibility";
     let grammar_path = Path::new(&out_dir).join("dhall.pest");
-    println!("cargo:rerun-if-changed={}", abnf_path);
-    println!("cargo:rerun-if-changed={}", visibility_path);
+    println!("cargo:rerun-if-changed={abnf_path}");
+    println!("cargo:rerun-if-changed={visibility_path}");
 
     let mut data = read_to_string(abnf_path)?;
     data.push('\n');
@@ -128,7 +128,7 @@ fn generate_pest_parser() -> std::io::Result<()> {
     );
 
     let mut file = File::create(output_path)?;
-    writeln!(file, "{}", file_contents)
+    writeln!(file, "{file_contents}")
 }
 
 fn main() -> std::io::Result<()> {

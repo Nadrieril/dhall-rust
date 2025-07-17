@@ -148,16 +148,16 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             .to_owned(),
                     ));
                 }
-                let mut f = cbor_value_to_dhall(&f)?;
+                let mut f = cbor_value_to_dhall(f)?;
                 for a in args {
-                    let a = cbor_value_to_dhall(&a)?;
+                    let a = cbor_value_to_dhall(a)?;
                     f = rc(Op(App(f, a)))
                 }
                 return Ok(f);
             }
             [U64(1), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Lam(Label::from("_"), x, y)
             }
             [U64(1), String(l), x, y] => {
@@ -166,14 +166,14 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         "`_` variable was encoded incorrectly".to_owned(),
                     ));
                 }
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 let l = Label::from(l.as_str());
                 Lam(l, x, y)
             }
             [U64(2), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Pi(Label::from("_"), x, y)
             }
             [U64(2), String(l), x, y] => {
@@ -182,19 +182,19 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         "`_` variable was encoded incorrectly".to_owned(),
                     ));
                 }
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 let l = Label::from(l.as_str());
                 Pi(l, x, y)
             }
             [U64(3), U64(13), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Op(Completion(x, y))
             }
             [U64(3), U64(n), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 use BinOp::*;
                 let op = match n {
                     0 => BoolOr,
@@ -219,7 +219,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 Op(BinOp(op, x, y))
             }
             [U64(4), t] => {
-                let t = cbor_value_to_dhall(&t)?;
+                let t = cbor_value_to_dhall(t)?;
                 EmptyListLit(rc(Op(App(
                     rc(ExprKind::Builtin(Builtin::List)),
                     t,
@@ -233,31 +233,31 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 NEListLit(rest)
             }
             [U64(5), Null, x] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 SomeLit(x)
             }
             // Old-style optional literals
             [U64(5), t] => {
-                let t = cbor_value_to_dhall(&t)?;
+                let t = cbor_value_to_dhall(t)?;
                 Op(App(rc(ExprKind::Builtin(Builtin::OptionalNone)), t))
             }
             [U64(5), t, x] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let t = cbor_value_to_dhall(&t)?;
+                let x = cbor_value_to_dhall(x)?;
+                let t = cbor_value_to_dhall(t)?;
                 Annot(
                     rc(SomeLit(x)),
                     rc(Op(App(rc(ExprKind::Builtin(Builtin::Optional)), t))),
                 )
             }
             [U64(6), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Op(Merge(x, y, None))
             }
             [U64(6), x, y, z] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
-                let z = cbor_value_to_dhall(&z)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
+                let z = cbor_value_to_dhall(z)?;
                 Op(Merge(x, y, Some(z)))
             }
             [U64(7), Object(map)] => {
@@ -269,14 +269,14 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 RecordLit(map)
             }
             [U64(9), x, String(l)] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 let l = Label::from(l.as_str());
                 Op(Field(x, l))
             }
             [U64(10), x, Array(arr)] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 if let [y] = arr.as_slice() {
-                    let y = cbor_value_to_dhall(&y)?;
+                    let y = cbor_value_to_dhall(y)?;
                     Op(ProjectionByExpr(x, y))
                 } else {
                     return Err(DecodeError::WrongFormatError(
@@ -285,7 +285,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 }
             }
             [U64(10), x, rest @ ..] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 let labels = rest
                     .iter()
                     .map(|s| match s {
@@ -307,9 +307,9 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 ))
             }
             [U64(14), x, y, z] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
-                let z = cbor_value_to_dhall(&z)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
+                let z = cbor_value_to_dhall(z)?;
                 Op(BoolIf(x, y, z))
             }
             [U64(15), U64(x)] => Num(NumKind::Natural(*x as Natural)),
@@ -321,7 +321,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     rest.iter()
                         .tuples()
                         .map(|(x, y)| {
-                            let x = cbor_value_to_dhall(&x)?;
+                            let x = cbor_value_to_dhall(x)?;
                             let y = match y {
                                 String(s) => s.clone(),
                                 _ => {
@@ -336,7 +336,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 )))
             }
             [U64(19), t] => {
-                let t = cbor_value_to_dhall(&t)?;
+                let t = cbor_value_to_dhall(t)?;
                 Assert(t)
             }
             [U64(24), hash, U64(mode), U64(scheme), rest @ ..] => {
@@ -346,8 +346,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     2 => ImportMode::Location,
                     _ => {
                         return Err(DecodeError::WrongFormatError(format!(
-                            "import/mode/unknown_mode: {:?}",
-                            mode
+                            "import/mode/unknown_mode: {mode:?}"
                         )))
                     }
                 };
@@ -359,8 +358,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         }
                         _ => {
                             return Err(DecodeError::WrongFormatError(format!(
-                                "import/hash/unknown_multihash: {:?}",
-                                bytes
+                                "import/hash/unknown_multihash: {bytes:?}"
                             )))
                         }
                     },
@@ -380,7 +378,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         let headers = match rest.next() {
                             Some(Null) => None,
                             Some(x) => {
-                                let x = cbor_value_to_dhall(&x)?;
+                                let x = cbor_value_to_dhall(x)?;
                                 Some(x)
                             }
                             _ => {
@@ -423,7 +421,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             headers,
                         })
                     }
-                    2 | 3 | 4 | 5 => {
+                    2..=5 => {
                         let prefix = match scheme {
                             2 => FilePrefix::Absolute,
                             3 => FilePrefix::Here,
@@ -482,9 +480,9 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         let x = Label::from(x.as_str());
                         let t = match t {
                             Null => None,
-                            t => Some(cbor_value_to_dhall(&t)?),
+                            t => Some(cbor_value_to_dhall(t)?),
                         };
-                        let v = cbor_value_to_dhall(&v)?;
+                        let v = cbor_value_to_dhall(v)?;
                         Ok((x, t, v))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -498,26 +496,26 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     .fold(expr, |acc, (x, t, v)| rc(Let(x, t, v, acc))));
             }
             [U64(26), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Annot(x, y)
             }
             [U64(27), x] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 Op(ToMap(x, None))
             }
             [U64(27), x, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 Op(ToMap(x, Some(y)))
             }
             [U64(28), x] => {
-                let x = cbor_value_to_dhall(&x)?;
+                let x = cbor_value_to_dhall(x)?;
                 EmptyListLit(x)
             }
             [U64(29), x, labels, y] => {
-                let x = cbor_value_to_dhall(&x)?;
-                let y = cbor_value_to_dhall(&y)?;
+                let x = cbor_value_to_dhall(x)?;
+                let y = cbor_value_to_dhall(y)?;
                 let labels = match labels {
                     Array(labels) => labels
                         .iter()
@@ -537,13 +535,10 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 Op(With(x, labels, y))
             }
             _ => {
-                return Err(DecodeError::WrongFormatError(format!(
-                    "{:?}",
-                    data
-                )))
+                return Err(DecodeError::WrongFormatError(format!("{data:?}")))
             }
         },
-        _ => return Err(DecodeError::WrongFormatError(format!("{:?}", data))),
+        _ => return Err(DecodeError::WrongFormatError(format!("{data:?}"))),
     }))
 }
 

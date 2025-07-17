@@ -199,7 +199,7 @@ where
     }
 }
 
-impl<'a, T> StaticType for &'a T
+impl<T> StaticType for &T
 where
     T: StaticType,
 {

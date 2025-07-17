@@ -9,6 +9,5 @@ mod ast;
 pub use crate::syntax::ast::visitor;
 pub use crate::syntax::ast::*;
 pub use crate::syntax::text::parser::*;
-pub use crate::syntax::text::printer::*;
 pub mod binary;
 pub mod text;

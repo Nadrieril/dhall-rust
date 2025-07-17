@@ -85,9 +85,9 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            Custom(s) => format!("Type error: {}", s),
+            Custom(s) => format!("Type error: {s}"),
         };
-        write!(f, "{}", msg)
+        write!(f, "{msg}")
     }
 }
 
@@ -96,9 +96,9 @@ impl std::error::Error for TypeError {}
 impl std::fmt::Display for EncodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
-            EncodeError::CBORError(e) => format!("Encode error: {}", e),
+            EncodeError::CBORError(e) => format!("Encode error: {e}"),
         };
-        write!(f, "{}", msg)
+        write!(f, "{msg}")
     }
 }
 
@@ -107,13 +107,13 @@ impl std::error::Error for EncodeError {}
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self.kind {
-            ErrorKind::IO(err) => write!(f, "{}", err),
-            ErrorKind::Parse(err) => write!(f, "{}", err),
-            ErrorKind::Decode(err) => write!(f, "{:?}", err),
-            ErrorKind::Encode(err) => write!(f, "{:?}", err),
-            ErrorKind::Resolve(err) => write!(f, "{:?}", err),
-            ErrorKind::Typecheck(err) => write!(f, "{}", err),
-            ErrorKind::Cache(err) => write!(f, "{:?}", err),
+            ErrorKind::IO(err) => write!(f, "{err}"),
+            ErrorKind::Parse(err) => write!(f, "{err}"),
+            ErrorKind::Decode(err) => write!(f, "{err:?}"),
+            ErrorKind::Encode(err) => write!(f, "{err:?}"),
+            ErrorKind::Resolve(err) => write!(f, "{err:?}"),
+            ErrorKind::Typecheck(err) => write!(f, "{err}"),
+            ErrorKind::Cache(err) => write!(f, "{err:?}"),
         }
     }
 }

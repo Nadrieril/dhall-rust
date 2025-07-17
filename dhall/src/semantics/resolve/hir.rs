@@ -48,7 +48,7 @@ impl<'cx> Hir<'cx> {
     }
 
     pub fn kind(&self) -> &HirKind<'cx> {
-        &*self.kind
+        &self.kind
     }
     pub fn span(&self) -> Span {
         self.span.clone()

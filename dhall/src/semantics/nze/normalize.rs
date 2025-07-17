@@ -19,7 +19,6 @@ pub fn apply_any<'cx>(f: &Nir<'cx>, a: Nir<'cx>) -> NirKind<'cx> {
 pub fn squash_textlit<'cx>(
     elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
 ) -> Vec<InterpolatedTextContents<Nir<'cx>>> {
-    use std::mem::replace;
     use InterpolatedTextContents::{Expr, Text};
 
     fn inner<'cx>(
@@ -36,7 +35,7 @@ pub fn squash_textlit<'cx>(
                     }
                     _ => {
                         if !crnt_str.is_empty() {
-                            ret.push(Text(replace(crnt_str, String::new())))
+                            ret.push(Text(std::mem::take(crnt_str)))
                         }
                         ret.push(Expr(e.clone()))
                     }
@@ -49,7 +48,7 @@ pub fn squash_textlit<'cx>(
     let mut ret = Vec::new();
     inner(elts, &mut crnt_str, &mut ret);
     if !crnt_str.is_empty() {
-        ret.push(Text(replace(&mut crnt_str, String::new())))
+        ret.push(Text(std::mem::take(&mut crnt_str)))
     }
     ret
 }

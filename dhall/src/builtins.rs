@@ -345,27 +345,27 @@ fn apply_builtin<'cx>(
         (Builtin::OptionalNone, [t]) => {
             Ret::NirKind(EmptyOptionalLit(t.clone()))
         }
-        (Builtin::NaturalIsZero, [n]) => match &*n.kind() {
+        (Builtin::NaturalIsZero, [n]) => match n.kind() {
             Num(Natural(n)) => Ret::NirKind(Num(Bool(*n == 0))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::NaturalEven, [n]) => match &*n.kind() {
+        (Builtin::NaturalEven, [n]) => match n.kind() {
             Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 == 0))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::NaturalOdd, [n]) => match &*n.kind() {
+        (Builtin::NaturalOdd, [n]) => match n.kind() {
             Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 != 0))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
+        (Builtin::NaturalToInteger, [n]) => match n.kind() {
             Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as i64))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::NaturalShow, [n]) => match &*n.kind() {
+        (Builtin::NaturalShow, [n]) => match n.kind() {
             Num(Natural(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
+        (Builtin::NaturalSubtract, [a, b]) => match (a.kind(), b.kind()) {
             (Num(Natural(a)), Num(Natural(b))) => {
                 Ret::NirKind(Num(Natural(if b > a { b - a } else { 0 })))
             }
@@ -374,38 +374,38 @@ fn apply_builtin<'cx>(
             _ if a == b => Ret::NirKind(Num(Natural(0))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::IntegerShow, [n]) => match &*n.kind() {
+        (Builtin::IntegerShow, [n]) => match n.kind() {
             Num(Integer(n)) => {
                 let s = if *n < 0 {
                     n.to_string()
                 } else {
-                    format!("+{}", n)
+                    format!("+{n}")
                 };
                 Ret::Nir(Nir::from_text(s))
             }
             _ => Ret::DoneAsIs,
         },
-        (Builtin::IntegerToDouble, [n]) => match &*n.kind() {
+        (Builtin::IntegerToDouble, [n]) => match n.kind() {
             Num(Integer(n)) => {
                 Ret::NirKind(Num(Double(NaiveDouble::from(*n as f64))))
             }
             _ => Ret::DoneAsIs,
         },
-        (Builtin::IntegerNegate, [n]) => match &*n.kind() {
+        (Builtin::IntegerNegate, [n]) => match n.kind() {
             Num(Integer(n)) => Ret::NirKind(Num(Integer(-n))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::IntegerClamp, [n]) => match &*n.kind() {
+        (Builtin::IntegerClamp, [n]) => match n.kind() {
             Num(Integer(n)) => {
                 Ret::NirKind(Num(Natural((*n).try_into().unwrap_or(0))))
             }
             _ => Ret::DoneAsIs,
         },
-        (Builtin::DoubleShow, [n]) => match &*n.kind() {
+        (Builtin::DoubleShow, [n]) => match n.kind() {
             Num(Double(n)) => Ret::Nir(Nir::from_text(n)),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::TextShow, [v]) => match &*v.kind() {
+        (Builtin::TextShow, [v]) => match v.kind() {
             TextLit(tlit) => {
                 if let Some(s) = tlit.as_text() {
                     // Printing InterpolatedText takes care of all the escaping
@@ -422,7 +422,7 @@ fn apply_builtin<'cx>(
         (Builtin::TextReplace, [needle, replacement, haystack]) => {
             // Helper to match a Nir as a text literal
             fn nir_to_string(n: &Nir) -> Option<String> {
-                match &*n.kind() {
+                match n.kind() {
                     TextLit(n_lit) => n_lit.as_text(),
                     _ => None,
                 }
@@ -464,26 +464,26 @@ fn apply_builtin<'cx>(
                 _ => Ret::DoneAsIs,
             }
         }
-        (Builtin::ListLength, [_, l]) => match &*l.kind() {
+        (Builtin::ListLength, [_, l]) => match l.kind() {
             EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
             NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len() as u64))),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::ListHead, [_, l]) => match &*l.kind() {
+        (Builtin::ListHead, [_, l]) => match l.kind() {
             EmptyListLit(n) => Ret::NirKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => {
                 Ret::NirKind(NEOptionalLit(xs.iter().next().unwrap().clone()))
             }
             _ => Ret::DoneAsIs,
         },
-        (Builtin::ListLast, [_, l]) => match &*l.kind() {
+        (Builtin::ListLast, [_, l]) => match l.kind() {
             EmptyListLit(n) => Ret::NirKind(EmptyOptionalLit(n.clone())),
             NEListLit(xs) => Ret::NirKind(NEOptionalLit(
-                xs.iter().rev().next().unwrap().clone(),
+                xs.iter().next_back().unwrap().clone(),
             )),
             _ => Ret::DoneAsIs,
         },
-        (Builtin::ListReverse, [_, l]) => match &*l.kind() {
+        (Builtin::ListReverse, [_, l]) => match l.kind() {
             EmptyListLit(n) => Ret::NirKind(EmptyListLit(n.clone())),
             NEListLit(xs) => {
                 Ret::NirKind(NEListLit(xs.iter().rev().cloned().collect()))
@@ -542,7 +542,7 @@ fn apply_builtin<'cx>(
                     .app(EmptyListLit(t.clone()).into_nir()),
             )
         }
-        (Builtin::ListFold, [_, l, _, cons, nil]) => match &*l.kind() {
+        (Builtin::ListFold, [_, l, _, cons, nil]) => match l.kind() {
             EmptyListLit(_) => Ret::Nir(nil.clone()),
             NEListLit(xs) => {
                 let mut v = nil.clone();
@@ -562,7 +562,7 @@ fn apply_builtin<'cx>(
                 .app(Num(Natural(0)).into_nir()),
         ),
 
-        (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
+        (Builtin::NaturalFold, [n, t, succ, zero]) => match n.kind() {
             Num(Natural(0)) => Ret::Nir(zero.clone()),
             Num(Natural(n)) => {
                 let fold = Nir::from_builtin(cx, Builtin::NaturalFold)

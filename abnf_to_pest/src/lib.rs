@@ -68,9 +68,9 @@ impl Pretty for Repeat {
             (0, None) => "*".into(),
             (1, None) => "+".into(),
             (0, Some(1)) => "?".into(),
-            (min, None) => format!("{{{},}}", min),
-            (min, Some(max)) if min == max => format!("{{{}}}", min),
-            (min, Some(max)) => format!("{{{},{}}}", min, max),
+            (min, None) => format!("{{{min},}}"),
+            (min, Some(max)) if min == max => format!("{{{min}}}"),
+            (min, Some(max)) => format!("{{{min},{max}}}"),
         })
     }
 }
@@ -124,7 +124,7 @@ fn format_char(x: u32) -> String {
             }
         }
     }
-    format!("\\u{{{:02X}}}", x)
+    format!("\\u{{{x:02X}}}")
 }
 
 /// Allow control over some of the pest properties of the outputted rule
@@ -153,8 +153,7 @@ impl Pretty for (String, PestyRule) {
 pub fn parse_abnf(
     data: &str,
 ) -> Result<IndexMap<String, PestyRule>, std::io::Error> {
-    let make_err =
-        |e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e));
+    let make_err = |e| std::io::Error::other(format!("{e}"));
     let rules: Vec<Rule> = abnf::rulelist(data).map_err(make_err)?;
     Ok(rules
         .into_iter()

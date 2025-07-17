@@ -62,8 +62,7 @@ mod simple_value {
                 .parse::<Value>()
                 .map_err(|e| e.to_string()),
             Err(format!(
-                "this is neither a simple type nor a simple value: {}",
-                not_simple
+                "this is neither a simple type nor a simple value: {not_simple}"
             ))
         );
     }

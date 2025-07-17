@@ -185,7 +185,7 @@ pub fn type_with<'cx, 'hir>(
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
         HirKind::MissingVar(var) => mkerr(
-            ErrorBuilder::new(format!("unbound variable `{}`", var))
+            ErrorBuilder::new(format!("unbound variable `{var}`"))
                 .span_err(hir.span(), "not found in this scope")
                 .format(),
         )?,
@@ -258,9 +258,9 @@ pub fn type_with<'cx, 'hir>(
                 .as_ref()
                 .map(|t| type_with(env, t, None)?.eval_to_type(env))
                 .transpose()?;
-            let val = type_with(env, &val, val_annot)?;
+            let val = type_with(env, val, val_annot)?;
             let val_nf = val.eval(env);
-            let body_env = env.insert_value(&binder, val_nf, val.ty().clone());
+            let body_env = env.insert_value(binder, val_nf, val.ty().clone());
             let body = type_with(&body_env, body, None)?;
             let ty = body.ty().clone();
             Tir::from_hir(hir, ty)
@@ -276,7 +276,7 @@ pub fn type_with<'cx, 'hir>(
         if *tir.ty() != annot {
             return mk_span_err(
                 hir.span(),
-                &format!(
+                format!(
                     "annot mismatch: {} != {}",
                     tir.ty().to_expr_tyenv(env),
                     annot.to_expr_tyenv(env)

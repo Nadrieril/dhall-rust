@@ -120,7 +120,7 @@ impl<'cx> Nir<'cx> {
     }
 
     pub fn as_const(&self) -> Option<Const> {
-        match &*self.kind() {
+        match self.kind() {
             NirKind::Const(c) => Some(*c),
             _ => None,
         }
@@ -128,7 +128,7 @@ impl<'cx> Nir<'cx> {
 
     /// This is what you want if you want to pattern-match on the value.
     pub fn kind(&self) -> &NirKind<'cx> {
-        &*self.0
+        &self.0
     }
 
     /// The contents of a `Nir` are immutable and shared. If however we happen to be the sole
@@ -440,7 +440,7 @@ impl<'cx> std::cmp::Eq for Closure<'cx> {}
 impl<'cx> std::fmt::Debug for Nir<'cx> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let NirKind::Const(c) = self.kind() {
-            return write!(fmt, "{:?}", c);
+            return write!(fmt, "{c:?}");
         }
         let mut x = fmt.debug_struct("Nir");
         x.field("kind", self.kind());
