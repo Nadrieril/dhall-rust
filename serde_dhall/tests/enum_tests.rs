@@ -1,6 +1,6 @@
 mod test_enum {
     use serde::{Deserialize, Serialize};
-    use serde_dhall::{SimpleType, StaticType};
+    use serde_dhall::StaticType;
 
     #[derive(
         Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StaticType,
@@ -25,23 +25,6 @@ mod test_enum {
         Unitary,
     }
 
-    fn build_type() -> SimpleType {
-        let ty: SimpleType = serde_dhall::from_str(
-            r#"
-let ParentStruct = {id0: Integer, id1: Integer }
-
-let EnumVariant =
-        < SimpleStruct : { x : Double, y : Double, z : Double }
-        | InheritStruct: { field_a: ParentStruct, field_b: ParentStruct }
-        | Unitary
-        >       
-in EnumVariant"#,
-        )
-        .parse()
-        .unwrap();
-        ty
-    }
-
     #[test]
     fn test_enum_simple_struct() {
         let v = EnumVariants::SimpleStruct {
@@ -50,7 +33,7 @@ in EnumVariant"#,
             z: 3.0,
         };
         let v_str = serde_dhall::serialize(&v)
-            .type_annotation(&build_type())
+            .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");
@@ -67,7 +50,7 @@ in EnumVariant"#,
         };
 
         let v_str = serde_dhall::serialize(&v)
-            .type_annotation(&build_type())
+            .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");
@@ -81,7 +64,7 @@ in EnumVariant"#,
         let v = EnumVariants::Unitary;
 
         let v_str = serde_dhall::serialize(&v)
-            .type_annotation(&build_type())
+            .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");

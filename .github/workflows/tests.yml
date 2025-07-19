@@ -39,7 +39,7 @@ jobs:
         rust:
           - beta
           - nightly
-          - 1.60.0  # Minimum supported version
+          - 1.76.0  # Minimum supported version
     steps:
       - name: Checkout branch
         uses: actions/checkout@master
