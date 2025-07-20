@@ -13,7 +13,7 @@ use crate::syntax::{Const, ExprKind, Span};
 
 fn check_rectymerge(
     span: &Span,
-    env: &TyEnv<'_>,
+    _env: &TyEnv<'_>,
     x: Nir<'_>,
     y: Nir<'_>,
 ) -> Result<(), TypeError> {

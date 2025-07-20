@@ -147,14 +147,10 @@ fn type_one_layer<'cx>(
             // An empty union type has type Type;
             // an union type with only unary variants also has type Type
             let mut k = Const::Type;
-            for t in kts.values() {
-                if let Some(t) = t {
-                    match t.ty().as_const() {
-                        Some(c) => k = max(k, c),
-                        None => {
-                            return mk_span_err(t.span(), "InvalidVariantType")
-                        }
-                    }
+            for t in kts.values().flatten() {
+                match t.ty().as_const() {
+                    Some(c) => k = max(k, c),
+                    None => return mk_span_err(t.span(), "InvalidVariantType"),
                 }
             }
 

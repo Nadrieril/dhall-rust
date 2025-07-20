@@ -47,7 +47,7 @@ fn spanned_union(span1: Span, span2: Span, x: UnspannedExpr) -> Expr {
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
 // literals.
-fn trim_indent(lines: &mut Vec<ParsedText>) {
+fn trim_indent(lines: &mut [ParsedText]) {
     let is_indent = |c: char| c == ' ' || c == '\t';
 
     // There is at least one line so this is safe
@@ -351,15 +351,15 @@ impl DhallParser {
 
     #[alias(double_literal)]
     fn NaN(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::NAN.into())
+        Ok(f64::NAN.into())
     }
     #[alias(double_literal)]
     fn minus_infinity_literal(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::NEG_INFINITY.into())
+        Ok(f64::NEG_INFINITY.into())
     }
     #[alias(double_literal)]
     fn plus_infinity_literal(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::INFINITY.into())
+        Ok(f64::INFINITY.into())
     }
 
     #[alias(double_literal)]
