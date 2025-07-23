@@ -2,10 +2,9 @@
 
 #### [Unreleased]
 
-#### [0.13.0] - 2025-07-xx
+#### [0.13.0] - unreleased
 
-- BREAKING CHANGE: Changing minimum supported version to 1.76.0 because of the `wasn_bindgen` dependency
-- Support Enum struct variant in SimpleType
+- BREAKING CHANGE: Change minimum supported version to 1.76.0 because of the `wasm_bindgen` dependency
 
 #### [0.12.1] - 2023-02-01
 

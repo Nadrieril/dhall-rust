@@ -122,7 +122,6 @@ impl ErrorBuilder {
         }
         let this = std::mem::take(self);
         self.consumed = true;
-        drop(self); // Get rid of the self reference so we don't use it by mistake.
 
         let input;
         let slices = if this.annotations.is_empty() {

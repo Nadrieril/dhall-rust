@@ -1,4 +1,3 @@
-use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -6,7 +5,6 @@ use crate::error::{CacheError, Error};
 use crate::parse::parse_binary;
 use crate::syntax::{binary, Hash};
 use crate::{Ctxt, Typed};
-use std::ffi::OsStr;
 use std::fs::File;
 
 #[cfg(any(unix, windows))]
@@ -18,6 +16,8 @@ const ALTERNATE_CACHE_ENV_VAR: &str = "LOCALAPPDATA";
 
 #[cfg(any(unix, windows))]
 fn default_cache_dir() -> Result<PathBuf, CacheError> {
+    use std::env;
+    use std::ffi::OsStr;
     let cache_base_path = match env::var(OsStr::new(CACHE_ENV_VAR)) {
         Ok(path) => PathBuf::from(path),
         Err(_) => match env::var(OsStr::new(ALTERNATE_CACHE_ENV_VAR)) {
