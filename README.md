@@ -53,7 +53,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.12.2"
+serde_dhall = "0.13.0"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
