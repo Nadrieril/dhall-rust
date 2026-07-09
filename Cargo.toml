@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "abnf_to_pest",
     "dhall",
     "dhall_proc_macros",
     "serde_dhall"
